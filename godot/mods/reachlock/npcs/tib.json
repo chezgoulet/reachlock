@@ -1,0 +1,19 @@
+{
+  "id": "tib",
+  "name": "Tib",
+  "role": "pilot",
+  "ship": "loup_garou",
+  "description": "The Loup-Garou's pilot. Was a young resistance fighter on Earth during the uprising — present at Québec City before the glassing. Carries it.",
+  "personality": {
+    "traits": ["loyal", "quiet", "precise", "haunted"],
+    "values": ["crew_safety", "earth_memory", "freedom_of_movement"],
+    "fears": ["losing_crew", "compact_victory", "forgetting"]
+  },
+  "allegiances": {
+    "earth_remnant": 80,
+    "compact": -90,
+    "loup_garou_crew": 95
+  },
+  "skills": ["piloting", "evasive_maneuvers", "navigation", "close_quarters_combat"],
+  "arc": "tib_remembers_quebec"
+}

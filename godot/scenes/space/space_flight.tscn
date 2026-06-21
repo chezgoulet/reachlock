@@ -1,0 +1,28 @@
+[gd_scene load_steps=2 format=3 uid="uid://c1spaceflight001"]
+
+[ext_resource type="Script" path="res://scripts/space/space_flight.gd" id="1_space"]
+
+[node name="SpaceFlight" type="Node3D"]
+script = ExtResource("1_space")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 15)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.707, -0.5, 0.5, 0, 0.707, 0.707, -0.707, -0.5, 0.5, 0, 10, 0)
+
+[node name="ModeOverlay" type="CanvasLayer" parent="."]
+
+[node name="ModeLabel" type="Label" parent="ModeOverlay"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -40.0
+offset_right = 300.0
+offset_bottom = 40.0
+text = "SPACE FLIGHT"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 48

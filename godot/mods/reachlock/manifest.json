@@ -1,0 +1,18 @@
+{
+  "id": "reachlock",
+  "name": "REACHLOCK: A Space Western",
+  "version": "0.1.0",
+  "description": "The official REACHLOCK content mod. Factions, locations, NPCs, ships, and storylines for the authored universe.",
+  "author": "chezgoulet",
+  "license": "AGPL-3.0",
+  "dependencies": [],
+  "conflicts": [],
+  "provides": {
+    "factions": ["compact", "isc", "corp_charter", "reach", "earth_remnant"],
+    "locations": ["sorrow_station", "aethon", "verne", "cadence", "the_veil", "earth"],
+    "ships": ["loup_garou", "loup_garou_shuttle"],
+    "npcs": ["tib", "tove", "bardo", "doc_keene", "prudence", "risc", "boris"],
+    "storylines": ["veil_escalation", "duskway_runs", "alexander_long_game", "predecessor_revelation"],
+    "economy_tables": ["base"]
+  }
+}

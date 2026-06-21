@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3 uid="uid://c1mainscene0001"]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+
+[node name="Main" type="Node"]
+script = ExtResource("1_main")
+
+[node name="DebugHint" type="CanvasLayer" parent="."]
+layer = 128
+
+[node name="HintLabel" type="Label" parent="DebugHint"]
+offset_right = 500.0
+offset_bottom = 28.0
+text = "F1: Space Flight  |  F2: On Board  |  F3: Landed"
