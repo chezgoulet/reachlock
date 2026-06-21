@@ -1,0 +1,23 @@
+{
+  "id": "loup_garou",
+  "name": "Loup-Garou",
+  "class": "corvette",
+  "chassis_archetype": "saucer",
+  "description": "A mid-bulk mining corvette. Blunt, utilitarian frame with the cockpit forward and slightly elevated. Argosy-class profile — workhorse, not warship. Heavily modified: extra hardpoints welded onto former mining laser mounts, patch armor, a shuttle grafted aft that the original designer never intended.",
+  "origin": "reach",
+  "customization_tier": "high",
+  "stats": {
+    "mass": 280,
+    "armor": 3,
+    "crew_capacity": 8,
+    "cargo_capacity": 40,
+    "jump_drive_capable": true
+  },
+  "hardpoints": {
+    "weapons": 4,
+    "utilities": 3,
+    "engines": 2
+  },
+  "interior_rooms": ["cockpit", "bridge", "engineering", "med_bay", "galley", "crew_quarters", "cargo_hold", "airlock"],
+  "attached": ["loup_garou_shuttle"]
+}

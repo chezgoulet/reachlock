@@ -9,9 +9,16 @@ import/
 .android/
 .ios/
 .mono/
+export_presets.cfg
+godot/.godot/
 
 # Go
 vendor/
+server/bin/
+server/vendor/
+
+# Mods (built packages)
+*.reachmod
 
 # Editor
 .vscode/

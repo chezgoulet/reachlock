@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Go server (build, vet, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+
+  godot:
+    name: Godot project import
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: 4.7-stable
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot ${{ env.GODOT_VERSION }} (headless)
+        run: |
+          ASSET="Godot_v${GODOT_VERSION}_linux.x86_64"
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${ASSET}.zip"
+          unzip -q "${ASSET}.zip"
+          sudo mv "${ASSET}" /usr/local/bin/godot
+          sudo chmod +x /usr/local/bin/godot
+          godot --version
+      - name: Import & validate project
+        run: |
+          set -o pipefail
+          godot --headless --path godot/ --import 2>&1 | tee import.log
+          if grep -qE "SCRIPT ERROR|Parse Error|ERROR:.*\.gd" import.log; then
+            echo "::error::Godot import produced script/parse errors"
+            exit 1
+          fi
+
+  mod-data:
+    name: Mod data JSON validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate mod JSON files parse
+        run: python3 scripts/validate_mod_data.py
