@@ -1,4 +1,4 @@
-.PHONY: all godot godot-run godot-import server-build server-run server-test server-tidy validate check clean
+.PHONY: all godot godot-run godot-import server-build server-run server-test server-tidy validate architecture check clean
 
 GODOT := flatpak run org.godotengine.Godot
 SERVER_BIN := ./server/bin/reachlock-server
@@ -38,8 +38,13 @@ server-tidy:
 validate:
 	python3 scripts/validate_mod_data.py
 
-# Full local pre-push gate: server tests + mod data validation.
-check: server-test validate
+# Three-ring architecture guard: engine must contain zero content (#7).
+architecture:
+	python3 scripts/check_architecture.py --self-test
+	python3 scripts/check_architecture.py
+
+# Full local pre-push gate: server tests + mod data + architecture.
+check: server-test validate architecture
 
 clean:
 	rm -rf server/bin

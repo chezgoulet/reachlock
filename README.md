@@ -33,6 +33,8 @@ REACHLOCK is built to be modded from the ground up. Three layers:
 - **Ring 1 — Content:** Ships, weapons, factions, missions. Loaded from data files. Anyone can add.
 - **Ring 2 — Soul:** NPC personality, dialogue, decision weights. Plain text prompts and markdown skills.
 
+The layer boundaries are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and **enforced in CI** — the engine is not allowed to contain any REACHLOCK content.
+
 ## License
 
 AGPL-3.0 — see [LICENSE](LICENSE).
