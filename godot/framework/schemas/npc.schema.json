@@ -1,0 +1,32 @@
+{
+  "$id": "reachlock://framework/v0/npc",
+  "title": "NPC soul file (v0 — authored birth-state)",
+  "description": "The authored starting state of an NPC soul: identity, personality, allegiances, skills. This file is the template the soul engine (Pan) instantiates from. Runtime soul state — memory tree, emotional state, relationship deltas — lives in save data, never here. v1 adds the memory/goal/emotion contracts when the Pan bridge lands.",
+  "type": "object",
+  "required": ["id", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "name": { "type": "string" },
+    "role": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "ship": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "description": { "type": "string" },
+    "personality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "traits": { "type": "array", "items": { "type": "string" } },
+        "values": { "type": "array", "items": { "type": "string" } },
+        "fears": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "allegiances": {
+      "type": "object",
+      "description": "Faction or group id -> starting disposition, -100 (sworn enemy) to +100 (would die for).",
+      "additionalProperties": { "type": "integer", "minimum": -100, "maximum": 100 }
+    },
+    "skills": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+    "arc": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
+  }
+}

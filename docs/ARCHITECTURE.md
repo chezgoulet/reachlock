@@ -16,7 +16,7 @@ and the rules that `scripts/check_architecture.py` enforces in CI.
 | Layer | Name | Lives in | Knows about |
 |---|---|---|---|
 | **1** | **Engine** (Ring 0) | `godot/scripts/`, `server/` | Generic systems only. Faction *objects*, soul *files*, hull *definitions* — never a specific faction, soul, or hull. |
-| **2** | **Framework** (the contracts) | `godot/framework/`, `scripts/validate_mod_data.py` | The schemas and conventions content is written against. Knows the *shape* of a faction, not its *identity*. |
+| **2** | **Framework** (the contracts) | `godot/framework/` (schemas + [README](../godot/framework/README.md)), `scripts/validate_mod_data.py` | The schemas and conventions content is written against. Knows the *shape* of a faction, not its *identity*. |
 | **3** | **Content** (Ring 1 + Ring 2) | `godot/mods/` | Everything specific: REACHLOCK's factions, ships, NPC souls, storylines, assets. Loads through the mod loader like any mod. |
 
 - **Ring 0 — Engine:** the mode-switching framework, rendering/physics, flight
@@ -47,6 +47,13 @@ build when the engine layer reaches *up* into content:
 If the engine needs to *do something* with content, it does it generically —
 iterate the loaded factions, look one up by id supplied at runtime — never by
 naming a specific REACHLOCK id in engine source.
+
+At runtime this is concrete: `godot/scripts/framework/mod_loader.gd` loads
+every mod in dependency order, and the `DataRegistry` autoload
+(`godot/scripts/framework/data_registry.gd`) is the **only** window engine
+systems read content through. Even "where does a new game start?" is a
+content decision — the manifest `start` block — so the engine boots with zero
+knowledge of what universe it's running.
 
 ## How to stay on the right side of the line
 

@@ -23,6 +23,7 @@ config/icon="res://assets/ui/icon.svg"
 
 [autoload]
 
+DataRegistry="*res://scripts/framework/data_registry.gd"
 GameManager="*res://scripts/game_manager.gd"
 
 [display]

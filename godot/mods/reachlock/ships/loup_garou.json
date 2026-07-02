@@ -13,6 +13,14 @@
     "cargo_capacity": 40,
     "jump_drive_capable": true
   },
+  "flight": {
+    "top_speed": 44,
+    "acceleration": 26,
+    "turn_rate": 1.5,
+    "boost_multiplier": 2.4,
+    "drift": 0.5,
+    "bank_angle_deg": 42
+  },
   "hardpoints": {
     "weapons": 4,
     "utilities": 3,

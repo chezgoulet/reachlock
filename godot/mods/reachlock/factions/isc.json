@@ -11,8 +11,8 @@
   "relationships": {
     "compact": "tense",
     "corp_charter": "neutral",
-    "reach": "wary",
-    "earth_remnant": "sympathetic"
+    "reach": "tense",
+    "earth_remnant": "friendly"
   },
   "internal_divisions": ["member_worlds", "trade_bloc", "security_council"],
   "goals": ["maintain_autonomy", "expand_membership", "prevent_compact_monopoly"]

@@ -4,7 +4,16 @@ var _active_scene: Node = null
 
 func _ready() -> void:
 	GameManager.mode_change_requested.connect(_on_mode_change_requested)
-	_load_mode(GameManager.Mode.SPACE_FLIGHT)
+	_load_mode(_initial_mode())
+
+
+## Content decides where a new game starts (manifest `start.mode`); the
+## engine only supplies the fallback.
+func _initial_mode() -> int:
+	match DataRegistry.start_config().get("mode", ""):
+		"on_board": return GameManager.Mode.ON_BOARD
+		"landed":   return GameManager.Mode.LANDED
+		_:          return GameManager.Mode.SPACE_FLIGHT
 
 func _on_mode_change_requested(mode: int) -> void:
 	_load_mode(mode)

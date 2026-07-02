@@ -1,0 +1,62 @@
+{
+  "$id": "reachlock://framework/v0/ship",
+  "title": "Ship hull definition",
+  "description": "A hull: class, chassis archetype, stats, hardpoints, interior rooms, and flight feel. GAME-DESIGN.md §3. All `flight` numbers are designer-facing units (units/s, rad/s) consumed directly by the flight model.",
+  "type": "object",
+  "required": ["id", "name", "class"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "name": { "type": "string" },
+    "class": {
+      "type": "string",
+      "enum": ["shuttle", "corvette", "frigate", "destroyer", "freighter", "carrier", "station"]
+    },
+    "chassis_archetype": {
+      "type": "string",
+      "enum": ["saucer", "rigid_frame", "military_doctrine", "modular"]
+    },
+    "description": { "type": "string" },
+    "origin": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "customization_tier": { "type": "string", "enum": ["low", "medium", "high"] },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mass": { "type": "number", "minimum": 1 },
+        "armor": { "type": "integer", "minimum": 0 },
+        "crew_capacity": { "type": "integer", "minimum": 0 },
+        "cargo_capacity": { "type": "integer", "minimum": 0 },
+        "jump_drive_capable": { "type": "boolean" }
+      }
+    },
+    "flight": {
+      "type": "object",
+      "description": "Flight feel. Engine defaults apply for anything omitted, so a hull with no flight block is still flyable.",
+      "additionalProperties": false,
+      "properties": {
+        "top_speed": { "type": "number", "minimum": 1, "description": "Max cruise speed, units/s." },
+        "acceleration": { "type": "number", "minimum": 1, "description": "How fast velocity approaches target, units/s^2." },
+        "turn_rate": { "type": "number", "minimum": 0.1, "description": "Max pitch/yaw rate, rad/s." },
+        "boost_multiplier": { "type": "number", "minimum": 1 },
+        "drift": {
+          "type": "number", "minimum": 0, "maximum": 1,
+          "description": "0 = velocity snaps to the nose instantly (arcade-tight); 1 = pure Newtonian drift. Heavy haulers drift high, interceptors low."
+        },
+        "bank_angle_deg": { "type": "number", "minimum": 0, "maximum": 90 }
+      }
+    },
+    "hardpoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weapons": { "type": "integer", "minimum": 0 },
+        "utilities": { "type": "integer", "minimum": 0 },
+        "engines": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "interior_rooms": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+    "attached": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+    "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
+  }
+}

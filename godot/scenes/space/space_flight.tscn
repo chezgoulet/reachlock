@@ -6,7 +6,7 @@
 script = ExtResource("1_space")
 
 [node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 15)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 10)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.707, -0.5, 0.5, 0, 0.707, 0.707, -0.707, -0.5, 0.5, 0, 10, 0)
@@ -14,15 +14,38 @@ transform = Transform3D(0.707, -0.5, 0.5, 0, 0.707, 0.707, -0.707, -0.5, 0.5, 0,
 [node name="ModeOverlay" type="CanvasLayer" parent="."]
 
 [node name="ModeLabel" type="Label" parent="ModeOverlay"]
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -300.0
-offset_top = -40.0
-offset_right = 300.0
-offset_bottom = 40.0
+offset_left = 24.0
+offset_top = 40.0
+offset_right = 400.0
+offset_bottom = 68.0
 text = "SPACE FLIGHT"
+theme_override_font_sizes/font_size = 20
+
+[node name="ShipLabel" type="Label" parent="ModeOverlay"]
+offset_left = 24.0
+offset_top = 68.0
+offset_right = 400.0
+offset_bottom = 92.0
+text = ""
+theme_override_font_sizes/font_size = 16
+
+[node name="SpeedLabel" type="Label" parent="ModeOverlay"]
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -64.0
+offset_right = 400.0
+offset_bottom = -28.0
+text = "0 u/s"
+theme_override_font_sizes/font_size = 24
+
+[node name="ControlsHint" type="Label" parent="ModeOverlay"]
+anchor_left = 0.0
+anchor_right = 1.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -26.0
+offset_bottom = -4.0
+text = "W/S thrust   A/D strafe   arrows pitch+yaw   Q/E roll   SHIFT boost   SPACE brake"
 horizontal_alignment = 1
-vertical_alignment = 1
-theme_override_font_sizes/font_size = 48
+theme_override_font_sizes/font_size = 14

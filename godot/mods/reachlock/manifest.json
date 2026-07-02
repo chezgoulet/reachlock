@@ -14,5 +14,10 @@
     "npcs": ["tib", "tove", "bardo", "doc_keene", "prudence", "risc", "boris"],
     "storylines": ["veil_escalation", "duskway_runs", "alexander_long_game", "predecessor_revelation"],
     "economy_tables": ["base"]
+  },
+  "start": {
+    "mode": "space_flight",
+    "player_ship": "loup_garou",
+    "location": "sorrow_station"
   }
 }
