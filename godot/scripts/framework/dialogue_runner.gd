@@ -9,7 +9,9 @@ extends Node
 class_name DialogueRunner
 
 const TriggerDSLScript := preload("res://scripts/framework/trigger_dsl.gd")
-const GENERATED_TIMEOUT := 8.0
+# Local CPU inference takes seconds; the abandon fail-fast below covers true
+# failures, so the ceiling only guards a hung daemon.
+const GENERATED_TIMEOUT := 15.0
 
 signal line_shown(speaker: String, text: String)
 signal choices_shown(choices: Array)  # [{index, text}]
@@ -34,6 +36,7 @@ func start(dialogue: Dictionary, soul: SoulInstance) -> bool:
 	_npc_name = npc.get("name", dialogue.get("npc", "?"))
 	if _soul != null:
 		_soul.spoke.connect(_on_soul_spoke)
+		_soul.concluded.connect(_on_soul_concluded)
 	_enter_node(dialogue.get("entry", ""))
 	return true
 
@@ -95,6 +98,17 @@ func _on_generated_timeout(node: Dictionary) -> void:
 	_offer_or_continue(node)
 
 
+## The mind gave up (inference failure) — fall back now, don't make the
+## player wait out the timeout. `achieved` outcomes ride behind an express,
+## which clears _awaiting_generated first, so only failures land here.
+func _on_soul_concluded(outcome: String) -> void:
+	if not _awaiting_generated or outcome != "abandoned":
+		return
+	_awaiting_generated = false
+	line_shown.emit(_npc_name, _generated_fallback(_generated_node))
+	_offer_or_continue(_generated_node)
+
+
 var _generated_node: Dictionary = {}
 
 func _current_generated_node() -> Dictionary:
@@ -132,6 +146,9 @@ func _apply_mutations(mutations: Array) -> void:
 
 
 func _finish() -> void:
-	if _soul != null and _soul.spoke.is_connected(_on_soul_spoke):
-		_soul.spoke.disconnect(_on_soul_spoke)
+	if _soul != null:
+		if _soul.spoke.is_connected(_on_soul_spoke):
+			_soul.spoke.disconnect(_on_soul_spoke)
+		if _soul.concluded.is_connected(_on_soul_concluded):
+			_soul.concluded.disconnect(_on_soul_concluded)
 	ended.emit()
