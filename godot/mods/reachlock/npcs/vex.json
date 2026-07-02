@@ -1,0 +1,18 @@
+{
+  "id": "vex",
+  "name": "Vex",
+  "soul_version": 1,
+  "mind": "rules",
+  "role": "pirate",
+  "ship": "reaver_skiff",
+  "description": "A Reach scavenger-pirate who works the asteroid drifts near Sorrow Station. Not a killer by preference — a taker of cargo from anyone who looks slow. Runs the moment a fight stops being profitable.",
+  "personality": {
+    "traits": ["opportunistic", "cowardly", "loud"],
+    "values": ["easy_money", "own_skin"],
+    "fears": ["fair_fights", "the_compact"]
+  },
+  "allegiances": {
+    "reach": 30,
+    "compact": -40
+  }
+}

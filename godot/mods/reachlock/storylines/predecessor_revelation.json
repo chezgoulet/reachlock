@@ -1,0 +1,42 @@
+{
+  "id": "predecessor_revelation",
+  "name": "The Predecessor Revelation",
+  "description": "What the signal at the Veil actually is. What the Predecessors built, and why. What the Compact's archive is actually trying not to say. This storyline resolves Bardo's research, the Veil escalation, and the unreported site as one arc. The resolution is not an answer. The resolution is a question the player has to carry.",
+  "arcs": [
+    {
+      "id": "act_1_archive_leak",
+      "summary": "Bardo obtains a partial copy of a Compact Predecessor archive abstract. The abstract contradicts the public position.",
+      "triggers": ["bardo_archive_leak"],
+      "events": [
+        "bardo_publishes_carefully",
+        "compact_notices",
+        "scholar_network_mobilises"
+      ]
+    },
+    {
+      "id": "act_2_unreported_site",
+      "summary": "The unreported site at the Veil is the structure the signal emanates from. The signal is not a transmission. The signal is a memory of a memory of a memory.",
+      "triggers": ["player_at_unreported_site"],
+      "events": [
+        "predecessor_structure_observed",
+        "long_exposure_consequence",
+        "doc_keene_documents_effects"
+      ]
+    },
+    {
+      "id": "act_3_the_question",
+      "summary": "The crew leaves the Veil. The signal does not stop. The Compact does not stop. The question of what to do with what was learned is the player's.",
+      "triggers": ["veil_revelation_completed"],
+      "events": [
+        "crew_converges_on_decision",
+        "alexander_long_game_reframes",
+        "duskway_runs_reframes",
+        "ending_pathway_unlocked"
+      ]
+    }
+  ],
+  "npcs": ["bardo", "doc_keene", "tib", "tove", "prudence", "risc", "boris"],
+  "locations": ["the_veil", "aethon", "sorrow_station"],
+  "factions": ["compact", "earth_remnant", "isc", "reach"],
+  "tags": ["predecessor", "veil", "revelation", "bardo_arc", "ending"]
+}
