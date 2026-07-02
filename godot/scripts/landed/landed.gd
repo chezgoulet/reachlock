@@ -93,6 +93,11 @@ func _on_choice_pressed(index: int) -> void:
 func _on_dialogue_ended() -> void:
 	_clear_choices()
 	if _runner != null:
+		# The soul remembers what was said: distill the transcript to facts.
+		MemoryStore.ingest_conversation(_runner.npc_id(), _runner.transcript(), {
+			"tick": GameState.universe.tick,
+			"location": _location.get("id", ""),
+		})
 		_runner.queue_free()
 		_runner = null
 	_rebuild_npc_row()  # guards may have changed (flags, trust)

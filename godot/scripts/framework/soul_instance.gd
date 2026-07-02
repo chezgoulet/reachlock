@@ -38,6 +38,9 @@ func setup(soul: Dictionary) -> void:
 func _ready() -> void:
 	SoulGateway.decision_received.connect(_on_decision)
 	SoulGateway.connected.connect(_ensure_instantiated)
+	# The store probe is async and may finish after instantiation — seed the
+	# vault whenever the store comes up (ensure_seeds is idempotent).
+	MemoryStore.store_online.connect(func() -> void: MemoryStore.ensure_seeds(soul_id, _soul))
 	_ensure_instantiated()
 
 
@@ -50,6 +53,7 @@ func _ensure_instantiated() -> void:
 	if _instantiated or not SoulGateway.is_ready():
 		return
 	SoulGateway.instantiate_soul(soul_id, mind, _soul)
+	MemoryStore.ensure_seeds(soul_id, _soul)
 	_instantiated = true
 	for queued in _pending:
 		SoulGateway.perceive(soul_id, queued.goal, queued.context)
@@ -57,11 +61,15 @@ func _ensure_instantiated() -> void:
 
 
 ## Someone speaks to this soul. `objective` frames the turn for the mind
-## (dialogue nodes pass their prompt_hint here).
+## (dialogue nodes pass their prompt_hint here). What was said is also the
+## recall query — the soul remembers what the moment is about.
 func perceive_utterance(from: String, content: String, objective := "") -> void:
-	_perceive({
-		"kind": "utterance", "from": from, "content": content,
-	}, objective if objective != "" else "Respond in character.")
+	var trigger := {"kind": "utterance", "from": from, "content": content}
+	var framed := objective if objective != "" else "Respond in character."
+	MemoryStore.recall(soul_id, content, func(fragments: Array) -> void:
+		if not is_instance_valid(self):
+			return
+		_perceive(trigger, framed, fragments))
 
 
 func perceive_event(topic: String, payload: Dictionary, objective := "") -> void:
@@ -83,7 +91,7 @@ func supersede() -> void:
 	}, {"fragments": []})
 
 
-func _perceive(trigger: Dictionary, objective: String) -> void:
+func _perceive(trigger: Dictionary, objective: String, recalled: Array = []) -> void:
 	_ensure_instantiated()
 	_goal_seq += 1
 	_active_goal_id = "%s_g%d" % [soul_id, _goal_seq]
@@ -95,21 +103,27 @@ func _perceive(trigger: Dictionary, objective: String) -> void:
 		"trigger": trigger,
 	}
 	if SoulGateway.is_ready():
-		SoulGateway.perceive(soul_id, goal, _assemble_context())
+		SoulGateway.perceive(soul_id, goal, _assemble_context(recalled))
 	elif SoulGateway.state != SoulGateway.State.OFFLINE:
 		# Mid-handshake: hold the moment until the daemon is with us.
-		_pending.append({"goal": goal, "context": _assemble_context()})
+		_pending.append({"goal": goal, "context": _assemble_context(recalled)})
 
 
-func _assemble_context() -> Dictionary:
+func _assemble_context(recalled: Array = []) -> Dictionary:
 	var fragments: Array = [
 		{"channel": "persona", "body": SoulProfileScript.persona_fragment(_soul)},
 	]
-	var seeds := SoulProfileScript.seed_memory_fragment(_soul)
-	if seeds != "":
-		# Until the memory store owns recall (M3), authored seeds are the
-		# soul's whole past.
-		fragments.append({"channel": "memory", "body": seeds})
+	if not recalled.is_empty():
+		# The vault owns the past: live recall, most relevant first.
+		var lines: PackedStringArray = []
+		for fragment: String in recalled:
+			lines.append("- " + fragment.strip_edges())
+		fragments.append({"channel": "memory", "body": "You remember:\n" + "\n".join(lines)})
+	else:
+		# Store offline (or nothing relevant): authored seeds are the past.
+		var seeds := SoulProfileScript.seed_memory_fragment(_soul)
+		if seeds != "":
+			fragments.append({"channel": "memory", "body": seeds})
 	if world_context != "":
 		fragments.append({"channel": "world", "body": world_context})
 	return {"fragments": fragments}

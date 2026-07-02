@@ -20,8 +20,10 @@ never a game-specific fork.
 
 ## Vault conventions (the REACHLOCK profile)
 
-- One vault per soul: `soul_<npc_id>` (e.g. `soul_tib`). Instantiating a soul
-  ingests its `memory_seeds` (soul schema v1) as first-person documents.
+- One vault per soul: `soul-<npc_id>` with underscores mapped to hyphens
+  (`soul-tib`, `soul-doc-keene`) — Ragamuffin's `ValidVaultName` accepts
+  `[a-z0-9-:]` only. Instantiating a soul ingests its `memory_seeds`
+  (soul schema v1) as first-person documents.
 - One shared `lore` vault: world knowledge any literate NPC could know.
   Context assembly recalls from the soul's own vault first, then `lore`.
 - Memory records are markdown with front-matter: `importance` (0..1), `tags`,

@@ -23,6 +23,7 @@ var _npc_name := ""
 var _last_player_line := ""
 var _awaiting_generated := false
 var _current_choices: Array = []
+var _transcript: Array = []  # [{role: "user"|"assistant", content}] for memory ingest
 
 
 ## Guard-check and begin. Returns false if the dialogue's condition fails.
@@ -41,11 +42,21 @@ func start(dialogue: Dictionary, soul: SoulInstance) -> bool:
 	return true
 
 
+## The finished conversation in memory-interface message form.
+func transcript() -> Array:
+	return _transcript.duplicate()
+
+
+func npc_id() -> String:
+	return _dialogue.get("npc", "")
+
+
 func choose(index: int) -> void:
 	if index < 0 or index >= _current_choices.size():
 		return
 	var choice: Dictionary = _current_choices[index]
 	_last_player_line = choice.get("text", "")
+	_transcript.append({"role": "user", "content": _last_player_line})
 	line_shown.emit("You", _last_player_line)
 	_apply_mutations(choice.get("mutations", []))
 	_current_choices = []
@@ -64,7 +75,7 @@ func _enter_node(node_id: String) -> void:
 	_apply_mutations(node.get("mutations", []))
 	match node.get("kind", "authored"):
 		"authored":
-			line_shown.emit(_npc_name, node.get("text", ""))
+			_npc_line(node.get("text", ""))
 			_offer_or_continue(node)
 		"generated":
 			_run_generated(node)
@@ -78,7 +89,7 @@ func _run_generated(node: Dictionary) -> void:
 		var timer := get_tree().create_timer(GENERATED_TIMEOUT)
 		timer.timeout.connect(_on_generated_timeout.bind(node), CONNECT_ONE_SHOT)
 	else:
-		line_shown.emit(_npc_name, _generated_fallback(node))
+		_npc_line(_generated_fallback(node))
 		_offer_or_continue(node)
 
 
@@ -86,7 +97,7 @@ func _on_soul_spoke(text: String) -> void:
 	if not _awaiting_generated:
 		return
 	_awaiting_generated = false
-	line_shown.emit(_npc_name, text)
+	_npc_line(text)
 	_offer_or_continue(_current_generated_node())
 
 
@@ -94,7 +105,7 @@ func _on_generated_timeout(node: Dictionary) -> void:
 	if not _awaiting_generated:
 		return
 	_awaiting_generated = false
-	line_shown.emit(_npc_name, _generated_fallback(node))
+	_npc_line(_generated_fallback(node))
 	_offer_or_continue(node)
 
 
@@ -105,7 +116,7 @@ func _on_soul_concluded(outcome: String) -> void:
 	if not _awaiting_generated or outcome != "abandoned":
 		return
 	_awaiting_generated = false
-	line_shown.emit(_npc_name, _generated_fallback(_generated_node))
+	_npc_line(_generated_fallback(_generated_node))
 	_offer_or_continue(_generated_node)
 
 
@@ -113,6 +124,12 @@ var _generated_node: Dictionary = {}
 
 func _current_generated_node() -> Dictionary:
 	return _generated_node
+
+
+func _npc_line(text: String) -> void:
+	if text.strip_edges() != "":
+		_transcript.append({"role": "assistant", "content": text})
+	line_shown.emit(_npc_name, text)
 
 
 func _generated_fallback(node: Dictionary) -> String:
