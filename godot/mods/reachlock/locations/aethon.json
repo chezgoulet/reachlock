@@ -1,0 +1,19 @@
+{
+  "id": "aethon",
+  "name": "Aethon",
+  "kind": "planet",
+  "system": "aethon",
+  "description": "An ISC-leaning world with a backwater reputation and a capital city that has more libraries than landing pads. Aethon was the site of a Compact 'mutual cooperation' treaty that the local militia did not hold. The treaty failed. Aethon didn't. The planet's surface economy is small-scale agriculture and a stubborn tradition of independent scholarship; the orbital port is quiet, run by a port authority that asks fewer questions than the larger systems, and is known as the kind of place a crew on the run can disappear into for a season.",
+  "faction_control": "isc",
+  "services": ["dock", "market", "bar", "med_bay", "mission_board", "fuel"],
+  "population": 1800000,
+  "npcs_present": ["bardo"],
+  "economy": {
+    "produces": ["rations", "raw_ore"],
+    "consumes": ["refined_alloys"]
+  },
+  "docking": {
+    "clearance_required": false,
+    "fee": 30
+  }
+}
