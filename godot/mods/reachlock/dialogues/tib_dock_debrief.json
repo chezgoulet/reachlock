@@ -1,0 +1,57 @@
+{
+  "id": "tib_dock_debrief",
+  "npc": "tib",
+  "condition": "player.docked and \"survived_ambush\" in player.flags",
+  "entry": "start",
+  "nodes": {
+    "start": {
+      "kind": "authored",
+      "text": "That was too close out there. Skiff like that shouldn't have gotten inside our turn.",
+      "choices": [
+        {
+          "text": "We made it, didn't we?",
+          "goto": "bravado_reply"
+        },
+        {
+          "text": "I wasn't going to let them touch you.",
+          "condition": "\"took_the_hit\" in player.flags",
+          "goto": "gratitude_reply",
+          "mutations": [
+            { "op": "adjust_relationship", "target": "player", "axis": "trust", "amount": 15 },
+            { "op": "add_memory", "text": "The captain put the ship between me and the skiff's last volley. Took hull damage for it. They meant it.", "importance": 0.9, "tags": ["player", "trust", "combat"] }
+          ]
+        },
+        {
+          "text": "Next time, you fly and I'll shoot.",
+          "goto": "deflect_reply",
+          "mutations": [
+            { "op": "adjust_relationship", "target": "player", "axis": "trust", "amount": -5 }
+          ]
+        }
+      ]
+    },
+    "bravado_reply": {
+      "kind": "generated",
+      "prompt_hint": "The captain shrugs off the pirate ambush with bravado. Respond as yourself: dry, guarded, a pilot who counts every hit the hull takes. Let a little relief show through.",
+      "goto": "closing"
+    },
+    "gratitude_reply": {
+      "kind": "generated",
+      "prompt_hint": "The captain says they deliberately took a hit to shield you during the ambush. This matters to you more than you want to show — people covering for you is rare since Earth. Respond briefly, guarded but genuinely moved.",
+      "goto": "closing"
+    },
+    "deflect_reply": {
+      "kind": "authored",
+      "text": "You'd shoot the stars and bill me for the ammunition. I'll keep the stick.",
+      "goto": "closing"
+    },
+    "closing": {
+      "kind": "authored",
+      "text": "Buy me one at the bar and we'll call the ledger even. I'm going to go check what that volley did to my engines.",
+      "choices": [
+        { "text": "You've earned it.", "goto": "end" },
+        { "text": "Ledger's never even with you, Tib.", "goto": "end" }
+      ]
+    }
+  }
+}

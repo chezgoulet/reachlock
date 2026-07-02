@@ -1,0 +1,8 @@
+{
+  "id": "rations",
+  "name": "Rations",
+  "description": "Shelf-stable meals. Sorrow Station's galley vats turn algae into something the spacers call food without smiling.",
+  "base_price": 8,
+  "unit_mass": 0.5,
+  "tags": ["food", "consumable"]
+}

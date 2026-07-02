@@ -1,0 +1,14 @@
+{
+  "id": "raw_ore",
+  "name": "Raw Ore",
+  "description": "Unrefined asteroid ore. Heavy, cheap, and always in demand somewhere with a smelter.",
+  "base_price": 12,
+  "unit_mass": 2.0,
+  "legality": {
+    "compact": "legal",
+    "isc": "legal",
+    "corp_charter": "legal",
+    "reach": "legal"
+  },
+  "tags": ["mineral", "bulk"]
+}

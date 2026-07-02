@@ -1,0 +1,18 @@
+{
+  "id": "sorrow_station",
+  "name": "Sorrow Station",
+  "kind": "station",
+  "description": "A Reach waystation built into the bones of a decommissioned ore refinery. Nobody runs it, exactly — it runs on grudges, favors, and the fact that everyone needs somewhere to drink. The bar outlasted three owners and two decompressions.",
+  "faction_control": "reach",
+  "services": ["dock", "market", "bar", "med_bay", "fuel"],
+  "population": 2400,
+  "npcs_present": ["tib"],
+  "economy": {
+    "produces": ["rations"],
+    "consumes": ["raw_ore", "refined_alloys"]
+  },
+  "docking": {
+    "clearance_required": false,
+    "fee": 20
+  }
+}

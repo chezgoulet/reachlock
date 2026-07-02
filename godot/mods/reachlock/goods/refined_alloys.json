@@ -1,0 +1,8 @@
+{
+  "id": "refined_alloys",
+  "name": "Refined Alloys",
+  "description": "Smelted and graded structural alloys. The universal currency of everyone who fixes things.",
+  "base_price": 40,
+  "unit_mass": 1.0,
+  "tags": ["material", "industrial"]
+}
