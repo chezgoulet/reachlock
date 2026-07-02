@@ -14,5 +14,9 @@
   "docking": {
     "clearance_required": false,
     "fee": 20
+  },
+  "mining": {
+    "good": "raw_ore",
+    "richness": 1.0
   }
 }

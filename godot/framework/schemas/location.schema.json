@@ -39,6 +39,16 @@
         "fee": { "type": "integer", "minimum": 0 }
       }
     },
+    "mining": {
+      "type": "object",
+      "description": "What the drift around this location yields to a mining laser. Absent = nothing minable nearby.",
+      "additionalProperties": false,
+      "required": ["good"],
+      "properties": {
+        "good": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "richness": { "type": "number", "minimum": 0, "maximum": 1, "description": "Yield rate scalar; 1 = a full unit per mining cycle." }
+      }
+    },
     "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
   }
 }

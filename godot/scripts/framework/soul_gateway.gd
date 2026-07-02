@@ -163,6 +163,7 @@ func _handle_decision(body: Dictionary) -> void:
 	if revision < int(_latest_goal_revision.get(goal_id, 0)):
 		print("souls: dropped stale decision for %s rev %d" % [goal_id, revision])
 		return
-	decision_received.emit(
-		body.get("soul_id", ""), goal_id, revision, body.get("decision", {})
-	)
+	var decision: Dictionary = body.get("decision", {})
+	print("souls: decision for %s (%s): %d intent(s)" % [
+		body.get("soul_id", "?"), goal_id, decision.get("intents", []).size()])
+	decision_received.emit(body.get("soul_id", ""), goal_id, revision, decision)

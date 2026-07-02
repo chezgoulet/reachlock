@@ -4,12 +4,23 @@ var _active_scene: Node = null
 
 func _ready() -> void:
 	GameManager.mode_change_requested.connect(_on_mode_change_requested)
+	# v0 continue-behavior: a save always resumes. "New game" = delete the
+	# save; a proper title menu replaces this later.
+	GameState.load_game()
 	_load_mode(_initial_mode())
 
 
-## Content decides where a new game starts (manifest `start.mode`); the
-## engine only supplies the fallback.
+## A loaded save resumes where it was; otherwise content decides where a new
+## game starts (manifest `start.mode`); the engine only supplies the fallback.
 func _initial_mode() -> int:
+	if OS.is_debug_build():
+		# Test/CI hook: force a mode headlessly (integration tests, M1).
+		match OS.get_environment("REACHLOCK_FORCE_MODE"):
+			"landed":       return GameManager.Mode.LANDED
+			"on_board":     return GameManager.Mode.ON_BOARD
+			"space_flight": return GameManager.Mode.SPACE_FLIGHT
+	if GameState.is_docked():
+		return GameManager.Mode.LANDED
 	match DataRegistry.start_config().get("mode", ""):
 		"on_board": return GameManager.Mode.ON_BOARD
 		"landed":   return GameManager.Mode.LANDED

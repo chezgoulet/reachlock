@@ -25,6 +25,7 @@ var _goal_seq := 0
 var _active_goal_id := ""
 var _active_revision := 0
 var _instantiated := false
+var _pending: Array[Dictionary] = []  # perceives queued while the daemon connects
 
 
 func setup(soul: Dictionary) -> void:
@@ -50,6 +51,9 @@ func _ensure_instantiated() -> void:
 		return
 	SoulGateway.instantiate_soul(soul_id, mind, _soul)
 	_instantiated = true
+	for queued in _pending:
+		SoulGateway.perceive(soul_id, queued.goal, queued.context)
+	_pending.clear()
 
 
 ## Someone speaks to this soul. `objective` frames the turn for the mind
@@ -81,17 +85,20 @@ func supersede() -> void:
 
 func _perceive(trigger: Dictionary, objective: String) -> void:
 	_ensure_instantiated()
-	if not SoulGateway.is_ready():
-		return
 	_goal_seq += 1
 	_active_goal_id = "%s_g%d" % [soul_id, _goal_seq]
 	_active_revision = 1
-	SoulGateway.perceive(soul_id, {
+	var goal := {
 		"id": _active_goal_id,
 		"revision": _active_revision,
 		"objective": objective,
 		"trigger": trigger,
-	}, _assemble_context())
+	}
+	if SoulGateway.is_ready():
+		SoulGateway.perceive(soul_id, goal, _assemble_context())
+	elif SoulGateway.state != SoulGateway.State.OFFLINE:
+		# Mid-handshake: hold the moment until the daemon is with us.
+		_pending.append({"goal": goal, "context": _assemble_context()})
 
 
 func _assemble_context() -> Dictionary:

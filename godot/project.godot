@@ -25,6 +25,7 @@ config/icon="res://assets/ui/icon.svg"
 
 DataRegistry="*res://scripts/framework/data_registry.gd"
 SoulGateway="*res://scripts/framework/soul_gateway.gd"
+GameState="*res://scripts/framework/game_state.gd"
 GameManager="*res://scripts/game_manager.gd"
 
 [display]
