@@ -1,0 +1,83 @@
+{
+  "$id": "reachlock://framework/v0/save",
+  "title": "Save snapshot (logical model)",
+  "description": "The runtime-state counterpart of the authored contracts: everything that changes during play, snapshotted. Mod files are birth-state templates; THIS is where lived state goes. The logical model is the contract — the storage engine (a JSON file today, SQLite when saves grow, the server DB in MMO) is an implementation detail. save_version gates migration.",
+  "type": "object",
+  "required": ["save_version", "universe", "player", "souls", "mods"],
+  "additionalProperties": false,
+  "properties": {
+    "save_version": { "type": "integer", "minimum": 0 },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "universe": {
+      "type": "object",
+      "required": ["tick"],
+      "additionalProperties": false,
+      "properties": {
+        "tick": { "type": "integer", "minimum": 0 },
+        "seed": { "type": "integer" },
+        "flags": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "player": {
+      "type": "object",
+      "required": ["ship"],
+      "additionalProperties": false,
+      "properties": {
+        "location": { "type": "string" },
+        "credits": { "type": "integer", "minimum": 0 },
+        "flags": { "type": "array", "items": { "type": "string" } },
+        "ship": {
+          "type": "object",
+          "required": ["hull_id"],
+          "additionalProperties": false,
+          "properties": {
+            "hull_id": { "type": "string" },
+            "hull_integrity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "position": { "type": "array", "minItems": 3, "items": { "type": "number" } },
+            "cargo": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+          }
+        }
+      }
+    },
+    "factions": {
+      "type": "object",
+      "description": "faction id -> live player standing (multi-axis) and live inter-faction stances. Authored defaults are the starting point; this is the drift.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "standing": { "type": "object", "additionalProperties": { "type": "number" } },
+          "relationships": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      }
+    },
+    "souls": {
+      "type": "object",
+      "description": "npc id -> runtime soul state. `vault` names the soul's memory vault in the memory store; the vault contents are persisted by that store, referenced (not embedded) here.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "vault": { "type": "string" },
+          "location": { "type": "string" },
+          "relationships": {
+            "type": "object",
+            "additionalProperties": { "type": "object", "additionalProperties": { "type": "number" } }
+          },
+          "emotions": { "type": "object", "additionalProperties": { "type": "number", "minimum": -1, "maximum": 1 } },
+          "flags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "mods": {
+      "type": "object",
+      "required": ["load_order"],
+      "additionalProperties": false,
+      "properties": {
+        "load_order": { "type": "array", "items": { "type": "string" } },
+        "framework_version": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

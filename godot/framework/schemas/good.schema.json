@@ -1,0 +1,22 @@
+{
+  "$id": "reachlock://framework/v0/good",
+  "title": "Trade good",
+  "description": "One tradeable commodity. base_price is the universe-average the economy engine perturbs from; supply/demand at each location moves the live price.",
+  "type": "object",
+  "required": ["id", "name", "base_price"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "base_price": { "type": "integer", "minimum": 1 },
+    "unit_mass": { "type": "number", "minimum": 0 },
+    "legality": {
+      "type": "object",
+      "description": "faction id -> legal status of carrying this good in their space.",
+      "additionalProperties": { "enum": ["legal", "restricted", "contraband"] }
+    },
+    "tags": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+    "extra": { "type": "object" }
+  }
+}

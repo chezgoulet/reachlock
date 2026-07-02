@@ -1,0 +1,44 @@
+{
+  "$id": "reachlock://framework/v0/location",
+  "title": "Location definition",
+  "description": "A dockable/landable place: station, planet, moon, outpost. Defines what the landed mode offers there, who is present, and how it participates in the economy. GAME-DESIGN.md §2 (Landed) and §3 (economy).",
+  "type": "object",
+  "required": ["id", "name", "kind"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "name": { "type": "string" },
+    "kind": { "enum": ["station", "planet", "moon", "outpost", "wreck"] },
+    "system": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "description": { "type": "string" },
+    "faction_control": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "services": {
+      "type": "array",
+      "description": "What the landed mode offers here. Vocabulary is framework-level; the engine renders a service generically, content decides who has it.",
+      "items": { "enum": ["dock", "market", "bar", "shipyard", "med_bay", "mission_board", "fuel", "salvage"] }
+    },
+    "population": { "type": "integer", "minimum": 0 },
+    "npcs_present": {
+      "type": "array",
+      "description": "Souls stationed here (spawned in landed mode when the player visits).",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+    },
+    "economy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "produces": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+        "consumes": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } }
+      }
+    },
+    "docking": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "clearance_required": { "type": "boolean" },
+        "fee": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
+  }
+}

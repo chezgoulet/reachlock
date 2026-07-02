@@ -43,8 +43,16 @@ architecture:
 	python3 scripts/check_architecture.py --self-test
 	python3 scripts/check_architecture.py
 
-# Full local pre-push gate: server tests + mod data + architecture.
-check: server-test validate architecture
+# Soul Protocol conformance: golden fixtures vs wire schema.
+protocol:
+	python3 scripts/check_soul_protocol.py
+
+# Trigger-DSL reference evaluator self-test (the storyline condition language).
+dsl:
+	python3 scripts/trigger_dsl.py --self-test
+
+# Full local pre-push gate.
+check: server-test validate architecture protocol dsl
 
 clean:
 	rm -rf server/bin

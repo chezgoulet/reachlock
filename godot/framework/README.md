@@ -18,10 +18,28 @@ explicit migration. Design accordingly.
 | [manifest.schema.json](schemas/manifest.schema.json) | `<mod>/manifest.json` | Identity, dependencies, `provides`, optional `start` block |
 | [faction.schema.json](schemas/faction.schema.json) | `<mod>/factions/*.json` | Territory, resources, relationship stances, divisions, goals |
 | [ship.schema.json](schemas/ship.schema.json) | `<mod>/ships/*.json` | Class, chassis archetype, stats, hardpoints, `flight` feel block |
-| [npc.schema.json](schemas/npc.schema.json) | `<mod>/npcs/*.json` | Soul file v0 — the authored *birth-state* of an NPC |
+| [npc.schema.json](schemas/npc.schema.json) | `<mod>/npcs/*.json` | Soul file v1 — authored *birth-state*: mind tier, memory seeds, emotional baseline, relationship graph |
+| [location.schema.json](schemas/location.schema.json) | `<mod>/locations/*.json` | Stations/planets: services, NPCs present, economy links, docking |
+| [dialogue.schema.json](schemas/dialogue.schema.json) | `<mod>/dialogues/*.json` | Authored/generated dialogue graphs; conditions are trigger-DSL, CI-parsed |
+| [good.schema.json](schemas/good.schema.json) | `<mod>/goods/*.json` | Trade goods: base price, legality by faction |
+| [save.schema.json](schemas/save.schema.json) | runtime saves | The *runtime* counterpart of authored data; storage engine is swappable |
 
-Kinds without a schema yet (`locations`, `storylines`, `economy_tables`) only
-need to parse; their contracts land with the systems that consume them.
+Beyond entity schemas, three sibling contracts:
+
+- **[The Soul Protocol](protocol/SOUL-PROTOCOL.md)** — the wire contract with
+  the mind daemon (Pan). Golden fixtures under `protocol/fixtures/` are the
+  conformance suite (`make protocol`); Pan round-trips the same fixtures in
+  its own CI.
+- **[The trigger DSL](../../scripts/trigger_dsl.py)** — the condition language
+  of storyline cards and dialogue branches. The reference evaluator's
+  self-test battery IS the semantics (`make dsl`); other implementations must
+  match it.
+- **[The memory interface](../../docs/MEMORY-INTERFACE.md)** (Ragamuffin
+  binding) and **[the universe tick](../../docs/UNIVERSE-TICK.md)** — the
+  memory-store subset we depend on, and the deterministic simulation clock.
+
+Kinds without a schema yet (`storylines`, `economy_tables`) only need to
+parse; their contracts land with the systems that consume them.
 
 ## Conventions every mod follows
 

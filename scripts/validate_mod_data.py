@@ -31,65 +31,13 @@ KIND_SCHEMAS = {
     "factions": "faction",
     "ships": "ship",
     "npcs": "npc",
+    "locations": "location",
+    "dialogues": "dialogue",
+    "goods": "good",
 }
 
 
-# --- minimal JSON Schema subset -------------------------------------------
-
-_TYPE_CHECKS = {
-    "object": lambda v: isinstance(v, dict),
-    "array": lambda v: isinstance(v, list),
-    "string": lambda v: isinstance(v, str),
-    "boolean": lambda v: isinstance(v, bool),
-    "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
-    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
-    "null": lambda v: v is None,
-}
-
-
-def check_schema(value: object, schema: dict, path: str, errors: list[str]) -> None:
-    stype = schema.get("type")
-    if stype is not None:
-        types = stype if isinstance(stype, list) else [stype]
-        if not any(_TYPE_CHECKS[t](value) for t in types):
-            errors.append(f"{path}: expected {'/'.join(types)}, got {type(value).__name__}")
-            return
-
-    if "enum" in schema and value not in schema["enum"]:
-        errors.append(f"{path}: {value!r} is not one of {schema['enum']}")
-
-    if isinstance(value, str) and "pattern" in schema:
-        if not re.search(schema["pattern"], value):
-            errors.append(f"{path}: {value!r} does not match pattern {schema['pattern']!r}")
-
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        if "minimum" in schema and value < schema["minimum"]:
-            errors.append(f"{path}: {value} is below minimum {schema['minimum']}")
-        if "maximum" in schema and value > schema["maximum"]:
-            errors.append(f"{path}: {value} is above maximum {schema['maximum']}")
-
-    if isinstance(value, dict):
-        for key in schema.get("required", []):
-            if key not in value:
-                errors.append(f"{path}: missing required key {key!r}")
-        props = schema.get("properties", {})
-        additional = schema.get("additionalProperties", True)
-        for key, item in value.items():
-            child = f"{path}.{key}"
-            if key in props:
-                check_schema(item, props[key], child, errors)
-            elif isinstance(additional, dict):
-                check_schema(item, additional, child, errors)
-            elif additional is False:
-                errors.append(f"{path}: unknown key {key!r} (typo? custom data belongs under `extra`)")
-
-    if isinstance(value, list):
-        if "minItems" in schema and len(value) < schema["minItems"]:
-            errors.append(f"{path}: fewer than {schema['minItems']} item(s)")
-        items = schema.get("items")
-        if isinstance(items, dict):
-            for i, item in enumerate(value):
-                check_schema(item, items, f"{path}[{i}]", errors)
+from jsonschema_lite import check_schema
 
 
 # --- loading ----------------------------------------------------------------
@@ -115,6 +63,44 @@ def load_schemas(errors: list[str]) -> dict[str, dict]:
     if "manifest" not in schemas:
         errors.append(f"framework schema missing: {os.path.join(SCHEMAS_DIR, 'manifest.schema.json')}")
     return schemas
+
+
+def check_dialogue_graph(data: dict, rel: str, errors: list[str]) -> None:
+    """Beyond the schema: the graph must be sound and every condition must be
+    a valid trigger-DSL expression. A typo'd condition dies here, in CI."""
+    import trigger_dsl
+
+    nodes = data.get("nodes")
+    if not isinstance(nodes, dict):
+        return
+    targets = set(nodes) | {"end"}
+    if data.get("entry") not in nodes:
+        errors.append(f"{rel}: entry node {data.get('entry')!r} does not exist")
+
+    def check_condition(cond: object, where: str) -> None:
+        if isinstance(cond, str):
+            try:
+                trigger_dsl.parse(cond)
+            except trigger_dsl.ParseError as exc:
+                errors.append(f"{rel}: {where}: bad condition {cond!r}: {exc}")
+
+    check_condition(data.get("condition"), "dialogue guard")
+    for node_id, node in nodes.items():
+        if not isinstance(node, dict):
+            continue
+        kind = node.get("kind")
+        if kind == "authored" and "text" not in node:
+            errors.append(f"{rel}: node {node_id!r} is authored but has no text")
+        if kind == "generated" and "prompt_hint" not in node:
+            errors.append(f"{rel}: node {node_id!r} is generated but has no prompt_hint")
+        choices = node.get("choices")
+        if not choices and node.get("goto") not in targets:
+            errors.append(f"{rel}: node {node_id!r} has no choices and no valid goto (dead end)")
+        for i, choice in enumerate(choices or []):
+            if isinstance(choice, dict):
+                if choice.get("goto") not in targets:
+                    errors.append(f"{rel}: node {node_id!r} choice {i}: goto {choice.get('goto')!r} does not exist")
+                check_condition(choice.get("condition"), f"node {node_id!r} choice {i}")
 
 
 def validate_mod(mod_dir: str, schemas: dict[str, dict], errors: list[str], warnings: list[str]) -> int:
@@ -155,6 +141,8 @@ def validate_mod(mod_dir: str, schemas: dict[str, dict], errors: list[str], warn
             schema_name = KIND_SCHEMAS.get(kind)
             if schema_name and schema_name in schemas:
                 check_schema(data, schemas[schema_name], rel, errors)
+            if kind == "dialogues":
+                check_dialogue_graph(data, rel, errors)
             entity_id = data.get("id")
             if not isinstance(entity_id, str):
                 errors.append(f"{rel}: entity file has no string `id`")

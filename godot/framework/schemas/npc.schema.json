@@ -1,13 +1,52 @@
 {
-  "$id": "reachlock://framework/v0/npc",
-  "title": "NPC soul file (v0 — authored birth-state)",
-  "description": "The authored starting state of an NPC soul: identity, personality, allegiances, skills. This file is the template the soul engine (Pan) instantiates from. Runtime soul state — memory tree, emotional state, relationship deltas — lives in save data, never here. v1 adds the memory/goal/emotion contracts when the Pan bridge lands.",
+  "$id": "reachlock://framework/v1/npc",
+  "title": "NPC soul file (authored birth-state, v1)",
+  "description": "The authored starting state of an NPC soul. This file is the template the mind daemon (Pan) instantiates from and the memory store is seeded from. Runtime soul state — memories formed in play, emotional drift, relationship deltas — lives in save data (SP) or the server (MMO), never here. v1 adds mind tier, memory seeds, emotional baseline, and the relationship graph; every v0 file is a valid v1 file (all new fields optional).",
   "type": "object",
   "required": ["id", "name"],
   "additionalProperties": false,
   "properties": {
     "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
     "name": { "type": "string" },
+    "soul_version": { "type": "integer", "minimum": 0, "maximum": 1, "description": "Contract revision this file is authored against. Omitted = 0." },
+    "mind": {
+      "enum": ["rules", "behavior_tree", "llm"],
+      "description": "Which Pan provider runs this soul — the robots-vs-droids tier (GAME-DESIGN.md §6.2) as a data field. Omitted = rules (a background NPC). Moddable like everything else."
+    },
+    "memory_seeds": {
+      "type": "array",
+      "description": "Authored starting memories, ingested into the soul's vault at instantiation. Written in first person, past tense — they read back as the NPC's own recall.",
+      "items": {
+        "type": "object",
+        "required": ["text"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string" },
+          "importance": { "type": "number", "minimum": 0, "maximum": 1 },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "emotional_baseline": {
+      "type": "object",
+      "description": "Named emotional axes and their resting values (-1..1). Runtime state drifts around these and decays back toward them. Axis vocabulary lives in the profile doc, not the schema — mods may add axes.",
+      "additionalProperties": { "type": "number", "minimum": -1, "maximum": 1 }
+    },
+    "relationships": {
+      "type": "array",
+      "description": "Initial edges of the relationship graph (to other NPCs or `player`). Runtime deltas live in saves.",
+      "items": {
+        "type": "object",
+        "required": ["to", "kind"],
+        "additionalProperties": false,
+        "properties": {
+          "to": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "strength": { "type": "integer", "minimum": -100, "maximum": 100 },
+          "note": { "type": "string" }
+        }
+      }
+    },
     "role": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
     "ship": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
     "description": { "type": "string" },
