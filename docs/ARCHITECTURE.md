@@ -67,10 +67,15 @@ knowledge of what universe it's running.
   (`on_dock`, `on_jump`, `on_soul_mutation`, …) the content subscribes to —
   don't special-case the content in the engine.
 
-## Known boundary debt
+## Boundary debt (resolved in Sprint 01)
 
-- **`server/internal/factions/factions.go`** currently hardcodes the five
-  REACHLOCK faction ids in its stub handler. That is a Ring-0-contains-content
-  smell. It is intentionally *not* yet covered by the guard: the MMO server has
-  no content loader, so the list is a placeholder. This is resolved when the
-  server loads faction content (#53); the guard's scope expands to `server/` then.
+The previous known boundary debt — `server/internal/factions/factions.go`
+hardcoding the five REACHLOCK faction ids in its stub — is resolved. The
+server now reads faction data through its own loader
+(`server/internal/loader`) from `godot/mods/<mod>/factions/*.json` and the
+HTTP handler set iterates whatever the loader returns. The architecture
+guard's scope has expanded to `server/`; it catches hardcoded content ids
+in Go source (regular and raw string literals) the same way it does in
+GDScript. The denylist is still derived dynamically from every mod's
+`manifest.json` plus the top-level `id` of every data file, so adding a
+new faction to a mod does not require any engine-side change.
