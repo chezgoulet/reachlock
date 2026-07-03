@@ -51,6 +51,13 @@ protocol:
 dsl:
 	python3 scripts/trigger_dsl.py --self-test
 
+# Cross-repo Soul Protocol integration harness: a real `pan serve` subprocess
+# driven through the full lifecycle + every error path. Needs a ../pan
+# checkout (built or buildable), which is why it's a separate CI job and not
+# part of `check`. See tests/soul-protocol-harness/README.md.
+harness:
+	python3 tests/soul-protocol-harness/run_harness.py
+
 # Full local pre-push gate.
 check: server-test validate architecture protocol dsl
 

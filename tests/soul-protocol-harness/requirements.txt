@@ -1,0 +1,4 @@
+# Intentionally empty: the harness uses only the Python 3.10+ standard
+# library (socket, subprocess, http.server, json, threading). Keeping it
+# dependency-free means CI needs nothing but a python3 interpreter and a
+# built `pan` binary.

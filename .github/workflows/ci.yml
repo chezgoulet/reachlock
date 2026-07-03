@@ -66,3 +66,32 @@ jobs:
         run: python3 scripts/check_architecture.py --self-test
       - name: Enforce engine has zero content
         run: python3 scripts/check_architecture.py
+
+  # The cross-repo integration gate (Sprint 02 required deliverable): a real
+  # `pan serve` subprocess driven through the full Soul Protocol lifecycle
+  # plus every error path, with the 15 shared fixtures as expected traffic.
+  # A PR that breaks this is not reviewed — it is rejected.
+  # Runs after the unit-level jobs; see tests/soul-protocol-harness/README.md.
+  soul-protocol-harness:
+    name: Soul Protocol integration harness
+    runs-on: ubuntu-latest
+    needs: [server, mod-data, architecture]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: reachlock
+      # The mind daemon lives in its own repo; the harness drives the real
+      # binary. `testing` is the actively-worked branch on both repos.
+      # (If chezgoulet/pan is private, give this checkout a PAT via
+      # `token:` — the default GITHUB_TOKEN only reaches this repo.)
+      - uses: actions/checkout@v4
+        with:
+          repository: chezgoulet/pan
+          ref: testing
+          path: pan
+      - name: Build pan
+        working-directory: pan
+        run: cargo build --bin pan
+      - name: Run the harness
+        working-directory: reachlock
+        run: python3 tests/soul-protocol-harness/run_harness.py --pan-bin ../pan/target/debug/pan
