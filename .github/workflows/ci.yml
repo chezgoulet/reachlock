@@ -48,6 +48,10 @@ jobs:
             echo "::error::Godot import produced script/parse errors"
             exit 1
           fi
+      # M5 gate: the in-engine trigger-DSL evaluator must match the Python
+      # reference battery (scripts/trigger_dsl.py defines the semantics).
+      - name: Trigger-DSL conformance bridge
+        run: python3 scripts/check_dsl_bridge.py
 
   mod-data:
     name: Mod data JSON validation

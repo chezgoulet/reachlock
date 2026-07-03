@@ -2,11 +2,24 @@
 # REACHLOCK dev stack — the two sidecars the living crew needs.
 #
 #   ./scripts/dev_stack.sh          start pan (mind) + ragamuffin (memory)
-#   ./scripts/dev_stack.sh stop     stop both
+#   ./scripts/dev_stack.sh test     start an ISOLATED stack for automated runs
+#   ./scripts/dev_stack.sh stop     stop everything (play + test stacks)
 #
 # Then run the game:  make godot
-# The game reads REACHLOCK_PAN_PORT (default 40707) and REACHLOCK_MEMORY_URL
-# (default http://127.0.0.1:8000); both match the defaults below.
+# The game reads REACHLOCK_PAN_PORT (default 40707), REACHLOCK_MEMORY_URL
+# (default http://127.0.0.1:8000), and REACHLOCK_MEMORY_KEY (defaults to the
+# key file this script generates); all match the defaults below.
+#
+# Security posture (M5): everything binds 127.0.0.1 and Ragamuffin runs with
+# api_key auth ON by default. The key is generated once into
+# $DATA/ragamuffin.key (0600); MemoryStore reads that file automatically, so
+# `make godot` still needs zero setup.
+#
+# Vault hygiene (M5): automated runs must NEVER write play vaults. The
+# `test` mode starts a second Ragamuffin on port 8001 with its own database
+# under ~/.local/share/reachlock-test, and prints the env to export —
+# including REACHLOCK_VAULT_PREFIX=test-, which MemoryStore applies to every
+# vault name. Play data and test data cannot meet.
 #
 # Requirements: Ollama running locally with a chat model and an embedding
 # model pulled (defaults: gemma4:e4b + nomic-embed-text), the pan binary
@@ -17,17 +30,36 @@ set -euo pipefail
 
 CHEZ_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DATA="$HOME/.local/share/reachlock"
+DATA_TEST="$HOME/.local/share/reachlock-test"
 PAN_BIN="${PAN_BIN:-$CHEZ_ROOT/pan/target/release/pan}"
 RAGA_BIN="${RAGA_BIN:-$DATA/bin/ragamuffin}"
 PAN_PORT="${REACHLOCK_PAN_PORT:-40707}"
+RAGA_PORT=8000
+RAGA_TEST_PORT=8001
 
 if [[ "${1:-}" == "stop" ]]; then
     pkill -f "$PAN_BIN serve" 2>/dev/null && echo "pan: stopped" || echo "pan: not running"
-    pkill -f "$RAGA_BIN" 2>/dev/null && echo "ragamuffin: stopped" || echo "ragamuffin: not running"
+    pkill -f "$RAGA_BIN" 2>/dev/null && echo "ragamuffin: stopped (play + test)" || echo "ragamuffin: not running"
     exit 0
 fi
 
+MODE="play"
+if [[ "${1:-}" == "test" ]]; then
+    MODE="test"
+fi
+
 mkdir -p "$DATA"/{vaults,db,logs,bin}
+
+# Generate the shared api key once; 0600 so it stays user-private. Both the
+# play and test stacks use the same key — isolation between them is by
+# database/vault root and the vault prefix, not by credential.
+KEY_FILE="$DATA/ragamuffin.key"
+if [[ ! -f "$KEY_FILE" ]]; then
+    umask 077
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$KEY_FILE"
+    echo "ragamuffin: generated api key at $KEY_FILE"
+fi
+RAGA_KEY="$(cat "$KEY_FILE")"
 
 # Build ragamuffin into the stack dir if missing (from the sibling checkout).
 if [[ ! -x "$RAGA_BIN" ]]; then
@@ -37,21 +69,46 @@ if [[ ! -x "$RAGA_BIN" ]]; then
     (cd "$RAGA_SRC" && go build -o "$RAGA_BIN" ./cmd/ragamuffin)
 fi
 
-if ! pgrep -f "$RAGA_BIN" >/dev/null; then
+start_ragamuffin() { # $1=port $2=data_root $3=label
+    local port="$1" root="$2" label="$3"
+    mkdir -p "$root"/{vaults,db,logs}
+    if curl -sf -o /dev/null \
+        -H "Authorization: Bearer $RAGA_KEY" "http://127.0.0.1:$port/v1/briefing" 2>/dev/null; then
+        echo "ragamuffin[$label]: already running on 127.0.0.1:$port"
+        return
+    fi
+    RAGAMUFFIN_HOST=127.0.0.1 \
+    RAGAMUFFIN_PORT="$port" \
+    RAGAMUFFIN_AUTH_MODE=api_key \
+    RAGAMUFFIN_AUTH_READ_KEY="$RAGA_KEY" \
+    RAGAMUFFIN_AUTH_WRITE_KEY="$RAGA_KEY" \
     RAGAMUFFIN_VECTOR_STORE=embedded \
-    RAGAMUFFIN_EMBEDDED_DB_PATH="$DATA/db/memory.db" \
-    RAGAMUFFIN_VAULTS_ROOT="$DATA/vaults" \
+    RAGAMUFFIN_EMBEDDED_DB_PATH="$root/db/memory.db" \
+    RAGAMUFFIN_VAULTS_ROOT="$root/vaults" \
     RAGAMUFFIN_AUTO_PROVISION_VAULTS=true \
     RAGAMUFFIN_EMBEDDING_BASE_URL="${REACHLOCK_EMBED_BASE:-http://127.0.0.1:11434/v1}" \
     RAGAMUFFIN_EMBEDDING_MODEL="${REACHLOCK_EMBED_MODEL:-nomic-embed-text}" \
     RAGAMUFFIN_EMBEDDING_DIMS="${REACHLOCK_EMBED_DIMS:-768}" \
     RAGAMUFFIN_EMBEDDING_API_KEY=local \
-    RAGAMUFFIN_PORT=8000 \
-        "$RAGA_BIN" >"$DATA/logs/ragamuffin.log" 2>&1 &
-    echo "ragamuffin: started (embedded store, log: $DATA/logs/ragamuffin.log)"
-else
-    echo "ragamuffin: already running"
+        "$RAGA_BIN" >"$root/logs/ragamuffin.log" 2>&1 &
+    echo "ragamuffin[$label]: started on 127.0.0.1:$port (auth: api_key, log: $root/logs/ragamuffin.log)"
+}
+
+if [[ "$MODE" == "test" ]]; then
+    start_ragamuffin "$RAGA_TEST_PORT" "$DATA_TEST" "test"
+    sleep 1
+    curl -sf -H "Authorization: Bearer $RAGA_KEY" \
+        "http://127.0.0.1:$RAGA_TEST_PORT/v1/briefing" >/dev/null \
+        && echo "memory[test]: ok" || echo "memory[test]: NOT answering yet"
+    echo
+    echo "isolated test stack — export this before any automated run:"
+    echo "  export REACHLOCK_MEMORY_URL=http://127.0.0.1:$RAGA_TEST_PORT"
+    echo "  export REACHLOCK_MEMORY_KEY=$RAGA_KEY"
+    echo "  export REACHLOCK_VAULT_PREFIX=test-"
+    exit 0
 fi
+
+start_ragamuffin "$RAGA_PORT" "$DATA" "play"
 
 if ! pgrep -f "$PAN_BIN serve" >/dev/null; then
     PAN_LLM_BASE="${PAN_LLM_BASE:-http://127.0.0.1:11434}" \
@@ -63,5 +120,6 @@ else
 fi
 
 sleep 1
-curl -sf "http://127.0.0.1:8000/v1/briefing" >/dev/null && echo "memory: ok" || echo "memory: NOT answering yet (model load?)"
+curl -sf -H "Authorization: Bearer $RAGA_KEY" "http://127.0.0.1:$RAGA_PORT/v1/briefing" >/dev/null \
+    && echo "memory: ok (auth on)" || echo "memory: NOT answering yet (model load?)"
 echo "ready — run: make godot"

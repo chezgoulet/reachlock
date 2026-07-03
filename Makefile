@@ -51,6 +51,12 @@ protocol:
 dsl:
 	python3 scripts/trigger_dsl.py --self-test
 
+# Trigger-DSL conformance bridge: the GDScript evaluator must match the
+# Python reference battery. Needs a Godot binary (GODOT_BIN, PATH, or the
+# Flatpak); runs in CI's godot job, so not part of `check`.
+dsl-bridge:
+	python3 scripts/check_dsl_bridge.py
+
 # Cross-repo Soul Protocol integration harness: a real `pan serve` subprocess
 # driven through the full lifecycle + every error path. Needs a ../pan
 # checkout (built or buildable), which is why it's a separate CI job and not

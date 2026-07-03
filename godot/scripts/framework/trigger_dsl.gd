@@ -44,7 +44,10 @@ static func _tokenize(text: String) -> Array:
 	var pos := 0
 	while pos < text.length():
 		var m := regex.search(text, pos)
-		if m == null or m.get_start() != _skip_ws_start(text, pos):
+		# The pattern's leading \s* consumes whitespace as part of the match,
+		# so a legal token run always matches AT pos. A match that starts
+		# later means the regex skipped something it could not tokenize.
+		if m == null or m.get_start() != pos:
 			if text.substr(pos).strip_edges() == "":
 				break
 			tokens.append({"kind": "error", "value": "unexpected character at offset %d" % pos})
@@ -68,12 +71,6 @@ static func _tokenize(text: String) -> Array:
 		else:
 			tokens.append({"kind": "op", "value": m.get_string("op")})
 	return tokens
-
-
-static func _skip_ws_start(text: String, pos: int) -> int:
-	while pos < text.length() and (text[pos] == " " or text[pos] == "\t"):
-		pos += 1
-	return pos
 
 
 class _Parser:

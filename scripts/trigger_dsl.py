@@ -291,9 +291,32 @@ def self_test() -> int:
     return 0
 
 
+def battery() -> dict:
+    """The battery as language-neutral JSON, for cross-implementation bridges
+    (scripts/check_dsl_bridge.py runs it through the GDScript evaluator).
+    Expected outcomes collapse ParseError/EvalError to "error": the reference
+    distinguishes them, but the contract for other engines is only that
+    error cases MUST NOT evaluate to a boolean."""
+    return {
+        "semantics_version": VERSION,
+        "context": _CTX,
+        "cases": [
+            {
+                "condition": condition,
+                "expected": expected if isinstance(expected, bool) else "error",
+            }
+            for condition, expected in _CASES
+        ],
+    }
+
+
 if __name__ == "__main__":
     if "--self-test" in sys.argv[1:]:
         raise SystemExit(self_test())
+    if "--emit-battery" in sys.argv[1:]:
+        import json
+        print(json.dumps(battery(), indent=2))
+        raise SystemExit(0)
     if len(sys.argv) > 1:
         try:
             print(evaluate(sys.argv[1], _CTX))

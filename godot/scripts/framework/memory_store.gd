@@ -16,6 +16,8 @@ const RECALL_LIMIT := 4
 var online := false
 
 var _base := DEFAULT_BASE
+var _auth_key := ""
+var _vault_prefix := ""
 var _seeded: Dictionary = {}  # soul_id -> true, this session
 
 
@@ -23,15 +25,46 @@ func _ready() -> void:
 	var env_base := OS.get_environment("REACHLOCK_MEMORY_URL")
 	if env_base != "":
 		_base = env_base.trim_suffix("/")
+	_auth_key = _resolve_auth_key()
+	_vault_prefix = OS.get_environment("REACHLOCK_VAULT_PREFIX")
+	if not _is_valid_vault_prefix(_vault_prefix):
+		push_warning("memory: REACHLOCK_VAULT_PREFIX %s is not [a-z0-9-] — ignored" % _vault_prefix)
+		_vault_prefix = ""
 	GameState.soul_memory_pending.connect(_on_memory_pending)
 	_probe()
+
+
+## The dev stack runs Ragamuffin with api_key auth on by default (M5).
+## Resolution: $REACHLOCK_MEMORY_KEY, else the dev stack's generated key
+## file. No key is still valid — an unauthenticated store, or offline.
+func _resolve_auth_key() -> String:
+	var env_key := OS.get_environment("REACHLOCK_MEMORY_KEY")
+	if env_key != "":
+		return env_key.strip_edges()
+	var key_file := OS.get_environment("HOME") + "/.local/share/reachlock/ragamuffin.key"
+	if FileAccess.file_exists(key_file):
+		return FileAccess.get_file_as_string(key_file).strip_edges()
+	return ""
 
 
 ## Hyphen form per docs/REACHLOCK-VAULT-CONVENTIONS.md (ragamuffin):
 ## ValidVaultName accepts [a-z0-9-:] only, so snake_case npc ids map to
 ## hyphens — tib -> soul-tib, doc_keene -> soul-doc-keene.
+## $REACHLOCK_VAULT_PREFIX namespaces every vault (vault hygiene, M5):
+## automated runs set e.g. "test-" so they can NEVER touch a play vault.
 func vault_name(soul_id: String) -> String:
-	return "soul-" + soul_id.replace("_", "-")
+	return _vault_prefix + "soul-" + soul_id.replace("_", "-")
+
+
+## Vault names are [a-z0-9-:]; the prefix must stay inside [a-z0-9-].
+func _is_valid_vault_prefix(prefix: String) -> bool:
+	for i in prefix.length():
+		var c := prefix.unicode_at(i)
+		var is_lower := c >= 0x61 and c <= 0x7A  # a-z
+		var is_digit := c >= 0x30 and c <= 0x39  # 0-9
+		if not (is_lower or is_digit or c == 0x2D):  # -
+			return false
+	return true
 
 
 ## --- public API ---------------------------------------------------------------
@@ -172,6 +205,8 @@ func _request(url: String, method: int, body: String, callback: Callable) -> voi
 			callback.call(code if result == HTTPRequest.RESULT_SUCCESS else 0, parsed)
 			request.queue_free())
 	var headers := PackedStringArray(["Content-Type: application/json"])
+	if _auth_key != "":
+		headers.append("Authorization: Bearer " + _auth_key)
 	var err := request.request(url, headers, method, body)
 	if err != OK:
 		callback.call(0, null)
