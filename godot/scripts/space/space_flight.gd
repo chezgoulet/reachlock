@@ -88,12 +88,21 @@ func _physics_process(delta: float) -> void:
 	if not is_inside_tree() or _ship == null or not _ship.is_inside_tree():
 		return
 	
-	# Read pilot controls from ShipOperation when occupied, fallback to direct input
+	# Read pilot controls: player occupancy uses keyboard + sync to ShipOperation,
+	# crew occupancy reads from ShipOperation, unoccupied = keyboard fallback.
 	var pilot_controls: Dictionary = {}
 	var weapons_controls: Dictionary = {}
 	
 	if ShipOperation.is_active() and ShipOperation.is_occupied("pilot"):
-		pilot_controls = ShipOperation.controls.get("pilot", {})
+		var occupant: String = ShipOperation.occupied_by("pilot")
+		if occupant == "player":
+			# Player at the console — read keyboard, sync to ShipOperation for effects
+			pilot_controls = _direct_pilot_input()
+			for axis: String in pilot_controls:
+				ShipOperation.set_control("pilot", axis, pilot_controls[axis])
+		else:
+			# Crew AI piloting — read from ShipOperation
+			pilot_controls = ShipOperation.controls.get("pilot", {})
 	else:
 		# Fallback: direct keyboard input when no one at pilot station
 		pilot_controls = _direct_pilot_input()
