@@ -18,11 +18,16 @@ Three repos, one game, plus a local model server:
 | `ragamuffin` | [Ragamuffin](https://github.com/chezgoulet/ragamuffin) | Go | the knowledge server: NPC memory vaults across sessions |
 | Ollama | (external) | — | local inference: chat model for Pan, embeddings for Ragamuffin |
 
-The Go MMO server (`server/`) also lives in REACHLOCK; its simulation
-packages (`server/internal/universe|economy|factions`) are built and
-determinism-tested but **not yet connected to the game** — wiring them in
-(SimGateway, M6) is Sprint 02 work and follows the same loopback-daemon
-pattern described here.
+The simulation lives in this repo too: `reachlock-simd` (built from
+`server/cmd/reachlock-simd`, wrapping `server/internal/universe`) serves
+the deterministic universe tick over the **Sim Protocol** — NDJSON on
+loopback port **40708**, same family as the Soul Protocol (contract:
+[godot/framework/protocol/SIM-PROTOCOL.md](../godot/framework/protocol/SIM-PROTOCOL.md),
+fixtures under `sim/fixtures/`). The SimGateway autoload drives 1 tick per
+second while playing, batch-advances across time skips, and caches a full
+snapshot into the save on every advance, so quitting captures the universe
+mid-motion. The Go MMO server binary (`reachlock-server`) shares the same
+sim packages and remains future MMO work.
 
 ## Architecture
 
@@ -151,7 +156,7 @@ not game code.
 | Godot ⇄ Ragamuffin | Memory Interface v0 (subset of Ragamuffin's public REST) | HTTP loopback, default **8000** (`REACHLOCK_MEMORY_URL`) | [docs/MEMORY-INTERFACE.md](MEMORY-INTERFACE.md) |
 | Pan ⇄ Ollama | OpenAI-compatible chat (or Ollama native, auto-detected) | HTTP, default **11434** (`PAN_LLM_BASE`, `PAN_LLM_MODEL`; unset = llm mind disabled) | Pan `pan-daemon/src/llm.rs` |
 | Ragamuffin ⇄ Ollama | OpenAI-compatible embeddings | same server, `/v1` (`RAGAMUFFIN_EMBEDDING_BASE_URL`) | Ragamuffin docs |
-| game ⇄ sim (future) | Universe tick / SimGateway (Sprint 02 M6) | loopback daemon, same pattern | [docs/UNIVERSE-TICK.md](UNIVERSE-TICK.md) |
+| Godot ⇄ reachlock-simd | Sim Protocol v0 | TCP loopback, default **40708** (`REACHLOCK_SIM_PORT`); NDJSON, same envelope discipline | [godot/framework/protocol/SIM-PROTOCOL.md](../godot/framework/protocol/SIM-PROTOCOL.md), [docs/UNIVERSE-TICK.md](UNIVERSE-TICK.md) |
 
 **Envelope:** `{"v":0,"seq":N,"re":M?,"type":…,"body":…}` — `seq` is
 sender-local and strictly increasing; `re` correlates a response to the
