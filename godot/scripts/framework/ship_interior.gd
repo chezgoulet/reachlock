@@ -80,7 +80,7 @@ func configure(hull: Dictionary) -> void:
 	_build_hud()
 
 	# Spawn crew at their stations
-	var context := "Aboard the %s." % hull.get("name", "ship")
+	var context: String = "Aboard the %s." % hull.get("name", "ship")
 	_spawned = _spawner.spawn_souls(CrewRoster.aboard(), context)
 	for soul in _spawned:
 		soul.spoke.connect(_on_crew_spoke.bind(soul))
@@ -108,7 +108,7 @@ func _build_rooms() -> void:
 			Vector2(col * cell_w + gap * 0.5, row * cell_h + gap * 0.5),
 			Vector2(cell_w - gap, cell_h - gap)
 		)
-		var color := DEFAULT_ROOM_COLORS.get(room_id, NEUTRAL_ROOM)
+		var color: Color = DEFAULT_ROOM_COLORS.get(room_id, NEUTRAL_ROOM)
 		if zones.has(room_id):
 			color = Color.from_string(str(zones[room_id]), color)
 		_rooms.append({
