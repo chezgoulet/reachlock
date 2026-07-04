@@ -42,13 +42,32 @@
     },
     "factions": {
       "type": "object",
-      "description": "faction id -> live player standing (multi-axis) and live inter-faction stances. Authored defaults are the starting point; this is the drift.",
+      "description": "faction id -> live player standing (multi-axis), live inter-faction stances, and an audit log of FactionAction applications (P8). Authored defaults are the starting point; this is the drift.",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "standing": { "type": "object", "additionalProperties": { "type": "number" } },
-          "relationships": { "type": "object", "additionalProperties": { "type": "string" } }
+          "relationships": { "type": "object", "additionalProperties": { "type": "string" } },
+          "action_log": {
+            "type": "array",
+            "description": "Append-only record of FactionAction applications (P8, Sprint 02). The engine writes one entry per apply() call: the action id, the universe tick, the payload (faction affected, deltas applied), and the resulting standing snapshot. Read by audit / debug UIs; never mutated by gameplay code.",
+            "items": {
+              "type": "object",
+              "required": ["action_id", "tick", "resulting_standing"],
+              "additionalProperties": false,
+              "properties": {
+                "action_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+                "tick": { "type": "integer", "minimum": 0 },
+                "applies_to": { "type": "string", "enum": ["controlling_faction", "target_faction", "all_known"] },
+                "target_faction_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+                "rival_faction_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+                "faction_delta": { "type": "object", "additionalProperties": { "type": "integer" } },
+                "rival_faction_delta": { "type": "object", "additionalProperties": { "type": "integer" } },
+                "resulting_standing": { "type": "object", "additionalProperties": { "type": "number" } }
+              }
+            }
+          }
         }
       }
     },

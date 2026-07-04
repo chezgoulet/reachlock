@@ -34,6 +34,7 @@ KIND_SCHEMAS = {
     "locations": "location",
     "dialogues": "dialogue",
     "goods": "good",
+    "faction_actions": "faction_action",
 }
 
 
