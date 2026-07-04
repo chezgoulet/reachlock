@@ -94,14 +94,51 @@ func _make_material(color: Color) -> Material:
 func set_patrol_route(waypoints: Array) -> void:
 	_patrol_route = waypoints.duplicate()
 	_route_index = 0
-	if not _patrol_route.is_empty():
-		_target = _patrol_route[0]
+
+
+## ___steering_behaviors_______________________________________________________
+
+const _UP := Vector3(0, 1, 0)
+var _current_vel := Vector3.ZERO  # updated per physics tick
+
+
+## Seek: steer toward a target position at max acceleration.
+func _seek(target_pos: Vector3) -> Vector3:
+	var desired: Vector3 = (target_pos - global_position).normalized() * _flight_stats.get("top_speed", 35.0)
+	desired = desired.slide(_UP)
+	return (desired - _current_vel).normalized() * _flight_stats.get("acceleration", 15.0)
+
+
+## Pursue: predict where target will be, seek to that predicted position.
+func _pursue(target_pos: Vector3, target_vel: Vector3) -> Vector3:
+	var dist: float = global_position.distance_to(target_pos)
+	var speed: float = maxf(_current_vel.length(), 1.0)
+	var predict_time: float = minf(dist / speed, 1.5)
+	return _seek(target_pos + target_vel * predict_time)
+
+
+## Flee: steer away from a danger position.
+func _flee(danger_pos: Vector3) -> Vector3:
+	var desired: Vector3 = (global_position - danger_pos).normalized() * _flight_stats.get("top_speed", 35.0)
+	desired = desired.slide(_UP)
+	return (desired - _current_vel).normalized() * _flight_stats.get("acceleration", 15.0)
+
+
+## Follow path: steer toward the next waypoint; advance when close.
+func _follow_path() -> Vector3:
+	if _patrol_route.is_empty():
+		return Vector3.ZERO
+	var wp: Vector3 = _patrol_route[_route_index]
+	if global_position.distance_to(wp) < 15.0:
+		_route_index = (_route_index + 1) % _patrol_route.size()
+	return _seek(wp)
 
 
 func _physics_process(delta: float) -> void:
 	if _state == State.DESTROYED or _ship == null:
 		return
 	
+	var prev_pos := _ship.global_position
 	_fire_clock = maxf(0.0, _fire_clock - delta)
 	
 	match _state:
@@ -115,6 +152,9 @@ func _physics_process(delta: float) -> void:
 			_alert_tick(delta)
 		State.PURSUE:
 			_pursue_tick(delta)
+	
+	# Update current velocity from position delta
+	_current_vel = (_ship.global_position - prev_pos) / maxf(delta, 0.001)
 
 
 func _patrol_tick(delta: float) -> void:
