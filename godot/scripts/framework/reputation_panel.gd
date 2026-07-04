@@ -98,7 +98,7 @@ func _faction_row(faction: Dictionary, fid: String, standing: Dictionary) -> voi
 	_grid.add_child(mod_label)
 
 	# Status: relationship stance from authored data
-	var stance := faction.get("relationships", {}).get("player", "neutral")
+	var stance: String = faction.get("relationships", {}).get("player", "neutral")
 	var stance_label := Label.new()
 	stance_label.text = stance.capitalize()
 	match stance:
