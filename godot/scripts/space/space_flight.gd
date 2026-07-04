@@ -87,11 +87,32 @@ func _physics_process(delta: float) -> void:
 	# more against nodes already out of the tree (global transforms error).
 	if not is_inside_tree() or _ship == null or not _ship.is_inside_tree():
 		return
-	_apply_rotation(delta)
-	_apply_thrust(delta)
+	
+	# Read pilot controls from ShipOperation when occupied, fallback to direct input
+	var pilot_controls: Dictionary = {}
+	var weapons_controls: Dictionary = {}
+	
+	if ShipOperation.is_active() and ShipOperation.is_occupied("pilot"):
+		pilot_controls = ShipOperation.controls.get("pilot", {})
+	else:
+		# Fallback: direct keyboard input when no one at pilot station
+		pilot_controls = _direct_pilot_input()
+	
+	if ShipOperation.is_active() and ShipOperation.is_occupied("weapons"):
+		weapons_controls = ShipOperation.controls.get("weapons", {})
+	else:
+		weapons_controls = _direct_weapons_input()
+	
+	_apply_rotation(delta, pilot_controls)
+	_apply_thrust(delta, pilot_controls)
 	_ship.global_position += _velocity * delta
 	_apply_banking(delta)
 	_update_camera(delta)
+	
+	# Update ShipOperation effects for exterior visualization
+	ShipOperation.set_effect("engine_glow", absf(pilot_controls.get("throttle", 0.0)))
+	ShipOperation.set_effect("engine_trail", absf(_velocity.length() / _stats.top_speed))
+	
 	_starfield.global_position = _ship.global_position
 	_advance_tick(delta)
 	_update_mining(delta)
@@ -101,15 +122,37 @@ func _physics_process(delta: float) -> void:
 	_update_hud()
 
 
-## --- flight (unchanged core) ------------------------------------------------
+## --- flight (ShipOperation-aware) --------------------------------------------
+
+## Fallback pilot controls from direct keyboard input when no one occupies
+## the pilot station. Used for backward compat and testing.
+func _direct_pilot_input() -> Dictionary:
+	return {
+		"throttle": Input.get_axis("thrust_back", "thrust_forward"),
+		"yaw": Input.get_axis("yaw_right", "yaw_left"),
+		"pitch": Input.get_axis("pitch_down", "pitch_up"),
+		"roll": Input.get_axis("roll_right", "roll_left"),
+		"boost": Input.is_action_pressed("boost"),
+		"brake": Input.is_action_pressed("brake"),
+	}
 
 
-func _apply_rotation(delta: float) -> void:
+## Fallback weapons controls from direct keyboard input.
+func _direct_weapons_input() -> Dictionary:
+	return {
+		"fire": Input.is_action_pressed("fire"),
+		"target_id": "",
+		"target_position": Vector3.ZERO,
+		"weapon_index": 0,
+	}
+
+
+func _apply_rotation(delta: float, controls: Dictionary) -> void:
 	var turn_rate: float = _stats.turn_rate
 	var target := Vector3(
-		Input.get_axis("pitch_down", "pitch_up") * turn_rate,
-		Input.get_axis("yaw_right", "yaw_left") * turn_rate,
-		Input.get_axis("roll_right", "roll_left") * turn_rate * 1.6,
+		controls.get("pitch", 0.0) * turn_rate,
+		controls.get("yaw", 0.0) * turn_rate,
+		controls.get("roll", 0.0) * turn_rate * 1.6,
 	)
 	_angular_velocity = _angular_velocity.lerp(target, 1.0 - exp(-TURN_RESPONSE * delta))
 	var b := _ship.basis
@@ -119,14 +162,17 @@ func _apply_rotation(delta: float) -> void:
 	_ship.basis = b.orthonormalized()
 
 
-func _apply_thrust(delta: float) -> void:
-	_boosting = Input.is_action_pressed("boost")
+func _apply_thrust(delta: float, controls: Dictionary) -> void:
+	_boosting = controls.get("boost", false)
 	var boost_factor: float = _stats.boost_multiplier if _boosting else 1.0
 	var speed: float = _stats.top_speed * boost_factor
 	var accel: float = _stats.acceleration * boost_factor
-	var throttle := Input.get_axis("thrust_back", "thrust_forward")
-	var strafe := Input.get_axis("strafe_left", "strafe_right")
-	var desired := (-_ship.basis.z * throttle + _ship.basis.x * strafe * 0.6) * speed
+	var throttle := controls.get("throttle", 0.0)
+	var strafe := controls.get("strafe", 0.0)
+	# Legacy strafe support via keyboard fallback
+	if strafe == 0.0:
+		strafe = Input.get_axis("strafe_left", "strafe_right") * 0.6
+	var desired := (-_ship.basis.z * throttle + _ship.basis.x * strafe) * speed
 	if Input.is_action_pressed("brake"):
 		desired = Vector3.ZERO
 		accel *= 1.5
@@ -269,9 +315,18 @@ func _find_ambusher() -> Dictionary:
 
 func _update_combat(delta: float) -> void:
 	_fire_clock = maxf(0.0, _fire_clock - delta)
-	if _pirate == null or not Input.is_action_pressed("fire") or _fire_clock > 0.0:
+	var fire_pressed := false
+	if ShipOperation.is_active() and ShipOperation.is_occupied("weapons"):
+		var wc: Dictionary = ShipOperation.controls.get("weapons", {})
+		fire_pressed = wc.get("fire", false)
+	else:
+		fire_pressed = Input.is_action_pressed("fire")
+	
+	if not fire_pressed or _fire_clock > 0.0:
+		ShipOperation.set_effect("weapons_firing", false)
 		return
 	_fire_clock = FIRE_COOLDOWN
+	ShipOperation.set_effect("weapons_firing", true)
 	var to_pirate: Vector3 = _pirate.global_position - _ship.global_position
 	if to_pirate.length() > FIRE_RANGE:
 		return
