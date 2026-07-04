@@ -19,14 +19,21 @@ const REQUIRED_MANIFEST_KEYS: Array[String] = ["id", "name", "version", "provide
 ## {
 ##   manifests: {mod_id: Dictionary}, order: Array[String],
 ##   entities: {kind: {id: Dictionary}}, sources: {kind: {id: mod_id}},
-##   start: Dictionary, warnings: Array[String], errors: Array[String],
+##   dirs: {mod_id: dir_path}, start: Dictionary,
+##   warnings: Array[String], errors: Array[String],
 ## }
+##
+## `dirs` is the loader's own map of each loaded mod's root directory. It is
+## how the engine reaches a mod's *non-JSON* assets (sprite overrides, etc.)
+## without ever naming a `res://mods/...` path in engine source: the path is
+## handed over here, by the layer that owns the mods root.
 func load_all() -> Dictionary:
 	var out := {
 		"manifests": {}, "order": [], "entities": {}, "sources": {},
-		"start": {}, "warnings": [], "errors": [],
+		"dirs": {}, "start": {}, "warnings": [], "errors": [],
 	}
 	var dirs := _discover_manifests(out)
+	out.dirs = dirs
 	var order := _dependency_order(out)
 	out.order = order
 	_check_conflicts(out)

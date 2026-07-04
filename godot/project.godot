@@ -24,6 +24,7 @@ config/icon="res://assets/ui/icon.svg"
 [autoload]
 
 DataRegistry="*res://scripts/framework/data_registry.gd"
+AssetLibrary="*res://scripts/framework/asset_library.gd"
 GameState="*res://scripts/framework/game_state.gd"
 MemoryStore="*res://scripts/framework/memory_store.gd"
 SoulGateway="*res://scripts/framework/soul_gateway.gd"

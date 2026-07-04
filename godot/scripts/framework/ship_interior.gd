@@ -245,17 +245,18 @@ func _rebuild_rooms() -> void:
 		_rooms_grid.add_child(panel)
 
 
-## A recognizable stand-in figure: the npc's color as a body swatch, the
-## name beside it, and a talk button. Sprite art replaces the swatch later;
-## a mod overrides by adding `color` (and eventually sprites) to its npc.
+## A recognizable stand-in figure: the shared StandIn character vocabulary in
+## the npc's color, the name beside it, and a talk button. A mod re-skins a
+## crew member by adding `color` — or shipping `assets/npcs/<id>.png`, which
+## StandIn draws instead, with no code change.
 func _crew_figure(soul_id: String) -> Control:
 	var npc := DataRegistry.get_entity("npcs", soul_id)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
-	var swatch := ColorRect.new()
-	swatch.custom_minimum_size = Vector2(14, 26)
-	swatch.color = Color.from_string(str(npc.get("color", "")), _hash_color(soul_id))
-	row.add_child(swatch)
+	var figure := StandIn.new()
+	figure.custom_minimum_size = Vector2(22, 40)
+	figure.configure(soul_id, StandIn.character_color(npc, soul_id))
+	row.add_child(figure)
 	var button := Button.new()
 	button.text = npc.get("name", soul_id)
 	button.flat = true
@@ -265,12 +266,6 @@ func _crew_figure(soul_id: String) -> Control:
 			_talk_to(soul))
 	row.add_child(button)
 	return row
-
-
-## Deterministic fallback color per crew member when content supplies none.
-func _hash_color(soul_id: String) -> Color:
-	var h := float(hash(soul_id) % 360) / 360.0
-	return Color.from_hsv(h, 0.55, 0.85)
 
 
 func _soul_name(soul: SoulInstance) -> String:

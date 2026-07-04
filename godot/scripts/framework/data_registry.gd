@@ -11,6 +11,7 @@ const ModLoaderScript := preload("res://scripts/framework/mod_loader.gd")
 var _entities := {}   # kind -> {id -> Dictionary}
 var _sources := {}    # kind -> {id -> mod_id that provided the winning copy}
 var _manifests := {}  # mod_id -> manifest Dictionary
+var _dirs := {}       # mod_id -> root directory (for non-JSON assets)
 var _order: Array[String] = []
 var _start := {}
 
@@ -20,6 +21,7 @@ func _ready() -> void:
 	_entities = result.entities
 	_sources = result.sources
 	_manifests = result.manifests
+	_dirs = result.dirs
 	_order.assign(result.order)
 	_start = result.start
 	for warning: String in result.warnings:
@@ -65,6 +67,13 @@ func manifest(mod_id: String) -> Dictionary:
 
 func load_order() -> Array[String]:
 	return _order.duplicate()
+
+
+## The root directory a mod loaded from ("" if unknown). The loader owns the
+## mods root; this is how engine systems reach a mod's non-JSON assets (sprite
+## overrides and the like) without naming a content path — see AssetLibrary.
+func mod_dir(mod_id: String) -> String:
+	return _dirs.get(mod_id, "")
 
 
 ## The `start` block from the last-loaded mod that declared one: where a new
