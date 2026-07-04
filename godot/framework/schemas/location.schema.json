@@ -147,6 +147,23 @@
           }
         }
       }
+    },
+    "jump_gates": {
+      "type": "array",
+      "description": "Jump gates in this location. Fly through to transit systems.",
+      "items": {
+        "type": "object",
+        "required": ["id", "system", "connects_to"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "system": { "type": "string" },
+          "connects_to": { "type": "string" },
+          "requires_clearance": { "type": "boolean", "default": false },
+          "faction_control": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "name": { "type": "string" }
+        }
+      }
     }
   }
 }

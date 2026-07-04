@@ -77,6 +77,10 @@ func _ready() -> void:
 	add_child(_station)
 	_build_minable_rocks()
 	_build_patrols()
+	_build_jump_gate()
+	# Configure gravity from location
+	var loc_grav: Dictionary = _location.get("gravity", {"type": "energy_plate", "strength": 1.0, "safe": true})
+	GravitySystem.configure_location(loc_grav)
 	_camera.fov = BASE_FOV
 	_camera.global_transform = _camera_rest_transform()
 	_refresh_status()
@@ -500,6 +504,36 @@ func _on_patrol_alert(_ship_id: String) -> void:
 
 func _on_patrol_destroyed(_ship_id: String) -> void:
 	pass
+
+
+## ___jump_gate________________________________________________________________
+
+
+func _build_jump_gate() -> void:
+	var gates: Array = _location.get("jump_gates", [])
+	for entry: Dictionary in gates:
+		var gate := JumpGate.new()
+		gate.configure(entry, _ship)
+		gate.global_position = _random_gate_position(entry)
+		gate.transit_completed.connect(_on_transit_completed)
+		gate.transit_failed.connect(func(reason: String) -> void:
+			_hint_label.text = "Gate: %s" % reason)
+		add_child(gate)
+
+
+func _random_gate_position(_entry: Dictionary) -> Vector3:
+	var theta := _rng.randf() * TAU
+	var dist := _rng.randf_range(100.0, 140.0)
+	return _ship.global_position + Vector3(cos(theta) * dist, 0, sin(theta) * dist)
+
+
+func _on_transit_completed(from_system: String, to_system: String) -> void:
+	_hint_label.text = "Transit complete — entering %s" % to_system
+	# Update the save data and reload the flight scene for the new location
+	GameState.player.travel_log.append({"to": to_system, "from": from_system, "time": Time.get_unix_time_from_system()})
+	GameState.save_game()
+	# Force a location change by triggering the sim to update
+	SimGateway.navigate_to(to_system, "jumpgate")
 
 
 ## --- HUD ---------------------------------------------------------------------

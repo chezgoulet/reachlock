@@ -35,5 +35,15 @@
       "engagement": "passive",
       "color": "#8c3030"
     }
+  ],
+  "jump_gates": [
+    {
+      "id": "sorrow_gate",
+      "system": "sorrow_system",
+      "connects_to": "earth_system",
+      "requires_clearance": true,
+      "faction_control": "compact",
+      "name": "Compact Gate A-7"
+    }
   ]
 }
