@@ -69,6 +69,10 @@ dsl-bridge:
 harness:
 	python3 tests/soul-protocol-harness/run_harness.py
 
+# Run GUT unit tests headlessly.
+test:
+	$(GODOT) --headless --path godot/ -s addons/gut/gut_cmdln.gd -gdir=res://tests -gexit
+
 # Full local pre-push gate.
 check: server-test validate architecture protocol dsl
 

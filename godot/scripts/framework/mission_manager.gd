@@ -138,9 +138,9 @@ func current_objective() -> String:
 
 ## Current time remaining for timer stages, or -1.
 func timer_remaining() -> float:
-	if _stage_timers.has(_active.id):
-		return _stage_timers[_active.id]
-	return -1.0
+	if _active.is_empty() or not _stage_timers.has(_active.get("id", "")):
+		return -1.0
+	return _stage_timers[_active.id]
 
 
 func is_active() -> bool:
