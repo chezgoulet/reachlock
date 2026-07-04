@@ -146,6 +146,24 @@
         }
       }
     },
+    "gravity": {
+      "type": "object",
+      "description": "Ship's artificial gravity system. Omitted = zero-G (magnetic boots or RCS required).",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["none", "magnetic_boots", "centrifugal", "energy_plate", "grav_plate"]
+        },
+        "strength": { "type": "number", "minimum": 0, "maximum": 3, "default": 1.0 },
+        "power_draw": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.15 },
+        "safe": { "type": "boolean", "default": true },
+        "augments": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z_]*$" }
+        }
+      }
+    },
     "attached": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
     "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
   }

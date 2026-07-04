@@ -88,6 +88,11 @@ func configure(hull: Dictionary) -> void:
 
 	# Reset ShipOperation for this session
 	ShipOperation.reset()
+	
+	# Configure gravity from hull
+	var grav_config: Dictionary = hull.get("gravity", {"type": "none", "strength": 0.0, "safe": false})
+	GravitySystem.configure(grav_config)
+	
 	_refresh()
 
 
@@ -252,11 +257,26 @@ func _player_start() -> Vector2:
 func _process(delta: float) -> void:
 	if not _frozen:
 		var move := Input.get_vector("strafe_left", "strafe_right", "thrust_forward", "thrust_back")
-		if move != Vector2.ZERO:
-			_pos += move * WALK_SPEED * delta
+		
+		# Gravity-aware movement
+		var gfx := GravitySystem.apply_movement(move, delta, _walker.velocity)
+		_walker.velocity = gfx.get("velocity", Vector2.ZERO)
+		
+		var effective_move: Vector2 = gfx.get("move", move)
+		var effective_delta: float = gfx.get("delta", delta)
+		
+		if effective_move != Vector2.ZERO:
+			_pos += effective_move * WALK_SPEED * effective_delta
 			_pos = _pos.clamp(Vector2(20, 20), INTERIOR_SIZE - Vector2(20, 20))
 			_walker.position = _pos
-			_walker.facing = signf(move.x) if absf(move.x) > 0.1 else _walker.facing
+			if move != Vector2.ZERO:
+				_walker.facing = signf(move.x) if absf(move.x) > 0.1 else _walker.facing
+		elif _walker.velocity != Vector2.ZERO:
+			# Zero-G drift
+			_pos += _walker.velocity * effective_delta
+			_pos = _pos.clamp(Vector2(20, 20), INTERIOR_SIZE - Vector2(20, 20))
+			_walker.position = _pos
+		
 		_camera.position = _camera.position.lerp(_pos, 1.0 - exp(-6.0 * delta))
 		if Input.is_action_just_pressed("interact"):
 			_interact()
@@ -569,6 +589,7 @@ class _Floor extends Node2D:
 class _Walker extends Node2D:
 	var color := Color(0.85, 0.86, 0.9)
 	var facing := 1.0  # 1 = right, -1 = left
+	var velocity := Vector2.ZERO  # persistent velocity for zero-G drift
 	var _texture: Texture2D = null
 
 	func _ready() -> void:

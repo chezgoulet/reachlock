@@ -132,5 +132,11 @@
       ]
     }
   ],
+  "gravity": {
+    "type": "energy_plate",
+    "strength": 1.0,
+    "power_draw": 0.15,
+    "safe": true
+  },
   "attached": ["loup_garou_shuttle"]
 }
