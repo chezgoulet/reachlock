@@ -167,8 +167,8 @@ func _apply_thrust(delta: float, controls: Dictionary) -> void:
 	var boost_factor: float = _stats.boost_multiplier if _boosting else 1.0
 	var speed: float = _stats.top_speed * boost_factor
 	var accel: float = _stats.acceleration * boost_factor
-	var throttle := controls.get("throttle", 0.0)
-	var strafe := controls.get("strafe", 0.0)
+	var throttle: float = controls.get("throttle", 0.0)
+	var strafe: float = controls.get("strafe", 0.0)
 	# Legacy strafe support via keyboard fallback
 	if strafe == 0.0:
 		strafe = Input.get_axis("strafe_left", "strafe_right") * 0.6
