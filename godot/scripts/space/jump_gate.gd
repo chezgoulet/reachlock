@@ -1,5 +1,7 @@
 extends Node3D
 ## Ring 0 — Jump Gate transit system (Sprint 03, P15).
+
+class_name JumpGate
 ##
 ## Jump gates connect systems. Flying through a gate triggers transit
 ## to the connected system. Emergency jump drives bypass gates with risk.
@@ -49,8 +51,6 @@ func _build_gate_mesh() -> void:
 	var torus := TorusMesh.new()
 	torus.inner_radius = GATE_APERTURE_RADIUS - 1
 	torus.outer_radius = GATE_APERTURE_RADIUS + 1
-	torus.rings = 16
-	torus.ring_rings = 8
 	ring.mesh = torus
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.2, 0.5, 0.9)

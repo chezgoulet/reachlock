@@ -1,5 +1,7 @@
 extends Node3D
 ## Ring 0 — Compact Blockade Patrol AI (Sprint 03, P16).
+
+class_name PatrolController
 ##
 ## Patrol ships that scan, detect, and engage based on player actions
 ## and reputation. Behavior driven by a state machine with configurable
@@ -56,7 +58,6 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_rng.seed = randi() % 100000
-	_call_rebuild()
 
 
 ## Initialize from a hull + soul definition.
