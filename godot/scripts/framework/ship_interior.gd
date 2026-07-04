@@ -94,30 +94,62 @@ func configure(hull: Dictionary) -> void:
 func _build_rooms() -> void:
 	var room_ids: Array = _hull.get("interior_rooms", [])
 	var zones: Dictionary = _hull.get("room_zones", {})
-	var cols := 4
+	var layout: Dictionary = _hull.get("interior_layout", {})
+	var cols: int = layout.get("cols", 4)
+	var rows: int = layout.get("rows", 0)
+	var grid: Array = layout.get("grid", [])
+	
 	var cell_w := INTERIOR_SIZE.x / cols
-	var cell_h := 160.0
-	var gap := 12.0
+	var cell_h := INTERIOR_SIZE.y / maxi(rows, 1)
+	var gap := 8.0
 
 	_rooms.clear()
-	for i in room_ids.size():
-		var room_id: String = room_ids[i]
-		var col := i % cols
-		var row := i / cols
-		var rect := Rect2(
-			Vector2(col * cell_w + gap * 0.5, row * cell_h + gap * 0.5),
-			Vector2(cell_w - gap, cell_h - gap)
-		)
-		var color: Color = DEFAULT_ROOM_COLORS.get(room_id, NEUTRAL_ROOM)
-		if zones.has(room_id):
-			color = Color.from_string(str(zones[room_id]), color)
-		_rooms.append({
-			"id": room_id,
-			"name": room_id.capitalize().replace("_", " "),
-			"kind": room_id,
-			"rect": rect,
-			"color": color,
-		})
+	
+	if not grid.is_empty():
+		# Use grid layout from hull data
+		for row_idx: int in grid.size():
+			var row: Array = grid[row_idx]
+			for col_idx: int in row.size():
+				var room_id: String = row[col_idx]
+				if room_id.is_empty():
+					continue
+				var rect := Rect2(
+					Vector2(col_idx * cell_w + gap * 0.5, row_idx * cell_h + gap * 0.5),
+					Vector2(cell_w - gap, cell_h - gap)
+				)
+				var color: Color = DEFAULT_ROOM_COLORS.get(room_id, NEUTRAL_ROOM)
+				if zones.has(room_id):
+					color = Color.from_string(str(zones[room_id]), color)
+				_rooms.append({
+					"id": room_id,
+					"name": room_id.capitalize().replace("_", " "),
+					"kind": room_id,
+					"rect": rect,
+					"color": color,
+				})
+	else:
+		# Fallback: list layout (generic grid)
+		cols = mini(room_ids.size(), 4)
+		var f_cell_w := INTERIOR_SIZE.x / cols
+		var f_cell_h := 160.0
+		for i in room_ids.size():
+			var room_id: String = room_ids[i]
+			var col := i % cols
+			var row := i / cols
+			var rect := Rect2(
+				Vector2(col * f_cell_w + gap * 0.5, row * f_cell_h + gap * 0.5),
+				Vector2(f_cell_w - gap, f_cell_h - gap)
+			)
+			var color: Color = DEFAULT_ROOM_COLORS.get(room_id, NEUTRAL_ROOM)
+			if zones.has(room_id):
+				color = Color.from_string(str(zones[room_id]), color)
+			_rooms.append({
+				"id": room_id,
+				"name": room_id.capitalize().replace("_", " "),
+				"kind": room_id,
+				"rect": rect,
+				"color": color,
+			})
 
 
 func _build_stations() -> void:
@@ -433,16 +465,24 @@ class _Floor extends Node2D:
 class _Walker extends Node2D:
 	var color := Color(0.85, 0.86, 0.9)
 	var facing := 1.0  # 1 = right, -1 = left
+	var _texture: Texture2D = null
+
+	func _ready() -> void:
+		_texture = AssetLibrary.texture("player", "character")
 
 	func _draw() -> void:
-		# Ground shadow
+		if _texture != null:
+			var tex_size := _texture.get_size()
+			var scale_factor := 48.0 / maxf(tex_size.x, tex_size.y)
+			var dest := Rect2(-tex_size.x * scale_factor * 0.5, -tex_size.y * scale_factor * 0.5,
+				tex_size.x * scale_factor, tex_size.y * scale_factor)
+			draw_texture_rect(_texture, dest, false)
+			return
+		# Fallback: procedural stand-in
 		draw_circle(Vector2(0, 12), 8, Color(0, 0, 0, 0.3))
-		# Body (simple stand-in shape)
 		var body := Rect2(-8, -10, 16, 20)
 		draw_rect(body, color)
 		draw_rect(Rect2(body.position.x + body.size.x * 0.5, body.position.y,
 			body.size.x * 0.5, body.size.y), color.darkened(0.3))
-		# Head
 		draw_circle(Vector2(0, -14), 6, Color(0.86, 0.72, 0.6))
-		# Direction indicator (small dot on the facing side)
 		draw_circle(Vector2(facing * 6, -14), 2, Color(0.3, 0.3, 0.3))

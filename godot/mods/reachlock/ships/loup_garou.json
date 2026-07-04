@@ -26,6 +26,34 @@
     "utilities": 3,
     "engines": 2
   },
-  "interior_rooms": ["cockpit", "bridge", "engineering", "med_bay", "galley", "crew_quarters", "cargo_hold", "airlock"],
+  "interior_rooms": ["cockpit", "bridge", "engineering", "med_bay", "galley", "crew_quarters", "cargo_hold", "cryo", "airlock"],
+  "room_zones": {
+    "cockpit": "#2a5a8a",
+    "bridge": "#1a4a7a",
+    "engineering": "#aa6020",
+    "med_bay": "#d8dde0",
+    "galley": "#6a7a3a",
+    "crew_quarters": "#4a4a6a",
+    "cargo_hold": "#5a5030",
+    "cryo": "#5a7a8a",
+    "airlock": "#5a5a6a"
+  },
+  "stations": [
+    { "id": "pilot", "name": "Pilot Console", "room": "cockpit" },
+    { "id": "weapons", "name": "Weapons Station", "room": "bridge" },
+    { "id": "scanner", "name": "Scanner Array", "room": "bridge" },
+    { "id": "engineering", "name": "Engineering Console", "room": "engineering" },
+    { "id": "cargo", "name": "Cargo Terminal", "room": "cargo_hold" },
+    { "id": "cryopod", "name": "Cryopod", "room": "cryo" }
+  ],
+  "interior_layout": {
+    "cols": 3,
+    "rows": 3,
+    "grid": [
+      ["cockpit", "bridge", "airlock"],
+      ["crew_quarters", "galley", "med_bay"],
+      ["cryo", "engineering", "cargo_hold"]
+    ]
+  },
   "attached": ["loup_garou_shuttle"]
 }

@@ -56,6 +56,47 @@
       }
     },
     "interior_rooms": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+    "room_zones": {
+      "type": "object",
+      "description": "Room ID -> hex color override for interior floor tiles. Defaults per room type apply when omitted.",
+      "additionalProperties": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+    },
+    "stations": {
+      "type": "array",
+      "description": "Named stations in the ship interior. Each occupies a room. A modder adds a station by adding an entry here — no engine code.",
+      "items": {
+        "type": "object",
+        "required": ["id", "room"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "name": { "type": "string" },
+          "room": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "position": {
+            "type": "array",
+            "minItems": 2, "maxItems": 2,
+            "items": { "type": "number", "minimum": 0, "maximum": 1 },
+            "description": "Normalized position within the room rect. [0.5, 0.5] = center."
+          }
+        }
+      }
+    },
+    "interior_layout": {
+      "type": "object",
+      "description": "Optional grid layout for the interior. Defines the rows/cols and room grid for proper spatial arrangement.",
+      "additionalProperties": false,
+      "properties": {
+        "cols": { "type": "integer", "minimum": 1 },
+        "rows": { "type": "integer", "minimum": 1 },
+        "grid": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+          }
+        }
+      }
+    },
     "attached": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
     "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
   }
