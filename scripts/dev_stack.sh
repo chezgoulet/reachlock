@@ -73,8 +73,8 @@ RAGA_KEY="$(cat "$KEY_FILE")"
 # pulled (default gemma3:4b); the probe hits Ollama's native API with
 # think off, same dialect pan and ragamuffin use.
 OLLAMA_BASE="${PAN_LLM_BASE:-http://127.0.0.1:11434}"
-CHAT_MODEL="${PAN_LLM_MODEL:-gemma4:e4b}"
-FALLBACK_MODEL="${REACHLOCK_LLM_FALLBACK_MODEL:-gemma3:4b}"
+CHAT_MODEL="${PAN_LLM_MODEL:-qwen3.5:4b}"
+FALLBACK_MODEL="${REACHLOCK_LLM_FALLBACK_MODEL:-llama3.2:3b}"
 probe_model() { # $1 = model; succeeds when a 1-token completion works
     local out
     out=$(curl -s -m 120 "$OLLAMA_BASE/api/chat" -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":false,\"think\":false,\"options\":{\"num_predict\":1}}" 2>/dev/null)
