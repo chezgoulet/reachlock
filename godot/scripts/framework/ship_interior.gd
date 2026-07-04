@@ -14,7 +14,7 @@ extends Node2D
 
 class_name ShipInterior
 
-signal depart_requested
+signal launch_requested
 signal disembark_requested
 
 const WALK_SPEED := 200.0
@@ -342,7 +342,7 @@ func _build_hud() -> void:
 	
 	var launch_btn := Button.new()
 	launch_btn.text = "Launch"
-	launch_btn.pressed.connect(func() -> void: depart_requested.emit())
+	launch_btn.pressed.connect(func() -> void: launch_requested.emit())
 	actions.add_child(launch_btn)
 
 	var dock_btn := Button.new()
