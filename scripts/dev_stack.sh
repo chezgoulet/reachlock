@@ -66,6 +66,35 @@ if [[ ! -f "$KEY_FILE" ]]; then
 fi
 RAGA_KEY="$(cat "$KEY_FILE")"
 
+# The chat model must actually FIT in memory, or every soul goes silent
+# (pan logs "decide failed: model requires more system memory", the game
+# shows "...loses the thread"). Probe it once — this also warms the model.
+# On an out-of-memory failure, fall back to a smaller model when one is
+# pulled (default gemma3:4b); the probe hits Ollama's native API with
+# think off, same dialect pan and ragamuffin use.
+OLLAMA_BASE="${PAN_LLM_BASE:-http://127.0.0.1:11434}"
+CHAT_MODEL="${PAN_LLM_MODEL:-gemma4:e4b}"
+FALLBACK_MODEL="${REACHLOCK_LLM_FALLBACK_MODEL:-gemma3:4b}"
+probe_model() { # $1 = model; succeeds when a 1-token completion works
+    local out
+    out=$(curl -s -m 120 "$OLLAMA_BASE/api/chat" -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":false,\"think\":false,\"options\":{\"num_predict\":1}}" 2>/dev/null)
+    [[ -n "$out" ]] && ! grep -q '"error"' <<<"$out"
+}
+if ! curl -sf -m 3 "$OLLAMA_BASE/api/version" >/dev/null 2>&1; then
+    echo "WARNING: no Ollama at $OLLAMA_BASE — souls and memory recall will be offline."
+elif ! probe_model "$CHAT_MODEL"; then
+    echo "WARNING: chat model $CHAT_MODEL failed to load (usually: not enough free RAM)."
+    if probe_model "$FALLBACK_MODEL"; then
+        echo "         using fallback model $FALLBACK_MODEL for this stack."
+        CHAT_MODEL="$FALLBACK_MODEL"
+    else
+        echo "         SOULS WILL BE SILENT. Free some RAM, or pull a smaller model and:"
+        echo "           export PAN_LLM_MODEL=<model>   # then restart the stack"
+    fi
+else
+    echo "llm: $CHAT_MODEL loaded and warm"
+fi
+
 # Build ragamuffin into the stack dir if missing (from the sibling checkout).
 if [[ ! -x "$RAGA_BIN" ]]; then
     RAGA_SRC="$CHEZ_ROOT/ragamuffin-raga"
@@ -97,7 +126,7 @@ start_ragamuffin() { # $1=port $2=data_root $3=label
     RAGAMUFFIN_EMBEDDING_API_KEY=local \
     RAGAMUFFIN_LLM_PROVIDER=ollama \
     RAGAMUFFIN_LLM_BASE_URL="${REACHLOCK_LLM_BASE:-http://127.0.0.1:11434}" \
-    RAGAMUFFIN_LLM_MODEL="${REACHLOCK_LLM_MODEL:-gemma4:e4b}" \
+    RAGAMUFFIN_LLM_MODEL="${REACHLOCK_LLM_MODEL:-$CHAT_MODEL}" \
     RAGAMUFFIN_LLM_API_KEY=local \
         "$RAGA_BIN" >"$root/logs/ragamuffin.log" 2>&1 &
     echo "ragamuffin[$label]: started on 127.0.0.1:$port (auth: api_key, log: $root/logs/ragamuffin.log)"
@@ -120,8 +149,8 @@ fi
 start_ragamuffin "$RAGA_PORT" "$DATA" "play"
 
 if ! pgrep -f "$PAN_BIN serve" >/dev/null; then
-    PAN_LLM_BASE="${PAN_LLM_BASE:-http://127.0.0.1:11434}" \
-    PAN_LLM_MODEL="${PAN_LLM_MODEL:-gemma4:e4b}" \
+    PAN_LLM_BASE="$OLLAMA_BASE" \
+    PAN_LLM_MODEL="$CHAT_MODEL" \
         "$PAN_BIN" serve --port "$PAN_PORT" >"$DATA/logs/pan.log" 2>&1 &
     echo "pan: started on 127.0.0.1:$PAN_PORT (log: $DATA/logs/pan.log)"
 else

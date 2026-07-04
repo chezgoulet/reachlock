@@ -39,6 +39,7 @@ func _ready() -> void:
 	for soul in _spawned:
 		soul.spoke.connect(_on_ambient_bark.bind(soul))
 		soul.acted.connect(_on_soul_acted.bind(soul))
+		soul.concluded.connect(_on_soul_concluded.bind(soul))
 	_rebuild_npc_row()
 	_spawner.broadcast_event("location.player_arrived", {"location": _location.get("id", "")})
 	GameState.state_changed.connect(_refresh_status)
@@ -52,17 +53,23 @@ func _talk_to(soul: SoulInstance) -> void:
 	if _runner != null:
 		return
 	var dialogue := _find_dialogue_for(soul.soul_id)
-	if dialogue.is_empty():
-		_append_log("[i]%s has nothing to say right now.[/i]" % _soul_name(soul))
-		return
-	_runner = DialogueRunnerScript.new()
-	add_child(_runner)
-	_runner.line_shown.connect(_on_line_shown)
-	_runner.choices_shown.connect(_on_choices_shown)
-	_runner.ended.connect(_on_dialogue_ended)
-	if not _runner.start(dialogue, soul):
+	if not dialogue.is_empty():
+		_runner = DialogueRunnerScript.new()
+		add_child(_runner)
+		_runner.line_shown.connect(_on_line_shown)
+		_runner.choices_shown.connect(_on_choices_shown)
+		_runner.ended.connect(_on_dialogue_ended)
+		if _runner.start(dialogue, soul):
+			return
 		_runner.queue_free()
 		_runner = null
+	# No authored dialogue applies right now: open an unscripted exchange
+	# and let the soul's mind carry it (M7). The reply lands as a bark via
+	# `spoke`; with no mind daemon the soul stays quiet and the log says so.
+	if SoulGateway.is_ready():
+		_append_log("[i]You catch %s's attention.[/i]" % _soul_name(soul))
+		soul.perceive_utterance("player", "Got a minute?")
+	else:
 		_append_log("[i]%s has nothing to say right now.[/i]" % _soul_name(soul))
 
 
@@ -113,7 +120,15 @@ func _on_dialogue_ended() -> void:
 
 func _on_ambient_bark(text: String, soul: SoulInstance) -> void:
 	if _runner == null and text != "":
-		_append_log("[i]%s: %s[/i]" % [_soul_name(soul), text])
+		_append_log("[b]%s:[/b] %s" % [_soul_name(soul), text])
+
+
+## The mind gave up outside a dialogue (inference down, model overloaded):
+## give the silence a face instead of leaving the player hanging. The real
+## cause is in the pan log; the dev stack's model probe points at it.
+func _on_soul_concluded(outcome: String, soul: SoulInstance) -> void:
+	if _runner == null and outcome == "abandoned":
+		_append_log("[i]%s starts to answer, then loses the thread.[/i]" % _soul_name(soul))
 
 
 func _on_soul_acted(capability: String, args: Dictionary, soul: SoulInstance) -> void:

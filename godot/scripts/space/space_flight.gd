@@ -83,6 +83,10 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Mode switches free this scene at end of frame; physics can tick once
+	# more against nodes already out of the tree (global transforms error).
+	if not is_inside_tree() or _ship == null or not _ship.is_inside_tree():
+		return
 	_apply_rotation(delta)
 	_apply_thrust(delta)
 	_ship.global_position += _velocity * delta

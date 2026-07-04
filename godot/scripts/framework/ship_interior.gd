@@ -62,6 +62,7 @@ func configure(hull: Dictionary) -> void:
 	_spawned = _spawner.spawn_souls(CrewRoster.aboard(), context)
 	for soul in _spawned:
 		soul.spoke.connect(_on_crew_spoke.bind(soul))
+		soul.concluded.connect(_on_crew_concluded.bind(soul))
 	var stations: PackedStringArray = []
 	for soul in _spawned:
 		stations.append("%s@%s" % [soul.soul_id, CrewRoster.assignment(soul.soul_id)])
@@ -91,6 +92,14 @@ func _on_crew_spoke(text: String, soul: SoulInstance) -> void:
 		# Same stdout trace style as SoulGateway's decision log: makes crew
 		# speech observable in headless runs and playtest logs.
 		print("aboard: %s: %s" % [_soul_name(soul), text])
+
+
+## The mind gave up outside a dialogue (inference down, model overloaded):
+## give the silence a face. The pan log has the cause; the dev stack's
+## model probe points at it.
+func _on_crew_concluded(outcome: String, soul: SoulInstance) -> void:
+	if _runner == null and outcome == "abandoned":
+		_append_log("[i]%s starts to answer, then loses the thread.[/i]" % _soul_name(soul))
 
 
 ## --- talking ------------------------------------------------------------------------
