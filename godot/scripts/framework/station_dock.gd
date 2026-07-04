@@ -77,6 +77,10 @@ func configure(location: Dictionary) -> void:
 		"location_id": location.get("id", ""),
 		"faction_control": location.get("faction_control", ""),
 	})
+	
+	# Ambient station sound
+	AudioManager.door_open()
+	AudioManager.play("computer_noise", 1.0, -8)
 
 
 ## --- the bay -----------------------------------------------------------------

@@ -33,6 +33,7 @@ CrewRoster="*res://scripts/framework/crew_roster.gd"
 ShipOperation="*res://scripts/framework/ship_operation.gd"
 MissionManager="*res://scripts/framework/mission_manager.gd"
 GravitySystem="*res://scripts/framework/gravity_system.gd"
+AudioManager="*res://scripts/framework/audio_manager.gd"
 Reputation="*res://scripts/framework/reputation_manager.gd"
 GameManager="*res://scripts/game_manager.gd"
 

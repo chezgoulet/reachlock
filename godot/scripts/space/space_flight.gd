@@ -85,6 +85,17 @@ func _ready() -> void:
 	_camera.global_transform = _camera_rest_transform()
 	_refresh_status()
 	GameState.state_changed.connect(_refresh_status)
+	
+	# Start engine audio loop as a named child
+	# arch-allow: audio is mod content loaded at runtime by path
+	var eng := AudioStreamPlayer2D.new()
+	eng.name = "EngineLoop"
+	var eng_path := "res://mods/reachlock/assets/audio/kenney_sci-fi-sounds/Audio/spaceEngineLarge_001.ogg"  # arch-allow: content path
+	if ResourceLoader.exists(eng_path):
+		eng.stream = ResourceLoader.load(eng_path)
+	eng.volume_db = -20
+	eng.autoplay = true
+	add_child(eng)
 
 
 func _physics_process(delta: float) -> void:
@@ -126,6 +137,13 @@ func _physics_process(delta: float) -> void:
 	# Update ShipOperation effects for exterior visualization
 	ShipOperation.set_effect("engine_glow", absf(pilot_controls.get("throttle", 0.0)))
 	ShipOperation.set_effect("engine_trail", absf(_velocity.length() / _stats.top_speed))
+	
+	# Engine audio follows throttle
+	if has_node("EngineLoop"):
+		var eng: AudioStreamPlayer2D = $EngineLoop
+		var throttle_val: float = absf(pilot_controls.get("throttle", 0.0))
+		eng.volume_db = -20 + throttle_val * 15
+		eng.pitch_scale = 0.8 + throttle_val * 0.5
 	
 	_starfield.global_position = _ship.global_position
 	_advance_tick(delta)
@@ -342,6 +360,7 @@ func _update_combat(delta: float) -> void:
 		return
 	_fire_clock = FIRE_COOLDOWN
 	ShipOperation.set_effect("weapons_firing", true)
+	AudioManager.laser_fire()
 	var to_pirate: Vector3 = _pirate.global_position - _ship.global_position
 	if to_pirate.length() > FIRE_RANGE:
 		return

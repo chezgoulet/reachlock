@@ -343,20 +343,24 @@ func _use_station(target: Dictionary) -> void:
 
 	match station_id:
 		"pilot":
+			AudioManager.play("ui_switch")
 			_append_log("[i]You take the pilot's seat.[/i]")
-			# Player is now piloting. WASD now controls ship, not walker.
 			_frozen = true
-			# On press of R or Esc, release station
 		"weapons":
+			AudioManager.play("ui_switch")
 			_append_log("[i]You man the weapons station.[/i]")
 			_frozen = true
 		"engineering":
+			AudioManager.play("computer_noise", 0.9)
 			_append_log("[i]You check the engineering console. Power distribution nominal.[/i]")
 		"scanner":
+			AudioManager.play("power_up")
 			_append_log("[i]You power up the scanner array.[/i]")
 		"cargo":
+			AudioManager.play("ui_click")
 			_append_log("[i]You inspect the cargo manifest.[/i]")
 		"cryopod":
+			AudioManager.play("force_field", 0.7)
 			_append_log("[i]The cryopod is empty. Boris maintains it between jumps.[/i]")
 		_:
 			_append_log("[i]You interact with the %s station.[/i]" % station_id.capitalize())
