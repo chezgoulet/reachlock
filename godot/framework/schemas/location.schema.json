@@ -92,6 +92,61 @@
         "richness": { "type": "number", "minimum": 0, "maximum": 1, "description": "Yield rate scalar; 1 = a full unit per mining cycle." }
       }
     },
-    "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
+    "extra": {
+      "type": "object",
+      "description": "Free-form escape hatch for mod-specific data. Never read by the engine."
+    },
+    "patrols": {
+      "type": "array",
+      "description": "Patrol ships that spawn in this location's space. Data-driven.",
+      "items": {
+        "type": "object",
+        "required": ["id", "ship", "count"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "ship": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "soul": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "faction": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "engagement": {
+            "type": "string",
+            "enum": ["passive", "investigate", "engage", "ambush"],
+            "default": "investigate"
+          },
+          "route": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          }
+        }
+      }
+    }
   }
 }

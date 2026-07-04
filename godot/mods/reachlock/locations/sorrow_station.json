@@ -24,5 +24,16 @@
   "mining": {
     "good": "raw_ore",
     "richness": 1.0
-  }
+  },
+  "patrols": [
+    {
+      "id": "compact_picket",
+      "ship": "compact_picket_boat",
+      "soul": "compact_picket_drone",
+      "faction": "compact",
+      "count": 2,
+      "engagement": "passive",
+      "color": "#8c3030"
+    }
+  ]
 }

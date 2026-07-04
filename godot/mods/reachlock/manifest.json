@@ -10,8 +10,8 @@
   "provides": {
     "factions": ["compact", "isc", "corp_charter", "reach", "earth_remnant"],
     "locations": ["sorrow_station", "aethon", "verne", "cadence", "the_veil", "earth"],
-    "ships": ["loup_garou", "loup_garou_shuttle", "reaver_skiff"],
-    "npcs": ["tib", "tove", "bardo", "doc_keene", "prudence", "risc", "boris", "vex"],
+    "ships": ["loup_garou", "loup_garou_shuttle", "compact_picket_boat", "reaver_skiff"],
+    "npcs": ["tib", "tove", "bardo", "doc_keene", "prudence", "risc", "boris", "vex", "compact_picket_drone"],
     "storylines": ["veil_escalation", "duskway_runs", "alexander_long_game", "predecessor_revelation"],
     "goods": ["raw_ore", "refined_alloys", "rations"],
     "dialogues": ["tib_dock_debrief", "tib_station_greeting", "tove_cargo_check", "tove_duskway_offer"],

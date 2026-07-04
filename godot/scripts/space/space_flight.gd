@@ -76,6 +76,7 @@ func _ready() -> void:
 	_station = _build_station()
 	add_child(_station)
 	_build_minable_rocks()
+	_build_patrols()
 	_camera.fov = BASE_FOV
 	_camera.global_transform = _camera_rest_transform()
 	_refresh_status()
@@ -420,7 +421,88 @@ func _update_docking() -> void:
 		on_dock_initiated(_location.get("id", ""))
 
 
-## --- hud -----------------------------------------------------------------------
+## ___patrols__________________________________________________________________
+var _patrols: Array = []  # Active PatrolController instances
+
+
+func _build_patrols() -> void:
+	var patrol_data: Array = _location.get("patrols", [])
+	for entry: Dictionary in patrol_data:
+		var count: int = entry.get("count", 1)
+		var faction: String = entry.get("faction", "")
+		var hull_id: String = entry.get("ship", "")
+		var color_str: String = entry.get("color", "#8c3030")
+		var color: Color = Color.from_string(color_str, Color(0.5, 0.2, 0.15))
+		var engagement: String = entry.get("engagement", "passive")
+		
+		for i in count:
+			var pc := PatrolController.new()
+			var mock_soul: Dictionary = {
+				"id": entry.get("id", "patrol_%d" % _rng.randi()),
+				"faction": faction,
+				"color": entry.get("color", "#8c3030"),
+			}
+			var hull: Dictionary = DataRegistry.get_entity("ships", hull_id)
+			if hull.is_empty():
+				continue
+			pc.configure(mock_soul, hull, _ship)
+			pc.set_patrol_route(_random_route())
+			pc.engagement_started.connect(_on_patrol_alert.bind(pc))
+			pc.destroyed.connect(_on_patrol_destroyed.bind(pc))
+			
+			# Position patrol at a random offset from the player
+			var theta := _rng.randf() * TAU
+			var dist := _rng.randf_range(60.0, 100.0)
+			pc.global_position = _ship.global_position + Vector3(cos(theta) * dist, 0, sin(theta) * dist)
+			add_child(pc)
+			_patrols.append(pc)
+
+
+func _update_patrols(delta: float) -> void:
+	for i in range(_patrols.size() - 1, -1, -1):
+		var pc: PatrolController = _patrols[i]
+		if not pc.is_alive():
+			_patrols.remove_at(i)
+			continue
+
+
+func _random_route() -> Array:
+	var route: Array = []
+	var center := _ship.global_position if is_instance_valid(_ship) else Vector3.ZERO
+	for i in 3:
+		var theta := _rng.randf() * TAU
+		var dist := _rng.randf_range(40.0, 80.0)
+		route.append(center + Vector3(cos(theta) * dist, 0, sin(theta) * dist))
+	return route
+
+
+func _on_patrol_alert(_ship_id: String) -> void:
+	# A patrol called reinforcements — spawn another patrol nearby
+	var theta := _rng.randf() * TAU
+	var dist := _rng.randf_range(80.0, 120.0)
+	# Reuse the first patrol entry's config
+	var patrol_data: Array = _location.get("patrols", [])
+	if patrol_data.is_empty():
+		return
+	var entry: Dictionary = patrol_data[0]
+	var hull: Dictionary = DataRegistry.get_entity("ships", entry.get("ship", ""))
+	if hull.is_empty():
+		return
+	var pc := PatrolController.new()
+	var mock_soul: Dictionary = {"id": "reinforce_%d" % _rng.randi(), "faction": entry.get("faction", ""), "color": entry.get("color", "#8c3030")}
+	pc.configure(mock_soul, hull, _ship)
+	pc.global_position = _ship.global_position + Vector3(cos(theta) * dist, 0, sin(theta) * dist)
+	pc.set_patrol_route([_ship.global_position])
+	pc.destroyed.connect(_on_patrol_destroyed.bind(pc))
+	add_child(pc)
+	_patrols.append(pc)
+
+
+func _on_patrol_destroyed(_ship_id: String) -> void:
+	pass
+
+
+## --- HUD ---------------------------------------------------------------------
 
 
 func _update_hud() -> void:

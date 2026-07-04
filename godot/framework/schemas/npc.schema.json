@@ -165,6 +165,11 @@
       "pattern": "^#[0-9a-fA-F]{6}$",
       "description": "Stand-in sprite color (hex) for this character until sprite art lands. Read by ShipInterior and other framework scenes; optional — a deterministic per-id color is the fallback."
     },
+    "faction": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Faction this NPC belongs to. Used for patrol/combat contexts. Optional — omitted for unaffiliated characters."
+    },
     "aboard": {
       "type": "boolean",
       "description": "True when this crew member is currently serving aboard their ship (CrewRoster membership). Authored-but-ashore characters (future hires, story joins) omit it or set false."
