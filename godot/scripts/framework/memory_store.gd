@@ -116,7 +116,7 @@ func ship_memory(soul_id: String, memory: Dictionary, source := "") -> void:
 	}
 	_request(_base + "/v1/documents", HTTPClient.METHOD_POST, JSON.stringify(payload),
 		func(code: int, _body: Variant) -> void:
-			if code != 200:
+			if code != 200 and code != 0:
 				push_warning("memory: ship_memory %s -> HTTP %d" % [soul_id, code]))
 
 
@@ -153,7 +153,8 @@ func ingest_conversation(soul_id: String, messages: Array, context: Dictionary) 
 				print("memory: %s distilled %d fact(s) from conversation" % [
 					soul_id, int(body.get("fact_count", 0))])
 			else:
-				push_warning("memory: conversation ingest for %s -> HTTP %d" % [soul_id, code]))
+				if code != 0:
+					push_warning("memory: conversation ingest for %s -> HTTP %d" % [soul_id, code]))
 
 
 ## --- plumbing -------------------------------------------------------------------
