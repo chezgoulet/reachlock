@@ -113,7 +113,7 @@ func _build_rooms() -> void:
 			)
 			# Color: room-specified > room_zones > DEFAULT_ROOM_COLORS by kind
 			var color: Color = DEFAULT_ROOM_COLORS.get(room_kind, NEUTRAL_ROOM)
-			var hex := entry.get("color", "")
+			var hex: String = entry.get("color", "")
 			if hex != "":
 				color = Color.from_string(hex, color)
 			elif zones.has(room_id):

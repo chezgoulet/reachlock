@@ -132,6 +132,7 @@ func _physics_process(delta: float) -> void:
 	_update_mining(delta)
 	_update_combat(delta)
 	_update_pirate(delta)
+	_update_patrols(delta)
 	_update_docking()
 	_update_hud()
 
