@@ -34,6 +34,25 @@ func spawn_at_location(location: Dictionary) -> Array[SoulInstance]:
 	return _spawned
 
 
+## Spawn an explicit list of souls (the crew aboard a ship, per
+## CrewRoster) with a shared world context. Same lifecycle rules as
+## spawn_at_location; the two entry points differ only in where the id
+## list comes from (location data vs the crew roster).
+func spawn_souls(soul_ids: Array, world_context_text: String) -> Array[SoulInstance]:
+	release_all()
+	for npc_id: String in soul_ids:
+		var soul: Dictionary = DataRegistry.get_entity("npcs", npc_id)
+		if soul.is_empty():
+			push_warning("npc_spawner: no soul for npc id '%s'" % npc_id)
+			continue
+		var inst := SoulInstance.new()
+		inst.setup(soul)
+		inst.world_context = world_context_text
+		add_child(inst)
+		_spawned.append(inst)
+	return _spawned
+
+
 ## Send the same event to every spawned soul (e.g. `ship.docked`,
 ## `combat.engagement_started`). The decision arrives later via each
 ## soul's `spoke` / `acted` / `concluded` signals.

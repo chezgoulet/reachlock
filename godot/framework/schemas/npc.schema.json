@@ -3,14 +3,31 @@
   "title": "NPC soul file (authored birth-state, v1)",
   "description": "The authored starting state of an NPC soul. This file is the template the mind daemon (Pan) instantiates from and the memory store is seeded from. Runtime soul state — memories formed in play, emotional drift, relationship deltas — lives in save data (SP) or the server (MMO), never here. v1 adds mind tier, memory seeds, emotional baseline, and the relationship graph; every v0 file is a valid v1 file (all new fields optional).",
   "type": "object",
-  "required": ["id", "name"],
+  "required": [
+    "id",
+    "name"
+  ],
   "additionalProperties": false,
   "properties": {
-    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-    "name": { "type": "string" },
-    "soul_version": { "type": "integer", "minimum": 0, "maximum": 1, "description": "Contract revision this file is authored against. Omitted = 0." },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "soul_version": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Contract revision this file is authored against. Omitted = 0."
+    },
     "mind": {
-      "enum": ["rules", "behavior_tree", "llm"],
+      "enum": [
+        "rules",
+        "behavior_tree",
+        "llm"
+      ],
       "description": "Which Pan provider runs this soul — the robots-vs-droids tier (GAME-DESIGN.md §6.2) as a data field. Omitted = rules (a background NPC). Moddable like everything else."
     },
     "memory_seeds": {
@@ -18,54 +35,139 @@
       "description": "Authored starting memories, ingested into the soul's vault at instantiation. Written in first person, past tense — they read back as the NPC's own recall.",
       "items": {
         "type": "object",
-        "required": ["text"],
+        "required": [
+          "text"
+        ],
         "additionalProperties": false,
         "properties": {
-          "text": { "type": "string" },
-          "importance": { "type": "number", "minimum": 0, "maximum": 1 },
-          "tags": { "type": "array", "items": { "type": "string" } }
+          "text": {
+            "type": "string"
+          },
+          "importance": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
     "emotional_baseline": {
       "type": "object",
       "description": "Named emotional axes and their resting values (-1..1). Runtime state drifts around these and decays back toward them. Axis vocabulary lives in the profile doc, not the schema — mods may add axes.",
-      "additionalProperties": { "type": "number", "minimum": -1, "maximum": 1 }
+      "additionalProperties": {
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1
+      }
     },
     "relationships": {
       "type": "array",
       "description": "Initial edges of the relationship graph (to other NPCs or `player`). Runtime deltas live in saves.",
       "items": {
         "type": "object",
-        "required": ["to", "kind"],
+        "required": [
+          "to",
+          "kind"
+        ],
         "additionalProperties": false,
         "properties": {
-          "to": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-          "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-          "strength": { "type": "integer", "minimum": -100, "maximum": 100 },
-          "note": { "type": "string" }
+          "to": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "kind": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "strength": {
+            "type": "integer",
+            "minimum": -100,
+            "maximum": 100
+          },
+          "note": {
+            "type": "string"
+          }
         }
       }
     },
-    "role": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-    "ship": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-    "description": { "type": "string" },
+    "role": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "ship": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "description": {
+      "type": "string"
+    },
     "personality": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "traits": { "type": "array", "items": { "type": "string" } },
-        "values": { "type": "array", "items": { "type": "string" } },
-        "fears": { "type": "array", "items": { "type": "string" } }
+        "traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fears": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "allegiances": {
       "type": "object",
       "description": "Faction or group id -> starting disposition, -100 (sworn enemy) to +100 (would die for).",
-      "additionalProperties": { "type": "integer", "minimum": -100, "maximum": 100 }
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -100,
+        "maximum": 100
+      }
     },
-    "skills": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
-    "arc": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-    "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    },
+    "arc": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "extra": {
+      "type": "object",
+      "description": "Free-form escape hatch for mod-specific data. Never read by the engine."
+    },
+    "station": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Interior room this crew member is stationed in (must name a room in the ship's interior_rooms). Read by CrewRoster; optional — the first hull room is the fallback."
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$",
+      "description": "Stand-in sprite color (hex) for this character until sprite art lands. Read by ShipInterior and other framework scenes; optional — a deterministic per-id color is the fallback."
+    },
+    "aboard": {
+      "type": "boolean",
+      "description": "True when this crew member is currently serving aboard their ship (CrewRoster membership). Authored-but-ashore characters (future hires, story joins) omit it or set false."
+    }
   }
 }

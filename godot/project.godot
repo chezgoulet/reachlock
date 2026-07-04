@@ -28,6 +28,7 @@ GameState="*res://scripts/framework/game_state.gd"
 MemoryStore="*res://scripts/framework/memory_store.gd"
 SoulGateway="*res://scripts/framework/soul_gateway.gd"
 SimGateway="*res://scripts/framework/sim_gateway.gd"
+CrewRoster="*res://scripts/framework/crew_roster.gd"
 GameManager="*res://scripts/game_manager.gd"
 
 [display]

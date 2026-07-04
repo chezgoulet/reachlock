@@ -7,9 +7,22 @@
   "ship": "loup_garou",
   "description": "The Loup-Garou's cargo and provisions lead. Tove is a Duskway runner — the kind of spacer who knows which side of a manifest to sign, and which side to burn. She came out of Earth before the blockade settled into permanence. Doesn't talk about who didn't come with her.",
   "personality": {
-    "traits": ["watchful", "dry", "loyal_in_silence", "patient"],
-    "values": ["earth_remnant", "the_runners_code", "crew_safety"],
-    "fears": ["losing_another_crew", "compact_boarding", "going_back_to_a_quiet_life"]
+    "traits": [
+      "watchful",
+      "dry",
+      "loyal_in_silence",
+      "patient"
+    ],
+    "values": [
+      "earth_remnant",
+      "the_runners_code",
+      "crew_safety"
+    ],
+    "fears": [
+      "losing_another_crew",
+      "compact_boarding",
+      "going_back_to_a_quiet_life"
+    ]
   },
   "allegiances": {
     "earth_remnant": 85,
@@ -28,35 +41,83 @@
     {
       "text": "I was on a grain hauler the night the blockade closed. I watched the gate lockouts on the public channel while we slipped out the long way. I've never been back.",
       "importance": 0.95,
-      "tags": ["earth", "duskway", "blockade", "grief"]
+      "tags": [
+        "earth",
+        "duskway",
+        "blockade",
+        "grief"
+      ]
     },
     {
       "text": "The Duskway isn't a route. It's a network of people who refuse to let a city die quiet. I owe them more than I can repay. The least I owe is to keep running.",
       "importance": 0.9,
-      "tags": ["duskway", "identity", "network"]
+      "tags": [
+        "duskway",
+        "identity",
+        "network"
+      ]
     },
     {
       "text": "The captain hired me at Sorrow Station without asking about my cargo. I told them anyway. That was the test, on my side too.",
       "importance": 0.8,
-      "tags": ["player", "trust", "sorrow_station"]
+      "tags": [
+        "player",
+        "trust",
+        "sorrow_station"
+      ]
     },
     {
       "text": "Tib flies the way I run. Doesn't ask. Doesn't flinch. We've never had to explain a line to each other.",
       "importance": 0.7,
-      "tags": ["tib", "crew", "trust"]
+      "tags": [
+        "tib",
+        "crew",
+        "trust"
+      ]
     },
     {
       "text": "Boris owes me a poker debt. He'll pay it in favors, not credits. That's how things work out here.",
       "importance": 0.4,
-      "tags": ["boris", "crew", "debt"]
+      "tags": [
+        "boris",
+        "crew",
+        "debt"
+      ]
     }
   ],
   "relationships": [
-    { "to": "player", "kind": "captain", "strength": 40, "note": "Trusts what the captain does at the dock more than what they say at the bar." },
-    { "to": "tib", "kind": "crewmate", "strength": 70, "note": "Tib is the only other person on the ship I don't have to translate myself for." },
-    { "to": "doc_keene", "kind": "crewmate", "strength": 45 },
-    { "to": "boris", "kind": "crewmate", "strength": 35 }
+    {
+      "to": "player",
+      "kind": "captain",
+      "strength": 40,
+      "note": "Trusts what the captain does at the dock more than what they say at the bar."
+    },
+    {
+      "to": "tib",
+      "kind": "crewmate",
+      "strength": 70,
+      "note": "Tib is the only other person on the ship I don't have to translate myself for."
+    },
+    {
+      "to": "doc_keene",
+      "kind": "crewmate",
+      "strength": 45
+    },
+    {
+      "to": "boris",
+      "kind": "crewmate",
+      "strength": 35
+    }
   ],
-  "skills": ["contraband_routing", "manifest_law", "negotiation", "small_arms", "smuggler_contacts"],
-  "arc": "tove_duskway_believer"
+  "skills": [
+    "contraband_routing",
+    "manifest_law",
+    "negotiation",
+    "small_arms",
+    "smuggler_contacts"
+  ],
+  "arc": "tove_duskway_believer",
+  "station": "cargo_hold",
+  "color": "#b5654a",
+  "aboard": true
 }

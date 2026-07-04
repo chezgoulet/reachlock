@@ -28,6 +28,11 @@ var player := {
 }
 var souls := {}            # npc id -> {relationships:{to:{axis:val}}, emotions:{}, flags:[], pending_memories:[]}
 var factions := {}         # faction id -> {standing:{axis:val}}
+# The crew block (P6): membership, station assignments, the relationship
+# graph between crew members, and their shared history. CrewRoster owns
+# the semantics; this node owns persistence. `seeded` marks first-touch
+# derivation from authored content.
+var crew := {"seeded": false, "aboard": [], "assignments": {}, "edges": {}, "history": []}
 
 
 func _ready() -> void:
@@ -178,6 +183,7 @@ func save_game() -> bool:
 		"universe": universe,
 		"player": player,
 		"factions": factions,
+		"crew": crew,
 		"souls": _souls_for_save(),
 		"mods": {
 			"load_order": DataRegistry.load_order(),
@@ -208,7 +214,14 @@ func load_game() -> bool:
 		return false
 	universe = snapshot.get("universe", universe)
 	player = snapshot.get("player", player)
+	# Saves from before the hull field carry "": re-apply the content
+	# fallback (mods are loaded before any save load in the boot order).
+	if player.ship.get("hull_id", "") == "":
+		player.ship.hull_id = DataRegistry.start_config().get("player_ship", "")
 	factions = snapshot.get("factions", {})
+	var saved_crew: Dictionary = snapshot.get("crew", {})
+	if not saved_crew.is_empty():
+		crew = saved_crew
 	souls = {}
 	var saved_souls: Dictionary = snapshot.get("souls", {})
 	for soul_id: String in saved_souls:
