@@ -1,0 +1,15 @@
+{
+  "direction": "daemon_to_host",
+  "message": {
+    "v": 0,
+    "seq": 0,
+    "re": 0,
+    "type": "welcome",
+    "body": {
+      "protocol_version": 0,
+      "server": "reachlock-simd/0.1.0",
+      "tick": 121,
+      "seed": 42
+    }
+  }
+}

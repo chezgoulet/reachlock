@@ -1,0 +1,9 @@
+{
+  "direction": "host_to_daemon",
+  "message": {
+    "v": 0,
+    "seq": 7,
+    "type": "shutdown",
+    "body": {}
+  }
+}

@@ -5,6 +5,12 @@ extends Node2D
 ## code: every name on screen comes from content.
 
 const DialogueRunnerScript := preload("res://scripts/framework/dialogue_runner.gd")
+const MarketBoardScene := preload("res://scenes/framework/market_board.tscn")
+const EventFeedScene := preload("res://scenes/framework/event_feed.tscn")
+
+## In-game minutes that pass while the ship runs its departure sequence —
+## the batch time-skip the M6 contract requires on undock.
+const UNDOCK_DEPARTURE_TICKS := 30
 
 var _location: Dictionary = {}
 var _spawner: NpcSpawner
@@ -16,6 +22,8 @@ var _log: RichTextLabel
 var _choice_box: VBoxContainer
 var _npc_row: HBoxContainer
 var _status: Label
+var _market: MarketBoard = null
+var _feed: EventFeed = null
 
 
 func _ready() -> void:
@@ -128,25 +136,27 @@ func _on_soul_acted(capability: String, args: Dictionary, soul: SoulInstance) ->
 			_append_log("[i]%s %s(%s)[/i]" % [_soul_name(soul), capability, JSON.stringify(args)])
 
 
-## --- market / actions ----------------------------------------------------------
+## --- market / news / actions ----------------------------------------------------
 
 
-func _sell_all_cargo() -> void:
-	var sold_total := 0
-	for good_id in GameState.player.ship.cargo.keys():
-		var good := DataRegistry.get_entity("goods", good_id)
-		var price := int(good.get("base_price", 1))
-		var qty := GameState.cargo_count(good_id)
-		GameState.adjust_credits(price * qty)
-		GameState.add_cargo(good_id, -qty)
-		sold_total += price * qty
-	if sold_total > 0:
-		_append_log("Sold cargo for %d cr." % sold_total)
+func _on_traded(good_id: String, amount: int, price: int) -> void:
+	var good_name: String = DataRegistry.get_entity("goods", good_id).get("name", good_id)
+	if amount > 0:
+		_append_log("Sold %d %s at %d cr each." % [amount, good_name, price])
 	else:
-		_append_log("[i]Nothing in the hold to sell.[/i]")
+		_append_log("Bought %d %s at %d cr each." % [-amount, good_name, price])
+
+
+## Every news item is also a soul perceive event: the crew and the locals
+## read the same feed you do (news.<kind> topics, P3 contract).
+func _on_news_item(entry: Dictionary) -> void:
+	_spawner.broadcast_event("news." + str(entry.get("kind", "unknown")), entry)
 
 
 func _undock() -> void:
+	# Departure clearance takes in-game time; the universe moves through
+	# it in one deterministic batch (M6: time passes while you fly).
+	SimGateway.advance_batch(UNDOCK_DEPARTURE_TICKS)
 	GameState.player.location = ""
 	GameState.clear_flag("survived_ambush")  # each flight earns its own stories
 	GameManager.request_mode(GameManager.Mode.SPACE_FLIGHT)
@@ -191,15 +201,23 @@ func _build_ui() -> void:
 	_choice_box = VBoxContainer.new()
 	_root.add_child(_choice_box)
 
+	var services: Array = _location.get("services", [])
+	# Service panels are framework scenes configured from location data —
+	# a mod adds a market or a news bar by editing its location file.
+	if "market" in services:
+		_market = MarketBoardScene.instantiate()
+		_market.traded.connect(_on_traded)
+		_root.add_child(_market)
+		_market.configure(_location)
+	if "bar" in services:
+		_feed = EventFeedScene.instantiate()
+		_feed.item_added.connect(_on_news_item)
+		_root.add_child(_feed)
+		_feed.configure()
+
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
 	_root.add_child(actions)
-	var services: Array = _location.get("services", [])
-	if "market" in services:
-		var sell := Button.new()
-		sell.text = "Sell cargo"
-		sell.pressed.connect(_sell_all_cargo)
-		actions.add_child(sell)
 	var save := Button.new()
 	save.text = "Save"
 	save.pressed.connect(func() -> void:
@@ -226,9 +244,11 @@ func _refresh_status() -> void:
 	var cargo_units := 0
 	for qty in GameState.player.ship.cargo.values():
 		cargo_units += int(qty)
-	_status.text = "Credits: %d    Cargo: %d    Hull: %d%%" % [
+	_status.text = "Credits: %d    Cargo: %d    Hull: %d%%    Tick: %d%s" % [
 		GameState.player.credits, cargo_units,
 		int(GameState.player.ship.hull_integrity * 100.0),
+		int(GameState.universe.tick),
+		"" if SimGateway.is_ready() else " (static)",
 	]
 
 

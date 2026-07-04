@@ -62,10 +62,69 @@ type State struct {
 	Locations map[string]*LocationEconomy `json:"locations"`
 	// Events is the ordered pending event queue. See EventQueue.
 	Events EventQueue `json:"events"`
+	// Journal is the emitted-event log: things that HAPPENED during
+	// ticks (reprices, stance changes, patrols, skirmishes, trades,
+	// fired events), in occurrence order, capped at JournalCap. This
+	// is what the in-game news feed renders — every feed item was a
+	// real simulation event. Additive field (v0 snapshots load with
+	// an empty journal).
+	Journal []JournalEntry `json:"journal,omitempty"`
 	// insertSeq is the monotonic counter that gives every event a
 	// total-ordering tiebreak. Not serialized — it is rebuilt from
 	// the event list on snapshot load (see Snapshot).
 	insertSeq uint64 `json:"-"`
+}
+
+// JournalCap bounds the journal; the oldest entries fall off. 256 is
+// hours of in-game news at the current emission rates.
+const JournalCap = 256
+
+// JournalEntry is one emitted simulation event. Kind selects which of
+// the optional fields are meaningful:
+//
+//	"reprice"       — GoodID, Amount (new price), Delta (change)
+//	"stance_change" — FactionID, With, Stance
+//	"patrol"        — FactionID, With (whose space the patrol probes)
+//	"skirmish"      — FactionID, With
+//	"trade"         — LocationID, GoodID, Amount (+sold to station, -bought)
+//	"event_fired"   — EventKind + the fired event's scoping fields
+//
+// Entries are plain data; the host renders text from them (the engine
+// stays content-free — names come from the host's own content load).
+type JournalEntry struct {
+	Tick       int64  `json:"tick"`
+	Kind       string `json:"kind"`
+	FactionID  string `json:"faction_id,omitempty"`
+	With       string `json:"with,omitempty"`
+	Stance     string `json:"stance,omitempty"`
+	GoodID     string `json:"good_id,omitempty"`
+	LocationID string `json:"location_id,omitempty"`
+	Amount     int    `json:"amount,omitempty"`
+	Delta      int    `json:"delta,omitempty"`
+	EventKind  string `json:"event_kind,omitempty"`
+}
+
+// journal appends an entry and enforces the cap.
+func (s *State) journal(e JournalEntry) {
+	s.Journal = append(s.Journal, e)
+	if len(s.Journal) > JournalCap {
+		s.Journal = s.Journal[len(s.Journal)-JournalCap:]
+	}
+}
+
+// JournalSince returns the entries with Tick >= since, oldest first.
+// (Entries older than the cap are gone; callers that fall behind more
+// than JournalCap entries see a truncated window, which is the deal.)
+func (s *State) JournalSince(since int64) []JournalEntry {
+	// The journal is append-ordered and ticks are monotonic: binary
+	// search would work, but the slice is <= JournalCap long.
+	out := make([]JournalEntry, 0, 16)
+	for _, e := range s.Journal {
+		if e.Tick >= since {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // Faction is a faction's live state: identity (loaded from content) plus
@@ -283,6 +342,7 @@ func Advance(s *State, n int64, inputs []Input) {
 		}
 		fireDueEvents(s)
 		stepFactions(s)
+		maybeStepFactionGoals(s)
 		maybeReprice(s)
 		s.Tick++
 	}
@@ -336,7 +396,29 @@ func applyInput(s *State, in *Input) {
 		}
 		if stance, _ := in.Other["stance"].(string); stance != "" {
 			a.Relationships[other] = stance
+			s.journal(JournalEntry{
+				Tick: s.Tick, Kind: "stance_change",
+				FactionID: in.FactionID, With: other, Stance: stance,
+			})
 		}
+	case "trade":
+		// A player (or NPC) trade at a location. Amount > 0: goods sold
+		// TO the station (local supply rises); amount < 0: goods bought
+		// FROM it (supply falls). Trades are the player-action input the
+		// SimGateway sends (P1/P2); they perturb the next reprice and
+		// land in the journal — the market remembers you.
+		if in.AtLocation == "" || in.GoodID == "" {
+			return
+		}
+		loc, ok := s.Locations[in.AtLocation]
+		if !ok {
+			return
+		}
+		loc.SupplyByGood[in.GoodID] += in.Amount
+		s.journal(JournalEntry{
+			Tick: s.Tick, Kind: "trade",
+			LocationID: in.AtLocation, GoodID: in.GoodID, Amount: in.Amount,
+		})
 	default:
 		// Unknown kinds are a no-op. CI catches them at authoring time.
 	}
@@ -367,8 +449,114 @@ func fireDueEvents(s *State) {
 			FactionID:  ev.FactionID,
 		}
 		applyInput(s, &in)
+		s.journal(JournalEntry{
+			Tick: s.Tick, Kind: "event_fired", EventKind: ev.Kind,
+			FactionID: ev.FactionID, GoodID: ev.GoodID,
+			LocationID: ev.AtLocation, Amount: ev.Amount,
+		})
 	}
 	s.Events = rest
+}
+
+// Stance ladder for the faction-goal dynamics: index 0 is the friendliest.
+var stanceLadder = []string{"allied", "friendly", "neutral", "tense", "hostile", "war"}
+
+func stanceIndex(stance string) int {
+	for i, s := range stanceLadder {
+		if s == stance {
+			return i
+		}
+	}
+	return 2 // unknown stances read as neutral
+}
+
+// maybeStepFactionGoals runs the coarse faction-goal evaluation every 1440
+// ticks (one in-game day, per UNIVERSE-TICK.md). For each related faction
+// pair (canonical order, own RNG stream) there is a small chance the stance
+// shifts one step along the ladder — toward war when the pair's combined
+// trust is negative, toward allied otherwise — and, in tense-or-worse
+// pairs, a chance of a patrol (probing move) or skirmish (war only). Every
+// shift and presence event lands in the journal: this is where the news
+// feed's "Compact patrol pushing into a neighboring system" comes from —
+// a real simulation event, not flavor text.
+func maybeStepFactionGoals(s *State) {
+	if (s.Tick+1)%1440 != 0 {
+		return
+	}
+	// Canonical pair order: sorted faction ids, each unordered pair once.
+	ids := sortedFactionIDs(s)
+	for _, a := range ids {
+		fa := s.Factions[a]
+		for _, b := range sortedRelationshipIDs(fa) {
+			if b <= a {
+				continue // the (min,max) ordering owns the pair
+			}
+			fb, ok := s.Factions[b]
+			if !ok {
+				continue
+			}
+			r := newStream(s.Seed, "stance."+a+"."+b, s.Tick)
+			idx := stanceIndex(fa.Relationships[b])
+			if r.IntRange(0, 7) == 0 {
+				next := idx
+				if fa.Trust+fb.Trust < 0 {
+					if idx < len(stanceLadder)-1 {
+						next = idx + 1
+					}
+				} else if idx > 0 {
+					next = idx - 1
+				}
+				if next != idx {
+					stance := stanceLadder[next]
+					fa.Relationships[b] = stance
+					if fb.Relationships != nil {
+						if _, mutual := fb.Relationships[a]; mutual {
+							fb.Relationships[a] = stance
+						}
+					}
+					idx = next
+					s.journal(JournalEntry{
+						Tick: s.Tick, Kind: "stance_change",
+						FactionID: a, With: b, Stance: stance,
+					})
+				}
+			}
+			// Presence events in strained pairs: patrols probe, wars skirmish.
+			if idx >= stanceIndex("tense") && r.IntRange(0, 2) == 0 {
+				kind := "patrol"
+				if stanceLadder[idx] == "war" {
+					kind = "skirmish"
+				}
+				// The mover is the pair member with lower trust — the one
+				// with something to prove. Tie: the canonical first.
+				mover, target := a, b
+				if fb.Trust < fa.Trust {
+					mover, target = b, a
+				}
+				s.journal(JournalEntry{
+					Tick: s.Tick, Kind: kind, FactionID: mover, With: target,
+				})
+			}
+		}
+	}
+}
+
+func sortedFactionIDs(s *State) []string {
+	ids := make([]string, 0, len(s.Factions))
+	for id := range s.Factions {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func sortedRelationshipIDs(f *Faction) []string {
+	ids := make([]string, 0, len(f.Relationships))
+	for id := range f.Relationships {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // stepFactions runs the per-faction drift. The drift is small and
@@ -401,32 +589,121 @@ func maybeReprice(s *State) {
 		return
 	}
 	const scale = 4
-	for _, g := range s.Market {
-		// Supply lowers the price, demand raises it. The net surplus
-		// (supply - demand) is the curve input; a positive surplus
-		// pushes the price down, a deficit pushes it up.
+	// 1. The production/consumption pulse — the economy's own motion.
+	//    Each location adds supply for what it produces and demand for
+	//    what it consumes, plus a small per-(location,good) jittered
+	//    draw so no two reprice intervals are identical. Without this
+	//    pulse nothing perturbs the economy between player inputs and
+	//    "prices differ from yesterday" would be a lie.
+	const pulse = 8
+	for _, locID := range sortedLocationIDs(s) {
+		loc := s.Locations[locID]
+		for _, goodID := range sortedIntMapKeys(loc.SupplyByGood) {
+			r := newStream(s.Seed, "econ.supply."+locID+"."+goodID, s.Tick)
+			loc.SupplyByGood[goodID] += pulse + r.IntRange(-2, 2)
+		}
+		for _, goodID := range sortedIntMapKeys(loc.DemandByGood) {
+			r := newStream(s.Seed, "econ.demand."+locID+"."+goodID, s.Tick)
+			loc.DemandByGood[goodID] += pulse + r.IntRange(-2, 2)
+		}
+	}
+	// 2. Reprice from the accumulated supply/demand. Supply lowers the
+	//    price, demand raises it; net surplus is the curve input.
+	for _, goodID := range sortedGoodIDs(s) {
+		g := s.Market[goodID]
 		net := 0
 		for _, loc := range s.Locations {
 			net += loc.SupplyByGood[g.GoodID]
 			net -= loc.DemandByGood[g.GoodID]
 		}
 		delta := net / scale
-		price := g.BasePrice - delta
-		minPrice := g.BasePrice / 2
-		if minPrice < 1 {
-			minPrice = 1
-		}
-		maxPrice := g.BasePrice * 2
-		if price < minPrice {
-			price = minPrice
-		}
-		if price > maxPrice {
-			price = maxPrice
+		price := clampPrice(g.BasePrice-delta, g.BasePrice)
+		if price != g.Price {
+			s.journal(JournalEntry{
+				Tick: s.Tick, Kind: "reprice", GoodID: g.GoodID,
+				Amount: price, Delta: price - g.Price,
+			})
 		}
 		g.Price = price
 		g.NetDelta = net
 		g.LastRepriceTick = s.Tick
 	}
+	// 3. Decay toward equilibrium: three quarters of each stock/backlog
+	//    carries into the next interval, so pulses accumulate to a
+	//    bounded steady state (~4× pulse) instead of running away, and
+	//    a player trade's price effect fades over a few in-game hours.
+	for _, loc := range s.Locations {
+		for k, v := range loc.SupplyByGood {
+			loc.SupplyByGood[k] = v * 3 / 4
+		}
+		for k, v := range loc.DemandByGood {
+			loc.DemandByGood[k] = v * 3 / 4
+		}
+	}
+}
+
+// clampPrice bounds a computed price to [base/2, base*2], floor 1.
+func clampPrice(price, base int) int {
+	minPrice := base / 2
+	if minPrice < 1 {
+		minPrice = 1
+	}
+	maxPrice := base * 2
+	if price < minPrice {
+		return minPrice
+	}
+	if price > maxPrice {
+		return maxPrice
+	}
+	return price
+}
+
+// PriceAt derives the LOCAL price of a good at one location: the global
+// price pushed by the location's own supply/demand imbalance, on a
+// steeper curve (local scarcity bites harder than universe-average).
+// Pure function of state — no draws, no mutation — so the daemon can
+// answer price queries without perturbing determinism. ok is false when
+// the location or good is unknown. A location that neither produces nor
+// consumes the good trades it at the global price (supply and demand
+// both zero).
+func PriceAt(s *State, locationID, goodID string) (price, supply, demand int, ok bool) {
+	loc, okLoc := s.Locations[locationID]
+	g, okGood := s.Market[goodID]
+	if !okLoc || !okGood {
+		return 0, 0, 0, false
+	}
+	const localScale = 2
+	supply = loc.SupplyByGood[goodID]
+	demand = loc.DemandByGood[goodID]
+	price = clampPrice(g.Price-(supply-demand)/localScale, g.BasePrice)
+	return price, supply, demand, true
+}
+
+func sortedLocationIDs(s *State) []string {
+	ids := make([]string, 0, len(s.Locations))
+	for id := range s.Locations {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func sortedGoodIDs(s *State) []string {
+	ids := make([]string, 0, len(s.Market))
+	for id := range s.Market {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func sortedIntMapKeys(m map[string]int) []string {
+	ids := make([]string, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // Snapshot returns a deep-enough copy of s that the caller can mutate
@@ -441,6 +718,7 @@ func Snapshot(s *State) *State {
 		Market:    make(map[string]*GoodPrice, len(s.Market)),
 		Locations: make(map[string]*LocationEconomy, len(s.Locations)),
 		Events:    make(EventQueue, len(s.Events)),
+		Journal:   append([]JournalEntry(nil), s.Journal...),
 		insertSeq: s.insertSeq,
 	}
 	for k, v := range s.Factions {
@@ -474,10 +752,30 @@ func MarshalJSON(s *State) ([]byte, error) {
 // UnmarshalJSON loads a snapshot. The insertSeq counter is rebuilt
 // from the event list's max + 1 so further EnqueueInput calls keep a
 // total ordering.
+//
+// Number tolerance: a snapshot that round-tripped through a JSON
+// implementation without an integer type (Godot's JSON.stringify writes
+// every number as a float — `"trust": -43.0`) must still load. On a
+// strict-decode failure the raw JSON is normalized (decode to any,
+// re-marshal: Go prints integral floats without the fraction) and
+// retried. Corollary in SIM-PROTOCOL.md: numeric fields must stay
+// within float64's exact-integer range (|n| <= 2^53) — in particular
+// the seed.
 func UnmarshalJSON(raw []byte) (*State, error) {
 	s := &State{}
 	if err := json.Unmarshal(raw, s); err != nil {
-		return nil, fmt.Errorf("universe: snapshot decode: %w", err)
+		var loose any
+		if err2 := json.Unmarshal(raw, &loose); err2 != nil {
+			return nil, fmt.Errorf("universe: snapshot decode: %w", err)
+		}
+		normalized, err2 := json.Marshal(loose)
+		if err2 != nil {
+			return nil, fmt.Errorf("universe: snapshot decode: %w", err)
+		}
+		s = &State{}
+		if err2 := json.Unmarshal(normalized, s); err2 != nil {
+			return nil, fmt.Errorf("universe: snapshot decode: %w", err2)
+		}
 	}
 	if s.Factions == nil {
 		s.Factions = map[string]*Faction{}
@@ -556,6 +854,14 @@ func (s *State) Equal(other *State) bool {
 	}
 	if !locationEconomyMapsEqual(s.Locations, other.Locations) {
 		return false
+	}
+	if len(s.Journal) != len(other.Journal) {
+		return false
+	}
+	for i := range s.Journal {
+		if s.Journal[i] != other.Journal[i] {
+			return false
+		}
 	}
 	return eventsEqual(s.Events, other.Events)
 }

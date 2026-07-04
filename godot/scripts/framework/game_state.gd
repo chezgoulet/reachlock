@@ -9,6 +9,7 @@ extends Node
 
 signal state_changed
 signal soul_memory_pending(soul_id: String, memory: Dictionary)
+signal universe_loaded  # a save's universe block (incl. sim snapshot) was restored
 
 const SAVE_VERSION := 0
 const SAVE_PATH := "user://saves/slot0.json"
@@ -219,6 +220,7 @@ func load_game() -> bool:
 			"pending_memories": s.get("pending_memories", []),
 		}
 	print("game_state: loaded %s (tick %d)" % [SAVE_PATH, universe.tick])
+	universe_loaded.emit()
 	state_changed.emit()
 	return true
 

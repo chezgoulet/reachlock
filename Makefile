@@ -22,6 +22,11 @@ server-build:
 	mkdir -p server/bin
 	cd server && go build -o bin/reachlock-server ./cmd/reachlock-server/
 
+# Build the simulation daemon (the Sim Protocol sidecar, M6).
+simd-build:
+	mkdir -p server/bin
+	cd server && go build -o bin/reachlock-simd ./cmd/reachlock-simd/
+
 # Run the Go server locally.
 server-run: server-build
 	$(SERVER_BIN)

@@ -8,6 +8,16 @@ func _ready() -> void:
 	# save; a proper title menu replaces this later.
 	GameState.load_game()
 	_load_mode(_initial_mode())
+	if OS.is_debug_build():
+		# Test/CI hook (same family as REACHLOCK_FORCE_MODE): run headless
+		# for N seconds, save, quit. Lets integration runs exercise the
+		# full save path — including the universe snapshot — untouched.
+		var autosave_after := OS.get_environment("REACHLOCK_AUTOSAVE_AFTER")
+		if autosave_after.is_valid_float():
+			get_tree().create_timer(autosave_after.to_float()).timeout.connect(
+				func() -> void:
+					GameState.save_game()
+					get_tree().quit())
 
 
 ## A loaded save resumes where it was; otherwise content decides where a new

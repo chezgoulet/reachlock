@@ -37,8 +37,13 @@ PAN_PORT="${REACHLOCK_PAN_PORT:-40707}"
 RAGA_PORT=8000
 RAGA_TEST_PORT=8001
 
+SIMD_BIN="${SIMD_BIN:-$DATA/bin/reachlock-simd}"
+SIM_PORT="${REACHLOCK_SIM_PORT:-40708}"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 if [[ "${1:-}" == "stop" ]]; then
     pkill -f "$PAN_BIN serve" 2>/dev/null && echo "pan: stopped" || echo "pan: not running"
+    pkill -f "$SIMD_BIN" 2>/dev/null && echo "simd: stopped" || echo "simd: not running"
     pkill -f "$RAGA_BIN" 2>/dev/null && echo "ragamuffin: stopped (play + test)" || echo "ragamuffin: not running"
     exit 0
 fi
@@ -117,6 +122,21 @@ if ! pgrep -f "$PAN_BIN serve" >/dev/null; then
     echo "pan: started on 127.0.0.1:$PAN_PORT (log: $DATA/logs/pan.log)"
 else
     echo "pan: already running"
+fi
+
+# The simulation daemon (M6): the universe tick over the Sim Protocol.
+# Built from this repo; state is in-memory (the game's save owns the
+# universe snapshot and pushes it back on connect).
+if [[ ! -x "$SIMD_BIN" ]]; then
+    echo "building reachlock-simd…"
+    (cd "$REPO_ROOT/server" && go build -o "$SIMD_BIN" ./cmd/reachlock-simd)
+fi
+if ! pgrep -f "$SIMD_BIN" >/dev/null; then
+    "$SIMD_BIN" --port "$SIM_PORT" --mods "$REPO_ROOT/godot/mods" \
+        >"$DATA/logs/simd.log" 2>&1 &
+    echo "simd: started on 127.0.0.1:$SIM_PORT (log: $DATA/logs/simd.log)"
+else
+    echo "simd: already running"
 fi
 
 sleep 1
