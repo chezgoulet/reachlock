@@ -1,0 +1,66 @@
+{
+  "id": "tove_duskway_offer",
+  "npc": "tove",
+  "condition": "player.docked and \"survived_ambush\" in player.flags and \"tove_trust_earned\" not in player.flags",
+  "entry": "start",
+  "nodes": {
+    "start": {
+      "kind": "authored",
+      "text": "That skiff that jumped us. Compact markings filed off, but the engine whine was all Corp Charter surplus. Somebody's paying pirates to harass Reach traffic. That's not random.",
+      "choices": [
+        {
+          "text": "You think it's a message?",
+          "goto": "analysis"
+        },
+        {
+          "text": "What do you want to do about it?",
+          "goto": "proposal"
+        }
+      ]
+    },
+    "analysis": {
+      "kind": "authored",
+      "text": "I think somebody wants Reach operators looking over their shoulders instead of outward. Divide attention before a push. It's classic — you soften the perimeter with nuisance raids, then hit where it hurts.",
+      "choices": [
+        { "text": "Sounds like you've seen this before.", "goto": "seen_before" },
+        { "text": "What's the play?", "goto": "proposal" }
+      ]
+    },
+    "seen_before": {
+      "kind": "authored",
+      "text": "I've seen it done. Never been on the side watching it before. Different angle.",
+      "mutations": [
+        { "op": "add_memory", "text": "Told the captain about the pattern behind the Compact's pirate raids. They listened like someone who's been on the wrong end of a setup before.", "importance": 0.6, "tags": ["player", "compact", "trust"] }
+      ],
+      "goto": "proposal"
+    },
+    "proposal": {
+      "kind": "authored",
+      "text": "I've got a contact on the Duskway. Old runner, owes me. She hears things from the Corp Charter side — dockside gossip, payoffs, the kind of paper trail that doesn't make a report. I can reach out. Quietly.",
+      "choices": [
+        { "text": "Do it. Keep me posted.", "goto": "greenlit", "mutations": [
+          { "op": "set_flag", "flag": "tove_duskway_active" },
+          { "op": "adjust_relationship", "target": "player", "axis": "trust", "amount": 5 }
+        ]},
+        { "text": "Not yet. Let's see what shakes loose first.", "goto": "deferred" }
+      ]
+    },
+    "greenlit": {
+      "kind": "authored",
+      "text": "Good. I'll send word through the usual channels. Don't expect fast — Duskway runners don't hurry for anyone. But they deliver.",
+      "goto": "end"
+    },
+    "deferred": {
+      "kind": "generated",
+      "prompt_hint": "The captain wants to wait before activating your Duskway contact. You respect that — a patient captain is better than a trigger-happy one. Respond as Tove: acknowledging the call, but letting them know the offer stands and you've already started thinking about angles.",
+      "goto": "end"
+    },
+    "end": {
+      "kind": "authored",
+      "text": "Anyway. Keep your sidearm close and your credits closer. I'll be in the hold.",
+      "choices": [
+        { "text": "Copy that.", "goto": "__end__" }
+      ]
+    }
+  }
+}

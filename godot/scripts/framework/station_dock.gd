@@ -24,6 +24,7 @@ signal board_ship_requested
 const DialogueRunnerScript := preload("res://scripts/framework/dialogue_runner.gd")
 const MarketBoardScene := preload("res://scenes/framework/market_board.tscn")
 const EventFeedScene := preload("res://scenes/framework/event_feed.tscn")
+const ReputationPanelScene := preload("res://scenes/framework/reputation_panel.tscn")
 
 ## Framework default interior palette when the controlling faction supplies no
 ## `color`. Neutral worn-metal — a frontier outpost with nobody polishing it.
@@ -49,6 +50,7 @@ var _log: RichTextLabel
 var _choice_box: VBoxContainer
 var _market: MarketBoard = null
 var _feed: EventFeed = null
+var _reputation_panel: PanelContainer = null
 
 
 func _ready() -> void:
@@ -70,6 +72,11 @@ func configure(location: Dictionary) -> void:
 	_spawner.broadcast_event("location.player_arrived", {"location": location.get("id", "")})
 	GameState.state_changed.connect(_refresh_status)
 	_refresh_status()
+	# Fire the on_dock / on_visit_location faction action trigger.
+	Reputation.trigger("on_dock", {
+		"location_id": location.get("id", ""),
+		"faction_control": location.get("faction_control", ""),
+	})
 
 
 ## --- the bay -----------------------------------------------------------------
@@ -223,7 +230,7 @@ func _on_soul_acted(capability: String, args: Dictionary, soul: SoulInstance) ->
 			_append_log("[i]%s %s(%s)[/i]" % [_soul_name(soul), capability, JSON.stringify(args)])
 
 
-## --- market / news -----------------------------------------------------------
+## --- market / news / reputation -----------------------------------------------
 
 
 func _on_traded(good_id: String, amount: int, price: int) -> void:
@@ -238,6 +245,32 @@ func _on_traded(good_id: String, amount: int, price: int) -> void:
 ## do (news.<kind> topics, P3 contract).
 func _on_news_item(entry: Dictionary) -> void:
 	_spawner.broadcast_event("news." + str(entry.get("kind", "unknown")), entry)
+
+
+## Open the reputation panel as a floating overlay. Shows the player's
+## standing with every known faction, price modifiers, and relationship
+## stances (P8 contract).
+func _open_reputation() -> void:
+	if _reputation_panel != null:
+		_reputation_panel.queue_free()
+		_reputation_panel = null
+		return
+	_reputation_panel = PanelContainer.new()
+	_reputation_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_reputation_panel.position = Vector2(160, 80)
+	_reputation_panel.custom_minimum_size = Vector2(700, 400)
+	var box := VBoxContainer.new()
+	_reputation_panel.add_child(box)
+	var panel: ReputationPanel = ReputationPanelScene.instantiate()
+	box.add_child(panel)
+	var close := Button.new()
+	close.text = "Close"
+	close.pressed.connect(func() -> void:
+		_reputation_panel.queue_free()
+		_reputation_panel = null)
+	box.add_child(close)
+	add_child(_reputation_panel)
+	panel.configure()
 
 
 ## --- ui ----------------------------------------------------------------------
@@ -293,6 +326,8 @@ func _build_ui() -> void:
 	_add_action(actions, "Save", func() -> void:
 		GameState.save_game()
 		_append_log("[i]Game saved.[/i]"))
+	_add_action(actions, "Reputation", func() -> void:
+		_open_reputation())
 	_add_action(actions, "Undock", func() -> void: undock_requested.emit())
 
 

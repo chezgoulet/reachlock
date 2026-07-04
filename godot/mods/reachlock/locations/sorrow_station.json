@@ -11,6 +11,12 @@
     "produces": ["rations"],
     "consumes": ["raw_ore", "refined_alloys"]
   },
+  "dock": {
+    "npc_positions": {
+      "tib": [0.12, 0.48]
+    },
+    "style": "frontier"
+  },
   "docking": {
     "clearance_required": false,
     "fee": 20

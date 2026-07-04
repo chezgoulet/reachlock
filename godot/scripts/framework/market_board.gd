@@ -150,6 +150,10 @@ func _trade(good_id: String, amount: int, price: int) -> void:
 	GameState.adjust_credits(price * amount)
 	GameState.add_cargo(good_id, -amount)
 	SimGateway.apply_trade(str(_location.get("id", "")), good_id, amount)
+	Reputation.trigger("on_trade_completed", {
+		"good_id": good_id, "amount": amount, "price": price,
+		"faction_control": _location.get("faction_control", ""),
+	})
 	traded.emit(good_id, amount, price)
 	if not SimGateway.is_ready():
 		# Offline: no prices reply will arrive; re-render so cargo-dependent

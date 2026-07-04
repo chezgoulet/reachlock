@@ -86,6 +86,51 @@ func adjust_credits(amount: int) -> void:
 	state_changed.emit()
 
 
+## --- faction standing ---------------------------------------------------------
+
+
+## Get the player's current standing with a faction (trust, contribution, notoriety).
+## Returns default {trust:0, contribution:0, notoriety:0} for unknown factions.
+func faction_standing(faction_id: String) -> Dictionary:
+	if not factions.has(faction_id):
+		return {"trust": 0, "contribution": 0, "notoriety": 0}
+	return factions[faction_id].get("standing", {})
+
+
+## Adjust the player's standing with a faction along one axis. Values clamp
+## to [-100, 100]. Emits state_changed so the ReputationPanel re-renders.
+func adjust_faction_standing(faction_id: String, axis: String, amount: int) -> void:
+	if not factions.has(faction_id):
+		factions[faction_id] = {"standing": {"trust": 0, "contribution": 0, "notoriety": 0}}
+	var standing: Dictionary = factions[faction_id].get("standing", {})
+	standing[axis] = clampi(int(standing.get(axis, 0)) + amount, -100, 100)
+	factions[faction_id]["standing"] = standing
+	state_changed.emit()
+
+
+## Price modifier for a given faction based on the player's standing.
+## Returns a float multiplier in [-0.25, 0.25] — positive standing lowers
+## prices (trusted operators get better rates). Applied per faction_control.
+func price_modifier_for(faction_id: String) -> float:
+	var s: Dictionary = faction_standing(faction_id)
+	var trust: int = int(s.get("trust", 0))
+	var contrib: int = int(s.get("contribution", 0))
+	var notoriety: int = int(s.get("notoriety", 0))
+	# Trust thresholds: -100 = +0.25 (hostile markup), +100 = -0.25 (discount)
+	var trust_mod := -float(trust) / 400.0
+	var contrib_mod := -float(contrib) / 600.0
+	var notoriety_mod := float(notoriety) / 500.0
+	return clampf(trust_mod + contrib_mod + notoriety_mod, -0.25, 0.25)
+
+
+## Check if a good is restricted by standing. A good with an `unlocks` gate
+## in any FactionAction is only available when the player's trust >= 25 AND
+## notoriety <= 50 for the controlling faction. Default: unlocked.
+func is_good_unlocked(good_id: String, faction_id: String) -> bool:
+	var s: Dictionary = faction_standing(faction_id)
+	return int(s.get("trust", 0)) >= 25 and int(s.get("notoriety", 0)) <= 50
+
+
 ## --- soul runtime state --------------------------------------------------------
 
 
