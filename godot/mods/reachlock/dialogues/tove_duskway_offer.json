@@ -1,7 +1,7 @@
 {
   "id": "tove_duskway_offer",
   "npc": "tove",
-  "condition": "player.docked and \"survived_ambush\" in player.flags and \"tove_trust_earned\" not in player.flags",
+  "condition": "player.docked and \"survived_ambush\" in player.flags and not (\"tove_trust_earned\" in player.flags)",
   "entry": "start",
   "nodes": {
     "start": {
@@ -59,7 +59,7 @@
       "kind": "authored",
       "text": "Anyway. Keep your sidearm close and your credits closer. I'll be in the hold.",
       "choices": [
-        { "text": "Copy that.", "goto": "__end__" }
+        { "text": "Copy that.", "goto": "end" }
       ]
     }
   }

@@ -65,8 +65,8 @@
       "kind": "authored",
       "text": "I'll be in the hold. Holler if you need something that doesn't show up on a manifest.",
       "choices": [
-        { "text": "Will do.", "goto": "__end__" },
-        { "text": "Keep the stash warm.", "goto": "__end__" }
+        { "text": "Will do.", "goto": "end" },
+        { "text": "Keep the stash warm.", "goto": "end" }
       ]
     }
   }

@@ -39,6 +39,49 @@
         "fee": { "type": "integer", "minimum": 0 }
       }
     },
+    "biome": {
+      "type": "object",
+      "description": "Planet surface biome: ground color, sky color, accent, terrain type, optional horizon effect (ruins). Read by PlanetScene. Only meaningful when kind is 'planet'.",
+      "additionalProperties": false,
+      "properties": {
+        "ground": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "sky": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "terrain": { "type": "string" },
+        "horizon": { "type": "string", "description": "Skyline effect: 'ruins' draws a Predecessor ruin silhouette." }
+      }
+    },
+    "points_of_interest": {
+      "type": "array",
+      "description": "Surface POIs for PlanetScene. Each poi has an id, name, kind, and normalized position [0..1, 0..1]. Optional npc id for characters stationed there. Read by PlanetScene.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "kind", "position"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "name": { "type": "string" },
+          "kind": { "enum": ["landing_pad", "market_district", "settlement", "ruins", "resource_node"] },
+          "position": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number", "minimum": 0, "maximum": 1 } },
+          "npc": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "NPC soul id stationed at this POI." }
+        }
+      }
+    },
+    "dock": {
+      "type": "object",
+      "description": "Station dock configuration. Sets NPC positions within the docking bay and visual styling. Read by StationDock.",
+      "additionalProperties": false,
+      "properties": {
+        "npc_positions": {
+          "type": "object",
+          "description": "NPC soul id -> [x, y] normalized position within the docking bay.",
+          "additionalProperties": {
+            "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "style": { "type": "string", "description": "Visual style override for the docking bay (e.g. 'frontier', 'corp', 'mining')." }
+      }
+    },
     "mining": {
       "type": "object",
       "description": "What the drift around this location yields to a mining laser. Absent = nothing minable nearby.",
