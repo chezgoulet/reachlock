@@ -92,53 +92,81 @@ func configure(hull: Dictionary) -> void:
 
 
 func _build_rooms() -> void:
-	var room_ids: Array = _hull.get("interior_rooms", [])
+	var room_data: Array = _hull.get("rooms", [])
 	var zones: Dictionary = _hull.get("room_zones", {})
-	var layout: Dictionary = _hull.get("interior_layout", {})
-	var cols: int = layout.get("cols", 4)
-	var rows: int = layout.get("rows", 0)
-	var grid: Array = layout.get("grid", [])
 	
-	var cell_w := INTERIOR_SIZE.x / cols
-	var cell_h := INTERIOR_SIZE.y / maxi(rows, 1)
-	var gap := 8.0
-
 	_rooms.clear()
 	
-	if not grid.is_empty():
-		# Use grid layout from hull data
-		for row_idx: int in grid.size():
-			var row: Array = grid[row_idx]
-			for col_idx: int in row.size():
-				var room_id: String = row[col_idx]
-				if room_id.is_empty():
-					continue
-				var rect := Rect2(
-					Vector2(col_idx * cell_w + gap * 0.5, row_idx * cell_h + gap * 0.5),
-					Vector2(cell_w - gap, cell_h - gap)
-				)
-				var color: Color = DEFAULT_ROOM_COLORS.get(room_id, NEUTRAL_ROOM)
-				if zones.has(room_id):
-					color = Color.from_string(str(zones[room_id]), color)
-				_rooms.append({
-					"id": room_id,
-					"name": room_id.capitalize().replace("_", " "),
-					"kind": room_id,
-					"rect": rect,
-					"color": color,
+	if not room_data.is_empty():
+		# Freeform rooms from hull data
+		for entry: Dictionary in room_data:
+			var room_id: String = entry.get("id", "")
+			var room_kind: String = entry.get("kind", room_id)
+			var rect := Rect2(
+				entry.get("x", 0.0), entry.get("y", 0.0),
+				entry.get("w", 100.0), entry.get("h", 100.0)
+			)
+			# Color: room-specified > room_zones > DEFAULT_ROOM_COLORS by kind
+			var color: Color = DEFAULT_ROOM_COLORS.get(room_kind, NEUTRAL_ROOM)
+			var hex := entry.get("color", "")
+			if hex != "":
+				color = Color.from_string(hex, color)
+			elif zones.has(room_id):
+				color = Color.from_string(str(zones[room_id]), color)
+			
+			# Parse doors
+			var doors: Array = []
+			for d: Dictionary in entry.get("doors", []):
+				var door := {
+					"to": d.get("to", ""),
+					"side": d.get("side", ""),
+					"offset": d.get("offset", 0.5),
+					"width": d.get("width", 40.0),
+				}
+				# Auto-detect side from relative positions if omitted
+				if door.side == "":
+					door.side = _auto_door_side(rect, room_id, door.to, room_data)
+				doors.append(door)
+			
+			# Build stations inside this room
+			var stations: Array = []
+			for s: Dictionary in entry.get("stations", []):
+				stations.append({
+					"id": s.get("id", ""),
+					"name": s.get("name", s.get("id", "").capitalize()),
+					"pos": Vector2(
+						s.get("x", rect.position.x + rect.size.x * 0.5),
+						s.get("y", rect.position.y + rect.size.y * 0.5),
+					),
 				})
+			
+			_rooms.append({
+				"id": room_id,
+				"name": entry.get("name", room_id.capitalize().replace("_", " ")),
+				"kind": room_kind,
+				"rect": rect,
+				"color": color,
+				"doors": doors,
+				"stations": stations,
+			})
+			
+			# Register stations in the global station list
+			for s: Dictionary in stations:
+				_stations.append(s)
 	else:
-		# Fallback: list layout (generic grid)
-		cols = mini(room_ids.size(), 4)
-		var f_cell_w := INTERIOR_SIZE.x / cols
-		var f_cell_h := 160.0
+		# Fallback: grid layout from interior_rooms (legacy compat)
+		var room_ids: Array = _hull.get("interior_rooms", [])
+		var cols := 4
+		var cell_w := INTERIOR_SIZE.x / cols
+		var cell_h := 160.0
+		var gap := 12.0
 		for i in room_ids.size():
 			var room_id: String = room_ids[i]
 			var col := i % cols
 			var row := i / cols
 			var rect := Rect2(
-				Vector2(col * f_cell_w + gap * 0.5, row * f_cell_h + gap * 0.5),
-				Vector2(f_cell_w - gap, f_cell_h - gap)
+				Vector2(col * cell_w + gap * 0.5, row * cell_h + gap * 0.5),
+				Vector2(cell_w - gap, cell_h - gap)
 			)
 			var color: Color = DEFAULT_ROOM_COLORS.get(room_id, NEUTRAL_ROOM)
 			if zones.has(room_id):
@@ -149,38 +177,16 @@ func _build_rooms() -> void:
 				"kind": room_id,
 				"rect": rect,
 				"color": color,
+				"doors": [],
+				"stations": [],
 			})
 
 
 func _build_stations() -> void:
-	var station_data: Array = _hull.get("stations", [])
-	if station_data.is_empty():
-		# Framework defaults: one station per common room type
-		station_data = [
-			{"id": "pilot", "room": "cockpit"},
-			{"id": "weapons", "room": "bridge"},
-			{"id": "engineering", "room": "engineering"},
-			{"id": "scanner", "room": "bridge"},
-			{"id": "cargo", "room": "cargo_hold"},
-		]
-
-	_stations.clear()
-	for entry: Dictionary in station_data:
-		var room_id: String = entry.get("room", "")
-		var room: Dictionary = _find_room(room_id)
-		var room_rect: Rect2 = room.get("rect", Rect2(0, 0, 100, 100))
-		var norm_pos: Vector2 = DEFAULT_STATION_POSITIONS.get(entry.get("id", ""), Vector2(0.5, 0.5))
-		var pos := Vector2(
-			room_rect.position.x + room_rect.size.x * norm_pos.x,
-			room_rect.position.y + room_rect.size.y * norm_pos.y,
-		)
-		_stations.append({
-			"id": entry.get("id", ""),
-			"name": entry.get("name", entry.get("id", "").capitalize()),
-			"kind": entry.get("id", ""),
-			"pos": pos,
-			"room_id": room_id,
-		})
+	# Stations are now embedded in rooms. Called only for legacy compat
+	# when rooms have no stations defined. Keep empty — stations are
+	# populated during _build_rooms().
+	pass
 
 
 func _rebuild_interactables() -> void:
@@ -257,7 +263,22 @@ func _process(delta: float) -> void:
 	_update_hint()
 
 
-## --- interaction -------------------------------------------------------------
+func _auto_door_side(from_rect: Rect2, from_id: String, to_id: String, all_rooms: Array) -> String:
+	# Auto-detect which side a door should be on by comparing room positions
+	for r: Dictionary in all_rooms:
+		if r.get("id", "") == to_id:
+			var to_rect := Rect2(r.get("x", 0.0), r.get("y", 0.0),
+				r.get("w", 100.0), r.get("h", 100.0))
+			var dx := (to_rect.position.x + to_rect.size.x * 0.5) - (from_rect.position.x + from_rect.size.x * 0.5)
+			var dy := (to_rect.position.y + to_rect.size.y * 0.5) - (from_rect.position.y + from_rect.size.y * 0.5)
+			if absf(dx) >= absf(dy):
+				return "right" if dx > 0.0 else "left"
+			else:
+				return "bottom" if dy > 0.0 else "top"
+	return "right"
+
+
+## --- handle station interaction ---------------------------------------------
 
 
 func _nearest() -> Dictionary:
@@ -418,12 +439,15 @@ func _append_log(bbcode: String) -> void:
 
 ## --- floor rendering ---------------------------------------------------------
 ##
-## Stand-in renderer: colored room rectangles with room name labels,
-## station markers. Will be replaced by Kenney tiles in the asset pass.
+## Stand-in renderer: colored room rectangles with wall lines, door gaps,
+## room name labels, and station markers. Will be replaced by Kenney tiles
+## in the asset pass.
 
 class _Floor extends Node2D:
 	var _rooms: Array = []
 	var _stations: Array = []
+	# For rendering: wall clipping offset for doors
+	var _wall_thickness := 3.0
 
 	func setup(rooms: Array, stations: Array) -> void:
 		_rooms = rooms
@@ -434,18 +458,30 @@ class _Floor extends Node2D:
 		for r: Dictionary in _rooms:
 			var rect: Rect2 = r.rect
 			var color: Color = r.color
+			var doors: Array = r.get("doors", [])
+			
 			# Room background
 			draw_rect(rect, color.darkened(0.5))
-			# Room border
-			draw_rect(rect, color.lightened(0.2), false, 2.0)
+			
+			# Walls with door gaps
+			# Top wall
+			_draw_wall(rect, "top", color.lightened(0.2), doors)
+			# Bottom wall
+			_draw_wall(rect, "bottom", color.lightened(0.2), doors)
+			# Left wall
+			_draw_wall(rect, "left", color.lightened(0.2), doors)
+			# Right wall
+			_draw_wall(rect, "right", color.lightened(0.2), doors)
+			
 			# Room name
 			draw_string(ThemeDB.fallback_font,
 				Vector2(rect.position.x + 8, rect.position.y + 20),
 				r.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, color.lightened(0.6))
+		
+		# Station markers
 		for s: Dictionary in _stations:
-			# Station marker: a small glowing circle
 			var station_color := Color(0.6, 0.8, 1.0, 0.8)
-			match s.kind:
+			match s.get("id", ""):
 				"pilot": station_color = Color(0.3, 0.6, 0.9)
 				"weapons": station_color = Color(0.9, 0.3, 0.3)
 				"engineering": station_color = Color(0.9, 0.6, 0.2)
@@ -454,10 +490,78 @@ class _Floor extends Node2D:
 				"cryopod": station_color = Color(0.4, 0.7, 0.8)
 			draw_circle(s.pos, 8, station_color)
 			draw_circle(s.pos, 8, station_color.darkened(0.5), false, 1.5)
-			# Station label
 			draw_string(ThemeDB.fallback_font,
 				Vector2(s.pos.x - 20, s.pos.y + 22),
 				s.name, HORIZONTAL_ALIGNMENT_CENTER, 40, 12, Color(0.9, 0.9, 0.9))
+
+	## Draw a wall segment with an optional door gap.
+	func _draw_wall(rect: Rect2, side: String, color: Color, doors: Array) -> void:
+		var door_hw := 20.0  # half-door-width
+		var segments: Array = _wall_segments(rect, side, doors, door_hw)
+		for seg: Dictionary in segments:
+			draw_rect(seg.rect, color)
+
+	## Calculate wall segments: the full wall minus door openings.
+	func _wall_segments(rect: Rect2, side: String, doors: Array, half_width: float) -> Array:
+		var result: Array = []
+		var wall_rect: Rect2
+		match side:
+			"top":
+				wall_rect = Rect2(rect.position.x, rect.position.y - _wall_thickness, rect.size.x, _wall_thickness * 2)
+			"bottom":
+				wall_rect = Rect2(rect.position.x, rect.position.y + rect.size.y - _wall_thickness, rect.size.x, _wall_thickness * 2)
+			"left":
+				wall_rect = Rect2(rect.position.x - _wall_thickness, rect.position.y, _wall_thickness * 2, rect.size.y)
+			"right":
+				wall_rect = Rect2(rect.position.x + rect.size.x - _wall_thickness, rect.position.y, _wall_thickness * 2, rect.size.y)
+			_:
+				return []
+		
+		# Find doors on this side and clip them out
+		var gaps: Array[Rect2] = []
+		for d: Dictionary in doors:
+			if d.get("side", "") != side:
+				continue
+			var door_off: float = d.get("offset", 0.5)
+			var door_w: float = d.get("width", 40.0)
+			var cx: float
+			var cy: float
+			match side:
+				"top", "bottom":
+					cx = wall_rect.position.x + wall_rect.size.x * door_off
+					cy = wall_rect.position.y + wall_rect.size.y * 0.5
+				"left", "right":
+					cx = wall_rect.position.x + wall_rect.size.x * 0.5
+					cy = wall_rect.position.y + wall_rect.size.y * door_off
+			var gap := Rect2(cx - door_w * 0.5, cy - _wall_thickness, door_w, _wall_thickness * 2)
+			gaps.append(gap)
+		
+		if gaps.is_empty():
+			result.append({"rect": wall_rect})
+			return result
+		
+		# Clip gaps from the wall - split into left and right/top and bottom segments
+		match side:
+			"top", "bottom":
+				gaps.sort_custom(func(a: Rect2, b: Rect2): return a.position.x < b.position.x)
+				var start_x := wall_rect.position.x
+				for g: Rect2 in gaps:
+					if g.position.x > start_x:
+						result.append({"rect": Rect2(start_x, wall_rect.position.y, g.position.x - start_x, wall_rect.size.y)})
+					start_x = g.position.x + g.size.x
+				if start_x < wall_rect.position.x + wall_rect.size.x:
+					result.append({"rect": Rect2(start_x, wall_rect.position.y, wall_rect.position.x + wall_rect.size.x - start_x, wall_rect.size.y)})
+			"left", "right":
+				gaps.sort_custom(func(a: Rect2, b: Rect2): return a.position.y < b.position.y)
+				var start_y := wall_rect.position.y
+				for g: Rect2 in gaps:
+					if g.position.y > start_y:
+						result.append({"rect": Rect2(wall_rect.position.x, start_y, wall_rect.size.x, g.position.y - start_y)})
+					start_y = g.position.y + g.size.y
+				if start_y < wall_rect.position.y + wall_rect.size.y:
+					result.append({"rect": Rect2(wall_rect.position.x, start_y, wall_rect.size.x, wall_rect.position.y + wall_rect.size.y - start_y)})
+		
+		return result
 
 
 ## --- player walker -----------------------------------------------------------

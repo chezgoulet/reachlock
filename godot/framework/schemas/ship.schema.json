@@ -55,7 +55,56 @@
         "engines": { "type": "integer", "minimum": 0 }
       }
     },
-    "interior_rooms": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+    "interior_rooms": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }, "description": "Deprecated — use `rooms` instead. List-only room ids for fallback grid." },
+    "rooms": {
+      "type": "array",
+      "description": "Freeform positioned rooms. Each room has a position, size, color, optional doors, and optional station positions. A modder redesigns an interior by editing these rects — no engine code.",
+      "items": {
+        "type": "object",
+        "required": ["id", "x", "y", "w", "h"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "name": { "type": "string" },
+          "x": { "type": "number", "minimum": 0 },
+          "y": { "type": "number", "minimum": 0 },
+          "w": { "type": "number", "minimum": 60 },
+          "h": { "type": "number", "minimum": 60 },
+          "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "Hex color override. Omitted = framework default per room kind." },
+          "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Room type (cockpit, bridge, engineering, etc.). Used for default colors and behavior." },
+          "doors": {
+            "type": "array",
+            "description": "Door connections to other rooms. Each door renders as a gap in the wall.",
+            "items": {
+              "type": "object",
+              "required": ["to"],
+              "additionalProperties": false,
+              "properties": {
+                "to": { "type": "string", "description": "Target room id." },
+                "side": { "type": "string", "enum": ["left", "right", "top", "bottom"], "description": "Side of the room the door opens onto. Omitted = auto-detect from overlapping edges." },
+                "offset": { "type": "number", "minimum": 0, "maximum": 1, "description": "Normalized position along the side (0=start, 1=end). 0.5=center." },
+                "width": { "type": "number", "minimum": 16, "maximum": 80, "description": "Door opening width in pixels. Default 40." }
+              }
+            }
+          },
+          "stations": {
+            "type": "array",
+            "description": "Stations inside this room. Position is absolute pixel coords (not normalized).",
+            "items": {
+              "type": "object",
+              "required": ["id"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+                "name": { "type": "string" },
+                "x": { "type": "number", "description": "Absolute X position. Omitted = room center." },
+                "y": { "type": "number", "description": "Absolute Y position. Omitted = room center." }
+              }
+            }
+          }
+        }
+      }
+    },
     "room_zones": {
       "type": "object",
       "description": "Room ID -> hex color override for interior floor tiles. Defaults per room type apply when omitted.",

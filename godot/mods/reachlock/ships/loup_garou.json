@@ -26,34 +26,111 @@
     "utilities": 3,
     "engines": 2
   },
-  "interior_rooms": ["cockpit", "bridge", "engineering", "med_bay", "galley", "crew_quarters", "cargo_hold", "cryo", "airlock"],
-  "room_zones": {
-    "cockpit": "#2a5a8a",
-    "bridge": "#1a4a7a",
-    "engineering": "#aa6020",
-    "med_bay": "#d8dde0",
-    "galley": "#6a7a3a",
-    "crew_quarters": "#4a4a6a",
-    "cargo_hold": "#5a5030",
-    "cryo": "#5a7a8a",
-    "airlock": "#5a5a6a"
-  },
-  "stations": [
-    { "id": "pilot", "name": "Pilot Console", "room": "cockpit" },
-    { "id": "weapons", "name": "Weapons Station", "room": "bridge" },
-    { "id": "scanner", "name": "Scanner Array", "room": "bridge" },
-    { "id": "engineering", "name": "Engineering Console", "room": "engineering" },
-    { "id": "cargo", "name": "Cargo Terminal", "room": "cargo_hold" },
-    { "id": "cryopod", "name": "Cryopod", "room": "cryo" }
+  "rooms": [
+    {
+      "id": "cockpit",
+      "name": "Cockpit",
+      "kind": "cockpit",
+      "x": 80, "y": 15, "w": 180, "h": 130,
+      "doors": [{"to": "bridge", "side": "right", "offset": 0.5}],
+      "stations": [
+        {"id": "pilot", "name": "Pilot Console", "x": 160, "y": 90}
+      ]
+    },
+    {
+      "id": "bridge",
+      "name": "Bridge",
+      "kind": "bridge",
+      "color": "#1a4a7a",
+      "x": 275, "y": 15, "w": 200, "h": 130,
+      "doors": [
+        {"to": "cockpit", "side": "left", "offset": 0.5},
+        {"to": "galley", "side": "bottom", "offset": 0.3}
+      ],
+      "stations": [
+        {"id": "weapons", "name": "Weapons Station", "x": 300, "y": 80},
+        {"id": "scanner", "name": "Scanner Array", "x": 420, "y": 80}
+      ]
+    },
+    {
+      "id": "airlock",
+      "name": "Airlock",
+      "kind": "airlock",
+      "color": "#5a5a6a",
+      "x": 490, "y": 15, "w": 90, "h": 130,
+      "doors": [{"to": "galley", "side": "bottom", "offset": 0.5}]
+    },
+    {
+      "id": "crew_quarters",
+      "name": "Crew Quarters",
+      "kind": "crew_quarters",
+      "color": "#4a4a6a",
+      "x": 30, "y": 165, "w": 160, "h": 170,
+      "doors": [{"to": "galley", "side": "right", "offset": 0.5}]
+    },
+    {
+      "id": "galley",
+      "name": "Galley",
+      "kind": "galley",
+      "color": "#6a7a3a",
+      "x": 205, "y": 165, "w": 240, "h": 170,
+      "doors": [
+        {"to": "bridge", "side": "top", "offset": 0.3},
+        {"to": "airlock", "side": "top", "offset": 0.8},
+        {"to": "crew_quarters", "side": "left", "offset": 0.5},
+        {"to": "med_bay", "side": "right", "offset": 0.5},
+        {"to": "engineering", "side": "bottom", "offset": 0.3},
+        {"to": "cargo_hold", "side": "bottom", "offset": 0.7}
+      ]
+    },
+    {
+      "id": "med_bay",
+      "name": "Med Bay",
+      "kind": "med_bay",
+      "color": "#d8dde0",
+      "x": 460, "y": 165, "w": 140, "h": 170,
+      "doors": [{"to": "galley", "side": "left", "offset": 0.5}]
+    },
+    {
+      "id": "engineering",
+      "name": "Engineering",
+      "kind": "engineering",
+      "color": "#aa6020",
+      "x": 105, "y": 360, "w": 220, "h": 180,
+      "doors": [
+        {"to": "galley", "side": "top", "offset": 0.5},
+        {"to": "cryo", "side": "left", "offset": 0.5},
+        {"to": "cargo_hold", "side": "right", "offset": 0.5}
+      ],
+      "stations": [
+        {"id": "engineering", "name": "Engineering Console", "x": 200, "y": 420}
+      ]
+    },
+    {
+      "id": "cryo",
+      "name": "Cryo",
+      "kind": "cryo",
+      "color": "#5a7a8a",
+      "x": 15, "y": 375, "w": 80, "h": 80,
+      "doors": [{"to": "engineering", "side": "right", "offset": 0.5}],
+      "stations": [
+        {"id": "cryopod", "name": "Cryopod", "x": 50, "y": 390}
+      ]
+    },
+    {
+      "id": "cargo_hold",
+      "name": "Cargo Hold",
+      "kind": "cargo_hold",
+      "color": "#5a5030",
+      "x": 340, "y": 360, "w": 220, "h": 200,
+      "doors": [
+        {"to": "galley", "side": "top", "offset": 0.5},
+        {"to": "engineering", "side": "left", "offset": 0.5}
+      ],
+      "stations": [
+        {"id": "cargo", "name": "Cargo Terminal", "x": 440, "y": 450}
+      ]
+    }
   ],
-  "interior_layout": {
-    "cols": 3,
-    "rows": 3,
-    "grid": [
-      ["cockpit", "bridge", "airlock"],
-      ["crew_quarters", "galley", "med_bay"],
-      ["cryo", "engineering", "cargo_hold"]
-    ]
-  },
   "attached": ["loup_garou_shuttle"]
 }
