@@ -95,6 +95,10 @@ start_ragamuffin() { # $1=port $2=data_root $3=label
     RAGAMUFFIN_EMBEDDING_MODEL="${REACHLOCK_EMBED_MODEL:-nomic-embed-text}" \
     RAGAMUFFIN_EMBEDDING_DIMS="${REACHLOCK_EMBED_DIMS:-768}" \
     RAGAMUFFIN_EMBEDDING_API_KEY=local \
+    RAGAMUFFIN_LLM_PROVIDER=ollama \
+    RAGAMUFFIN_LLM_BASE_URL="${REACHLOCK_LLM_BASE:-http://127.0.0.1:11434}" \
+    RAGAMUFFIN_LLM_MODEL="${REACHLOCK_LLM_MODEL:-gemma4:e4b}" \
+    RAGAMUFFIN_LLM_API_KEY=local \
         "$RAGA_BIN" >"$root/logs/ragamuffin.log" 2>&1 &
     echo "ragamuffin[$label]: started on 127.0.0.1:$port (auth: api_key, log: $root/logs/ragamuffin.log)"
 }

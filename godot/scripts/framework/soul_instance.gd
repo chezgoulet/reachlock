@@ -62,14 +62,18 @@ func _ensure_instantiated() -> void:
 
 ## Someone speaks to this soul. `objective` frames the turn for the mind
 ## (dialogue nodes pass their prompt_hint here). What was said is also the
-## recall query — the soul remembers what the moment is about.
-func perceive_utterance(from: String, content: String, objective := "") -> void:
+## recall query — the soul remembers what the moment is about. `history`
+## is the running transcript of THIS conversation (memory-interface
+## message form) — it rides the protocol's history channel so multi-turn
+## exchanges cohere: the mind sees what was already said, not just the
+## latest line.
+func perceive_utterance(from: String, content: String, objective := "", history: Array = []) -> void:
 	var trigger := {"kind": "utterance", "from": from, "content": content}
 	var framed := objective if objective != "" else "Respond in character."
 	MemoryStore.recall(soul_id, content, func(fragments: Array) -> void:
 		if not is_instance_valid(self):
 			return
-		_perceive(trigger, framed, fragments))
+		_perceive(trigger, framed, fragments, history))
 
 
 func perceive_event(topic: String, payload: Dictionary, objective := "") -> void:
@@ -91,7 +95,7 @@ func supersede() -> void:
 	}, {"fragments": []})
 
 
-func _perceive(trigger: Dictionary, objective: String, recalled: Array = []) -> void:
+func _perceive(trigger: Dictionary, objective: String, recalled: Array = [], history: Array = []) -> void:
 	_ensure_instantiated()
 	_goal_seq += 1
 	_active_goal_id = "%s_g%d" % [soul_id, _goal_seq]
@@ -103,13 +107,15 @@ func _perceive(trigger: Dictionary, objective: String, recalled: Array = []) -> 
 		"trigger": trigger,
 	}
 	if SoulGateway.is_ready():
-		SoulGateway.perceive(soul_id, goal, _assemble_context(recalled))
+		SoulGateway.perceive(soul_id, goal, _assemble_context(recalled, history))
 	elif SoulGateway.state != SoulGateway.State.OFFLINE:
 		# Mid-handshake: hold the moment until the daemon is with us.
-		_pending.append({"goal": goal, "context": _assemble_context(recalled)})
+		_pending.append({"goal": goal, "context": _assemble_context(recalled, history)})
 
 
-func _assemble_context(recalled: Array = []) -> Dictionary:
+## Channel order per the protocol's REACHLOCK profile: persona, memory,
+## history, world.
+func _assemble_context(recalled: Array = [], history: Array = []) -> Dictionary:
 	var fragments: Array = [
 		{"channel": "persona", "body": SoulProfileScript.persona_fragment(_soul)},
 	]
@@ -124,6 +130,13 @@ func _assemble_context(recalled: Array = []) -> Dictionary:
 		var seeds := SoulProfileScript.seed_memory_fragment(_soul)
 		if seeds != "":
 			fragments.append({"channel": "memory", "body": seeds})
+	if not history.is_empty():
+		var turns: PackedStringArray = []
+		for turn: Dictionary in history:
+			var who := "You" if turn.get("role", "") == "assistant" else "They"
+			turns.append("%s: %s" % [who, turn.get("content", "")])
+		fragments.append({"channel": "history",
+			"body": "The conversation so far:\n" + "\n".join(turns)})
 	if world_context != "":
 		fragments.append({"channel": "world", "body": world_context})
 	return {"fragments": fragments}

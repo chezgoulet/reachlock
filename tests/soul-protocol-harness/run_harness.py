@@ -120,7 +120,12 @@ class StubLlm(BaseHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
-        self.rfile.read(length)  # drain; the answer never depends on the prompt
+        body = self.rfile.read(length).decode("utf-8", errors="replace")
+        # Async-perceive probe: a prompt carrying the slow marker simulates
+        # real model latency, so the harness can assert that other souls'
+        # decisions overtake it (M7: no dead air behind a thinking soul).
+        if "harness_slow" in body:
+            time.sleep(1.0)
         self._json({"choices": [{"message": {"role": "assistant", "content": self.line}}]})
 
     def _json(self, obj):
@@ -410,6 +415,71 @@ def lifecycle_connection(r: Runner, port: int, fx: dict, line: str):
             return "decision echoes goal_revision 2 — the host can drop stale revision 1"
         r.step("10_perceive_superseding_revision → decision carries revision 2",
                perceive_supersession)
+
+        def interleave():
+            # A second, rules-minded soul alongside the llm-minded pilot.
+            inst = {"v": 0, "seq": 90, "type": "instantiate_soul", "body": {
+                "soul_id": "example_deckhand", "mind": "rules",
+                "soul": {"id": "example_deckhand", "rules": [
+                    {"when_event_topic": "test.interleave",
+                     "then_invoke": {"capability": "npc.move_to", "args": {"room": "cockpit"}}},
+                ]},
+            }}
+            conn.send(inst)
+            expect_response(conn, inst, "ack", ACK)
+            # Slow perceive for the llm soul (stub sleeps 1s on the marker)...
+            slow = {"v": 0, "seq": 91, "type": "perceive", "body": {
+                "soul_id": "example_pilot",
+                "goal": {"id": "g_slow", "revision": 1,
+                         "objective": "Respond in character to the player.",
+                         "trigger": {"kind": "utterance", "from": "player",
+                                     "content": "harness_slow: take your time."}},
+                "context": {"fragments": []},
+            }}
+            conn.send(slow)
+            # ...immediately followed by an instant rules perceive.
+            fast = {"v": 0, "seq": 92, "type": "perceive", "body": {
+                "soul_id": "example_deckhand",
+                "goal": {"id": "g_fast", "revision": 1, "objective": "React.",
+                         "trigger": {"kind": "event", "topic": "test.interleave",
+                                     "payload": {}}},
+                "context": {"fragments": []},
+            }}
+            conn.send(fast)
+            first, second = conn.recv(), conn.recv()
+            check(first.get("re") == 92,
+                  f"the rules decision must OVERTAKE the thinking llm soul; "
+                  f"first reply answered seq {first.get('re')}, expected 92")
+            check(first["body"]["decision"]["intents"][0].get("capability") == "npc.move_to",
+                  "fast decision shape")
+            check(second.get("re") == 91 and second.get("type") == "decision",
+                  f"slow decision must still arrive: got {second.get('type')} re={second.get('re')}")
+            return "rules soul answered while the llm soul was still thinking (M7: no dead air)"
+        r.step("async perceive: a rules decision overtakes a slow llm decision", interleave)
+
+        def supersession_in_flight():
+            def slow_perceive(seq: int, revision: int) -> dict:
+                return {"v": 0, "seq": seq, "type": "perceive", "body": {
+                    "soul_id": "example_pilot",
+                    "goal": {"id": "g_super", "revision": revision,
+                             "objective": "Respond in character.",
+                             "trigger": {"kind": "utterance", "from": "player",
+                                         "content": "harness_slow: rev %d" % revision}},
+                    "context": {"fragments": []},
+                }}
+            conn.send(slow_perceive(95, 1))
+            conn.send(slow_perceive(96, 2))
+            replies = {m.get("re"): m for m in (conn.recv(), conn.recv())}
+            check(set(replies) == {95, 96}, f"expected replies to 95+96, got {set(replies)}")
+            r1, r2 = replies[95], replies[96]
+            check(r1.get("type") == "error" and r1["body"].get("code") == "superseded",
+                  f"rev 1 must be discarded at the enact boundary: got {r1.get('type')} "
+                  f"{r1['body'].get('code')}")
+            check(r2.get("type") == "decision"
+                  and r2["body"].get("goal_revision") == 2,
+                  "rev 2 must complete as the live decision")
+            return "in-flight rev 1 discarded (error: superseded); rev 2 decided"
+        r.step("supersession: a newer revision discards in-flight work", supersession_in_flight)
 
         def reinstantiate():
             msg = {"v": 0, "seq": 100, "type": "instantiate_soul", "body": RULES_SOUL}

@@ -85,7 +85,12 @@ func _run_generated(node: Dictionary) -> void:
 	_generated_node = node
 	if _soul != null and SoulGateway.is_ready():
 		_awaiting_generated = true
-		_soul.perceive_utterance("player", _last_player_line, node.get("prompt_hint", ""))
+		# Multi-turn coherence (M7): the mind sees the conversation so far
+		# via the history channel. The last transcript entry IS the current
+		# player line (it rides the trigger), so exclude it.
+		var history := _transcript.slice(maxi(0, _transcript.size() - 9), _transcript.size() - 1) \
+			if _transcript.size() > 1 else []
+		_soul.perceive_utterance("player", _last_player_line, node.get("prompt_hint", ""), history)
 		var timer := get_tree().create_timer(GENERATED_TIMEOUT)
 		timer.timeout.connect(_on_generated_timeout.bind(node), CONNECT_ONE_SHOT)
 	else:
