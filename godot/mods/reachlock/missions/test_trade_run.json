@@ -1,0 +1,41 @@
+{
+  "id": "test_trade_run",
+  "name": "Test: Trade Run",
+  "description": "A test mission: dock at a station, trade goods, undock. Validates the mission framework works end-to-end.",
+  "visible": false,
+  "stages": [
+    {
+      "id": "fly_to_station",
+      "type": "waypoint",
+      "objective": "Fly to Sorrow Station and dock",
+      "completion": {
+        "type": "dock"
+      }
+    },
+    {
+      "id": "trade_goods",
+      "type": "delivery",
+      "objective": "Trade at the market",
+      "completion": {
+        "type": "manual"
+      }
+    },
+    {
+      "id": "depart",
+      "type": "undock",
+      "objective": "Undock from Sorrow Station",
+      "completion": {
+        "type": "undock"
+      }
+    }
+  ],
+  "failure_global": {
+    "on_ship_destroyed": true
+  },
+  "rewards_final": {
+    "credits": 100,
+    "faction_deltas": {
+      "reach": { "trust": 5, "contribution": 2 }
+    }
+  }
+}

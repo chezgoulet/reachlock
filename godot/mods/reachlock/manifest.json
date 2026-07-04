@@ -16,6 +16,7 @@
     "goods": ["raw_ore", "refined_alloys", "rations"],
     "dialogues": ["tib_dock_debrief", "tib_station_greeting", "tove_cargo_check", "tove_duskway_offer"],
     "faction_actions": ["trade_with_compact"],
+    "missions": ["test_trade_run"],
     "economy_tables": ["base"]
   },
   "start": {

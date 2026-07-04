@@ -35,6 +35,7 @@ KIND_SCHEMAS = {
     "dialogues": "dialogue",
     "goods": "good",
     "faction_actions": "faction_action",
+    "missions": "mission",
 }
 
 
