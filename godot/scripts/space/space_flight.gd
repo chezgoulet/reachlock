@@ -522,7 +522,7 @@ func _on_patrol_alert(_ship_id: String) -> void:
 	_patrols.append(pc)
 
 
-func _on_patrol_destroyed(_ship_id: String) -> void:
+func _on_patrol_destroyed(_ship_id: String, _patrol: Node3D) -> void:
 	pass
 
 
