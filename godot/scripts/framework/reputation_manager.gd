@@ -115,8 +115,8 @@ static func _worst_rival(faction_id: String) -> String:
 	for fid: String in GameState.factions:
 		if fid == faction_id:
 			continue
-		var stance := DataRegistry.get_entity("factions", fid).get("relationships", {}).get(faction_id, "neutral")
-		var score := _stance_score(stance)
+		var stance: String = DataRegistry.get_entity("factions", fid).get("relationships", {}).get(faction_id, "neutral")
+		var score: int = _stance_score(stance)
 		if score < worst_stance:
 			worst_stance = score
 			worst = fid
