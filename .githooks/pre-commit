@@ -1,0 +1,13 @@
+#!/bin/sh
+#
+# Pre-commit hook: run the three-ring architecture guard.
+#
+# Opt in with:
+#   git config core.hooksPath .githooks
+#
+# See https://github.com/chezgoulet/reachlock/issues/74
+
+set -e
+
+echo "=== Architecture guard ==="
+make check-arch

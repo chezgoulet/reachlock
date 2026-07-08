@@ -38,8 +38,13 @@ server-tidy:
 validate:
 	python3 scripts/validate_mod_data.py
 
-# Full local pre-push gate: server tests + mod data validation.
-check: server-test validate
+# Three-ring architecture guard: engine must contain zero content (#7).
+check-arch:
+	python3 scripts/check_architecture.py --self-test
+	python3 scripts/check_architecture.py
+
+# Full local pre-push gate: server tests + mod data + architecture.
+check: server-test validate check-arch
 
 clean:
 	rm -rf server/bin
