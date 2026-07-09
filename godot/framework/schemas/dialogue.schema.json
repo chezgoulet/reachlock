@@ -20,8 +20,9 @@
         "additionalProperties": false,
         "properties": {
           "kind": { "enum": ["authored", "generated"] },
-          "text": { "type": "string", "description": "authored only: the NPC line, verbatim." },
+          "text": { "type": "string", "description": "authored only: the NPC line, verbatim. On generated nodes: the offline fallback line." },
           "prompt_hint": { "type": "string", "description": "generated only: becomes the perceive goal objective; the soul improvises the line." },
+          "buffer_line": { "type": "string", "description": "generated only: an authored line that plays IMMEDIATELY while the mind thinks (the latency mask — 'Let me think how to put that.'). The generated line follows as a second beat when it arrives; if the player has already moved on, it is dropped. Write it in the npc's voice as a natural pre-answer." },
           "mutations": { "type": "array", "items": { "$ref": "#/$defs/mutation" } },
           "goto": { "type": "string", "description": "Next node when there are no choices. \"end\" closes." },
           "choices": {

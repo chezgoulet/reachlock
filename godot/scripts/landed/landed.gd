@@ -29,6 +29,17 @@ func _ready() -> void:
 	GameState.player.current_space = _location.get("id", GameState.player.get("current_space", ""))
 	MissionManager.report_event("docked", {"location_id": _location.get("id", "")})
 
+	# A location with a walkable `interior` mounts the StationInterior
+	# (world-space scene, own camera); planets keep their surface; anything
+	# else gets the classic dock panel.
+	if _location.has("interior"):
+		var interior := StationInterior.new()
+		interior.undock_requested.connect(_undock)
+		interior.board_ship_requested.connect(_board_ship)
+		add_child(interior)
+		interior.configure(_location)
+		return
+
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	match _location.get("kind", "station"):

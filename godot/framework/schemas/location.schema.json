@@ -3,40 +3,99 @@
   "title": "Location definition",
   "description": "A dockable/landable place: station, planet, moon, outpost. Defines what the landed mode offers there, who is present, and how it participates in the economy. GAME-DESIGN.md §2 (Landed) and §3 (economy).",
   "type": "object",
-  "required": ["id", "name", "kind"],
+  "required": [
+    "id",
+    "name",
+    "kind"
+  ],
   "additionalProperties": false,
   "properties": {
-    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-    "name": { "type": "string" },
-    "kind": { "enum": ["station", "planet", "moon", "outpost", "wreck"] },
-    "system": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-    "description": { "type": "string" },
-    "faction_control": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "station",
+        "planet",
+        "moon",
+        "outpost",
+        "wreck"
+      ]
+    },
+    "system": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "faction_control": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
     "services": {
       "type": "array",
       "description": "What the landed mode offers here. Vocabulary is framework-level; the engine renders a service generically, content decides who has it.",
-      "items": { "enum": ["dock", "market", "bar", "shipyard", "med_bay", "mission_board", "fuel", "salvage"] }
+      "items": {
+        "enum": [
+          "dock",
+          "market",
+          "bar",
+          "shipyard",
+          "med_bay",
+          "mission_board",
+          "fuel",
+          "salvage"
+        ]
+      }
     },
-    "population": { "type": "integer", "minimum": 0 },
+    "population": {
+      "type": "integer",
+      "minimum": 0
+    },
     "npcs_present": {
       "type": "array",
       "description": "Souls stationed here (spawned in landed mode when the player visits).",
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
     },
     "economy": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "produces": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
-        "consumes": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } }
+        "produces": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        },
+        "consumes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        }
       }
     },
     "docking": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "clearance_required": { "type": "boolean" },
-        "fee": { "type": "integer", "minimum": 0 }
+        "clearance_required": {
+          "type": "boolean"
+        },
+        "fee": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "biome": {
@@ -44,11 +103,25 @@
       "description": "Planet surface biome: ground color, sky color, accent, terrain type, optional horizon effect (ruins). Read by PlanetScene. Only meaningful when kind is 'planet'.",
       "additionalProperties": false,
       "properties": {
-        "ground": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-        "sky": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-        "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-        "terrain": { "type": "string" },
-        "horizon": { "type": "string", "description": "Skyline effect: 'ruins' draws a Predecessor ruin silhouette." }
+        "ground": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "sky": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "terrain": {
+          "type": "string"
+        },
+        "horizon": {
+          "type": "string",
+          "description": "Skyline effect: 'ruins' draws a Predecessor ruin silhouette."
+        }
       }
     },
     "points_of_interest": {
@@ -56,14 +129,45 @@
       "description": "Surface POIs for PlanetScene. Each poi has an id, name, kind, and normalized position [0..1, 0..1]. Optional npc id for characters stationed there. Read by PlanetScene.",
       "items": {
         "type": "object",
-        "required": ["id", "name", "kind", "position"],
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "position"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-          "name": { "type": "string" },
-          "kind": { "enum": ["landing_pad", "market_district", "settlement", "ruins", "resource_node"] },
-          "position": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number", "minimum": 0, "maximum": 1 } },
-          "npc": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "NPC soul id stationed at this POI." }
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "landing_pad",
+              "market_district",
+              "settlement",
+              "ruins",
+              "resource_node"
+            ]
+          },
+          "position": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "npc": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "NPC soul id stationed at this POI."
+          }
         }
       }
     },
@@ -76,20 +180,40 @@
           "type": "object",
           "description": "NPC soul id -> [x, y] normalized position within the docking bay.",
           "additionalProperties": {
-            "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number", "minimum": 0, "maximum": 1 }
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
           }
         },
-        "style": { "type": "string", "description": "Visual style override for the docking bay (e.g. 'frontier', 'corp', 'mining')." }
+        "style": {
+          "type": "string",
+          "description": "Visual style override for the docking bay (e.g. 'frontier', 'corp', 'mining')."
+        }
       }
     },
     "mining": {
       "type": "object",
       "description": "What the drift around this location yields to a mining laser. Absent = nothing minable nearby.",
       "additionalProperties": false,
-      "required": ["good"],
+      "required": [
+        "good"
+      ],
       "properties": {
-        "good": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-        "richness": { "type": "number", "minimum": 0, "maximum": 1, "description": "Yield rate scalar; 1 = a full unit per mining cycle." }
+        "good": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "richness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Yield rate scalar; 1 = a full unit per mining cycle."
+        }
       }
     },
     "extra": {
@@ -101,7 +225,11 @@
       "description": "Patrol ships that spawn in this location's space. Data-driven.",
       "items": {
         "type": "object",
-        "required": ["id", "ship", "count"],
+        "required": [
+          "id",
+          "ship",
+          "count"
+        ],
         "additionalProperties": false,
         "properties": {
           "id": {
@@ -127,7 +255,12 @@
           },
           "engagement": {
             "type": "string",
-            "enum": ["passive", "investigate", "engage", "ambush"],
+            "enum": [
+              "passive",
+              "investigate",
+              "engage",
+              "ambush"
+            ],
             "default": "investigate"
           },
           "route": {
@@ -152,13 +285,32 @@
       "type": "object",
       "description": "A self-generated jump route available from this location's space — no gate, no clearance. Requires a hull with stats.jump_drive_capable. Organic crew enter cryosleep for the transit (GAME-DESIGN.md §6.3); a synthetic crew member pilots. Read by the space flight mode and the CryoTransit sequence.",
       "additionalProperties": false,
-      "required": ["to"],
+      "required": [
+        "to"
+      ],
       "properties": {
-        "to": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Destination location id." },
-        "name": { "type": "string", "description": "Route name shown on the jump prompt (e.g. a Duskway leg)." },
-        "pilot_line": { "type": "string", "description": "What the jump pilot says as the crew goes under. Fallback when no mind daemon is running; the soul may improvise its own when one is." },
-        "arrival_line": { "type": "string", "description": "What the jump pilot says as the crew wakes on the far side." },
-        "transit_seconds": { "type": "number", "minimum": 1, "description": "Real-time length of the cryo transit sequence. Default 8." }
+        "to": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Destination location id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Route name shown on the jump prompt (e.g. a Duskway leg)."
+        },
+        "pilot_line": {
+          "type": "string",
+          "description": "What the jump pilot says as the crew goes under. Fallback when no mind daemon is running; the soul may improvise its own when one is."
+        },
+        "arrival_line": {
+          "type": "string",
+          "description": "What the jump pilot says as the crew wakes on the far side."
+        },
+        "transit_seconds": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Real-time length of the cryo transit sequence. Default 8."
+        }
       }
     },
     "jump_gates": {
@@ -166,15 +318,192 @@
       "description": "Jump gates in this location. Fly through to transit systems.",
       "items": {
         "type": "object",
-        "required": ["id", "system", "connects_to"],
+        "required": [
+          "id",
+          "system",
+          "connects_to"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-          "system": { "type": "string" },
-          "connects_to": { "type": "string" },
-          "requires_clearance": { "type": "boolean", "default": false },
-          "faction_control": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-          "name": { "type": "string" }
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "system": {
+            "type": "string"
+          },
+          "connects_to": {
+            "type": "string"
+          },
+          "requires_clearance": {
+            "type": "boolean",
+            "default": false
+          },
+          "faction_control": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "interior": {
+      "type": "object",
+      "description": "A walkable interior for this location (station concourses, bars, offices) — the same freeform-rooms model as ship hulls, rendered by the shared InteriorWorld. When present, the landed mode mounts the walkable StationInterior instead of the classic dock panel. Props with a `service` are the location's live service points; npc_positions places npcs_present inside rooms.",
+      "additionalProperties": false,
+      "properties": {
+        "spawn": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number"
+          },
+          "description": "Player entry point (world px)."
+        },
+        "npc_positions": {
+          "type": "object",
+          "description": "npc id -> [x, y] world position inside the interior.",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "rooms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "x",
+              "y",
+              "w",
+              "h"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "x": {
+                "type": "number",
+                "minimum": 0
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0
+              },
+              "w": {
+                "type": "number",
+                "minimum": 60
+              },
+              "h": {
+                "type": "number",
+                "minimum": 60
+              },
+              "color": {
+                "type": "string",
+                "pattern": "^#[0-9a-fA-F]{6}$"
+              },
+              "doors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "to"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "to": {
+                      "type": "string"
+                    },
+                    "side": {
+                      "type": "string",
+                      "enum": [
+                        "left",
+                        "right",
+                        "top",
+                        "bottom"
+                      ]
+                    },
+                    "offset": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "width": {
+                      "type": "number",
+                      "minimum": 16
+                    }
+                  }
+                }
+              },
+              "props": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "sprite",
+                    "x",
+                    "y"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "sprite": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "scale": {
+                      "type": "number",
+                      "minimum": 0.25
+                    },
+                    "condition": {
+                      "type": "string",
+                      "description": "Trigger-DSL guard; omitted = always shown. Set dressing can change with story state (the Interval before/after the fight)."
+                    },
+                    "service": {
+                      "type": "string",
+                      "enum": [
+                        "market",
+                        "shipyard",
+                        "bar",
+                        "dock",
+                        "med_bay",
+                        "mission_board",
+                        "fuel",
+                        "salvage"
+                      ],
+                      "description": "Makes this prop a live service point the player can use (walk up, press R): market opens the MarketBoard, shipyard the UpgradeShop, bar the news feed, dock the undock/board panel."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Interaction label. Defaults to the sprite name."
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

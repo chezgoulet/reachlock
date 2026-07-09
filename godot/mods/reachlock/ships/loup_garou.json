@@ -31,10 +31,41 @@
       "id": "cockpit",
       "name": "Cockpit",
       "kind": "cockpit",
-      "x": 80, "y": 15, "w": 180, "h": 130,
-      "doors": [{"to": "bridge", "side": "right", "offset": 0.5}],
+      "x": 80,
+      "y": 15,
+      "w": 180,
+      "h": 130,
+      "doors": [
+        {
+          "to": "bridge",
+          "side": "right",
+          "offset": 0.5
+        }
+      ],
       "stations": [
-        {"id": "pilot", "name": "Pilot Console", "x": 160, "y": 90}
+        {
+          "id": "pilot",
+          "name": "Pilot Console",
+          "x": 160,
+          "y": 90
+        }
+      ],
+      "props": [
+        {
+          "sprite": "viewport_wide",
+          "x": 170,
+          "y": 32
+        },
+        {
+          "sprite": "pilot_console",
+          "x": 160,
+          "y": 78
+        },
+        {
+          "sprite": "nav_screen",
+          "x": 225,
+          "y": 60
+        }
       ]
     },
     {
@@ -42,14 +73,52 @@
       "name": "Bridge",
       "kind": "bridge",
       "color": "#1a4a7a",
-      "x": 275, "y": 15, "w": 200, "h": 130,
+      "x": 275,
+      "y": 15,
+      "w": 200,
+      "h": 130,
       "doors": [
-        {"to": "cockpit", "side": "left", "offset": 0.5},
-        {"to": "galley", "side": "bottom", "offset": 0.3}
+        {
+          "to": "cockpit",
+          "side": "left",
+          "offset": 0.5
+        },
+        {
+          "to": "galley",
+          "side": "bottom",
+          "offset": 0.3
+        }
       ],
       "stations": [
-        {"id": "weapons", "name": "Weapons Station", "x": 300, "y": 80},
-        {"id": "scanner", "name": "Scanner Array", "x": 420, "y": 80}
+        {
+          "id": "weapons",
+          "name": "Weapons Station",
+          "x": 300,
+          "y": 80
+        },
+        {
+          "id": "scanner",
+          "name": "Scanner Array",
+          "x": 420,
+          "y": 80
+        }
+      ],
+      "props": [
+        {
+          "sprite": "weapons_console",
+          "x": 300,
+          "y": 68
+        },
+        {
+          "sprite": "scanner_console",
+          "x": 420,
+          "y": 68
+        },
+        {
+          "sprite": "chart_table",
+          "x": 360,
+          "y": 110
+        }
       ]
     },
     {
@@ -57,30 +126,126 @@
       "name": "Airlock",
       "kind": "airlock",
       "color": "#5a5a6a",
-      "x": 490, "y": 15, "w": 90, "h": 130,
-      "doors": [{"to": "galley", "side": "bottom", "offset": 0.5}]
+      "x": 490,
+      "y": 15,
+      "w": 90,
+      "h": 130,
+      "doors": [
+        {
+          "to": "galley",
+          "side": "bottom",
+          "offset": 0.5
+        }
+      ],
+      "props": [
+        {
+          "sprite": "airlock_door",
+          "x": 535,
+          "y": 55
+        }
+      ]
     },
     {
       "id": "crew_quarters",
       "name": "Crew Quarters",
       "kind": "crew_quarters",
       "color": "#4a4a6a",
-      "x": 30, "y": 165, "w": 160, "h": 170,
-      "doors": [{"to": "galley", "side": "right", "offset": 0.5}]
+      "x": 30,
+      "y": 165,
+      "w": 160,
+      "h": 170,
+      "doors": [
+        {
+          "to": "galley",
+          "side": "right",
+          "offset": 0.5
+        }
+      ],
+      "props": [
+        {
+          "sprite": "bunk",
+          "x": 70,
+          "y": 200
+        },
+        {
+          "sprite": "bunk",
+          "x": 70,
+          "y": 250
+        },
+        {
+          "sprite": "locker",
+          "x": 160,
+          "y": 195
+        },
+        {
+          "sprite": "crate",
+          "x": 155,
+          "y": 300
+        }
+      ]
     },
     {
       "id": "galley",
       "name": "Galley",
       "kind": "galley",
       "color": "#6a7a3a",
-      "x": 205, "y": 165, "w": 240, "h": 170,
+      "x": 205,
+      "y": 165,
+      "w": 240,
+      "h": 170,
       "doors": [
-        {"to": "bridge", "side": "top", "offset": 0.3},
-        {"to": "airlock", "side": "top", "offset": 0.8},
-        {"to": "crew_quarters", "side": "left", "offset": 0.5},
-        {"to": "med_bay", "side": "right", "offset": 0.5},
-        {"to": "engineering", "side": "bottom", "offset": 0.3},
-        {"to": "cargo_hold", "side": "bottom", "offset": 0.7}
+        {
+          "to": "bridge",
+          "side": "top",
+          "offset": 0.3
+        },
+        {
+          "to": "airlock",
+          "side": "top",
+          "offset": 0.8
+        },
+        {
+          "to": "crew_quarters",
+          "side": "left",
+          "offset": 0.5
+        },
+        {
+          "to": "med_bay",
+          "side": "right",
+          "offset": 0.5
+        },
+        {
+          "to": "engineering",
+          "side": "bottom",
+          "offset": 0.3
+        },
+        {
+          "to": "cargo_hold",
+          "side": "bottom",
+          "offset": 0.7
+        }
+      ],
+      "props": [
+        {
+          "sprite": "galley_table",
+          "x": 320,
+          "y": 250
+        },
+        {
+          "sprite": "food_dispenser",
+          "x": 230,
+          "y": 195
+        },
+        {
+          "sprite": "porthole",
+          "x": 390,
+          "y": 185
+        },
+        {
+          "sprite": "plant",
+          "x": 425,
+          "y": 310
+        }
       ]
     },
     {
@@ -88,22 +253,85 @@
       "name": "Med Bay",
       "kind": "med_bay",
       "color": "#d8dde0",
-      "x": 460, "y": 165, "w": 140, "h": 170,
-      "doors": [{"to": "galley", "side": "left", "offset": 0.5}]
+      "x": 460,
+      "y": 165,
+      "w": 140,
+      "h": 170,
+      "doors": [
+        {
+          "to": "galley",
+          "side": "left",
+          "offset": 0.5
+        }
+      ],
+      "props": [
+        {
+          "sprite": "med_shelf",
+          "x": 530,
+          "y": 195
+        },
+        {
+          "sprite": "med_monitor",
+          "x": 480,
+          "y": 230
+        },
+        {
+          "sprite": "cryo_pod",
+          "x": 575,
+          "y": 280
+        }
+      ]
     },
     {
       "id": "engineering",
       "name": "Engineering",
       "kind": "engineering",
       "color": "#aa6020",
-      "x": 105, "y": 360, "w": 220, "h": 180,
+      "x": 105,
+      "y": 360,
+      "w": 220,
+      "h": 180,
       "doors": [
-        {"to": "galley", "side": "top", "offset": 0.5},
-        {"to": "cryo", "side": "left", "offset": 0.5},
-        {"to": "cargo_hold", "side": "right", "offset": 0.5}
+        {
+          "to": "galley",
+          "side": "top",
+          "offset": 0.5
+        },
+        {
+          "to": "cryo",
+          "side": "left",
+          "offset": 0.5
+        },
+        {
+          "to": "cargo_hold",
+          "side": "right",
+          "offset": 0.5
+        }
       ],
       "stations": [
-        {"id": "engineering", "name": "Engineering Console", "x": 200, "y": 420}
+        {
+          "id": "engineering",
+          "name": "Engineering Console",
+          "x": 200,
+          "y": 420
+        }
+      ],
+      "props": [
+        {
+          "sprite": "drive_core",
+          "x": 155,
+          "y": 400
+        },
+        {
+          "sprite": "engineering_panel",
+          "x": 250,
+          "y": 395
+        },
+        {
+          "sprite": "power_grid",
+          "x": 300,
+          "y": 450
+        }
       ]
     },
     {
@@ -111,10 +339,36 @@
       "name": "Cryo",
       "kind": "cryo",
       "color": "#5a7a8a",
-      "x": 15, "y": 375, "w": 80, "h": 80,
-      "doors": [{"to": "engineering", "side": "right", "offset": 0.5}],
+      "x": 15,
+      "y": 375,
+      "w": 80,
+      "h": 80,
+      "doors": [
+        {
+          "to": "engineering",
+          "side": "right",
+          "offset": 0.5
+        }
+      ],
       "stations": [
-        {"id": "cryopod", "name": "Cryopod", "x": 50, "y": 390}
+        {
+          "id": "cryopod",
+          "name": "Cryopod",
+          "x": 50,
+          "y": 390
+        }
+      ],
+      "props": [
+        {
+          "sprite": "cryo_pod",
+          "x": 38,
+          "y": 400
+        },
+        {
+          "sprite": "cryo_pod",
+          "x": 68,
+          "y": 400
+        }
       ]
     },
     {
@@ -122,13 +376,51 @@
       "name": "Cargo Hold",
       "kind": "cargo_hold",
       "color": "#5a5030",
-      "x": 340, "y": 360, "w": 220, "h": 200,
+      "x": 340,
+      "y": 360,
+      "w": 220,
+      "h": 200,
       "doors": [
-        {"to": "galley", "side": "top", "offset": 0.5},
-        {"to": "engineering", "side": "left", "offset": 0.5}
+        {
+          "to": "galley",
+          "side": "top",
+          "offset": 0.5
+        },
+        {
+          "to": "engineering",
+          "side": "left",
+          "offset": 0.5
+        }
       ],
       "stations": [
-        {"id": "cargo", "name": "Cargo Terminal", "x": 440, "y": 450}
+        {
+          "id": "cargo",
+          "name": "Cargo Terminal",
+          "x": 440,
+          "y": 450
+        }
+      ],
+      "props": [
+        {
+          "sprite": "crate_stack",
+          "x": 380,
+          "y": 400
+        },
+        {
+          "sprite": "mining_rig",
+          "x": 500,
+          "y": 410
+        },
+        {
+          "sprite": "cargo_pallet",
+          "x": 420,
+          "y": 500
+        },
+        {
+          "sprite": "crate",
+          "x": 530,
+          "y": 490
+        }
       ]
     }
   ],
@@ -138,5 +430,7 @@
     "power_draw": 0.15,
     "safe": true
   },
-  "attached": ["loup_garou_shuttle"]
+  "attached": [
+    "loup_garou_shuttle"
+  ]
 }

@@ -31,6 +31,8 @@ var _dim: ColorRect
 var _title: Label
 var _log: RichTextLabel
 var _tunnel: _Tunnel
+var _pod_row: _PodRow
+var _shake := 0.0
 
 
 func _ready() -> void:
@@ -51,6 +53,14 @@ func _ready() -> void:
 	_title.add_theme_font_size_override("font_size", 26)
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_title)
+
+	_pod_row = _PodRow.new()
+	_pod_row.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_pod_row.offset_top = 110
+	_pod_row.offset_left = -320
+	_pod_row.offset_right = 320
+	_pod_row.custom_minimum_size = Vector2(640, 96)
+	add_child(_pod_row)
 
 	_log = RichTextLabel.new()
 	_log.bbcode_enabled = true
@@ -81,6 +91,14 @@ func begin(route: Dictionary) -> void:
 			pilot_id = crew_id  # first synthetic stands in if nobody is rated
 	if pilot_id != "":
 		_pilot_name = DataRegistry.get_entity("npcs", pilot_id).get("name", pilot_id)
+
+	# The pods, visible: one per organic plus the player's, sealing as the
+	# script reads them off.
+	_pod_row.reset()
+	for crew_id: String in organics:
+		var npc := DataRegistry.get_entity("npcs", crew_id)
+		_pod_row.add_pod(npc.get("name", crew_id), StandIn.character_color(npc, crew_id))
+	_pod_row.add_pod("You", Color(0.74, 0.82, 0.92))
 
 	_lines = []
 	_lines.append({"text": "[i]Jump drive spinning up. Conscious transit is not survivable. Cryo protocol begins.[/i]", "hold_seconds": 1.6})
@@ -115,6 +133,13 @@ func _process(delta: float) -> void:
 		return
 	_clock -= delta
 	_dim.color.a = minf(_dim.color.a + delta * 0.8, 0.94)
+	# The hull complains at the threshold: vibration as the window opens
+	# and closes, still during the crossing itself.
+	if _shake > 0.0:
+		_shake = maxf(0.0, _shake - delta * 2.0)
+		offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake * 4.0
+	else:
+		offset = Vector2.ZERO
 	match _phase:
 		"boarding":
 			if _clock <= 0.0:
@@ -125,6 +150,7 @@ func _process(delta: float) -> void:
 		"wake":
 			if _clock <= 0.0:
 				_phase = "done"
+				offset = Vector2.ZERO
 				finished.emit(_route)
 
 
@@ -135,8 +161,12 @@ func _advance_line() -> void:
 		return
 	var line: Dictionary = _lines[_line_index]
 	_log.append_text(str(line.text) + "\n")
+	if str(line.text).begins_with("Pod "):
+		_pod_row.seal_next()
+		AudioManager.play("force_field", 0.9)
+	else:
+		AudioManager.play("ui_click", 0.8)
 	_clock = float(line.hold_seconds)
-	AudioManager.play("ui_click", 0.8)
 
 
 func _start_tunnel() -> void:
@@ -144,18 +174,73 @@ func _start_tunnel() -> void:
 	_clock = float(_route.get("transit_seconds", DEFAULT_TRANSIT_SECONDS))
 	_log.append_text("\n[i]The world folds.[/i]\n")
 	_tunnel.visible = true
-	AudioManager.play("force_field", 0.6)
+	_pod_row.visible = false
+	_shake = 1.6
+	AudioManager.play("phase_jump", 0.9)
 
 
 func _start_wake() -> void:
 	_phase = "wake"
 	_clock = WAKE_SECONDS
 	_tunnel.visible = false
+	_pod_row.visible = true
+	_pod_row.open_all()
+	_shake = 1.0
 	_log.append_text("\n[i]Revival cycle. Light. The smell of recycled antiseptic — the sensory signature of arrival.[/i]\n")
 	var arrival: String = _route.get("arrival_line", "")
 	if arrival != "":
 		_log.append_text("[b]%s:[/b] %s\n" % [_pilot_name, arrival])
 	AudioManager.play("power_up", 0.9)
+
+
+## The pod bank, visible: one silhouette per sleeper, lids sealing in turn
+## with a cryo-blue frost, opening again on the far side.
+class _PodRow extends Control:
+	var _pods: Array = []  # {name, color, state: open|sealed}
+	var _t := 0.0
+
+	func reset() -> void:
+		_pods.clear()
+
+	func add_pod(pod_name: String, color: Color) -> void:
+		_pods.append({"name": pod_name, "color": color, "state": "open"})
+
+	func seal_next() -> void:
+		for pod: Dictionary in _pods:
+			if pod.state == "open":
+				pod.state = "sealed"
+				return
+
+	func open_all() -> void:
+		for pod: Dictionary in _pods:
+			pod.state = "open"
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		if _pods.is_empty():
+			return
+		var pod_w := 52.0
+		var gap := 18.0
+		var total := _pods.size() * pod_w + (_pods.size() - 1) * gap
+		var x := (size.x - total) * 0.5
+		for pod: Dictionary in _pods:
+			var rect := Rect2(x, 0, pod_w, 78)
+			draw_rect(rect, Color(0.16, 0.20, 0.24))
+			draw_rect(rect, Color(0.45, 0.55, 0.62), false, 2.0)
+			# The sleeper
+			var body: Color = pod.color
+			draw_circle(Vector2(x + pod_w * 0.5, 22), 8.0, body)
+			draw_rect(Rect2(x + pod_w * 0.5 - 9, 32, 18, 34), body.darkened(0.25))
+			if pod.state == "sealed":
+				var frost := Color(0.55, 0.85, 0.95, 0.55 + 0.1 * sin(_t * 2.0))
+				draw_rect(rect.grow(-3), frost)
+				draw_rect(rect.grow(-3), Color(0.75, 0.95, 1.0, 0.9), false, 1.5)
+			draw_string(ThemeDB.fallback_font, Vector2(x - 4, 94), str(pod.name),
+				HORIZONTAL_ALIGNMENT_CENTER, pod_w + 8, 11, Color(0.85, 0.9, 0.95))
+			x += pod_w + gap
 
 
 ## Streaking-star tunnel, drawn flat: hyperspace as the crew never sees it.

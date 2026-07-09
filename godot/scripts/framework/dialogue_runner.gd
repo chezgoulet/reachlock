@@ -5,6 +5,15 @@ extends Node
 ## structure and improvisation interleave in one conversation. Works with no
 ## daemon: generated nodes fall back to their optional `text`, else a quiet
 ## beat. Mutations and choice conditions run against GameState.
+##
+## Latency mask (Sprint 2 hard requirement): a generated node with a
+## `buffer_line` speaks that authored line IMMEDIATELY and offers its
+## choices without waiting — the mind's real line lands as a follow-up
+## beat when inference finishes. If the player has already moved to
+## another node, the late line is dropped (conversation supersession).
+## Generated nodes without a buffer show a thinking indicator instead
+## (`thinking_changed`), so the scene visibly breathes while the mind
+## works.
 
 class_name DialogueRunner
 
@@ -15,6 +24,7 @@ const GENERATED_TIMEOUT := 15.0
 
 signal line_shown(speaker: String, text: String)
 signal choices_shown(choices: Array)  # [{index, text}]
+signal thinking_changed(thinking: bool)  # mind is working: hosts pulse an indicator
 signal ended
 
 var _dialogue: Dictionary = {}
@@ -59,6 +69,14 @@ func choose(index: int) -> void:
 	_last_player_line = choice.get("text", "")
 	_transcript.append({"role": "user", "content": _last_player_line})
 	line_shown.emit("You", _last_player_line)
+	# Moving on supersedes any in-flight generation for the old node: its
+	# late line must not land in the middle of the next beat. Tell the
+	# daemon too (revision bump → drop at the enact boundary, M7).
+	if _awaiting_generated and _buffer_mode == "offered":
+		_awaiting_generated = false
+		_set_thinking(false)
+		if _soul != null:
+			_soul.supersede()
 	_apply_mutations(choice.get("mutations", []))
 	_current_choices = []
 	_enter_node(choice.get("goto", "end"))
@@ -85,35 +103,71 @@ func _enter_node(node_id: String) -> void:
 
 func _run_generated(node: Dictionary) -> void:
 	_generated_node = node
-	if _soul != null and SoulGateway.is_ready():
-		_awaiting_generated = true
-		# Multi-turn coherence (M7): the mind sees the conversation so far
-		# via the history channel. The last transcript entry IS the current
-		# player line (it rides the trigger), so exclude it.
-		var history := _transcript.slice(maxi(0, _transcript.size() - 9), _transcript.size() - 1) \
-			if _transcript.size() > 1 else []
-		_soul.perceive_utterance("player", _last_player_line, node.get("prompt_hint", ""), history)
-		var timer := get_tree().create_timer(GENERATED_TIMEOUT)
-		timer.timeout.connect(_on_generated_timeout.bind(node), CONNECT_ONE_SHOT)
-	else:
+	if not _can_generate():
 		_npc_line(_generated_fallback(node))
 		_offer_or_continue(node)
+		return
+	_awaiting_generated = true
+	_request_generation(node)
+	var buffer: String = node.get("buffer_line", "")
+	if buffer == "":
+		_buffer_mode = "none"
+		_set_thinking(true)
+	else:
+		# The latency mask: an authored beat lands NOW. With choices, the
+		# player keeps talking and the mind's line arrives as a follow-up
+		# beat; without choices, the buffer bridges to the real line.
+		_npc_line(buffer)
+		if node.get("choices", []).is_empty():
+			_buffer_mode = "held"
+			_set_thinking(true)
+		else:
+			_buffer_mode = "offered"
+			_offer_or_continue(node)
+	var timer := get_tree().create_timer(GENERATED_TIMEOUT)
+	timer.timeout.connect(_on_generated_timeout.bind(node), CONNECT_ONE_SHOT)
+
+
+## Seam for tests and future providers: is a live mind available?
+func _can_generate() -> bool:
+	return _soul != null and SoulGateway.is_ready()
+
+
+## Seam for tests: hand the node's prompt to the soul.
+func _request_generation(node: Dictionary) -> void:
+	# Multi-turn coherence (M7): the mind sees the conversation so far
+	# via the history channel. The last transcript entry IS the current
+	# player line (it rides the trigger), so exclude it.
+	var history := _transcript.slice(maxi(0, _transcript.size() - 9), _transcript.size() - 1) \
+		if _transcript.size() > 1 else []
+	_soul.perceive_utterance("player", _last_player_line, node.get("prompt_hint", ""), history)
 
 
 func _on_soul_spoke(text: String) -> void:
 	if not _awaiting_generated:
 		return
 	_awaiting_generated = false
+	_set_thinking(false)
 	_npc_line(text)
-	_offer_or_continue(_current_generated_node())
+	if _buffer_mode != "offered":
+		_offer_or_continue(_current_generated_node())
+	# "offered" nodes already put their choices up; the mind's line is a
+	# follow-up beat, nothing else moves.
 
 
 func _on_generated_timeout(node: Dictionary) -> void:
 	if not _awaiting_generated:
 		return
 	_awaiting_generated = false
-	_npc_line(_generated_fallback(node))
-	_offer_or_continue(node)
+	_set_thinking(false)
+	match _buffer_mode:
+		"offered":
+			pass  # the buffer carried the beat; let the late line go
+		"held":
+			_offer_or_continue(node)  # buffer spoke; just move on
+		_:
+			_npc_line(_generated_fallback(node))
+			_offer_or_continue(node)
 
 
 ## The mind gave up (inference failure) — fall back now, don't make the
@@ -123,8 +177,25 @@ func _on_soul_concluded(outcome: String) -> void:
 	if not _awaiting_generated or outcome != "abandoned":
 		return
 	_awaiting_generated = false
-	_npc_line(_generated_fallback(_generated_node))
-	_offer_or_continue(_generated_node)
+	_set_thinking(false)
+	match _buffer_mode:
+		"offered":
+			pass  # buffer already carried the beat
+		"held":
+			_offer_or_continue(_generated_node)
+		_:
+			_npc_line(_generated_fallback(_generated_node))
+			_offer_or_continue(_generated_node)
+
+
+var _buffer_mode := "none"  # none | offered (choices up) | held (bridging)
+var _thinking := false
+
+func _set_thinking(value: bool) -> void:
+	if _thinking == value:
+		return
+	_thinking = value
+	thinking_changed.emit(value)
 
 
 var _generated_node: Dictionary = {}

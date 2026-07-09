@@ -8,17 +8,94 @@
   "dependencies": [],
   "conflicts": [],
   "provides": {
-    "factions": ["compact", "isc", "corp_charter", "reach", "earth_remnant"],
-    "locations": ["sorrow_station", "aethon", "verne", "cadence", "the_veil", "earth", "the_drift", "earth_landing"],
-    "ships": ["loup_garou", "loup_garou_shuttle", "compact_picket_boat", "reaver_skiff"],
-    "npcs": ["tib", "tove", "bardo", "doc_keene", "prudence", "risc", "boris", "vex", "compact_picket_drone", "doss", "grissom", "noor"],
-    "storylines": ["veil_escalation", "duskway_runs", "alexander_long_game", "predecessor_revelation"],
-    "goods": ["raw_ore", "refined_alloys", "rations", "medical_cache"],
-    "dialogues": ["tib_dock_debrief", "tib_station_greeting", "tove_cargo_check", "tove_duskway_offer", "tove_galley_briefing", "prudence_bar_fight", "doss_offer", "doss_post_deal", "noor_delivery", "noor_after", "doc_keene_cryo_primer", "boris_pod_check"],
-    "faction_actions": ["trade_with_compact"],
-    "missions": ["test_trade_run", "duskway_demo_act1", "duskway_demo_act2", "duskway_demo_act3", "duskway_demo_act4"],
-    "economy_tables": ["base"],
-    "upgrades": ["patch_armor", "rail_overcharge", "drive_tune", "transponder_ghost", "cryo_recalibration", "decoy_beacon", "lucky_dice"]
+    "factions": [
+      "compact",
+      "isc",
+      "corp_charter",
+      "reach",
+      "earth_remnant"
+    ],
+    "locations": [
+      "sorrow_station",
+      "aethon",
+      "verne",
+      "cadence",
+      "the_veil",
+      "earth",
+      "the_drift",
+      "earth_landing"
+    ],
+    "ships": [
+      "loup_garou",
+      "loup_garou_shuttle",
+      "compact_picket_boat",
+      "reaver_skiff"
+    ],
+    "npcs": [
+      "tib",
+      "tove",
+      "bardo",
+      "doc_keene",
+      "prudence",
+      "risc",
+      "boris",
+      "vex",
+      "compact_picket_drone",
+      "doss",
+      "grissom",
+      "noor"
+    ],
+    "storylines": [
+      "veil_escalation",
+      "duskway_runs",
+      "alexander_long_game",
+      "predecessor_revelation"
+    ],
+    "goods": [
+      "raw_ore",
+      "refined_alloys",
+      "rations",
+      "medical_cache"
+    ],
+    "dialogues": [
+      "tib_dock_debrief",
+      "tib_station_greeting",
+      "tove_cargo_check",
+      "tove_duskway_offer",
+      "tove_galley_briefing",
+      "prudence_bar_fight",
+      "doss_offer",
+      "doss_post_deal",
+      "noor_delivery",
+      "noor_after",
+      "doc_keene_cryo_primer",
+      "boris_pod_check",
+      "tib_cockpit_hub",
+      "prudence_flight_hub",
+      "bardo_galley_hub"
+    ],
+    "faction_actions": [
+      "trade_with_compact"
+    ],
+    "missions": [
+      "test_trade_run",
+      "duskway_demo_act1",
+      "duskway_demo_act2",
+      "duskway_demo_act3",
+      "duskway_demo_act4"
+    ],
+    "economy_tables": [
+      "base"
+    ],
+    "upgrades": [
+      "patch_armor",
+      "rail_overcharge",
+      "drive_tune",
+      "transponder_ghost",
+      "cryo_recalibration",
+      "decoy_beacon",
+      "lucky_dice"
+    ]
   },
   "start": {
     "mode": "on_board",

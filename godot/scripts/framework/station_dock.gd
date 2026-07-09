@@ -48,6 +48,7 @@ var _runner: DialogueRunner = null
 var _bay: _DockBay
 var _log: RichTextLabel
 var _choice_box: VBoxContainer
+var _thinking_label: Label = null
 var _market: MarketBoard = null
 var _feed: EventFeed = null
 var _reputation_panel: PanelContainer = null
@@ -173,12 +174,19 @@ func _start_dialogue(dialogue: Dictionary, soul: SoulInstance) -> bool:
 	add_child(_runner)
 	_runner.line_shown.connect(_on_line_shown)
 	_runner.choices_shown.connect(_on_choices_shown)
+	_runner.thinking_changed.connect(_on_thinking_changed)
 	_runner.ended.connect(_on_dialogue_ended)
 	if _runner.start(dialogue, soul):
 		return true
 	_runner.queue_free()
 	_runner = null
 	return false
+
+
+## The mind is working: pulse a quiet ellipsis so the scene visibly breathes.
+func _on_thinking_changed(thinking: bool) -> void:
+	if _thinking_label != null:
+		_thinking_label.visible = thinking
 
 
 func _find_dialogue_for(soul_id: String) -> Dictionary:
@@ -329,6 +337,13 @@ func _build_ui() -> void:
 	_log.custom_minimum_size = Vector2(0, 96)
 	_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(_log)
+
+	_thinking_label = Label.new()
+	_thinking_label.text = "· · ·"
+	_thinking_label.add_theme_font_size_override("font_size", 18)
+	_thinking_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
+	_thinking_label.visible = false
+	root.add_child(_thinking_label)
 
 	_choice_box = VBoxContainer.new()
 	root.add_child(_choice_box)

@@ -4,18 +4,43 @@
   "kind": "station",
   "description": "A Reach waystation built into the bones of a decommissioned ore refinery. Nobody runs it, exactly — it runs on grudges, favors, and the fact that everyone needs somewhere to drink. The bar outlasted three owners and two decompressions. The memorial wall in the main corridor lists 847 names; there is a second, smaller one nobody authorized and nobody removes.",
   "faction_control": "reach",
-  "services": ["dock", "market", "bar", "med_bay", "fuel", "shipyard"],
+  "services": [
+    "dock",
+    "market",
+    "bar",
+    "med_bay",
+    "fuel",
+    "shipyard"
+  ],
   "population": 2400,
-  "npcs_present": ["doss", "grissom", "prudence"],
+  "npcs_present": [
+    "doss",
+    "grissom",
+    "prudence"
+  ],
   "economy": {
-    "produces": ["rations"],
-    "consumes": ["raw_ore", "refined_alloys"]
+    "produces": [
+      "rations"
+    ],
+    "consumes": [
+      "raw_ore",
+      "refined_alloys"
+    ]
   },
   "dock": {
     "npc_positions": {
-      "doss": [0.12, 0.48],
-      "grissom": [0.48, 0.66],
-      "prudence": [0.56, 0.62]
+      "doss": [
+        0.12,
+        0.48
+      ],
+      "grissom": [
+        0.48,
+        0.66
+      ],
+      "prudence": [
+        0.56,
+        0.62
+      ]
     },
     "style": "frontier"
   },
@@ -47,5 +72,296 @@
   },
   "extra": {
     "gate_note": "The Compact gate that used to serve this system is clearance-locked; nobody at Sorrow bothers asking anymore. Ships that leave the map leave under their own drives."
+  },
+  "interior": {
+    "spawn": [
+      150,
+      250
+    ],
+    "npc_positions": {
+      "doss": [
+        960,
+        320
+      ],
+      "grissom": [
+        560,
+        250
+      ],
+      "prudence": [
+        640,
+        210
+      ]
+    },
+    "rooms": [
+      {
+        "id": "concourse",
+        "name": "Dock Concourse",
+        "kind": "corridor",
+        "x": 40,
+        "y": 120,
+        "w": 320,
+        "h": 300,
+        "doors": [
+          {
+            "to": "the_interval",
+            "side": "right",
+            "offset": 0.35
+          },
+          {
+            "to": "market_row",
+            "side": "bottom",
+            "offset": 0.5
+          }
+        ],
+        "props": [
+          {
+            "sprite": "airlock_door",
+            "x": 90,
+            "y": 165,
+            "service": "dock",
+            "name": "your berth"
+          },
+          {
+            "sprite": "memorial_wall",
+            "x": 230,
+            "y": 165,
+            "name": "the memorial wall — 847 names"
+          },
+          {
+            "sprite": "memorial_wall",
+            "x": 320,
+            "y": 175,
+            "scale": 0.5,
+            "name": "the second wall, the small one"
+          },
+          {
+            "sprite": "viewport_wide",
+            "x": 200,
+            "y": 390
+          },
+          {
+            "sprite": "plant",
+            "x": 320,
+            "y": 300
+          }
+        ]
+      },
+      {
+        "id": "the_interval",
+        "name": "The Interval",
+        "kind": "bar",
+        "x": 420,
+        "y": 120,
+        "w": 380,
+        "h": 300,
+        "doors": [
+          {
+            "to": "concourse",
+            "side": "left",
+            "offset": 0.35
+          },
+          {
+            "to": "dock_office",
+            "side": "right",
+            "offset": 0.5
+          }
+        ],
+        "props": [
+          {
+            "sprite": "bar_counter",
+            "x": 610,
+            "y": 175
+          },
+          {
+            "sprite": "bottle_shelf",
+            "x": 610,
+            "y": 145
+          },
+          {
+            "sprite": "viewport_wide",
+            "x": 740,
+            "y": 200
+          },
+          {
+            "sprite": "bar_stool",
+            "x": 560,
+            "y": 205,
+            "condition": "not (\"bar_fight_done\" in player.flags)"
+          },
+          {
+            "sprite": "bar_stool",
+            "x": 610,
+            "y": 205,
+            "condition": "not (\"bar_fight_done\" in player.flags)"
+          },
+          {
+            "sprite": "bar_stool",
+            "x": 660,
+            "y": 205,
+            "condition": "not (\"bar_fight_done\" in player.flags)"
+          },
+          {
+            "sprite": "table_round",
+            "x": 500,
+            "y": 300,
+            "condition": "not (\"bar_fight_done\" in player.flags)"
+          },
+          {
+            "sprite": "table_round",
+            "x": 620,
+            "y": 330,
+            "condition": "not (\"bar_fight_done\" in player.flags)"
+          },
+          {
+            "sprite": "bar_stool",
+            "x": 540,
+            "y": 320,
+            "condition": "not (\"bar_fight_done\" in player.flags)"
+          },
+          {
+            "sprite": "terminal",
+            "x": 760,
+            "y": 300,
+            "condition": "not (\"bar_fight_done\" in player.flags)",
+            "name": "market terminal"
+          },
+          {
+            "sprite": "stool_fallen",
+            "x": 560,
+            "y": 215,
+            "condition": "\"bar_fight_done\" in player.flags"
+          },
+          {
+            "sprite": "stool_fallen",
+            "x": 640,
+            "y": 320,
+            "condition": "\"bar_fight_done\" in player.flags"
+          },
+          {
+            "sprite": "table_broken",
+            "x": 505,
+            "y": 300,
+            "condition": "\"bar_fight_done\" in player.flags"
+          },
+          {
+            "sprite": "table_broken",
+            "x": 625,
+            "y": 335,
+            "condition": "\"bar_fight_done\" in player.flags"
+          },
+          {
+            "sprite": "terminal_wrecked",
+            "x": 760,
+            "y": 300,
+            "condition": "\"bar_fight_done\" in player.flags",
+            "name": "what's left of the market terminal"
+          },
+          {
+            "sprite": "extinguisher_residue",
+            "x": 590,
+            "y": 290,
+            "condition": "\"bar_fight_done\" in player.flags"
+          },
+          {
+            "sprite": "extinguisher_residue",
+            "x": 700,
+            "y": 330,
+            "condition": "\"bar_fight_done\" in player.flags"
+          }
+        ]
+      },
+      {
+        "id": "dock_office",
+        "name": "Dock Office",
+        "kind": "office",
+        "x": 860,
+        "y": 180,
+        "w": 260,
+        "h": 200,
+        "doors": [
+          {
+            "to": "the_interval",
+            "side": "left",
+            "offset": 0.5
+          }
+        ],
+        "props": [
+          {
+            "sprite": "desk",
+            "x": 1010,
+            "y": 250
+          },
+          {
+            "sprite": "terminal",
+            "x": 920,
+            "y": 230
+          },
+          {
+            "sprite": "plant",
+            "x": 1090,
+            "y": 340
+          },
+          {
+            "sprite": "porthole",
+            "x": 1010,
+            "y": 210
+          }
+        ]
+      },
+      {
+        "id": "market_row",
+        "name": "Market Row",
+        "kind": "market",
+        "x": 120,
+        "y": 480,
+        "w": 480,
+        "h": 220,
+        "doors": [
+          {
+            "to": "concourse",
+            "side": "top",
+            "offset": 0.5
+          }
+        ],
+        "props": [
+          {
+            "sprite": "shop_counter",
+            "x": 250,
+            "y": 545,
+            "service": "shipyard",
+            "name": "Doss's outfitting counter"
+          },
+          {
+            "sprite": "shop_counter",
+            "x": 460,
+            "y": 545,
+            "service": "market",
+            "name": "market counter"
+          },
+          {
+            "sprite": "crate_stack",
+            "x": 170,
+            "y": 640
+          },
+          {
+            "sprite": "cargo_pallet",
+            "x": 350,
+            "y": 650
+          },
+          {
+            "sprite": "crate",
+            "x": 540,
+            "y": 640
+          },
+          {
+            "sprite": "terminal",
+            "x": 570,
+            "y": 545,
+            "service": "bar",
+            "name": "station chatter feed"
+          }
+        ]
+      }
+    ]
   }
 }

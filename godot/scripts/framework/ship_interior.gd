@@ -56,7 +56,8 @@ var _rooms: Array = []          # {id, name, kind, rect:Rect2, color}
 var _stations: Array = []       # {id, name, kind, pos:Vector2, room_id}
 var _interactables: Array = []  # {kind, name, pos, ref, station_id}
 
-var _walker: _Walker
+var _world: InteriorWorld
+var _walker: CharacterSprite
 var _camera: Camera2D
 var _pos: Vector2 = INTERIOR_SIZE * 0.5
 var _frozen := false
@@ -67,6 +68,7 @@ var _hud: CanvasLayer
 var _log: RichTextLabel
 var _hint: Label
 var _choice_box: VBoxContainer
+var _thinking_label: Label = null
 var _runner: DialogueRunner = null
 var _crew: Array = []  # {id, name, pos:Vector2, node}
 
@@ -160,8 +162,9 @@ func _build_rooms() -> void:
 				"color": color,
 				"doors": doors,
 				"stations": stations,
+				"props": entry.get("props", []),
 			})
-			
+
 			# Register stations in the global station list
 			for s: Dictionary in stations:
 				_stations.append(s)
@@ -237,8 +240,9 @@ func _place_crew() -> void:
 			room_counts[room.id] = index + 1
 			# Fan out crew sharing a room; keep clear of the station marker.
 			pos = rect.position + rect.size * Vector2(0.30 + 0.22 * (index % 3), 0.62)
-		var figure := _CrewFigure.new()
-		figure.setup(crew_id, StandIn.character_color(npc, crew_id))
+		var figure := CharacterSprite.new()
+		figure.setup("npcs", crew_id, StandIn.character_color(npc, crew_id),
+			npc.get("name", crew_id))
 		figure.position = pos
 		add_child(figure)
 		_crew.append({
@@ -263,25 +267,28 @@ func _find_room(room_id: String) -> Dictionary:
 func _build_world() -> void:
 	# Background sky — dark space through the hull
 	var bg := ColorRect.new()
-	bg.color = Color(0.08, 0.10, 0.14)
+	bg.color = Color(0.05, 0.06, 0.10)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
-	# Floor: render rooms as colored rects (placeholder until Kenney tiles)
-	var floor := _Floor.new()
-	floor.setup(_rooms, _stations)
-	add_child(floor)
+	# The shared interior renderer: tiled floors, walls, furniture,
+	# walkability. Rooms and props are content; this is presentation.
+	_world = InteriorWorld.new()
+	add_child(_world)
+	_world.setup(_rooms)
 
-	# Player walker
-	_walker = _Walker.new()
-	_walker.position = _player_start()
+	# Player walker: the shared character sheet renderer.
+	_walker = CharacterSprite.new()
+	_walker.setup("player", "character", Color(0.85, 0.86, 0.9))
+	_pos = _player_start()
+	_walker.position = _pos
 	add_child(_walker)
 
 	# Camera
 	_camera = Camera2D.new()
 	_camera.position = _walker.position
-	_camera.zoom = Vector2(1.2, 1.2)
+	_camera.zoom = Vector2(1.5, 1.5)
 	add_child(_camera)
 	_camera.make_current()
 
@@ -298,33 +305,45 @@ func _player_start() -> Vector2:
 	return INTERIOR_SIZE * 0.5
 
 
+var _drift_velocity := Vector2.ZERO  # zero-G residual motion
+
 func _process(delta: float) -> void:
 	if not _frozen:
 		var move := Input.get_vector("strafe_left", "strafe_right", "thrust_forward", "thrust_back")
-		
+
 		# Gravity-aware movement
-		var gfx := GravitySystem.apply_movement(move, delta, _walker.velocity)
-		_walker.velocity = gfx.get("velocity", Vector2.ZERO)
-		
+		var gfx := GravitySystem.apply_movement(move, delta, _drift_velocity)
+		_drift_velocity = gfx.get("velocity", Vector2.ZERO)
+
 		var effective_move: Vector2 = gfx.get("move", move)
 		var effective_delta: float = gfx.get("delta", delta)
-		
+
+		var step := Vector2.ZERO
 		if effective_move != Vector2.ZERO:
-			_pos += effective_move * WALK_SPEED * effective_delta
-			_pos = _pos.clamp(Vector2(20, 20), INTERIOR_SIZE - Vector2(20, 20))
-			_walker.position = _pos
-			if move != Vector2.ZERO:
-				_walker.facing = signf(move.x) if absf(move.x) > 0.1 else _walker.facing
-		elif _walker.velocity != Vector2.ZERO:
-			# Zero-G drift
-			_pos += _walker.velocity * effective_delta
-			_pos = _pos.clamp(Vector2(20, 20), INTERIOR_SIZE - Vector2(20, 20))
-			_walker.position = _pos
-		
+			step = effective_move * WALK_SPEED * effective_delta
+		elif _drift_velocity != Vector2.ZERO:
+			step = _drift_velocity * effective_delta
+		if step != Vector2.ZERO:
+			_try_move(step)
+		_walker.set_motion(move, step != Vector2.ZERO and move != Vector2.ZERO)
+
 		_camera.position = _camera.position.lerp(_pos, 1.0 - exp(-6.0 * delta))
 		if Input.is_action_just_pressed("interact"):
 			_interact()
 	_update_hint()
+
+
+## Walls are real: move where the interior allows, slide along what it
+## doesn't, and never leave the hull.
+func _try_move(step: Vector2) -> void:
+	var next := (_pos + step).clamp(Vector2(20, 20), INTERIOR_SIZE - Vector2(20, 20))
+	if _world.is_walkable(next):
+		_pos = next
+	elif _world.is_walkable(Vector2(next.x, _pos.y)):
+		_pos.x = next.x
+	elif _world.is_walkable(Vector2(_pos.x, next.y)):
+		_pos.y = next.y
+	_walker.position = _pos
 
 
 func _auto_door_side(from_rect: Rect2, from_id: String, to_id: String, all_rooms: Array) -> String:
@@ -365,11 +384,15 @@ func _update_hint() -> void:
 	var target := _nearest()
 	if target.is_empty():
 		_hint.text = ""
+		if _world != null:
+			_world.clear_highlight()
 		return
 	if target.kind == "crew":
 		_hint.text = "R — talk to %s" % target.name
 	else:
 		_hint.text = "R — use %s" % target.name
+	if _world != null:
+		_world.set_highlight(target.pos)
 
 
 func _interact() -> void:
@@ -395,6 +418,9 @@ func _talk_to_crew(crew_id: String) -> void:
 		add_child(_runner)
 		_runner.line_shown.connect(_on_line_shown)
 		_runner.choices_shown.connect(_on_choices_shown)
+		_runner.thinking_changed.connect(func(thinking: bool) -> void:
+			if _thinking_label != null:
+				_thinking_label.visible = thinking)
 		_runner.ended.connect(_on_dialogue_ended)
 		if _runner.start(dialogue, soul):
 			return
@@ -463,33 +489,32 @@ func _use_station(target: Dictionary) -> void:
 	# Player occupies this station
 	ShipOperation.occupy(station_id, "player")
 
+	# The pilot's seat IS the flight mode: sitting down takes her out.
+	if station_id == "pilot":
+		AudioManager.play("ui_switch")
+		_append_log("[i]You take the pilot's seat.[/i]")
+		launch_requested.emit()
+		return
+
+	# Console stations open their minigame panel (power grid, scope,
+	# manifest, gunnery). Esc or Close resumes walking.
+	var panel := StationMinigames.build(station_id)
+	if panel != null:
+		AudioManager.play("computer_noise", 0.9)
+		_frozen = true
+		_hud.add_child(panel)
+		panel.connect("closed", func() -> void:
+			_frozen = false
+			ShipOperation.vacate(station_id))
+		return
+
 	match station_id:
-		"pilot":
-			AudioManager.play("ui_switch")
-			_append_log("[i]You take the pilot's seat.[/i]")
-			_frozen = true
-		"weapons":
-			AudioManager.play("ui_switch")
-			_append_log("[i]You man the weapons station.[/i]")
-			_frozen = true
-		"engineering":
-			AudioManager.play("computer_noise", 0.9)
-			_append_log("[i]You check the engineering console. Power distribution nominal.[/i]")
-		"scanner":
-			AudioManager.play("power_up")
-			_append_log("[i]You power up the scanner array.[/i]")
-		"cargo":
-			AudioManager.play("ui_click")
-			_append_log("[i]You inspect the cargo manifest.[/i]")
 		"cryopod":
 			AudioManager.play("force_field", 0.7)
-			_append_log("[i]The cryopod is empty. Boris maintains it between jumps.[/i]")
+			_append_log("[i]The pods idle at standby chill. Boris keeps them ready between jumps — the next crossing, you'll be inside one.[/i]")
 		_:
 			_append_log("[i]You interact with the %s station.[/i]" % station_id.capitalize())
-	
-	# Auto-release station after a moment for non-interactive stations
-	if station_id not in ["pilot", "weapons"]:
-		_auto_vacate(station_id, 2.0)
+	_auto_vacate(station_id, 2.0)
 
 
 func _auto_vacate(station_id: String, delay: float) -> void:
@@ -530,7 +555,7 @@ func _build_hud() -> void:
 	title.add_theme_font_size_override("font_size", 26)
 	top.add_child(title)
 	var sub := Label.new()
-	sub.text = "walk: WASD   ·   interact: R   ·   leave station: Esc"
+	sub.text = "walk: WASD   ·   interact: R   ·   close panel: Esc"
 	sub.add_theme_font_size_override("font_size", 14)
 	top.add_child(sub)
 
@@ -578,6 +603,16 @@ func _build_hud() -> void:
 	_choice_box.alignment = BoxContainer.ALIGNMENT_END
 	_hud.add_child(_choice_box)
 
+	_thinking_label = Label.new()
+	_thinking_label.text = "· · ·"
+	_thinking_label.add_theme_font_size_override("font_size", 18)
+	_thinking_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
+	_thinking_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_thinking_label.offset_left = -60
+	_thinking_label.offset_top = -130
+	_thinking_label.visible = false
+	_hud.add_child(_thinking_label)
+
 	_hint = Label.new()
 	_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	_hint.offset_top = -30
@@ -592,187 +627,3 @@ func _soul_name(soul: SoulInstance) -> String:
 
 func _append_log(bbcode: String) -> void:
 	_log.append_text(bbcode + "\n")
-
-
-## --- floor rendering ---------------------------------------------------------
-##
-## Stand-in renderer: colored room rectangles with wall lines, door gaps,
-## room name labels, and station markers. Will be replaced by Kenney tiles
-## in the asset pass.
-
-class _Floor extends Node2D:
-	var _rooms: Array = []
-	var _stations: Array = []
-	# For rendering: wall clipping offset for doors
-	var _wall_thickness := 3.0
-
-	func setup(rooms: Array, stations: Array) -> void:
-		_rooms = rooms
-		_stations = stations
-		queue_redraw()
-
-	func _draw() -> void:
-		for r: Dictionary in _rooms:
-			var rect: Rect2 = r.rect
-			var color: Color = r.color
-			var doors: Array = r.get("doors", [])
-			
-			# Room background
-			draw_rect(rect, color.darkened(0.5))
-			
-			# Walls with door gaps
-			# Top wall
-			_draw_wall(rect, "top", color.lightened(0.2), doors)
-			# Bottom wall
-			_draw_wall(rect, "bottom", color.lightened(0.2), doors)
-			# Left wall
-			_draw_wall(rect, "left", color.lightened(0.2), doors)
-			# Right wall
-			_draw_wall(rect, "right", color.lightened(0.2), doors)
-			
-			# Room name
-			draw_string(ThemeDB.fallback_font,
-				Vector2(rect.position.x + 8, rect.position.y + 20),
-				r.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, color.lightened(0.6))
-		
-		# Station markers
-		for s: Dictionary in _stations:
-			var station_color := Color(0.6, 0.8, 1.0, 0.8)
-			match s.get("id", ""):
-				"pilot": station_color = Color(0.3, 0.6, 0.9)
-				"weapons": station_color = Color(0.9, 0.3, 0.3)
-				"engineering": station_color = Color(0.9, 0.6, 0.2)
-				"scanner": station_color = Color(0.3, 0.9, 0.6)
-				"cargo": station_color = Color(0.7, 0.6, 0.3)
-				"cryopod": station_color = Color(0.4, 0.7, 0.8)
-			draw_circle(s.pos, 8, station_color)
-			draw_circle(s.pos, 8, station_color.darkened(0.5), false, 1.5)
-			draw_string(ThemeDB.fallback_font,
-				Vector2(s.pos.x - 20, s.pos.y + 22),
-				s.name, HORIZONTAL_ALIGNMENT_CENTER, 40, 12, Color(0.9, 0.9, 0.9))
-
-	## Draw a wall segment with an optional door gap.
-	func _draw_wall(rect: Rect2, side: String, color: Color, doors: Array) -> void:
-		var door_hw := 20.0  # half-door-width
-		var segments: Array = _wall_segments(rect, side, doors, door_hw)
-		for seg: Dictionary in segments:
-			draw_rect(seg.rect, color)
-
-	## Calculate wall segments: the full wall minus door openings.
-	func _wall_segments(rect: Rect2, side: String, doors: Array, half_width: float) -> Array:
-		var result: Array = []
-		var wall_rect: Rect2
-		match side:
-			"top":
-				wall_rect = Rect2(rect.position.x, rect.position.y - _wall_thickness, rect.size.x, _wall_thickness * 2)
-			"bottom":
-				wall_rect = Rect2(rect.position.x, rect.position.y + rect.size.y - _wall_thickness, rect.size.x, _wall_thickness * 2)
-			"left":
-				wall_rect = Rect2(rect.position.x - _wall_thickness, rect.position.y, _wall_thickness * 2, rect.size.y)
-			"right":
-				wall_rect = Rect2(rect.position.x + rect.size.x - _wall_thickness, rect.position.y, _wall_thickness * 2, rect.size.y)
-			_:
-				return []
-		
-		# Find doors on this side and clip them out
-		var gaps: Array[Rect2] = []
-		for d: Dictionary in doors:
-			if d.get("side", "") != side:
-				continue
-			var door_off: float = d.get("offset", 0.5)
-			var door_w: float = d.get("width", 40.0)
-			var cx: float
-			var cy: float
-			match side:
-				"top", "bottom":
-					cx = wall_rect.position.x + wall_rect.size.x * door_off
-					cy = wall_rect.position.y + wall_rect.size.y * 0.5
-				"left", "right":
-					cx = wall_rect.position.x + wall_rect.size.x * 0.5
-					cy = wall_rect.position.y + wall_rect.size.y * door_off
-			var gap := Rect2(cx - door_w * 0.5, cy - _wall_thickness, door_w, _wall_thickness * 2)
-			gaps.append(gap)
-		
-		if gaps.is_empty():
-			result.append({"rect": wall_rect})
-			return result
-		
-		# Clip gaps from the wall - split into left and right/top and bottom segments
-		match side:
-			"top", "bottom":
-				gaps.sort_custom(func(a: Rect2, b: Rect2): return a.position.x < b.position.x)
-				var start_x := wall_rect.position.x
-				for g: Rect2 in gaps:
-					if g.position.x > start_x:
-						result.append({"rect": Rect2(start_x, wall_rect.position.y, g.position.x - start_x, wall_rect.size.y)})
-					start_x = g.position.x + g.size.x
-				if start_x < wall_rect.position.x + wall_rect.size.x:
-					result.append({"rect": Rect2(start_x, wall_rect.position.y, wall_rect.position.x + wall_rect.size.x - start_x, wall_rect.size.y)})
-			"left", "right":
-				gaps.sort_custom(func(a: Rect2, b: Rect2): return a.position.y < b.position.y)
-				var start_y := wall_rect.position.y
-				for g: Rect2 in gaps:
-					if g.position.y > start_y:
-						result.append({"rect": Rect2(wall_rect.position.x, start_y, wall_rect.size.x, g.position.y - start_y)})
-					start_y = g.position.y + g.size.y
-				if start_y < wall_rect.position.y + wall_rect.size.y:
-					result.append({"rect": Rect2(wall_rect.position.x, start_y, wall_rect.size.x, wall_rect.position.y + wall_rect.size.y - start_y)})
-		
-		return result
-
-
-## --- crew figure ---------------------------------------------------------------
-##
-## A crew member standing at their post: the shared StandIn character
-## vocabulary painted in world space, name below, gentle idle bob.
-
-class _CrewFigure extends Node2D:
-	var _crew_id := ""
-	var _color := Color.GRAY
-	var _t := 0.0
-	var _phase := 0.0
-
-	func setup(crew_id: String, color: Color) -> void:
-		_crew_id = crew_id
-		_color = color
-		_phase = float(hash(crew_id) % 100) / 100.0 * TAU
-
-	func _process(delta: float) -> void:
-		_t += delta
-		queue_redraw()
-
-	func _draw() -> void:
-		var bob := sin(_t * 2.0 + _phase) * 2.0
-		StandIn.paint_character(self, Rect2(-14, -40 + bob, 28, 46), _color, _crew_id)
-		var display_name: String = DataRegistry.get_entity("npcs", _crew_id).get("name", _crew_id)
-		draw_string(ThemeDB.fallback_font, Vector2(-30, 22), display_name,
-			HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color(0.92, 0.92, 0.95))
-
-
-## --- player walker -----------------------------------------------------------
-
-class _Walker extends Node2D:
-	var color := Color(0.85, 0.86, 0.9)
-	var facing := 1.0  # 1 = right, -1 = left
-	var velocity := Vector2.ZERO  # persistent velocity for zero-G drift
-	var _texture: Texture2D = null
-
-	func _ready() -> void:
-		_texture = AssetLibrary.texture("player", "character")
-
-	func _draw() -> void:
-		if _texture != null:
-			var tex_size := _texture.get_size()
-			var scale_factor := 48.0 / maxf(tex_size.x, tex_size.y)
-			var dest := Rect2(-tex_size.x * scale_factor * 0.5, -tex_size.y * scale_factor * 0.5,
-				tex_size.x * scale_factor, tex_size.y * scale_factor)
-			draw_texture_rect(_texture, dest, false)
-			return
-		# Fallback: procedural stand-in
-		draw_circle(Vector2(0, 12), 8, Color(0, 0, 0, 0.3))
-		var body := Rect2(-8, -10, 16, 20)
-		draw_rect(body, color)
-		draw_rect(Rect2(body.position.x + body.size.x * 0.5, body.position.y,
-			body.size.x * 0.5, body.size.y), color.darkened(0.3))
-		draw_circle(Vector2(0, -14), 6, Color(0.86, 0.72, 0.6))
-		draw_circle(Vector2(facing * 6, -14), 2, Color(0.3, 0.3, 0.3))

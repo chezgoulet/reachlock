@@ -58,6 +58,13 @@ var _rng := RandomNumberGenerator.new()
 var _jump_route: Dictionary = {}   # this space's self_jump block, if any
 var _transit: CryoTransit = null   # live cryo transit sequence, if any
 
+var _alert_rect: ColorRect = null  # red-alert vignette
+var _alert_time := 0.0
+var _callout_box: VBoxContainer = null
+var _radar: _Radar = null
+var _beacon_mats: Array = []       # pulsing station running lights
+var _said: Dictionary = {}         # one-shot crew callout keys
+
 @onready var _camera: Camera3D = $Camera3D
 @onready var _speed_label: Label = $ModeOverlay/SpeedLabel
 @onready var _ship_label: Label = $ModeOverlay/ShipLabel
@@ -84,10 +91,26 @@ func _ready() -> void:
 	# Configure gravity from location
 	var loc_grav: Dictionary = _location.get("gravity", {"type": "energy_plate", "strength": 1.0, "safe": true})
 	GravitySystem.configure_location(loc_grav)
+	_build_planet_backdrop()
+	_build_combat_overlay()
 	_camera.fov = BASE_FOV
 	_camera.global_transform = _camera_rest_transform()
 	_refresh_status()
 	GameState.state_changed.connect(_refresh_status)
+
+	# Arriving inside a hostile picket line is its own kind of morning.
+	var hostiles := false
+	for entry: Dictionary in _location.get("patrols", []):
+		if entry.get("engagement", "") in ["engage", "ambush"]:
+			hostiles = true
+	if hostiles:
+		_start_red_alert(3.0)
+		_callout_by_role(["droid", "pilot"],
+			"Cordon contacts on the board. They aren't curious — they're hunting. Fly small.")
+		var stealth := GameState.upgrade_effect_product("detection_mult")
+		if stealth < 0.999:
+			_callout_by_role(["engineer"],
+				"Transponder's lying beautifully — signature at %d%%. Keep it dark and slow." % int(round(stealth * 100)))
 	
 	# Start engine audio loop as a named child
 	# arch-allow: audio is mod content loaded at runtime by path
@@ -159,6 +182,7 @@ func _physics_process(delta: float) -> void:
 	_update_patrols(delta)
 	_update_docking()
 	_update_self_jump()
+	_update_combat_theater(delta)
 	_update_hud()
 
 
@@ -255,8 +279,11 @@ func _load_flight_stats() -> void:
 	for key: String in _stats:
 		if flight.has(key):
 			_stats[key] = flight[key]
-	# Owned upgrades tune the hull (upgrade contract: speed_mult).
-	_stats.top_speed = float(_stats.top_speed) * GameState.upgrade_effect_product("speed_mult")
+	# Owned upgrades tune the hull (upgrade contract: speed_mult), and the
+	# engineering power grid decides how much of the drive reaches the
+	# engines this flight (even split ≈ 1.0).
+	_stats.top_speed = float(_stats.top_speed) * GameState.upgrade_effect_product("speed_mult") \
+		* (0.7 + GameState.power_share("engines") * 0.9)
 
 
 func _advance_tick(delta: float) -> void:
@@ -346,6 +373,10 @@ func _spawn_pirate() -> void:
 	_pirate_fleeing = false
 	_hint_label.text = "CONTACT — %s (%s) closing fast" % [
 		_pirate_soul.get("name", "?"), _pirate_hull.get("name", "unknown skiff")]
+	_start_red_alert(4.0)
+	_callout_by_role(["droid", "pilot"],
+		"Contact! %s closing on an attack vector — weapons are yours, captain." % _pirate_hull.get("name", "unregistered skiff"))
+	_callout_by_role(["engineer"], "Drive's hot, shields are what they are. Make it quick.")
 
 
 func _find_ambusher() -> Dictionary:
@@ -368,29 +399,44 @@ func _update_combat(delta: float) -> void:
 	if not fire_pressed or _fire_clock > 0.0:
 		ShipOperation.set_effect("weapons_firing", false)
 		return
-	_fire_clock = FIRE_COOLDOWN
+	# Weapons power feeds the fire rate (even split ≈ stock cooldown).
+	_fire_clock = FIRE_COOLDOWN / (0.6 + GameState.power_share("weapons") * 1.2)
 	ShipOperation.set_effect("weapons_firing", true)
 	AudioManager.laser_fire()
 	var damage := 1 + int(GameState.upgrade_effect_sum("damage_bonus"))
+	var hit_something := false
 	if _pirate != null and _in_fire_cone(_pirate.global_position):
+		hit_something = true
+		_fire_tracer(_ship.global_position - _ship.basis.z * 3.0,
+			_pirate.global_position, Color(1.0, 0.8, 0.4))
 		_pirate_hp -= damage
 		_pirate.scale = Vector3.ONE * 1.15  # hit flash, decays in _update_pirate
 		if _pirate_hp <= 1 and not _pirate_fleeing:
 			_pirate_fleeing = true  # a coward's math: one more hit isn't worth it
 			_hint_label.text = "%s is running for it" % _pirate_soul.get("name", "The pirate")
 		if _pirate_hp <= 0:
+			AudioManager.explosion()
 			_end_ambush(true)
 	for pc: PatrolController in _patrols:
 		if not pc.is_alive():
 			continue
 		if not _in_fire_cone(pc.global_position):
 			continue
+		hit_something = true
+		_fire_tracer(_ship.global_position - _ship.basis.z * 3.0,
+			pc.global_position, Color(1.0, 0.8, 0.4))
 		if pc.hit(damage):
+			AudioManager.explosion()
 			MissionManager.report_event("patrol_destroyed", {"faction": pc.faction_id()})
 			# Shooting down a patrol is loud: the faction remembers.
 			if pc.faction_id() != "":
 				GameState.adjust_faction_standing(pc.faction_id(), "notoriety", 10)
 				GameState.adjust_faction_standing(pc.faction_id(), "trust", -10)
+	if not hit_something:
+		# Slugs that find nothing still go somewhere: the miss is visible.
+		var muzzle := _ship.global_position - _ship.basis.z * 3.0
+		_fire_tracer(muzzle, muzzle - _ship.basis.z * FIRE_RANGE * 0.55,
+			Color(1.0, 0.8, 0.4, 0.5))
 
 
 func _in_fire_cone(target: Vector3) -> bool:
@@ -429,10 +475,21 @@ func _update_pirate(delta: float) -> void:
 
 
 func _player_hit() -> void:
+	# Shield power soaks part of the slug (even split ≈ stock damage).
+	var soak := 1.15 - GameState.power_share("shields") * 0.45
 	GameState.player.ship.hull_integrity = maxf(
-		0.0, GameState.player.ship.hull_integrity - PIRATE_HIT_DAMAGE)
+		0.0, GameState.player.ship.hull_integrity - PIRATE_HIT_DAMAGE * soak)
 	GameState.set_flag("took_the_hit")
 	_camera.fov += 3.0  # a flinch the lerp settles
+	var hull := int(GameState.player.ship.hull_integrity * 100.0)
+	if hull <= 25:
+		_callout_by_role(["medic"],
+			"Hull at %d%%. If anyone's planning to bleed, do it near the med bay." % hull, "hull_25")
+	elif hull <= 50:
+		_callout_by_role(["engineer"],
+			"Hull at %d%% and I felt that one from engineering. Fewer of those." % hull, "hull_50")
+	elif hull <= 75:
+		_callout_by_role(["engineer"], "Shields drank most of it. Hull at %d%%." % hull, "hull_75")
 	if GameState.player.ship.hull_integrity <= 0.0:
 		_player_downed()
 
@@ -446,6 +503,9 @@ func _end_ambush(destroyed: bool) -> void:
 		_pirate = null
 	_hint_label.text = "Skiff destroyed. The drift is quiet again." if destroyed \
 		else "The skiff jumps trace and runs. The drift is quiet again."
+	if not _jump_route.is_empty():
+		_callout_by_role(["droid", "pilot"],
+			"Drive can spool whenever you call it (J). The pods are prepped — you'll sleep this one, captain.", "spool_ready")
 
 
 func _player_downed() -> void:
@@ -564,7 +624,20 @@ func _on_patrol_destroyed(_ship_id: String, _patrol: Node3D) -> void:
 
 ## A patrol fired on us. Kinetic slugs at range: a coin-flip hit, real damage.
 func _on_patrol_fired(_ship_id: String) -> void:
+	# Tracer from whichever patrol is closest (the shot's author, near enough).
+	var nearest: PatrolController = null
+	var best := INF
+	for pc: PatrolController in _patrols:
+		if not pc.is_alive():
+			continue
+		var d := pc.global_position.distance_to(_ship.global_position)
+		if d < best:
+			best = d
+			nearest = pc
+	if nearest != null:
+		_fire_tracer(nearest.global_position, _ship.global_position, Color(0.95, 0.35, 0.3))
 	if _rng.randf() < PIRATE_HIT_CHANCE:
+		AudioManager.impact()
 		_player_hit()
 
 
@@ -577,6 +650,11 @@ func _on_patrol_fired(_ship_id: String) -> void:
 
 
 func _update_self_jump() -> void:
+	# B — step back from the stick and walk the ship (adjust power, talk
+	# to the crew), any time you're not mid-transit.
+	if _transit == null and Input.is_action_just_pressed("board"):
+		on_board_ship()
+		return
 	if _jump_route.is_empty() or _transit != null:
 		return
 	if not Input.is_action_just_pressed("jump"):
@@ -665,6 +743,172 @@ func _refresh_status() -> void:
 		cargo_units += int(qty)
 	_status_label.text = "Hull %d%%   Cargo %d   Credits %d" % [
 		int(GameState.player.ship.hull_integrity * 100.0), cargo_units, GameState.player.credits]
+
+
+## --- combat theater: red alert, callouts, tracers, radar -----------------------
+
+
+func _build_combat_overlay() -> void:
+	var overlay: CanvasLayer = $ModeOverlay
+	_alert_rect = ColorRect.new()
+	_alert_rect.color = Color(0.8, 0.1, 0.08, 0.0)
+	_alert_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_alert_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(_alert_rect)
+
+	_callout_box = VBoxContainer.new()
+	_callout_box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_callout_box.offset_left = 16
+	_callout_box.offset_top = -260
+	_callout_box.offset_right = 620
+	_callout_box.offset_bottom = -60
+	_callout_box.alignment = BoxContainer.ALIGNMENT_END
+	overlay.add_child(_callout_box)
+
+	_radar = _Radar.new()
+	_radar.custom_minimum_size = Vector2(170, 170)
+	_radar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_radar.offset_left = -186
+	_radar.offset_top = -186
+	_radar.offset_right = -16
+	_radar.offset_bottom = -16
+	overlay.add_child(_radar)
+
+
+func _start_red_alert(seconds: float) -> void:
+	_alert_time = seconds
+	AudioManager.alert()
+
+
+func _update_combat_theater(delta: float) -> void:
+	# Red alert vignette flashes then settles.
+	if _alert_time > 0.0:
+		_alert_time -= delta
+		_alert_rect.color.a = 0.10 + 0.08 * sin(Time.get_ticks_msec() * 0.02)
+	elif _alert_rect.color.a > 0.0:
+		_alert_rect.color.a = maxf(0.0, _alert_rect.color.a - delta * 0.5)
+	# Station running lights breathe.
+	for mat: StandardMaterial3D in _beacon_mats:
+		mat.emission_energy_multiplier = 2.5 + 2.0 * sin(Time.get_ticks_msec() * 0.004 + mat.get_instance_id() % 7)
+	# Radar sees what the scene sees.
+	if _radar != null:
+		var contacts: Array = []
+		for pc: PatrolController in _patrols:
+			if not pc.is_alive():
+				continue
+			var hostile: bool = pc.current_state_name() in ["engage", "pursue", "alert"]
+			contacts.append({
+				"rel": pc.global_position - _ship.global_position,
+				"color": Color(0.95, 0.30, 0.25) if hostile else Color(0.85, 0.55, 0.3),
+				"ring": PatrolController.DETECT_RANGE * GameState.upgrade_effect_product("detection_mult"),
+			})
+		if _pirate != null:
+			contacts.append({"rel": _pirate.global_position - _ship.global_position,
+				"color": Color(0.9, 0.3, 0.5), "ring": 0.0})
+		if _station != null:
+			contacts.append({"rel": _station.global_position - _ship.global_position,
+				"color": Color(0.4, 0.9, 0.55), "ring": 0.0})
+		_radar.update_contacts(contacts, -_ship.basis.z)
+
+
+## A crew voice on the intercom. `roles` is a preference order; the first
+## aboard crew member holding one of them speaks (content decides who that
+## is — the engine only knows roles, never names).
+func _callout_by_role(roles: Array, text: String, once_key := "") -> void:
+	if once_key != "" and _said.has(once_key):
+		return
+	if once_key != "":
+		_said[once_key] = true
+	var speaker := ""
+	for role: String in roles:
+		for crew_id: String in CrewRoster.aboard():
+			var npc := DataRegistry.get_entity("npcs", crew_id)
+			if npc.get("role", "") == role:
+				speaker = npc.get("name", crew_id)
+				break
+		if speaker != "":
+			break
+	if speaker == "" and not CrewRoster.aboard().is_empty():
+		var first: String = CrewRoster.aboard()[0]
+		speaker = DataRegistry.get_entity("npcs", first).get("name", first)
+	if speaker == "":
+		return
+	var line := Label.new()
+	line.text = "%s:  %s" % [speaker, text]
+	line.add_theme_font_size_override("font_size", 15)
+	line.add_theme_color_override("font_color", Color(0.92, 0.9, 0.8))
+	line.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	line.add_theme_constant_override("outline_size", 3)
+	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_callout_box.add_child(line)
+	var tween := create_tween()
+	tween.tween_interval(6.0)
+	tween.tween_property(line, "modulate:a", 0.0, 1.5)
+	tween.tween_callback(line.queue_free)
+
+
+## A kinetic slug's light: a thin bright box from muzzle to target, gone in
+## a blink. Cheap, and it makes every exchange legible.
+func _fire_tracer(from: Vector3, to: Vector3, color: Color) -> void:
+	var tracer := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	var length := from.distance_to(to)
+	mesh.size = Vector3(0.15, 0.15, maxf(length, 1.0))
+	tracer.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 4.0
+	mat.albedo_color = color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	tracer.material_override = mat
+	add_child(tracer)
+	tracer.global_position = (from + to) * 0.5
+	if length > 0.01:
+		tracer.look_at(to, Vector3.UP)
+	get_tree().create_timer(0.09).timeout.connect(tracer.queue_free)
+
+
+## The minimap: player centered, contacts as blips, hostile detection rings
+## drawn to scale — stealth gear visibly shrinks how far they can see you.
+class _Radar extends Control:
+	const RANGE := 220.0  # world units across the scope radius
+	var _contacts: Array = []
+	var _heading := Vector3.FORWARD
+	var _t := 0.0
+
+	func update_contacts(contacts: Array, heading: Vector3) -> void:
+		_contacts = contacts
+		_heading = heading
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var center := size * 0.5
+		var radius := minf(size.x, size.y) * 0.5 - 2.0
+		draw_circle(center, radius, Color(0.02, 0.05, 0.04, 0.85))
+		draw_arc(center, radius, 0, TAU, 48, Color(0.25, 0.55, 0.35, 0.8), 1.5)
+		draw_arc(center, radius * 0.5, 0, TAU, 36, Color(0.25, 0.55, 0.35, 0.35), 1.0)
+		# Heading tick
+		var fwd := Vector2(_heading.x, _heading.z).normalized() if Vector2(_heading.x, _heading.z).length() > 0.01 else Vector2.UP
+		draw_line(center, center + fwd * 12.0, Color(0.7, 0.95, 0.75), 1.5)
+		draw_circle(center, 3.0, Color(0.85, 0.95, 0.9))
+		var world_scale := radius / RANGE
+		for contact: Dictionary in _contacts:
+			var rel: Vector3 = contact.rel
+			var flat := Vector2(rel.x, rel.z) * world_scale
+			var clamped := flat.limit_length(radius - 5.0)
+			var at_edge := flat.length() > radius - 5.0
+			var color: Color = contact.color
+			if at_edge:
+				color.a = 0.5
+			draw_circle(center + clamped, 3.5, color)
+			var ring := float(contact.get("ring", 0.0)) * world_scale
+			if ring > 1.0 and not at_edge:
+				draw_arc(center + clamped, ring, 0, TAU, 32,
+					Color(color.r, color.g, color.b, 0.28 + 0.1 * sin(_t * 3.0)), 1.0)
 
 
 ## --- placeholder world (unchanged visuals + station) ---------------------------
@@ -761,7 +1005,72 @@ func _build_station() -> Node3D:
 	beacon.position = Vector3(0, 12, 0)
 	beacon.material_override = beacon_material
 	station.add_child(beacon)
+	_beacon_mats.append(beacon_material)
+	# Running lights around the ring, and a couple of ships at berth —
+	# a port reads as a port when somebody else is already home.
+	for i in 5:
+		var light_mat := StandardMaterial3D.new()
+		light_mat.emission_enabled = true
+		light_mat.emission = Color(1.0, 0.72, 0.3) if i % 2 == 0 else Color(0.4, 0.7, 1.0)
+		light_mat.emission_energy_multiplier = 3.0
+		light_mat.albedo_color = Color(0.2, 0.15, 0.05)
+		var light := MeshInstance3D.new()
+		var light_mesh := SphereMesh.new()
+		light_mesh.radius = 0.5
+		light_mesh.height = 1.0
+		light.mesh = light_mesh
+		var angle := TAU * i / 5.0
+		light.position = Vector3(cos(angle) * 14.0, sin(angle * 2.0) * 2.0, sin(angle) * 14.0)
+		light.material_override = light_mat
+		station.add_child(light)
+		_beacon_mats.append(light_mat)
+	for i in 2:
+		var berthed := _build_ship(Color(0.35, 0.38, 0.3) if i == 0 else Color(0.3, 0.32, 0.42))
+		berthed.position = Vector3(-10.0 + i * 22.0, -4.0, 18.0)
+		berthed.rotation.y = 0.6 + i * 2.1
+		berthed.scale = Vector3.ONE * 0.8
+		station.add_child(berthed)
 	return station
+
+
+## A landable world fills the sky behind its beacon: the approach IS the
+## place growing in the viewport.
+func _build_planet_backdrop() -> void:
+	if _location.get("kind", "") != "planet":
+		return
+	var biome: Dictionary = _location.get("biome", {})
+	var planet := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 240.0
+	mesh.height = 480.0
+	mesh.radial_segments = 48
+	mesh.rings = 24
+	planet.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color.from_string(str(biome.get("ground", "")), Color(0.24, 0.34, 0.28))
+	mat.roughness = 1.0
+	mat.emission_enabled = true
+	mat.emission = Color.from_string(str(biome.get("sky", "")), Color(0.14, 0.18, 0.28))
+	mat.emission_energy_multiplier = 0.25
+	planet.material_override = mat
+	var anchor := _station.global_position if _station != null else Vector3(30, 6, -150)
+	planet.position = anchor + Vector3(40, -60, -420)
+	add_child(planet)
+	# Atmosphere rim: a slightly larger translucent shell.
+	var atmo := MeshInstance3D.new()
+	var atmo_mesh := SphereMesh.new()
+	atmo_mesh.radius = 252.0
+	atmo_mesh.height = 504.0
+	atmo.mesh = atmo_mesh
+	var atmo_mat := StandardMaterial3D.new()
+	atmo_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	atmo_mat.albedo_color = Color(0.5, 0.7, 1.0, 0.10)
+	atmo_mat.emission_enabled = true
+	atmo_mat.emission = Color(0.5, 0.7, 1.0)
+	atmo_mat.emission_energy_multiplier = 0.3
+	atmo.material_override = atmo_mat
+	atmo.position = planet.position
+	add_child(atmo)
 
 
 func _build_starfield() -> MultiMeshInstance3D:

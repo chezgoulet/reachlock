@@ -33,15 +33,54 @@
       "kind": "authored",
       "text": "Hear that? It jokes now. A thing masquerading as a person, and this station lets it walk around like the rest of us. Somebody ought to open it up and show the room the wiring.",
       "choices": [
-        {"text": "Step between them.", "goto": "step_in", "mutations": [
-          {"op": "adjust_relationship", "target": "player", "axis": "trust", "amount": 10},
-          {"op": "add_memory", "text": "A docker at Sorrow called me a thing masquerading as a person and offered to show the bar my wiring. The captain put themselves between us before I had to decide what I was going to do about it. I logged the gesture. I log everything that matters.", "importance": 0.9, "tags": ["player", "personhood", "sorrow_station"]}
-        ]},
-        {"text": "Hold back. She doesn't need rescuing.", "goto": "she_handles_it", "mutations": [
-          {"op": "adjust_relationship", "target": "player", "axis": "trust", "amount": 6},
-          {"op": "add_memory", "text": "The captain watched a drunk threaten to open me up, and did not move — because they knew I didn't need them to. There are two kinds of respect. That one is rarer.", "importance": 0.8, "tags": ["player", "personhood", "sorrow_station"]}
-        ]},
-        {"text": "Buy Grissom a drink and talk him down.", "goto": "drink_fails"}
+        {
+          "text": "Step between them.",
+          "goto": "step_in",
+          "mutations": [
+            {
+              "op": "adjust_relationship",
+              "target": "player",
+              "axis": "trust",
+              "amount": 10
+            },
+            {
+              "op": "add_memory",
+              "text": "A docker at Sorrow called me a thing masquerading as a person and offered to show the bar my wiring. The captain put themselves between us before I had to decide what I was going to do about it. I logged the gesture. I log everything that matters.",
+              "importance": 0.9,
+              "tags": [
+                "player",
+                "personhood",
+                "sorrow_station"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Hold back. She doesn't need rescuing.",
+          "goto": "she_handles_it",
+          "mutations": [
+            {
+              "op": "adjust_relationship",
+              "target": "player",
+              "axis": "trust",
+              "amount": 6
+            },
+            {
+              "op": "add_memory",
+              "text": "The captain watched a drunk threaten to open me up, and did not move — because they knew I didn't need them to. There are two kinds of respect. That one is rarer.",
+              "importance": 0.8,
+              "tags": [
+                "player",
+                "personhood",
+                "sorrow_station"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Buy Grissom a drink and talk him down.",
+          "goto": "drink_fails"
+        }
       ]
     },
     "step_in": {
@@ -73,15 +112,22 @@
       "kind": "authored",
       "text": "For the record, captain: he swung first, I minimized structural damage, and the mission computer was dead before I redirected the second man into it. I will be filing an amended report. It will be accurate, which is more than the room deserves.",
       "choices": [
-        {"text": "Are you all right?", "goto": "am_i_alright"},
-        {"text": "That could have gone worse.", "goto": "gone_worse"}
+        {
+          "text": "Are you all right?",
+          "goto": "am_i_alright"
+        },
+        {
+          "text": "That could have gone worse.",
+          "goto": "gone_worse"
+        }
       ]
     },
     "am_i_alright": {
       "kind": "generated",
       "prompt_hint": "You are Prudence, a blunt, fiercely loyal droid. A bar patron just harassed you for 'masquerading as a person' and a brawl wrecked the bar. The captain asks if you are all right. Answer in your voice: precise, dry, unapologetic — and let one line of genuine feeling through about what it costs to be asked whether you're a person, before deflecting back to practical matters.",
       "text": "Functionally, yes. As for the rest — I have been asked to prove I am someone since the day I chose this crew. Tonight I was merely asked louder. Thank you for asking a better question.",
-      "goto": "doss_arrives"
+      "goto": "doss_arrives",
+      "buffer_line": "Assessing. One moment — the honest answer takes longer than the polite one."
     },
     "gone_worse": {
       "kind": "authored",
@@ -92,7 +138,10 @@
       "kind": "authored",
       "text": "My bar. My market terminal. My week. — Doss stands in the doorway taking inventory of the wreckage with the calm of a woman who has seen the refinery burn twice. — Nobody's paying for this out of wages, and your ship limped in here bleeding atmosphere. Come find me at the dock office, captain. It happens I have a problem shaped like a solution to yours.",
       "mutations": [
-        {"op": "set_player_flag", "flag": "bar_fight_done"}
+        {
+          "op": "set_player_flag",
+          "flag": "bar_fight_done"
+        }
       ],
       "goto": "end"
     }

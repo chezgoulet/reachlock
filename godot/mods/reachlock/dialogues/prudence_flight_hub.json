@@ -1,0 +1,51 @@
+{
+  "id": "prudence_flight_hub",
+  "npc": "prudence",
+  "condition": "not player.docked",
+  "entry": "start",
+  "nodes": {
+    "start": {
+      "kind": "authored",
+      "text": "Captain. Vectors are clean, the drift is behaving, and Tib is pretending the trim isn't half a degree off, which I permit because it keeps him humble. Ask.",
+      "choices": [
+        {"text": "What's it like, flying the jumps awake?", "goto": "the_crossing"},
+        {"text": "Are you... a person? Officially?", "goto": "personhood"},
+        {"text": "What's your read on the crew?", "goto": "crew_read"},
+        {"text": "Something else.", "goto": "open_floor"},
+        {"text": "Nothing. As you were.", "goto": "end"}
+      ]
+    },
+    "the_crossing": {
+      "kind": "authored",
+      "text": "You don't have the sensorium for the answer, captain, and I don't have the vocabulary for the lie. What I can tell you: I am there, you are safe, and both of those are true for the whole crossing. Doc Keene stopped asking and started saying thank you. I recommend her protocol.",
+      "goto": "start_short"
+    },
+    "personhood": {
+      "kind": "authored",
+      "text": "Officially, I am cargo with a maintenance schedule — Compact registry, subsection: equipment. Actually? I chose this crew, and I keep choosing them, every transit, every contract. A thing that chooses is not a tool. The Compact's paperwork and I have agreed to disagree, twice now at ports, once memorably. Risc says I announce the position too loudly. Risc has never once disagreed with the position.",
+      "goto": "start_short"
+    },
+    "crew_read": {
+      "kind": "authored",
+      "text": "Tib flies like the ship is a body he's wearing — wrong on paper, correct in the dark. Tove moves quiet cargo and quieter grief. The Doctor re-runs my pod seals twice, which is redundant and which I have never once asked her to stop. Bardo listens to signals the way other people listen to music. Boris is the most honest of us. And you're the variable I'm still logging.",
+      "goto": "start_short"
+    },
+    "open_floor": {
+      "kind": "generated",
+      "prompt_hint": "You are Prudence, the Loup-Garou's droid pilot — blunt, precise, fiercely loyal, dry. The captain raises something open-ended mid-flight. Answer in your voice, one to three sentences, no softening.",
+      "text": "Whatever it is, say it plainly. I find the shortest path between two people is the sentence they almost didn't say.",
+      "buffer_line": "Processing. Unlike most people who say that, I mean it literally.",
+      "goto": "start_short"
+    },
+    "start_short": {
+      "kind": "authored",
+      "text": "Anything further? The vectors miss me when I'm gone.",
+      "choices": [
+        {"text": "About the jumps...", "goto": "the_crossing"},
+        {"text": "About your status...", "goto": "personhood"},
+        {"text": "Something else.", "goto": "open_floor"},
+        {"text": "That's all, Prudence.", "goto": "end"}
+      ]
+    }
+  }
+}

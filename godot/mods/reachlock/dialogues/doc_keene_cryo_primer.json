@@ -8,16 +8,28 @@
       "kind": "authored",
       "text": "Captain. Pods are green, revival drugs are stocked, and I've re-run the seals twice because I always re-run the seals twice. Ask me why sometime when you want to lose an evening.",
       "choices": [
-        {"text": "Why do you re-run the seals twice?", "goto": "the_why"},
-        {"text": "Just checking in, Doc.", "goto": "checking_in"}
+        {
+          "text": "Why do you re-run the seals twice?",
+          "goto": "the_why"
+        },
+        {
+          "text": "Just checking in, Doc.",
+          "goto": "checking_in"
+        }
       ]
     },
     "the_why": {
       "kind": "authored",
       "text": "Because the pod is the only wall between a sleeping brain and hyperspace, and I've read the intake files on people who crossed awake. Not dead — worse. The mind doesn't survive contact with whatever that place is. No remission, no cure, no exceptions. So: twice. Every seal, every jump, as long as I'm the one signing the log.",
       "choices": [
-        {"text": "And Prudence flies through it awake.", "goto": "prudence_awake"},
-        {"text": "Understood. Carry on, Doc.", "goto": "end_warm"}
+        {
+          "text": "And Prudence flies through it awake.",
+          "goto": "prudence_awake"
+        },
+        {
+          "text": "Understood. Carry on, Doc.",
+          "goto": "end_warm"
+        }
       ]
     },
     "prudence_awake": {
@@ -29,7 +41,8 @@
       "kind": "generated",
       "prompt_hint": "You are Doc Keene, an overqualified trauma surgeon on a frontier mining ship, calm in crisis, restless in transit. The captain is just checking in mid mining run. Respond briefly in character — maybe a dry note about the crew's health or your own restlessness during long drift work.",
       "text": "Nine days of mining dust and nobody's lungs the worse for it, which around here counts as a medical miracle. Go on — I'm mid-chapter and the book is finally getting good.",
-      "goto": "end"
+      "goto": "end",
+      "buffer_line": "Mm — status. Right."
     },
     "end_warm": {
       "kind": "authored",

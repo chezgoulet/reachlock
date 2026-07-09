@@ -52,6 +52,7 @@ var _hud: CanvasLayer
 var _log: RichTextLabel
 var _hint: Label
 var _choice_box: VBoxContainer
+var _thinking_label: Label = null
 var _market_panel: PanelContainer = null
 var _descent := 1.0
 var _descent_rect: ColorRect
@@ -289,6 +290,9 @@ func _talk_to(soul: SoulInstance) -> void:
 		add_child(_runner)
 		_runner.line_shown.connect(_on_line_shown)
 		_runner.choices_shown.connect(_on_choices_shown)
+		_runner.thinking_changed.connect(func(thinking: bool) -> void:
+			if _thinking_label != null:
+				_thinking_label.visible = thinking)
 		_runner.ended.connect(_on_dialogue_ended)
 		if _runner.start(dialogue, soul):
 			return
@@ -414,6 +418,14 @@ func _build_hud() -> void:
 	_choice_box = VBoxContainer.new()
 	_choice_box.position = Vector2(16, 124)
 	_hud.add_child(_choice_box)
+
+	_thinking_label = Label.new()
+	_thinking_label.text = "· · ·"
+	_thinking_label.add_theme_font_size_override("font_size", 18)
+	_thinking_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
+	_thinking_label.position = Vector2(16, 100)
+	_thinking_label.visible = false
+	_hud.add_child(_thinking_label)
 
 	var log_panel := PanelContainer.new()
 	log_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)

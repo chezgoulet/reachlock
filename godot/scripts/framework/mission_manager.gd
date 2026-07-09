@@ -95,8 +95,10 @@ func _activate_stage(index: int) -> void:
 	if failure.has("timer_seconds"):
 		var bonus: float = GameState.upgrade_effect_sum("timer_bonus_seconds")
 		_stage_timers[_active.id] = float(failure.timer_seconds) + bonus
+		_stage_timer_total = float(failure.timer_seconds) + bonus
 	else:
 		_stage_timers.erase(_active.id)
+		_stage_timer_total = 0.0
 
 	stage_advanced.emit(_active.id, stage.get("id", ""), stage.get("objective", ""))
 	_persist()
@@ -194,11 +196,22 @@ func mission_name() -> String:
 	return _active.get("name", "")
 
 
+var _stage_timer_total := 0.0
+
 ## Current time remaining for timer stages, or -1.
 func timer_remaining() -> float:
 	if _active.is_empty() or not _stage_timers.has(_active.get("id", "")):
 		return -1.0
 	return _stage_timers[_active.id]
+
+
+## Remaining fraction of the current stage timer (1 → fresh, 0 → expired),
+## or -1 when no timer runs. Drives the HUD countdown ring.
+func timer_fraction() -> float:
+	var remaining := timer_remaining()
+	if remaining < 0.0 or _stage_timer_total <= 0.0:
+		return -1.0
+	return clampf(remaining / _stage_timer_total, 0.0, 1.0)
 
 
 func is_active() -> bool:

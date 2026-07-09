@@ -14,8 +14,32 @@ var _panel: PanelContainer
 var _mission_label: Label
 var _objective_label: Label
 var _timer_label: Label
+var _timer_ring: _TimerRing
 
 var _overlay: Control = null
+
+
+## The countdown as a shape: a draining ring that cools from green through
+## amber to red. Peripheral vision reads it long before the digits do.
+class _TimerRing extends Control:
+	var fraction := 1.0
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		var center := size * 0.5
+		var radius := minf(size.x, size.y) * 0.42
+		draw_arc(center, radius, 0, TAU, 32, Color(0.3, 0.32, 0.38, 0.6), 3.0)
+		if fraction < 0.0:
+			return
+		var color := Color(0.35, 0.85, 0.45)
+		if fraction < 0.5:
+			color = Color(1.0, 0.73, 0.33)
+		if fraction < 0.2:
+			var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.012)
+			color = Color(0.95, 0.30, 0.25, pulse)
+		draw_arc(center, radius, -PI / 2.0, -PI / 2.0 + TAU * fraction, 32, color, 4.0)
 
 
 func _ready() -> void:
@@ -64,9 +88,15 @@ func _build_banner() -> void:
 	_objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_objective_label)
 
+	var timer_row := HBoxContainer.new()
+	timer_row.add_theme_constant_override("separation", 10)
+	box.add_child(timer_row)
+	_timer_ring = _TimerRing.new()
+	_timer_ring.custom_minimum_size = Vector2(34, 34)
+	timer_row.add_child(_timer_ring)
 	_timer_label = Label.new()
 	_timer_label.add_theme_font_size_override("font_size", 20)
-	box.add_child(_timer_label)
+	timer_row.add_child(_timer_label)
 
 
 func _refresh() -> void:
@@ -94,8 +124,11 @@ func _update_timer() -> void:
 	var t := MissionManager.timer_remaining()
 	if t < 0.0:
 		_timer_label.visible = false
+		_timer_ring.visible = false
 		return
 	_timer_label.visible = true
+	_timer_ring.visible = true
+	_timer_ring.fraction = MissionManager.timer_fraction()
 	_timer_label.text = "%d:%02d" % [int(t) / 60, int(t) % 60]
 	_timer_label.add_theme_color_override("font_color",
 		Color(0.95, 0.30, 0.25) if t <= TIMER_WARNING_SECONDS else Color(0.9, 0.9, 0.9))

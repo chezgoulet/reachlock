@@ -26,6 +26,8 @@ var player := {
 		"hull_integrity": 1.0,
 		"position": [0.0, 0.0, 0.0],
 		"cargo": {},        # good id -> qty
+		# Power routing set at the engineering station; flight reads it.
+		"power": {"weapons": 0.33, "shields": 0.33, "engines": 0.34},
 	},
 }
 # Active mission progress (save schema `mission` block). MissionManager owns
@@ -329,6 +331,8 @@ func load_game() -> bool:
 		player["current_space"] = DataRegistry.start_config().get("location", "")
 	if not player.has("upgrades"):
 		player["upgrades"] = []
+	if not player.ship.has("power"):
+		player.ship["power"] = {"weapons": 0.33, "shields": 0.33, "engines": 0.34}
 	mission = snapshot.get("mission", {})
 	factions = snapshot.get("factions", {})
 	var saved_crew: Dictionary = snapshot.get("crew", {})
@@ -348,6 +352,34 @@ func load_game() -> bool:
 	universe_loaded.emit()
 	state_changed.emit()
 	return true
+
+
+## Power share for one channel (weapons/shields/engines), defaulting to an
+## even split for pre-power saves.
+func power_share(channel: String) -> float:
+	var defaults := {"weapons": 0.33, "shields": 0.33, "engines": 0.34}
+	return float(player.ship.get("power", defaults).get(channel, defaults.get(channel, 0.33)))
+
+
+## Set one power channel and renormalize the others so the budget stays 1.0.
+func set_power_share(channel: String, value: float) -> void:
+	var power: Dictionary = player.ship.get("power",
+		{"weapons": 0.33, "shields": 0.33, "engines": 0.34})
+	value = clampf(value, 0.0, 0.9)
+	var others: Array = []
+	for key: String in power:
+		if key != channel:
+			others.append(key)
+	var rest_total := 0.0
+	for key: String in others:
+		rest_total += float(power[key])
+	var remaining := 1.0 - value
+	for key: String in others:
+		var share := float(power[key]) / rest_total if rest_total > 0.0 else 1.0 / others.size()
+		power[key] = remaining * share
+	power[channel] = value
+	player.ship["power"] = power
+	state_changed.emit()
 
 
 func has_save() -> bool:

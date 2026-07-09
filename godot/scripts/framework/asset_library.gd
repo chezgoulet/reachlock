@@ -59,8 +59,23 @@ func _resolve(kind: String, id: String) -> Texture2D:
 
 
 func _load_texture(path: String) -> Texture2D:
+	# Decode from bytes rather than Image.load(): no "loaded resource as
+	# image file" engine warning, and it works identically for loose files
+	# and PCK-packed exports.
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.is_empty():
+		push_warning("assets: could not read override image %s" % path)
+		return null
 	var image := Image.new()
-	if image.load(path) != OK:
-		push_warning("assets: could not load override image %s" % path)
+	var err := ERR_FILE_UNRECOGNIZED
+	match path.get_extension().to_lower():
+		"png":
+			err = image.load_png_from_buffer(bytes)
+		"webp":
+			err = image.load_webp_from_buffer(bytes)
+		"jpg", "jpeg":
+			err = image.load_jpg_from_buffer(bytes)
+	if err != OK:
+		push_warning("assets: could not decode override image %s" % path)
 		return null
 	return ImageTexture.create_from_image(image)
