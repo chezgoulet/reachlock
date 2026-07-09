@@ -99,5 +99,35 @@
   "arc": "tib_remembers_quebec",
   "station": "cockpit",
   "color": "#4a7ab5",
-  "aboard": true
+  "aboard": true,
+  "playable": {
+    "tagline": "Pilot. The Loup-Garou answers him like a dance partner.",
+    "stats": {
+      "piloting": 5,
+      "engineering": 2,
+      "medicine": 1,
+      "grit": 3,
+      "savvy": 3
+    },
+    "advantages": [
+      "The ship flies faster and turns tighter under his hands",
+      "Keeps his head when the hull is coming apart"
+    ],
+    "disadvantages": [
+      "Repairs take him twice the cursing and most of the afternoon",
+      "Doc says his med training is 'enthusiasm'"
+    ],
+    "scrawl": [
+      "You are Tib. You fly her. Not the paperwork, not the ledger — the stick. Nine days over an unclaimed drift and your hands still reach for the throttle in your sleep.",
+      "Tove has the shift briefing in the galley. The coffee is bad, the claim is worse, and something about the quiet out here has been sitting wrong with you since Tuesday."
+    ],
+    "self_dialogue_summaries": {
+      "tib_station_greeting": {
+        "text": "You step onto Sorrow's concourse and let the crew fan out ahead of you. The Interval is where the talking happens; you follow the noise."
+      },
+      "tib_dock_debrief": {
+        "text": "You run the landing checklist twice, because the first time your hands were still shaking."
+      }
+    }
+  }
 }

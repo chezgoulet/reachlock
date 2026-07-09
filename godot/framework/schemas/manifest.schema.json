@@ -3,35 +3,63 @@
   "title": "Mod manifest",
   "description": "Declares a mod: identity, dependencies, what it provides, and (optionally) where a new game starts. Directory names under the mod map 1:1 to `provides` keys.",
   "type": "object",
-  "required": ["id", "name", "version", "provides"],
+  "required": [
+    "id",
+    "name",
+    "version",
+    "provides"
+  ],
   "additionalProperties": false,
   "properties": {
-    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-    "name": { "type": "string" },
-    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
     "framework_version": {
       "type": "integer",
       "minimum": 0,
       "description": "The framework contract revision this mod is authored against. Omitted means current. The loader migrates or refuses old revisions explicitly — never silently."
     },
-    "description": { "type": "string" },
-    "author": { "type": "string" },
-    "license": { "type": "string" },
+    "description": {
+      "type": "string"
+    },
+    "author": {
+      "type": "string"
+    },
+    "license": {
+      "type": "string"
+    },
     "dependencies": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
       "description": "Mod ids that must load before this mod. Cycles are rejected at load time."
     },
     "conflicts": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
     },
     "provides": {
       "type": "object",
       "description": "Kind -> list of entity ids this mod ships. Kinds are open-ended; the engine iterates what it finds. Known kinds: factions, locations, ships, npcs, storylines, economy_tables.",
       "additionalProperties": {
         "type": "array",
-        "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+        "items": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        }
       }
     },
     "start": {
@@ -39,12 +67,39 @@
       "description": "Where a new game begins. This is how content tells the engine what to boot into — the engine never hardcodes an entity id. Last-loaded mod that defines `start` wins.",
       "additionalProperties": false,
       "properties": {
-        "mode": { "type": "string", "enum": ["space_flight", "on_board", "landed"] },
-        "player_ship": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-        "location": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-        "mission": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Mission started automatically on a fresh playthrough (no save). With mission `next` chaining this is how content declares an authored campaign opening." }
+        "mode": {
+          "type": "string",
+          "enum": [
+            "space_flight",
+            "on_board",
+            "landed"
+          ]
+        },
+        "player_ship": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "location": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "mission": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Mission started automatically on a fresh playthrough (no save). With mission `next` chaining this is how content declares an authored campaign opening."
+        },
+        "scrawl": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Shared paragraphs of the new-game text scrawl, shown before the chosen character's own scrawl paragraphs."
+        }
       }
     },
-    "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
+    "extra": {
+      "type": "object",
+      "description": "Free-form escape hatch for mod-specific data. Never read by the engine."
+    }
   }
 }

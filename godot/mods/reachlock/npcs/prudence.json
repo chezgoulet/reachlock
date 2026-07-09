@@ -102,5 +102,38 @@
     "presentation": "femme, and not subtle about it",
     "log": "Keeps a personal log of anomalous sensor readings from every transit. The entry from the Veil is flagged."
   },
-  "ship": "loup_garou"
+  "ship": "loup_garou",
+  "playable": {
+    "tagline": "Navigation droid. Says the quiet part. Counts as crew.",
+    "stats": {
+      "piloting": 3,
+      "engineering": 2,
+      "medicine": 2,
+      "grit": 5,
+      "savvy": 1
+    },
+    "advantages": [
+      "Five grit: chassis-rated for rooms that go wrong, steady as a bolt in zero-G",
+      "Jump math without the drama"
+    ],
+    "disadvantages": [
+      "One savvy: quotes merchants their own margins out loud",
+      "Empathy present, tact still installing"
+    ],
+    "scrawl": [
+      "You are Prudence. Navigation-model droid, jump-rated, person — the paperwork disagrees with the last item and you have filed the paperwork under 'wrong'. This crew treats the question as settled, which is one reason you stay.",
+      "Nine days over the drift. Your sensors have logged an engine signature twice at extreme range, identical both times. You have decided to mention it at the briefing."
+    ],
+    "self_dialogue_summaries": {
+      "prudence_bar_fight": {
+        "text": "The docker Grissom decides tonight is the night he explains to the Interval what he thinks a droid is. He explains it at you, with a bottle. You stand very still, and then you don't. When it's over, the bar is redecorated, Grissom is horizontal, and a woman named Doss is watching you from the doorway with a trader's smile.",
+        "mutations": [
+          {
+            "op": "set_player_flag",
+            "flag": "bar_fight_done"
+          }
+        ]
+      }
+    }
+  }
 }

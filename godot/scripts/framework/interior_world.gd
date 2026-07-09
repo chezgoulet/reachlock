@@ -31,6 +31,7 @@ const TILE_BY_KIND := {
 	"crew_quarters": "floor_quarters", "cargo_hold": "floor_cargo",
 	"cryo": "floor_cryo", "bar": "floor_bar", "office": "floor_office",
 	"corridor": "floor_deck", "market": "floor_deck",
+	"landing_bay": "floor_grate", "ore_processing": "floor_cargo",
 }
 const TILE_SIZE := 32.0  # 16px tiles drawn at 2x
 

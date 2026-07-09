@@ -123,8 +123,63 @@
                 "minimum": 0,
                 "maximum": 1
               }
+            },
+            "damage": {
+              "type": "array",
+              "description": "Unrepaired interior damage from combat: each entry manifests inside the ship (fire/sparks/breach at a spot in a room), degrades flight until fixed, and is repairable by the player or crew.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "room",
+                  "kind"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "room": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "fire",
+                      "conduit",
+                      "breach"
+                    ]
+                  },
+                  "severity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "pos": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            },
+            "damage_seq": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Monotonic id source for damage entries."
+            },
+            "weapons_calibrated": {
+              "type": "boolean",
+              "description": "Set by the gunnery calibration minigame; the next flight gets a fire-rate edge, then it resets."
             }
           }
+        },
+        "character": {
+          "type": "string",
+          "description": "NPC id of the crew member the player chose to embody this playthrough (npc `playable` block). Empty = the unnamed-captain fallback."
         }
       }
     },

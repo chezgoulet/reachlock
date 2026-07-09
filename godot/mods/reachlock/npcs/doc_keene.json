@@ -71,5 +71,32 @@
     "homeworld": "Earth",
     "age": 52
   },
-  "ship": "loup_garou"
+  "ship": "loup_garou",
+  "playable": {
+    "tagline": "Medic. Keeps the crew breathing over their objections.",
+    "stats": {
+      "piloting": 1,
+      "engineering": 2,
+      "medicine": 5,
+      "grit": 3,
+      "savvy": 2
+    },
+    "advantages": [
+      "Five medicine: when the hull takes a hit, his triage keeps the fires small and the crew standing",
+      "Cryo under him is a nap, not a gamble"
+    ],
+    "disadvantages": [
+      "Worst stick on the boat, by ship-wide vote",
+      "Haggles like a man who thinks list price is a diagnosis"
+    ],
+    "scrawl": [
+      "You are Doc Keene. Seven souls on the manifest and every one of them your patient eventually — miners get hurt the way weather gets weather. You keep the pods calibrated and the bone-setter charged.",
+      "Nine days out, nobody's bleeding yet, and that is the longest streak of your career. Tove's called a briefing. You bring the coffee that isn't terrible."
+    ],
+    "self_dialogue_summaries": {
+      "doc_keene_cryo_primer": {
+        "text": "You run the pod diagnostics yourself — chill curves, wake protocol, the whole primer you'd normally deliver to whoever looks nervous. The pods are ready. You made sure."
+      }
+    }
+  }
 }

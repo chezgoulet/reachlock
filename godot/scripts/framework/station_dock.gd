@@ -47,8 +47,7 @@ var _runner: DialogueRunner = null
 
 var _bay: _DockBay
 var _log: RichTextLabel
-var _choice_box: VBoxContainer
-var _thinking_label: Label = null
+var _dialogue_panel: DialoguePanel
 var _market: MarketBoard = null
 var _feed: EventFeed = null
 var _reputation_panel: PanelContainer = null
@@ -172,21 +171,20 @@ func _talk_to(soul: SoulInstance) -> void:
 func _start_dialogue(dialogue: Dictionary, soul: SoulInstance) -> bool:
 	_runner = DialogueRunnerScript.new()
 	add_child(_runner)
-	_runner.line_shown.connect(_on_line_shown)
-	_runner.choices_shown.connect(_on_choices_shown)
-	_runner.thinking_changed.connect(_on_thinking_changed)
+	_runner.line_shown.connect(_dialogue_panel.show_line)
+	_runner.choices_shown.connect(_dialogue_panel.show_choices)
+	_runner.thinking_changed.connect(_dialogue_panel.set_thinking)
 	_runner.ended.connect(_on_dialogue_ended)
+	var npc_name: String = DataRegistry.get_entity("npcs", dialogue.get("npc", "")) \
+		.get("name", dialogue.get("npc", "?"))
+	_dialogue_panel.open(npc_name,
+		"linked" if soul != null and SoulGateway.is_ready() else "offline")
 	if _runner.start(dialogue, soul):
 		return true
+	_dialogue_panel.close()
 	_runner.queue_free()
 	_runner = null
 	return false
-
-
-## The mind is working: pulse a quiet ellipsis so the scene visibly breathes.
-func _on_thinking_changed(thinking: bool) -> void:
-	if _thinking_label != null:
-		_thinking_label.visible = thinking
 
 
 func _find_dialogue_for(soul_id: String) -> Dictionary:
@@ -221,23 +219,8 @@ func _maybe_auto_dialogue() -> void:
 			return
 
 
-func _on_line_shown(speaker: String, text: String) -> void:
-	_append_log("[b]%s:[/b] %s" % [speaker, text])
-
-
-func _on_choices_shown(choices: Array) -> void:
-	for choice: Dictionary in choices:
-		var button := Button.new()
-		button.text = choice.text
-		button.pressed.connect(func() -> void:
-			_clear_choices()
-			if _runner != null:
-				_runner.choose(int(choice.index)))
-		_choice_box.add_child(button)
-
-
 func _on_dialogue_ended() -> void:
-	_clear_choices()
+	_dialogue_panel.close()
 	if _runner != null:
 		var npc_id: String = _runner.npc_id()
 		MemoryStore.ingest_conversation(npc_id, _runner.transcript(), {
@@ -252,12 +235,13 @@ func _on_dialogue_ended() -> void:
 
 func _on_ambient_bark(text: String, soul: SoulInstance) -> void:
 	if _runner == null and text != "":
-		_append_log("[b]%s:[/b] %s" % [_soul_name(soul), text])
+		_dialogue_panel.bark(_soul_name(soul), text)
 
 
 func _on_soul_concluded(outcome: String, soul: SoulInstance) -> void:
 	if _runner == null and outcome == "abandoned":
-		_append_log("[i]%s starts to say something, then thinks better of it.[/i]" % _soul_name(soul))
+		_dialogue_panel.bark(_soul_name(soul),
+			"*starts to say something, then thinks better of it*")
 
 
 func _on_soul_acted(capability: String, args: Dictionary, soul: SoulInstance) -> void:
@@ -338,15 +322,11 @@ func _build_ui() -> void:
 	_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(_log)
 
-	_thinking_label = Label.new()
-	_thinking_label.text = "· · ·"
-	_thinking_label.add_theme_font_size_override("font_size", 18)
-	_thinking_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
-	_thinking_label.visible = false
-	root.add_child(_thinking_label)
-
-	_choice_box = VBoxContainer.new()
-	root.add_child(_choice_box)
+	_dialogue_panel = DialoguePanel.new()
+	_dialogue_panel.choice_picked.connect(func(index: int) -> void:
+		if _runner != null:
+			_runner.choose(index))
+	add_child(_dialogue_panel)
 
 	# Service points. Market and bar mount their live framework scenes; the
 	# rest are labeled points (visual this sprint).
@@ -415,11 +395,6 @@ func _add_action(row: HBoxContainer, text: String, on_press: Callable) -> void:
 func _refresh_status() -> void:
 	if _bay != null:
 		_bay.queue_redraw()
-
-
-func _clear_choices() -> void:
-	for child in _choice_box.get_children():
-		child.queue_free()
 
 
 func _soul_name(soul: SoulInstance) -> String:

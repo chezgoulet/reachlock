@@ -88,5 +88,28 @@
     "homeworld": "Verne Station",
     "age": 39
   },
-  "ship": "loup_garou"
+  "ship": "loup_garou",
+  "playable": {
+    "tagline": "Engineer. The drive runs at 63% and she knows why.",
+    "stats": {
+      "piloting": 2,
+      "engineering": 5,
+      "medicine": 2,
+      "grit": 3,
+      "savvy": 1
+    },
+    "advantages": [
+      "Five engineering: repairs fly, and a wounded ship barely limps under her trim",
+      "Reads a power grid the way Bardo reads glyphs"
+    ],
+    "disadvantages": [
+      "One savvy: pays sticker price out of spite",
+      "Diplomacy routed through Tove, by mutual agreement"
+    ],
+    "scrawl": [
+      "You are Risc. The Loup-Garou is held together by your welds, your undocumented modifications, and two secrets you keep from the manifest. The drive coupling runs at 63% and only you and Boris know it.",
+      "Nine days of mining dust in the intakes. Tove's called a briefing; you go, because the alternative is her coming down to engineering."
+    ]
+  },
+  "repairs": true
 }

@@ -117,7 +117,46 @@
     "smuggler_contacts"
   ],
   "arc": "tove_duskway_believer",
-  "station": "cargo_hold",
+  "station": "galley",
   "color": "#b5654a",
-  "aboard": true
+  "aboard": true,
+  "playable": {
+    "tagline": "Smuggler. Runs the claim, the ledger, and everyone on it.",
+    "stats": {
+      "piloting": 2,
+      "engineering": 3,
+      "medicine": 1,
+      "grit": 4,
+      "savvy": 4
+    },
+    "advantages": [
+      "Merchants quote her the real price the first time",
+      "Four grit: she has walked out of worse rooms than this"
+    ],
+    "disadvantages": [
+      "Flies like the ledger is watching",
+      "First aid means pressure and swearing"
+    ],
+    "scrawl": [
+      "You are Tove. The claim is yours, the debt is yours, and the six people asleep and awake on this hull are yours to bring home. Nine days of tailings say the drift is played out. Your gut says one more shift.",
+      "You called the briefing for first bell in the galley. Time to tell the crew what you're really out here looking for."
+    ],
+    "self_dialogue_summaries": {
+      "tove_galley_briefing": {
+        "text": "You spread the charts on the galley table and give the crew the shift briefing yourself — the seam, the quota, the reason nobody's flying home yet. They listen the way they always do: like it's your name on the debt. It is.",
+        "mutations": [
+          {
+            "op": "set_player_flag",
+            "flag": "briefing_done"
+          }
+        ]
+      },
+      "tove_cargo_check": {
+        "text": "You walk your own manifest. Every crate where you left it. Every number where it hurts."
+      },
+      "tove_duskway_offer": {
+        "text": "The Duskway pitch is yours to make, not to hear. You already know what you're going to do."
+      }
+    }
+  }
 }

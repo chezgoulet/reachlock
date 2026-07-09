@@ -51,8 +51,7 @@ var _frozen := false
 var _hud: CanvasLayer
 var _log: RichTextLabel
 var _hint: Label
-var _choice_box: VBoxContainer
-var _thinking_label: Label = null
+var _dialogue_panel: DialoguePanel
 var _market_panel: PanelContainer = null
 var _descent := 1.0
 var _descent_rect: ColorRect
@@ -288,21 +287,22 @@ func _talk_to(soul: SoulInstance) -> void:
 	if not dialogue.is_empty():
 		_runner = DialogueRunnerScript.new()
 		add_child(_runner)
-		_runner.line_shown.connect(_on_line_shown)
-		_runner.choices_shown.connect(_on_choices_shown)
-		_runner.thinking_changed.connect(func(thinking: bool) -> void:
-			if _thinking_label != null:
-				_thinking_label.visible = thinking)
+		_runner.line_shown.connect(_dialogue_panel.show_line)
+		_runner.choices_shown.connect(_dialogue_panel.show_choices)
+		_runner.thinking_changed.connect(_dialogue_panel.set_thinking)
 		_runner.ended.connect(_on_dialogue_ended)
+		_dialogue_panel.open(_soul_name(soul),
+			"linked" if SoulGateway.is_ready() else "offline")
 		if _runner.start(dialogue, soul):
 			return
+		_dialogue_panel.close()
 		_runner.queue_free()
 		_runner = null
 	if SoulGateway.is_ready():
-		_append_log("[i]You fall into step with %s.[/i]" % _soul_name(soul))
+		_dialogue_panel.bark("You", "Got a minute?")
 		soul.perceive_utterance("player", "Got a minute?")
 	else:
-		_append_log("[i]%s nods at you but keeps their peace.[/i]" % _soul_name(soul))
+		_dialogue_panel.bark(_soul_name(soul), "*nods at you but keeps their peace*")
 		_frozen = false
 
 
@@ -318,23 +318,8 @@ func _find_dialogue_for(soul_id: String) -> Dictionary:
 	return {}
 
 
-func _on_line_shown(speaker: String, text: String) -> void:
-	_append_log("[b]%s:[/b] %s" % [speaker, text])
-
-
-func _on_choices_shown(choices: Array) -> void:
-	for choice: Dictionary in choices:
-		var button := Button.new()
-		button.text = choice.text
-		button.pressed.connect(func() -> void:
-			_clear_choices()
-			if _runner != null:
-				_runner.choose(int(choice.index)))
-		_choice_box.add_child(button)
-
-
 func _on_dialogue_ended() -> void:
-	_clear_choices()
+	_dialogue_panel.close()
 	if _runner != null:
 		var npc_id: String = _runner.npc_id()
 		MemoryStore.ingest_conversation(npc_id, _runner.transcript(), {
@@ -348,12 +333,12 @@ func _on_dialogue_ended() -> void:
 
 func _on_ambient_bark(text: String, soul: SoulInstance) -> void:
 	if _runner == null and text != "":
-		_append_log("[b]%s:[/b] %s" % [_soul_name(soul), text])
+		_dialogue_panel.bark(_soul_name(soul), text)
 
 
 func _on_soul_concluded(outcome: String, soul: SoulInstance) -> void:
 	if _runner == null and outcome == "abandoned":
-		_append_log("[i]%s starts to answer, then loses the thread.[/i]" % _soul_name(soul))
+		_dialogue_panel.bark(_soul_name(soul), "*starts to answer, then loses the thread*")
 		_frozen = false
 
 
@@ -415,28 +400,25 @@ func _build_hud() -> void:
 		_append_log("[i]Game saved.[/i]"))
 	actions.add_child(save)
 
-	_choice_box = VBoxContainer.new()
-	_choice_box.position = Vector2(16, 124)
-	_hud.add_child(_choice_box)
+	_dialogue_panel = DialoguePanel.new()
+	_dialogue_panel.choice_picked.connect(func(index: int) -> void:
+		if _runner != null:
+			_runner.choose(index))
+	_hud.add_child(_dialogue_panel)
 
-	_thinking_label = Label.new()
-	_thinking_label.text = "· · ·"
-	_thinking_label.add_theme_font_size_override("font_size", 18)
-	_thinking_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
-	_thinking_label.position = Vector2(16, 100)
-	_thinking_label.visible = false
-	_hud.add_child(_thinking_label)
-
+	# System notes only — conversation lives on the DialoguePanel.
 	var log_panel := PanelContainer.new()
-	log_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	log_panel.offset_top = -132
-	log_panel.offset_left = 12
+	log_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	log_panel.offset_left = -420
 	log_panel.offset_right = -12
-	log_panel.offset_bottom = -40
+	log_panel.offset_top = 44
+	log_panel.offset_bottom = 160
+	log_panel.modulate = Color(1, 1, 1, 0.85)
 	_hud.add_child(log_panel)
 	_log = RichTextLabel.new()
 	_log.bbcode_enabled = true
 	_log.scroll_following = true
+	_log.add_theme_font_size_override("normal_font_size", 13)
 	log_panel.add_child(_log)
 
 	_hint = Label.new()
@@ -458,11 +440,6 @@ func _build_hud() -> void:
 	_descent_label.text = "Entering atmosphere — %s" % _location.get("name", "")
 	_descent_label.add_theme_font_size_override("font_size", 28)
 	_hud.add_child(_descent_label)
-
-
-func _clear_choices() -> void:
-	for child in _choice_box.get_children():
-		child.queue_free()
 
 
 func _soul_name(soul: SoulInstance) -> String:

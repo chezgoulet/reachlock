@@ -100,9 +100,16 @@ func _build_row(upgrade: Dictionary) -> Control:
 	return row
 
 
+## The sticker price after the player's savvy works the counter: 5% per
+## point above (or below) an even keel. The merchant reads people too.
+func _price(upgrade: Dictionary) -> int:
+	var haggle := 1.0 - 0.05 * float(GameState.player_stat("savvy") - 2)
+	return maxi(1, int(round(int(upgrade.get("cost", 0)) * clampf(haggle, 0.75, 1.2))))
+
+
 func _buy(upgrade_id: String) -> void:
 	var upgrade := DataRegistry.get_entity("upgrades", upgrade_id)
-	var cost := int(upgrade.get("cost", 0))
+	var cost := _price(upgrade)
 	if GameState.has_upgrade(upgrade_id) or GameState.player.credits < cost:
 		return
 	GameState.adjust_credits(-cost)
@@ -121,7 +128,7 @@ func _refresh() -> void:
 	_credits_label.text = "%d cr" % int(GameState.player.credits)
 	for upgrade_id: String in _rows:
 		var upgrade := DataRegistry.get_entity("upgrades", upgrade_id)
-		var cost := int(upgrade.get("cost", 0))
+		var cost := _price(upgrade)
 		var button: Button = _rows[upgrade_id].button
 		if GameState.has_upgrade(upgrade_id):
 			button.text = "Owned"

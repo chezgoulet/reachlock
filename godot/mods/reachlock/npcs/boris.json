@@ -78,11 +78,43 @@
     "system_diagnostics",
     "data_management"
   ],
-  "station": "cryo",
+  "station": "ore_processing",
   "extra": {
     "model": "Reach Standard Droid MK-IV",
     "serial": "RSD-4-8821",
     "age": 17
   },
-  "ship": "loup_garou"
+  "ship": "loup_garou",
+  "playable": {
+    "tagline": "Maintenance droid. Upstairs, the deck answers to him.",
+    "stats": {
+      "piloting": 1,
+      "engineering": 5,
+      "medicine": 2,
+      "grit": 4,
+      "savvy": 1
+    },
+    "advantages": [
+      "Mag-locked feet: walks zero-G like it's a corridor",
+      "Five engineering: damage control is his native language"
+    ],
+    "disadvantages": [
+      "Under gravity his chassis moves like a filing cabinet — very slowly",
+      "Negotiation subroutine returns the list price, annotated"
+    ],
+    "scrawl": [
+      "You are Boris. Reach Standard Droid MK-IV, seventeen years in service, current assignment: keeping the Loup-Garou's upper deck — and everything bolted to it — operational. The zero-G level is yours; gravity is a place you visit reluctantly, at 0.3 meters per second.",
+      "Boot log, day nine: ore processor nominal, pods nominal, crew organic and therefore anomalous. The captain has been summoned to a briefing in the galley. Descending. Estimated arrival: eventually."
+    ],
+    "self_dialogue_summaries": {
+      "boris_pod_check": {
+        "text": "You run the pod check yourself, which is to say: the pods were already checked. You checked them. They are checked."
+      }
+    }
+  },
+  "locomotion": {
+    "zero_g": "magnetic",
+    "gravity_speed_mult": 0.3
+  },
+  "repairs": true
 }

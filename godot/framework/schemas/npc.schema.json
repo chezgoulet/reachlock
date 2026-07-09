@@ -181,6 +181,93 @@
     "jump_pilot": {
       "type": "boolean",
       "description": "True for the crew member who pilots the ship through self-generated hyperspace jumps while the organic crew sleeps. Must be synthetic. Read by the CryoTransit sequence; the first aboard synthetic is the fallback."
+    },
+    "playable": {
+      "type": "object",
+      "description": "Marks this crew member as a selectable player character. The character-select screen reads everything here; the engine reads stats generically (piloting/engineering/medicine/grit/savvy, 1..5). A dialogue this NPC hosts cannot play when the player IS them — self_dialogue_summaries maps dialogue id → a second-person narration card shown instead (the beat still completes).",
+      "additionalProperties": false,
+      "properties": {
+        "tagline": {
+          "type": "string",
+          "description": "One line under the name on the select screen."
+        },
+        "stats": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "description": "Named stats 1..5. Framework vocabulary: piloting (flight handling), engineering (repair speed & power trim), medicine (triage — fewer/softer interior casualties of combat), grit (hull soak & steadiness in zero-G), savvy (better shop prices)."
+        },
+        "advantages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disadvantages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scrawl": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Paragraphs of the opening text scrawl when starting as this character. Appended to the manifest's shared start.scrawl."
+        },
+        "self_dialogue_summaries": {
+          "type": "object",
+          "description": "dialogue id → what happens instead when the player IS this character: a second-person narration card plus the mutations the skipped scene would have applied (story flags must still land). The host reports dialogue_end so missions advance.",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "mutations": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                },
+                "description": "Dialogue-schema mutations applied when the card shows."
+              }
+            }
+          }
+        }
+      }
+    },
+    "locomotion": {
+      "type": "object",
+      "description": "How this character moves through gravity regimes. zero_g 'magnetic' walks normally in zero-G (mag-locked feet); 'drift' floats on inertia. gravity_speed_mult scales walk speed under gravity (a heavy chassis crawls).",
+      "additionalProperties": false,
+      "properties": {
+        "zero_g": {
+          "type": "string",
+          "enum": [
+            "drift",
+            "magnetic"
+          ],
+          "default": "drift"
+        },
+        "gravity_speed_mult": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 1.0
+        }
+      }
+    },
+    "repairs": {
+      "type": "boolean",
+      "description": "This crew member seeks out and repairs interior ship damage on their own."
     }
   }
 }

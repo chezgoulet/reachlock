@@ -21,6 +21,7 @@ var player := {
 	"credits": 200,
 	"flags": [],
 	"upgrades": [],       # upgrade ids owned (upgrade contract)
+	"character": "",      # crew member the player embodies ("" = unnamed captain)
 	"ship": {
 		"hull_id": "",
 		"hull_integrity": 1.0,
@@ -28,6 +29,11 @@ var player := {
 		"cargo": {},        # good id -> qty
 		# Power routing set at the engineering station; flight reads it.
 		"power": {"weapons": 0.33, "shields": 0.33, "engines": 0.34},
+		# Interior damage from combat: manifests in the ship, degrades flight
+		# until someone (player or crew) fixes it. Save schema ship.damage.
+		"damage": [],
+		"damage_seq": 0,
+		"weapons_calibrated": false,
 	},
 }
 # Active mission progress (save schema `mission` block). MissionManager owns
@@ -133,6 +139,16 @@ func upgrade_effect_sum(key: String) -> float:
 	return total
 
 
+## True when any owned upgrade carries a truthy boolean effect under `key`
+## (mag_boots, auto_suppress, ...).
+func upgrade_effect_bool(key: String) -> bool:
+	for upgrade_id: String in player.get("upgrades", []):
+		var effects: Dictionary = DataRegistry.get_entity("upgrades", upgrade_id).get("effects", {})
+		if bool(effects.get(key, false)):
+			return true
+	return false
+
+
 ## Multiply a named numeric effect across every owned upgrade (multiplicative
 ## effects: detection_mult, speed_mult, ...). 1.0 when none owned.
 func upgrade_effect_product(key: String) -> float:
@@ -141,6 +157,93 @@ func upgrade_effect_product(key: String) -> float:
 		var effects: Dictionary = DataRegistry.get_entity("upgrades", upgrade_id).get("effects", {})
 		product *= float(effects.get(key, 1.0))
 	return product
+
+
+## --- the player character (Sprint 3) --------------------------------------------
+
+
+## The crew member the player embodies ("" = the unnamed-captain fallback).
+func player_character() -> String:
+	return str(player.get("character", ""))
+
+
+func set_player_character(npc_id: String) -> void:
+	player["character"] = npc_id
+	state_changed.emit()
+
+
+## A named character stat (playable contract: 1..5 authored, upgrades can push
+## past). Base comes from the chosen character's playable.stats; the unnamed
+## captain reads as an even 2 across the board. Upgrades add via the effect
+## key "stat_<name>" (upgrade contract: flat numeric bag).
+func player_stat(stat: String) -> int:
+	var base := 2
+	var character := player_character()
+	if character != "":
+		var playable: Dictionary = DataRegistry.get_entity("npcs", character).get("playable", {})
+		base = int(playable.get("stats", {}).get(stat, 2))
+	return clampi(base + int(upgrade_effect_sum("stat_" + stat)), 1, 7)
+
+
+## --- interior ship damage (Sprint 3) ---------------------------------------------
+
+
+## Record a new interior damage event (combat spawns these). Returns the entry.
+func add_ship_damage(room: String, kind: String, pos: Array, severity := 1.0) -> Dictionary:
+	var seq := int(player.ship.get("damage_seq", 0)) + 1
+	player.ship["damage_seq"] = seq
+	var entry := {"id": seq, "room": room, "kind": kind,
+		"severity": clampf(severity, 0.0, 1.0), "pos": pos}
+	ship_damage().append(entry)
+	state_changed.emit()
+	return entry
+
+
+func ship_damage() -> Array:
+	if not player.ship.has("damage"):
+		player.ship["damage"] = []
+	return player.ship.damage
+
+
+func repair_ship_damage(damage_id: int) -> void:
+	var damage := ship_damage()
+	for i in damage.size():
+		if int(damage[i].get("id", -1)) == damage_id:
+			damage.remove_at(i)
+			state_changed.emit()
+			return
+
+
+func damage_severity_total() -> float:
+	var total := 0.0
+	for entry: Dictionary in ship_damage():
+		total += float(entry.get("severity", 1.0))
+	return total
+
+
+## What unrepaired damage costs in flight. Engineering trims the bleeding —
+## a good engineer keeps a wounded ship flying closer to spec.
+func flight_damage_penalty() -> Dictionary:
+	var soften := clampf(1.0 - 0.06 * float(player_stat("engineering") - 2), 0.7, 1.15)
+	var s := damage_severity_total() * soften
+	return {
+		"speed_mult": clampf(1.0 - 0.06 * s, 0.65, 1.0),
+		"cooldown_mult": clampf(1.0 + 0.08 * s, 1.0, 1.6),
+		"vulnerability": clampf(1.0 + 0.05 * s, 1.0, 1.5),
+	}
+
+
+## Gunnery calibration: set at the weapons station, spent by the next flight.
+func set_weapons_calibrated(value: bool) -> void:
+	player.ship["weapons_calibrated"] = value
+	state_changed.emit()
+
+
+func consume_weapons_calibration() -> bool:
+	var calibrated := bool(player.ship.get("weapons_calibrated", false))
+	if calibrated:
+		player.ship["weapons_calibrated"] = false
+	return calibrated
 
 
 ## --- faction standing ---------------------------------------------------------
@@ -272,6 +375,7 @@ func context() -> Dictionary:
 			"flags": player.flags,
 			"upgrades": player.get("upgrades", []),
 			"docked": is_docked(),
+			"character": player_character(),
 		},
 		"soul": soul_ns,
 		"faction": faction_ns,
@@ -333,6 +437,14 @@ func load_game() -> bool:
 		player["upgrades"] = []
 	if not player.ship.has("power"):
 		player.ship["power"] = {"weapons": 0.33, "shields": 0.33, "engines": 0.34}
+	if not player.has("character"):
+		player["character"] = ""
+	if not player.ship.has("damage"):
+		player.ship["damage"] = []
+	if not player.ship.has("damage_seq"):
+		player.ship["damage_seq"] = 0
+	if not player.ship.has("weapons_calibrated"):
+		player.ship["weapons_calibrated"] = false
 	mission = snapshot.get("mission", {})
 	factions = snapshot.get("factions", {})
 	var saved_crew: Dictionary = snapshot.get("crew", {})

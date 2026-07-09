@@ -251,6 +251,28 @@
                 "y": {
                   "type": "number",
                   "description": "Absolute Y position. Omitted = room center."
+                },
+                "converts": {
+                  "type": "object",
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "additionalProperties": false,
+                  "description": "This station refines cargo: `ratio` units of good `from` press into 1 unit of good `to` (a clean strike at the minigame; a jam grinds one unit to dust).",
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    },
+                    "ratio": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 2
+                    }
+                  }
                 }
               }
             }
@@ -290,6 +312,10 @@
                 }
               }
             }
+          },
+          "deck": {
+            "type": "string",
+            "description": "Deck this room belongs to (a key of `decks`). Omitted = default deck."
           }
         }
       }
@@ -413,6 +439,73 @@
     "extra": {
       "type": "object",
       "description": "Free-form escape hatch for mod-specific data. Never read by the engine."
+    },
+    "decks": {
+      "type": "object",
+      "description": "Named decks with independent gravity. Rooms opt in via their `deck` field (omitted = the hull default deck, 'lower' when decks exist). Each deck's gravity block overrides the hull `gravity` while the player walks that deck — a zero-G cargo level above a grav-plated crew level.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer",
+            "description": "Sort order for HUD display (higher = further up the hull)."
+          },
+          "gravity": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "magnetic_boots",
+                  "centrifugal",
+                  "energy_plate",
+                  "grav_plate"
+                ]
+              },
+              "strength": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 3
+              }
+            }
+          }
+        }
+      }
+    },
+    "ladders": {
+      "type": "array",
+      "description": "Ladders/hatches connecting decks. Each carries an interactable position per deck; using it moves the player to its position on the other deck.",
+      "items": {
+        "type": "object",
+        "required": [
+          "positions"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "positions": {
+            "type": "object",
+            "minProperties": 2,
+            "additionalProperties": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number"
+              }
+            },
+            "description": "deck id → [x, y] of the ladder on that deck."
+          }
+        }
+      }
     }
   }
 }

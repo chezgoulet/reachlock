@@ -3,7 +3,7 @@
   "name": "Loup-Garou",
   "class": "corvette",
   "chassis_archetype": "saucer",
-  "description": "A mid-bulk mining corvette. Blunt, utilitarian frame with the cockpit forward and slightly elevated. Argosy-class profile — workhorse, not warship. Heavily modified: extra hardpoints welded onto former mining laser mounts, patch armor, a shuttle grafted aft that the original designer never intended.",
+  "description": "A mid-bulk mining corvette on two decks. Upstairs — cockpit, landing bay, ore processing, cargo hold — runs cold and weightless; the grav plates only ever got wired into the lower deck, where the bridge, galley, quarters, med bay, engineering, and the pods live. One main ladder connects them. Heavily modified: extra hardpoints welded onto former mining laser mounts, patch armor, a shuttle grafted into the bay that the original designer never intended.",
   "origin": "reach",
   "customization_tier": "high",
   "stats": {
@@ -31,13 +31,14 @@
       "id": "cockpit",
       "name": "Cockpit",
       "kind": "cockpit",
-      "x": 80,
-      "y": 15,
-      "w": 180,
-      "h": 130,
+      "deck": "upper",
+      "x": 60,
+      "y": 20,
+      "w": 200,
+      "h": 140,
       "doors": [
         {
-          "to": "bridge",
+          "to": "ore_processing",
           "side": "right",
           "offset": 0.5
         }
@@ -46,37 +47,42 @@
         {
           "id": "pilot",
           "name": "Pilot Console",
-          "x": 160,
-          "y": 90
+          "x": 150,
+          "y": 95
         }
       ],
       "props": [
         {
           "sprite": "viewport_wide",
-          "x": 170,
-          "y": 32
+          "x": 155,
+          "y": 38
         },
         {
           "sprite": "pilot_console",
-          "x": 160,
-          "y": 78
+          "x": 150,
+          "y": 82
         },
         {
           "sprite": "nav_screen",
-          "x": 225,
-          "y": 60
+          "x": 222,
+          "y": 64
+        },
+        {
+          "sprite": "handrail",
+          "x": 100,
+          "y": 140
         }
       ]
     },
     {
-      "id": "bridge",
-      "name": "Bridge",
-      "kind": "bridge",
-      "color": "#1a4a7a",
-      "x": 275,
-      "y": 15,
-      "w": 200,
-      "h": 130,
+      "id": "ore_processing",
+      "name": "Ore Processing",
+      "kind": "ore_processing",
+      "deck": "upper",
+      "x": 280,
+      "y": 20,
+      "w": 220,
+      "h": 180,
       "doors": [
         {
           "to": "cockpit",
@@ -84,39 +90,199 @@
           "offset": 0.5
         },
         {
+          "to": "landing_bay",
+          "side": "right",
+          "offset": 0.4
+        },
+        {
+          "to": "cargo_hold",
+          "side": "bottom",
+          "offset": 0.5
+        }
+      ],
+      "stations": [
+        {
+          "id": "processing",
+          "name": "Ore Processor",
+          "x": 350,
+          "y": 90,
+          "converts": {
+            "from": "raw_ore",
+            "to": "refined_alloys",
+            "ratio": 2
+          }
+        }
+      ],
+      "props": [
+        {
+          "sprite": "ore_processor",
+          "x": 350,
+          "y": 75
+        },
+        {
+          "sprite": "ore_hopper",
+          "x": 450,
+          "y": 60
+        },
+        {
+          "sprite": "handrail",
+          "x": 310,
+          "y": 180
+        },
+        {
+          "sprite": "crate",
+          "x": 460,
+          "y": 170
+        }
+      ]
+    },
+    {
+      "id": "landing_bay",
+      "name": "Landing Bay",
+      "kind": "landing_bay",
+      "deck": "upper",
+      "x": 520,
+      "y": 20,
+      "w": 260,
+      "h": 240,
+      "doors": [
+        {
+          "to": "ore_processing",
+          "side": "left",
+          "offset": 0.3
+        }
+      ],
+      "props": [
+        {
+          "sprite": "shuttle",
+          "x": 650,
+          "y": 120,
+          "scale": 1.4
+        },
+        {
+          "sprite": "landing_clamp",
+          "x": 590,
+          "y": 210
+        },
+        {
+          "sprite": "landing_clamp",
+          "x": 710,
+          "y": 210
+        },
+        {
+          "sprite": "handrail",
+          "x": 550,
+          "y": 250
+        },
+        {
+          "sprite": "crate",
+          "x": 545,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "id": "cargo_hold",
+      "name": "Cargo Hold",
+      "kind": "cargo_hold",
+      "deck": "upper",
+      "x": 280,
+      "y": 220,
+      "w": 220,
+      "h": 220,
+      "doors": [
+        {
+          "to": "ore_processing",
+          "side": "top",
+          "offset": 0.5
+        }
+      ],
+      "stations": [
+        {
+          "id": "cargo",
+          "name": "Cargo Terminal",
+          "x": 330,
+          "y": 300
+        }
+      ],
+      "props": [
+        {
+          "sprite": "crate_stack",
+          "x": 310,
+          "y": 350
+        },
+        {
+          "sprite": "mining_rig",
+          "x": 450,
+          "y": 280
+        },
+        {
+          "sprite": "cargo_pallet",
+          "x": 380,
+          "y": 400
+        },
+        {
+          "sprite": "crate",
+          "x": 460,
+          "y": 390
+        },
+        {
+          "sprite": "handrail",
+          "x": 470,
+          "y": 225
+        }
+      ]
+    },
+    {
+      "id": "bridge",
+      "name": "Bridge",
+      "kind": "bridge",
+      "deck": "lower",
+      "x": 80,
+      "y": 15,
+      "w": 260,
+      "h": 130,
+      "color": "#1a4a7a",
+      "doors": [
+        {
           "to": "galley",
           "side": "bottom",
-          "offset": 0.3
+          "offset": 0.55
         }
       ],
       "stations": [
         {
           "id": "weapons",
           "name": "Weapons Station",
-          "x": 300,
+          "x": 140,
           "y": 80
         },
         {
           "id": "scanner",
           "name": "Scanner Array",
-          "x": 420,
+          "x": 280,
           "y": 80
         }
       ],
       "props": [
         {
+          "sprite": "viewport_wide",
+          "x": 205,
+          "y": 32
+        },
+        {
           "sprite": "weapons_console",
-          "x": 300,
+          "x": 140,
           "y": 68
         },
         {
           "sprite": "scanner_console",
-          "x": 420,
+          "x": 280,
           "y": 68
         },
         {
           "sprite": "chart_table",
-          "x": 360,
+          "x": 210,
           "y": 110
         }
       ]
@@ -125,11 +291,12 @@
       "id": "airlock",
       "name": "Airlock",
       "kind": "airlock",
-      "color": "#5a5a6a",
+      "deck": "lower",
       "x": 490,
       "y": 15,
       "w": 90,
       "h": 130,
+      "color": "#5a5a6a",
       "doors": [
         {
           "to": "galley",
@@ -149,11 +316,12 @@
       "id": "crew_quarters",
       "name": "Crew Quarters",
       "kind": "crew_quarters",
-      "color": "#4a4a6a",
+      "deck": "lower",
       "x": 30,
       "y": 165,
       "w": 160,
       "h": 170,
+      "color": "#4a4a6a",
       "doors": [
         {
           "to": "galley",
@@ -188,11 +356,12 @@
       "id": "galley",
       "name": "Galley",
       "kind": "galley",
-      "color": "#6a7a3a",
+      "deck": "lower",
       "x": 205,
       "y": 165,
       "w": 240,
       "h": 170,
+      "color": "#6a7a3a",
       "doors": [
         {
           "to": "bridge",
@@ -218,11 +387,6 @@
           "to": "engineering",
           "side": "bottom",
           "offset": 0.3
-        },
-        {
-          "to": "cargo_hold",
-          "side": "bottom",
-          "offset": 0.7
         }
       ],
       "props": [
@@ -234,7 +398,7 @@
         {
           "sprite": "food_dispenser",
           "x": 230,
-          "y": 195
+          "y": 290
         },
         {
           "sprite": "porthole",
@@ -252,11 +416,12 @@
       "id": "med_bay",
       "name": "Med Bay",
       "kind": "med_bay",
-      "color": "#d8dde0",
+      "deck": "lower",
       "x": 460,
       "y": 165,
       "w": 140,
       "h": 170,
+      "color": "#d8dde0",
       "doors": [
         {
           "to": "galley",
@@ -286,11 +451,12 @@
       "id": "engineering",
       "name": "Engineering",
       "kind": "engineering",
-      "color": "#aa6020",
+      "deck": "lower",
       "x": 105,
       "y": 360,
       "w": 220,
       "h": 180,
+      "color": "#aa6020",
       "doors": [
         {
           "to": "galley",
@@ -300,11 +466,6 @@
         {
           "to": "cryo",
           "side": "left",
-          "offset": 0.5
-        },
-        {
-          "to": "cargo_hold",
-          "side": "right",
           "offset": 0.5
         }
       ],
@@ -331,6 +492,11 @@
           "sprite": "power_grid",
           "x": 300,
           "y": 450
+        },
+        {
+          "sprite": "repair_locker",
+          "x": 300,
+          "y": 500
         }
       ]
     },
@@ -338,16 +504,17 @@
       "id": "cryo",
       "name": "Cryo",
       "kind": "cryo",
-      "color": "#5a7a8a",
+      "deck": "lower",
       "x": 15,
       "y": 375,
       "w": 80,
-      "h": 80,
+      "h": 140,
+      "color": "#5a7a8a",
       "doors": [
         {
           "to": "engineering",
           "side": "right",
-          "offset": 0.5
+          "offset": 0.3
         }
       ],
       "stations": [
@@ -355,71 +522,24 @@
           "id": "cryopod",
           "name": "Cryopod",
           "x": 50,
-          "y": 390
+          "y": 400
         }
       ],
       "props": [
         {
           "sprite": "cryo_pod",
-          "x": 38,
-          "y": 400
+          "x": 35,
+          "y": 420
         },
         {
           "sprite": "cryo_pod",
-          "x": 68,
-          "y": 400
-        }
-      ]
-    },
-    {
-      "id": "cargo_hold",
-      "name": "Cargo Hold",
-      "kind": "cargo_hold",
-      "color": "#5a5030",
-      "x": 340,
-      "y": 360,
-      "w": 220,
-      "h": 200,
-      "doors": [
-        {
-          "to": "galley",
-          "side": "top",
-          "offset": 0.5
+          "x": 65,
+          "y": 420
         },
         {
-          "to": "engineering",
-          "side": "left",
-          "offset": 0.5
-        }
-      ],
-      "stations": [
-        {
-          "id": "cargo",
-          "name": "Cargo Terminal",
-          "x": 440,
-          "y": 450
-        }
-      ],
-      "props": [
-        {
-          "sprite": "crate_stack",
-          "x": 380,
-          "y": 400
-        },
-        {
-          "sprite": "mining_rig",
-          "x": 500,
-          "y": 410
-        },
-        {
-          "sprite": "cargo_pallet",
-          "x": 420,
-          "y": 500
-        },
-        {
-          "sprite": "crate",
-          "x": 530,
-          "y": 490
+          "sprite": "cryo_pod",
+          "x": 50,
+          "y": 480
         }
       ]
     }
@@ -432,5 +552,38 @@
   },
   "attached": [
     "loup_garou_shuttle"
+  ],
+  "decks": {
+    "upper": {
+      "name": "Upper Deck — Zero-G",
+      "order": 1,
+      "gravity": {
+        "type": "none",
+        "strength": 0.0
+      }
+    },
+    "lower": {
+      "name": "Lower Deck",
+      "order": 0,
+      "gravity": {
+        "type": "energy_plate",
+        "strength": 1.0
+      }
+    }
+  },
+  "ladders": [
+    {
+      "name": "Main Ladder",
+      "positions": {
+        "upper": [
+          390.0,
+          380.0
+        ],
+        "lower": [
+          240.0,
+          215.0
+        ]
+      }
+    }
   ]
 }

@@ -57,6 +57,9 @@ var _rng := RandomNumberGenerator.new()
 
 var _jump_route: Dictionary = {}   # this space's self_jump block, if any
 var _transit: CryoTransit = null   # live cryo transit sequence, if any
+var _calibrated_fire_mult := 1.0   # gunnery calibration payout (consumed)
+var _damage_cooldown_mult := 1.0   # interior damage: guns cycle slower
+var _damage_vulnerability := 1.0   # interior damage: hits land harder
 
 var _alert_rect: ColorRect = null  # red-alert vignette
 var _alert_time := 0.0
@@ -279,11 +282,27 @@ func _load_flight_stats() -> void:
 	for key: String in _stats:
 		if flight.has(key):
 			_stats[key] = flight[key]
-	# Owned upgrades tune the hull (upgrade contract: speed_mult), and the
-	# engineering power grid decides how much of the drive reaches the
-	# engines this flight (even split ≈ 1.0).
+	# Owned upgrades tune the hull (upgrade contract: speed_mult, turn_mult),
+	# the engineering power grid decides how much of the drive reaches the
+	# engines this flight (even split ≈ 1.0), the pilot's hands matter
+	# (piloting stat), and unrepaired interior damage bleeds it all.
+	var penalty := GameState.flight_damage_penalty()
+	var pilot_touch := 1.0 + 0.04 * float(GameState.player_stat("piloting") - 2)
 	_stats.top_speed = float(_stats.top_speed) * GameState.upgrade_effect_product("speed_mult") \
-		* (0.7 + GameState.power_share("engines") * 0.9)
+		* (0.7 + GameState.power_share("engines") * 0.9) \
+		* pilot_touch * float(penalty.speed_mult)
+	_stats.turn_rate = float(_stats.turn_rate) * GameState.upgrade_effect_product("turn_mult") \
+		* (1.0 + 0.05 * float(GameState.player_stat("piloting") - 2))
+	# The gunnery calibration run pays out here — and is spent.
+	_calibrated_fire_mult = 1.15 if GameState.consume_weapons_calibration() else 1.0
+	_damage_cooldown_mult = float(penalty.cooldown_mult)
+	_damage_vulnerability = float(penalty.vulnerability)
+	if not GameState.ship_damage().is_empty():
+		# Deferred: stats load before the combat overlay (and its callout
+		# box) exists; the line lands once the HUD is up.
+		_callout_by_role.call_deferred(["engineer", "droid"],
+			"We're flying wounded — %d open damage reports below decks. She'll be slow and she'll be sore." %
+			GameState.ship_damage().size(), "flying_wounded")
 
 
 func _advance_tick(delta: float) -> void:
@@ -399,8 +418,10 @@ func _update_combat(delta: float) -> void:
 	if not fire_pressed or _fire_clock > 0.0:
 		ShipOperation.set_effect("weapons_firing", false)
 		return
-	# Weapons power feeds the fire rate (even split ≈ stock cooldown).
-	_fire_clock = FIRE_COOLDOWN / (0.6 + GameState.power_share("weapons") * 1.2)
+	# Weapons power feeds the fire rate (even split ≈ stock cooldown); the
+	# calibration run speeds the cycle, unrepaired damage drags on it.
+	_fire_clock = FIRE_COOLDOWN * _damage_cooldown_mult \
+		/ ((0.6 + GameState.power_share("weapons") * 1.2) * _calibrated_fire_mult)
 	ShipOperation.set_effect("weapons_firing", true)
 	AudioManager.laser_fire()
 	var damage := 1 + int(GameState.upgrade_effect_sum("damage_bonus"))
@@ -475,12 +496,16 @@ func _update_pirate(delta: float) -> void:
 
 
 func _player_hit() -> void:
-	# Shield power soaks part of the slug (even split ≈ stock damage).
-	var soak := 1.15 - GameState.power_share("shields") * 0.45
+	# Shield power soaks part of the slug (even split ≈ stock damage), grit
+	# rides the impact out, and a ship already burning takes it worse.
+	var soak := (1.15 - GameState.power_share("shields") * 0.45) \
+		* (1.0 - 0.03 * float(GameState.player_stat("grit") - 2)) \
+		* _damage_vulnerability
 	GameState.player.ship.hull_integrity = maxf(
 		0.0, GameState.player.ship.hull_integrity - PIRATE_HIT_DAMAGE * soak)
 	GameState.set_flag("took_the_hit")
 	_camera.fov += 3.0  # a flinch the lerp settles
+	_maybe_interior_damage()
 	var hull := int(GameState.player.ship.hull_integrity * 100.0)
 	if hull <= 25:
 		_callout_by_role(["medic"],
@@ -492,6 +517,40 @@ func _player_hit() -> void:
 		_callout_by_role(["engineer"], "Shields drank most of it. Hull at %d%%." % hull, "hull_75")
 	if GameState.player.ship.hull_integrity <= 0.0:
 		_player_downed()
+
+
+## A hit that gets through can start something INSIDE the ship: a fire, an
+## arcing conduit, a small breach — placed in a real room from the hull data,
+## visible and fixable when you next walk the deck. A good medic runs triage
+## that keeps the casualty list short.
+func _maybe_interior_damage() -> void:
+	var chance := 0.45 * (1.0 - 0.07 * float(GameState.player_stat("medicine") - 2))
+	if GameState.player.ship.hull_integrity <= 0.25:
+		chance = maxf(chance, 0.8)  # a shredded hull sheds sparks
+	if _rng.randf() > clampf(chance, 0.1, 0.9):
+		return
+	var hull := DataRegistry.get_entity("ships", GameState.player.ship.hull_id)
+	var rooms: Array = hull.get("rooms", [])
+	if rooms.is_empty():
+		return
+	var room: Dictionary = rooms[_rng.randi() % rooms.size()]
+	var kind: String = ["fire", "conduit", "breach"][_rng.randi() % 3]
+	# Somewhere inside the room, clear of the walls.
+	var x := float(room.get("x", 0.0)) + float(room.get("w", 100.0)) * _rng.randf_range(0.25, 0.75)
+	var y := float(room.get("y", 0.0)) + float(room.get("h", 100.0)) * _rng.randf_range(0.3, 0.7)
+	GameState.add_ship_damage(room.get("id", ""), kind, [x, y],
+		_rng.randf_range(0.6, 1.0))
+	var room_name: String = room.get("name", str(room.get("id", "?")).capitalize())
+	match kind:
+		"fire":
+			_callout_by_role(["droid", "engineer"],
+				"Fire in the %s. Logged, alarmed, and spreading at a professional pace." % room_name)
+		"conduit":
+			_callout_by_role(["engineer", "droid"],
+				"Conduit's arcing in the %s — if the plates stutter, that's why." % room_name)
+		"breach":
+			_callout_by_role(["medic", "engineer"],
+				"Breach in the %s! Small one. Everyone keep breathing out of habit." % room_name)
 
 
 func _end_ambush(destroyed: bool) -> void:
@@ -815,21 +874,29 @@ func _update_combat_theater(delta: float) -> void:
 ## aboard crew member holding one of them speaks (content decides who that
 ## is — the engine only knows roles, never names).
 func _callout_by_role(roles: Array, text: String, once_key := "") -> void:
+	if _callout_box == null:
+		return
 	if once_key != "" and _said.has(once_key):
 		return
 	if once_key != "":
 		_said[once_key] = true
+	# You don't hear your own voice on the intercom: the character the
+	# player is embodying never speaks a callout.
+	var voices: Array = []
+	for crew_id: String in CrewRoster.aboard():
+		if crew_id != GameState.player_character():
+			voices.append(crew_id)
 	var speaker := ""
 	for role: String in roles:
-		for crew_id: String in CrewRoster.aboard():
+		for crew_id: String in voices:
 			var npc := DataRegistry.get_entity("npcs", crew_id)
 			if npc.get("role", "") == role:
 				speaker = npc.get("name", crew_id)
 				break
 		if speaker != "":
 			break
-	if speaker == "" and not CrewRoster.aboard().is_empty():
-		var first: String = CrewRoster.aboard()[0]
+	if speaker == "" and not voices.is_empty():
+		var first: String = voices[0]
 		speaker = DataRegistry.get_entity("npcs", first).get("name", first)
 	if speaker == "":
 		return

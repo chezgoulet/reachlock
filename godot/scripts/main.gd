@@ -6,11 +6,11 @@ func _ready() -> void:
 	GameManager.mode_change_requested.connect(_on_mode_change_requested)
 	# v0 continue-behavior: a save always resumes. "New game" = delete the
 	# save; a proper title menu replaces this later.
-	GameState.load_game()
-	# Fresh playthroughs open on the content's start.mission (a loaded save
-	# restores its own mission via GameState.universe_loaded instead).
-	MissionManager.autostart_if_idle()
-	_load_mode(_initial_mode())
+	var resumed := GameState.load_game()
+	if resumed:
+		_start_playing()
+	else:
+		_new_game_opening()
 	if OS.is_debug_build():
 		# Test/CI hook (same family as REACHLOCK_FORCE_MODE): run headless
 		# for N seconds, save, quit. Lets integration runs exercise the
@@ -21,6 +21,33 @@ func _ready() -> void:
 				func() -> void:
 					GameState.save_game()
 					get_tree().quit())
+
+
+## A fresh playthrough opens on character select (any npc with a `playable`
+## block); the scrawl rolls, then the game proper starts. Headless/CI runs
+## skip the screen — REACHLOCK_CHARACTER=<npc id> still picks a seat.
+func _new_game_opening() -> void:
+	if DisplayServer.get_name() == "headless" or not OS.get_environment("REACHLOCK_FORCE_MODE").is_empty():
+		var forced := OS.get_environment("REACHLOCK_CHARACTER")
+		if forced != "":
+			GameState.set_player_character(forced)
+		_start_playing()
+		return
+	var layer := CanvasLayer.new()
+	layer.layer = 90
+	add_child(layer)
+	var select := CharacterSelect.new()
+	layer.add_child(select)
+	select.finished.connect(func() -> void:
+		layer.queue_free()
+		_start_playing())
+
+
+func _start_playing() -> void:
+	# Fresh playthroughs open on the content's start.mission (a loaded save
+	# restores its own mission via GameState.universe_loaded instead).
+	MissionManager.autostart_if_idle()
+	_load_mode(_initial_mode())
 
 
 ## A loaded save resumes where it was; otherwise content decides where a new

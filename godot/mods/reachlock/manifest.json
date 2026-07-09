@@ -94,13 +94,22 @@
       "transponder_ghost",
       "cryo_recalibration",
       "decoy_beacon",
-      "lucky_dice"
+      "lucky_dice",
+      "mag_boots",
+      "plasma_welder",
+      "fire_suppression",
+      "gyro_stabilizers",
+      "flight_sim_module"
     ]
   },
   "start": {
     "mode": "on_board",
     "player_ship": "loup_garou",
     "location": "the_drift",
-    "mission": "duskway_demo_act1"
+    "mission": "duskway_demo_act1",
+    "scrawl": [
+      "THE FRONTIER DEEP — the Reach. Past the Compact cordons, past the last honest lane light, there is rock, and in the rock there is ore, and around the ore there are people too stubborn or too indebted to be anywhere else.",
+      "The mining corvette LOUP-GAROU sits over an unclaimed drift, nine days into a claim that was supposed to take four. The Compact doesn't patrol out here. That is the good news and the bad news."
+    ]
   }
 }

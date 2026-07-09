@@ -48,8 +48,7 @@ var _runner: DialogueRunner = null
 var _hud: CanvasLayer
 var _log: RichTextLabel
 var _hint: Label
-var _choice_box: VBoxContainer
-var _thinking_label: Label
+var _dialogue_panel: DialoguePanel
 var _service_panel: Control = null
 
 
@@ -137,7 +136,12 @@ func _build_world() -> void:
 	_pos = Vector2(spawn[0], spawn[1]) if spawn.size() == 2 else _world_size * 0.5
 
 	_walker = CharacterSprite.new()
-	_walker.setup("player", "character", Color(0.85, 0.86, 0.9))
+	var character := GameState.player_character()
+	if character != "":
+		var npc := DataRegistry.get_entity("npcs", character)
+		_walker.setup("npcs", character, StandIn.character_color(npc, character))
+	else:
+		_walker.setup("player", "character", Color(0.85, 0.86, 0.9))
 	_walker.position = _pos
 	add_child(_walker)
 
@@ -367,23 +371,27 @@ func _talk_to(soul: SoulInstance) -> void:
 	if not dialogue.is_empty() and _start_dialogue(dialogue, soul):
 		return
 	if SoulGateway.is_ready():
-		_append_log("[i]You catch %s's attention.[/i]" % _soul_name(soul))
+		_dialogue_panel.bark("You", "Got a minute?")
 		soul.perceive_utterance("player", "Got a minute?")
 	else:
-		_append_log("[i]%s gives you a nod but says nothing.[/i]" % _soul_name(soul))
+		_dialogue_panel.bark(_soul_name(soul), "*gives you a nod but says nothing*")
 
 
 func _start_dialogue(dialogue: Dictionary, soul: SoulInstance) -> bool:
 	_runner = DialogueRunnerScript.new()
 	add_child(_runner)
-	_runner.line_shown.connect(_on_line_shown)
-	_runner.choices_shown.connect(_on_choices_shown)
-	_runner.thinking_changed.connect(func(thinking: bool) -> void:
-		_thinking_label.visible = thinking)
+	_runner.line_shown.connect(_dialogue_panel.show_line)
+	_runner.choices_shown.connect(_dialogue_panel.show_choices)
+	_runner.thinking_changed.connect(_dialogue_panel.set_thinking)
 	_runner.ended.connect(_on_dialogue_ended)
+	var npc_name: String = DataRegistry.get_entity("npcs", dialogue.get("npc", "")) \
+		.get("name", dialogue.get("npc", "?"))
+	_dialogue_panel.open(npc_name,
+		"linked" if soul != null and SoulGateway.is_ready() else "offline")
 	if _runner.start(dialogue, soul):
 		_frozen = true
 		return true
+	_dialogue_panel.close()
 	_runner.queue_free()
 	_runner = null
 	return false
@@ -402,42 +410,53 @@ func _find_dialogue_for(soul_id: String) -> Dictionary:
 
 
 func _maybe_auto_dialogue() -> void:
-	if _runner != null:
+	if _runner != null or _dialogue_panel.is_open():
 		return
 	var context := GameState.context()
 	for dialogue_id in DataRegistry.ids("dialogues"):
 		var dialogue := DataRegistry.get_entity("dialogues", dialogue_id)
 		if not dialogue.get("auto", false):
 			continue
-		var soul := _spawner.get_spawned(dialogue.get("npc", ""))
-		if soul == null:
-			continue
 		var guard: String = dialogue.get("condition", "")
 		if guard != "" and not TriggerDSL.evaluate(guard, context):
+			continue
+		# The scene's speaker IS the player: the narration card carries the
+		# beat instead (playable.self_dialogue_summaries), flags included.
+		if dialogue.get("npc", "") == GameState.player_character() \
+				and _play_self_scene(dialogue):
+			return
+		var soul := _spawner.get_spawned(dialogue.get("npc", ""))
+		if soul == null:
 			continue
 		if _start_dialogue(dialogue, soul):
 			return
 
 
-func _on_line_shown(speaker: String, text: String) -> void:
-	_append_log("[b]%s:[/b] %s" % [speaker, text])
-
-
-func _on_choices_shown(choices: Array) -> void:
-	for choice: Dictionary in choices:
-		var button := Button.new()
-		button.text = choice.text
-		button.pressed.connect(func() -> void:
-			_clear_choices()
-			if _runner != null:
-				_runner.choose(int(choice.index)))
-		_choice_box.add_child(button)
+func _play_self_scene(dialogue: Dictionary) -> bool:
+	var character := GameState.player_character()
+	var card: Dictionary = DataRegistry.get_entity("npcs", character) \
+		.get("playable", {}).get("self_dialogue_summaries", {}) \
+		.get(dialogue.get("id", ""), {})
+	if card.is_empty():
+		return false
+	_frozen = true
+	for mutation: Dictionary in card.get("mutations", []):
+		GameState.apply_soul_mutation(character, mutation)
+	# The beat completes NOW (mutations + mission event); dismissing the
+	# card only hands back control — a save mid-card can't strand a stage.
+	MissionManager.report_event("dialogue_end", {"npc_id": character})
+	var npc_name: String = DataRegistry.get_entity("npcs", character).get("name", character)
+	_dialogue_panel.show_narration(npc_name, card.get("text", ""))
+	_dialogue_panel.narration_done.connect(func() -> void:
+		_frozen = false
+		_maybe_auto_dialogue.call_deferred(),
+		CONNECT_ONE_SHOT)
+	return true
 
 
 func _on_dialogue_ended() -> void:
-	_clear_choices()
 	_frozen = false
-	_thinking_label.visible = false
+	_dialogue_panel.close()
 	if _runner != null:
 		var npc_id: String = _runner.npc_id()
 		MemoryStore.ingest_conversation(npc_id, _runner.transcript(), {
@@ -451,7 +470,7 @@ func _on_dialogue_ended() -> void:
 
 func _on_ambient_bark(text: String, soul: SoulInstance) -> void:
 	if _runner == null and text != "":
-		_append_log("[b]%s:[/b] %s" % [_soul_name(soul), text])
+		_dialogue_panel.bark(_soul_name(soul), text)
 
 
 func _on_soul_acted(capability: String, args: Dictionary, soul: SoulInstance) -> void:
@@ -497,34 +516,24 @@ func _build_hud() -> void:
 	sub.add_theme_color_override("font_color", Color(0.6, 0.63, 0.7))
 	_hud.add_child(sub)
 
+	# System notes only — conversation lives on the DialoguePanel.
 	_log = RichTextLabel.new()
 	_log.bbcode_enabled = true
 	_log.scroll_following = true
-	_log.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_log.offset_top = -130
-	_log.offset_left = 12
-	_log.offset_right = -480
-	_log.offset_bottom = -34
+	_log.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_log.offset_left = -420
+	_log.offset_right = -12
+	_log.offset_top = 44
+	_log.offset_bottom = 160
+	_log.add_theme_font_size_override("normal_font_size", 13)
+	_log.modulate = Color(1, 1, 1, 0.85)
 	_hud.add_child(_log)
 
-	_choice_box = VBoxContainer.new()
-	_choice_box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_choice_box.offset_left = -460
-	_choice_box.offset_right = -12
-	_choice_box.offset_top = -330
-	_choice_box.offset_bottom = -110
-	_choice_box.alignment = BoxContainer.ALIGNMENT_END
-	_hud.add_child(_choice_box)
-
-	_thinking_label = Label.new()
-	_thinking_label.text = "· · ·"
-	_thinking_label.add_theme_font_size_override("font_size", 18)
-	_thinking_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
-	_thinking_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_thinking_label.offset_left = -60
-	_thinking_label.offset_top = -130
-	_thinking_label.visible = false
-	_hud.add_child(_thinking_label)
+	_dialogue_panel = DialoguePanel.new()
+	_dialogue_panel.choice_picked.connect(func(index: int) -> void:
+		if _runner != null:
+			_runner.choose(index))
+	_hud.add_child(_dialogue_panel)
 
 	_hint = Label.new()
 	_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
@@ -536,11 +545,6 @@ func _build_hud() -> void:
 
 func _soul_name(soul: SoulInstance) -> String:
 	return DataRegistry.get_entity("npcs", soul.soul_id).get("name", soul.soul_id)
-
-
-func _clear_choices() -> void:
-	for child in _choice_box.get_children():
-		child.queue_free()
 
 
 func _append_log(bbcode: String) -> void:

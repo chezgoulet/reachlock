@@ -26,8 +26,9 @@ const PANEL_BORDER := Color(0.45, 0.55, 0.70, 0.7)
 
 
 ## Build the panel for a station id, or null when the station has no
-## minigame (the host falls back to its one-line interaction).
-static func build(station_id: String) -> Control:
+## minigame (the host falls back to its one-line interaction). `station`
+## is the hull's station entry — data like `converts` rides on it.
+static func build(station_id: String, station: Dictionary = {}) -> Control:
 	match station_id:
 		"engineering":
 			return _power_grid()
@@ -37,6 +38,8 @@ static func build(station_id: String) -> Control:
 			return _manifest()
 		"weapons":
 			return _gunnery()
+		"processing":
+			return _ore_processor(station)
 	return null
 
 
@@ -167,12 +170,28 @@ static func _power_grid() -> Control:
 
 
 static func _radar_scope() -> Control:
-	var panel := _frame("Sensor Scope — Passive Sweep")
+	var panel := _frame("Sensor Scope")
 	var box := _content(panel)
 	var scope := _Scope.new()
-	scope.custom_minimum_size = Vector2(480, 300)
+	scope.custom_minimum_size = Vector2(480, 270)
 	scope.configure(DataRegistry.get_entity("locations", GameState.current_space()))
 	box.add_child(scope)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	box.add_child(row)
+	var ping := Button.new()
+	ping.text = "Active Ping"
+	row.add_child(ping)
+	var note := Label.new()
+	note.text = "Passive sweep glows what it passes. A ping lights everything — and everything hears a ping."
+	note.add_theme_font_size_override("font_size", 12)
+	note.add_theme_color_override("font_color", Color(0.55, 0.62, 0.58))
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(note)
+	ping.pressed.connect(func() -> void:
+		AudioManager.play("computer_noise", 1.1)
+		scope.ping())
 	return panel
 
 
@@ -180,6 +199,11 @@ class _Scope extends Control:
 	var _location: Dictionary = {}
 	var _blips: Array = []  # {pos:Vector2(norm), color, label}
 	var _t := 0.0
+	var _ping_at := -100.0
+
+	## Active ping: an expanding pulse lights every contact at once.
+	func ping() -> void:
+		_ping_at = _t
 
 	func configure(location: Dictionary) -> void:
 		_location = location
@@ -225,7 +249,12 @@ class _Scope extends Control:
 			var a := sweep_angle - trail * 0.03
 			draw_line(center, center + Vector2.RIGHT.rotated(a) * radius,
 				Color(0.3, 0.9, 0.5, 0.5 * (1.0 - trail / 24.0)), 2.0)
-		# Blips glow when the sweep has recently passed them
+		# The ping: an expanding ring that lights the whole board for a beat.
+		var ping_age := _t - _ping_at
+		if ping_age < 2.5:
+			draw_arc(center, minf(radius, ping_age * radius * 0.8), 0, TAU, 64,
+				Color(0.4, 1.0, 0.6, clampf(1.0 - ping_age / 2.5, 0.0, 0.8)), 2.0)
+		# Blips glow when the sweep has recently passed them (or a ping did)
 		for blip: Dictionary in _blips:
 			var world := Vector2((blip.pos as Vector2).x * size.x, (blip.pos as Vector2).y * size.y)
 			var offset := world - center
@@ -235,6 +264,8 @@ class _Scope extends Control:
 			var blip_angle := fposmod(offset.angle(), TAU)
 			var since := fposmod(sweep_angle - blip_angle, TAU)
 			var glow := clampf(1.0 - since / 2.4, 0.15, 1.0)
+			if ping_age < 3.5:
+				glow = maxf(glow, clampf(1.0 - ping_age / 3.5, 0.0, 1.0))
 			var color: Color = blip.color
 			color.a = glow
 			draw_circle(world, 4.0, color)
@@ -291,7 +322,7 @@ static func _manifest() -> Control:
 
 
 static func _gunnery() -> Control:
-	var panel := _frame("Gunnery — Systems Check")
+	var panel := _frame("Gunnery — Calibration Range")
 	var box := _content(panel)
 
 	var hull := DataRegistry.get_entity("ships", GameState.player.ship.hull_id)
@@ -304,36 +335,250 @@ static func _gunnery() -> Control:
 		hardpoints, damage, int(round(weapons_power * 100))]
 	box.add_child(stats)
 
-	var note := Label.new()
-	note.text = "Dry-fire only in the hold — Tove's rule after the incident.\nCTRL fires in flight; the reticle leads for you at close range."
-	note.add_theme_font_size_override("font_size", 13)
-	note.add_theme_color_override("font_color", Color(0.62, 0.66, 0.74))
-	box.add_child(note)
+	var status := Label.new()
+	status.add_theme_font_size_override("font_size", 13)
+	box.add_child(status)
 
-	var reticle := _Reticle.new()
-	reticle.custom_minimum_size = Vector2(480, 220)
-	box.add_child(reticle)
+	var range_view := _CalibrationRange.new()
+	range_view.custom_minimum_size = Vector2(480, 220)
+	box.add_child(range_view)
+
+	var refresh := func() -> void:
+		if GameState.player.ship.get("weapons_calibrated", false):
+			status.text = "CALIBRATED — the next flight's guns cycle 15% faster."
+			status.add_theme_color_override("font_color", Color(0.5, 0.95, 0.6))
+		else:
+			status.text = "Click the drone when the reticle bites — %d/%d hits. A calibrated feed cycles 15%% faster next flight." % [
+				range_view.hits(), range_view.HITS_NEEDED]
+			status.add_theme_color_override("font_color", Color(0.62, 0.66, 0.74))
+	range_view.progressed.connect(refresh)
+	refresh.call()
 	return panel
 
 
-class _Reticle extends Control:
+## Click the drifting practice drone while the tracking reticle overlaps it.
+## Land the streak and the gun feed is calibrated: a real fire-rate edge,
+## consumed by the next flight.
+class _CalibrationRange extends Control:
+	signal progressed
+
+	const HITS_NEEDED := 3
+
 	var _t := 0.0
+	var _hits := 0
+	var _flash := 0.0
+
+	func hits() -> int:
+		return _hits
+
+	func _target_pos() -> Vector2:
+		var center := size * 0.5
+		return center + Vector2(sin(_t * 0.9) * size.x * 0.3, cos(_t * 1.3) * size.y * 0.25)
+
+	func _reticle_pos() -> Vector2:
+		var center := size * 0.5
+		return center + (_target_pos() - center) * 0.85
+
+	func _gui_input(event: InputEvent) -> void:
+		if GameState.player.ship.get("weapons_calibrated", false):
+			return
+		if event is InputEventMouseButton and event.pressed \
+				and event.button_index == MOUSE_BUTTON_LEFT:
+			var on_target := (event.position as Vector2).distance_to(_target_pos()) < 16.0
+			var reticle_bites := _reticle_pos().distance_to(_target_pos()) < 14.0
+			if on_target and reticle_bites:
+				_hits += 1
+				_flash = 0.25
+				AudioManager.play("ui_click", 1.2)
+				if _hits >= HITS_NEEDED:
+					GameState.set_weapons_calibrated(true)
+					AudioManager.play("ui_switch")
+			else:
+				_hits = maxi(0, _hits - 1)  # a spooked drone resets your streak
+				AudioManager.play("ui_click", 0.6)
+			progressed.emit()
 
 	func _process(delta: float) -> void:
 		_t += delta
+		_flash = maxf(0.0, _flash - delta)
 		queue_redraw()
 
 	func _draw() -> void:
-		var center := size * 0.5
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.03, 0.05, 0.08))
-		# A drifting practice target and the tracking reticle chasing it.
-		var target := center + Vector2(sin(_t * 0.9) * size.x * 0.3, cos(_t * 1.3) * size.y * 0.25)
-		draw_circle(target, 7, Color(0.85, 0.4, 0.3))
-		draw_circle(target, 7, Color(0.95, 0.6, 0.4), false, 1.5)
-		var lag := center + (target - center) * 0.85
+		var calibrated: bool = GameState.player.ship.get("weapons_calibrated", false)
+		var target := _target_pos()
+		var target_color := Color(0.4, 0.9, 0.55) if calibrated else Color(0.85, 0.4, 0.3)
+		draw_circle(target, 7, target_color)
+		draw_circle(target, 7, target_color.lightened(0.3), false, 1.5)
+		if _flash > 0.0:
+			draw_arc(target, 22, 0, TAU, 24, Color(1, 1, 0.8, _flash * 3.0), 2.0)
+		var lag := _reticle_pos()
 		var pulse := 0.6 + 0.4 * sin(_t * 8.0)
-		draw_arc(lag, 14, 0, TAU, 24, Color(1.0, 0.85, 0.4, pulse), 1.5)
-		draw_line(lag - Vector2(20, 0), lag - Vector2(8, 0), Color(1.0, 0.85, 0.4, pulse))
-		draw_line(lag + Vector2(8, 0), lag + Vector2(20, 0), Color(1.0, 0.85, 0.4, pulse))
-		draw_line(lag - Vector2(0, 20), lag - Vector2(0, 8), Color(1.0, 0.85, 0.4, pulse))
-		draw_line(lag + Vector2(0, 8), lag + Vector2(0, 20), Color(1.0, 0.85, 0.4, pulse))
+		var reticle_color := Color(1.0, 0.85, 0.4, pulse)
+		draw_arc(lag, 14, 0, TAU, 24, reticle_color, 1.5)
+		draw_line(lag - Vector2(20, 0), lag - Vector2(8, 0), reticle_color)
+		draw_line(lag + Vector2(8, 0), lag + Vector2(20, 0), reticle_color)
+		draw_line(lag - Vector2(0, 20), lag - Vector2(0, 8), reticle_color)
+		draw_line(lag + Vector2(0, 8), lag + Vector2(0, 20), reticle_color)
+		for i in _hits:
+			draw_circle(Vector2(14 + i * 16, 14), 5,
+				Color(0.5, 0.95, 0.6) if calibrated or i < _hits else Color(0.3, 0.4, 0.35))
+
+
+## --- ore processing: the crusher press ---------------------------------------------
+
+
+## Time the press: the marker sweeps, the seam band is the sweet spot.
+## Hit it and the charge refines clean; jam it and you grind good rock to
+## dust. `converts` on the station entry names the goods and base ratio —
+## the engine only ever sees "from", "to", and numbers.
+static func _ore_processor(station: Dictionary) -> Control:
+	var converts: Dictionary = station.get("converts", {})
+	var from_id: String = converts.get("from", "")
+	var to_id: String = converts.get("to", "")
+	var ratio := maxi(1, int(converts.get("ratio", 2)))
+	var panel := _frame("Ore Processor — Crusher Press")
+	var box := _content(panel)
+
+	if from_id == "" or to_id == "":
+		var idle := Label.new()
+		idle.text = "The processor idles. Nothing routed to the hopper."
+		box.add_child(idle)
+		return panel
+
+	var from_name: String = DataRegistry.get_entity("goods", from_id).get("name", from_id)
+	var to_name: String = DataRegistry.get_entity("goods", to_id).get("name", to_id)
+
+	var counts := Label.new()
+	box.add_child(counts)
+	var status := Label.new()
+	status.add_theme_font_size_override("font_size", 13)
+	status.add_theme_color_override("font_color", Color(0.62, 0.66, 0.74))
+	box.add_child(status)
+
+	var press := _CrusherPress.new()
+	press.custom_minimum_size = Vector2(480, 90)
+	press.zone_width = clampf(0.10 + 0.03 * float(GameState.player_stat("engineering") - 2),
+		0.06, 0.24)
+	box.add_child(press)
+
+	var button := Button.new()
+	button.text = "CRUSH  (Space)"
+	box.add_child(button)
+	button.grab_focus.call_deferred()
+
+	var refresh := func() -> void:
+		counts.text = "%s in the hopper: %d      %s out: %d" % [
+			from_name, GameState.cargo_count(from_id), to_name, GameState.cargo_count(to_id)]
+		button.disabled = GameState.cargo_count(from_id) < 1
+
+	button.pressed.connect(func() -> void:
+		var have := GameState.cargo_count(from_id)
+		if have < 1:
+			return
+		if press.strike():
+			# Clean cut: a full charge refines even short-fed.
+			var used := mini(ratio, have)
+			GameState.add_cargo(from_id, -used)
+			GameState.add_cargo(to_id, 1)
+			AudioManager.play("ui_switch")
+			status.text = "Clean cut — %d %s pressed into 1 %s." % [used, from_name, to_name]
+		else:
+			GameState.add_cargo(from_id, -1)
+			AudioManager.play("ui_click", 0.5)
+			status.text = "Off the seam. The crusher grinds 1 %s to dust." % from_name
+		refresh.call())
+	refresh.call()
+	status.text = "Feed the press on the seam band. %d %s to a clean %s; a good engineer reads a wider seam." % [
+		ratio, from_name, to_name]
+	return panel
+
+
+class _CrusherPress extends Control:
+	var zone_width := 0.14   # normalized sweet-spot width
+	var _t := 0.0
+	var _result_flash := 0.0
+	var _result_good := false
+
+	## The press comes down NOW: true if the marker sits on the seam.
+	func strike() -> bool:
+		_result_good = absf(_marker() - 0.5) < zone_width * 0.5
+		_result_flash = 0.4
+		return _result_good
+
+	func _marker() -> float:
+		return 0.5 + 0.5 * sin(_t * 2.6)
+
+	func _process(delta: float) -> void:
+		_t += delta
+		_result_flash = maxf(0.0, _result_flash - delta)
+		queue_redraw()
+
+	func _draw() -> void:
+		var bar := Rect2(10, size.y * 0.35, size.x - 20, 22)
+		draw_rect(bar, Color(0.05, 0.08, 0.07))
+		draw_rect(bar, Color(0.3, 0.4, 0.35), false, 1.0)
+		var zone := Rect2(bar.position.x + bar.size.x * (0.5 - zone_width * 0.5),
+			bar.position.y, bar.size.x * zone_width, bar.size.y)
+		draw_rect(zone, Color(0.95, 0.75, 0.3, 0.55))
+		var x := bar.position.x + bar.size.x * _marker()
+		draw_rect(Rect2(x - 2, bar.position.y - 6, 4, bar.size.y + 12), Color(0.9, 0.95, 1.0))
+		if _result_flash > 0.0:
+			var color := Color(0.5, 0.95, 0.6, _result_flash * 2.0) if _result_good \
+				else Color(0.95, 0.4, 0.3, _result_flash * 2.0)
+			draw_rect(Rect2(Vector2.ZERO, size), color)
+
+
+## --- damage control: the repair rig ------------------------------------------------
+
+
+## The repair minigame for one interior damage entry. Weld when the marker
+## crosses the seam; land the strikes and the damage clears. Engineering
+## widens the seam; a plasma welder needs fewer strikes.
+static func repair_rig(entry: Dictionary) -> Control:
+	var kind: String = entry.get("kind", "fire")
+	var titles := {"fire": "Damage Control — Fire",
+		"conduit": "Damage Control — Arcing Conduit",
+		"breach": "Damage Control — Hull Breach"}
+	var panel := _frame(titles.get(kind, "Damage Control"))
+	var box := _content(panel)
+
+	var speed_mult := maxf(1.0, GameState.upgrade_effect_product("repair_speed_mult"))
+	var strikes_needed := maxi(1, int(ceil(3.0 / speed_mult)))
+
+	var status := Label.new()
+	status.add_theme_font_size_override("font_size", 13)
+	status.add_theme_color_override("font_color", Color(0.62, 0.66, 0.74))
+	box.add_child(status)
+
+	var press := _CrusherPress.new()
+	press.custom_minimum_size = Vector2(480, 90)
+	press.zone_width = clampf((0.10 + 0.03 * float(GameState.player_stat("engineering") - 2))
+		* sqrt(speed_mult), 0.06, 0.30)
+	box.add_child(press)
+
+	var button := Button.new()
+	button.text = {"fire": "SMOTHER  (Space)", "conduit": "RE-SEAT  (Space)",
+		"breach": "WELD  (Space)"}.get(kind, "WELD  (Space)")
+	box.add_child(button)
+	button.grab_focus.call_deferred()
+
+	var strikes := {"done": 0}
+	var refresh := func() -> void:
+		status.text = "Catch the seam — %d/%d. Slips feed the %s." % [
+			strikes.done, strikes_needed, kind]
+	button.pressed.connect(func() -> void:
+		if press.strike():
+			strikes.done += 1
+			AudioManager.play("ui_click", 1.1)
+			if strikes.done >= strikes_needed:
+				GameState.repair_ship_damage(int(entry.get("id", -1)))
+				AudioManager.play("ui_switch")
+				(panel as _ClosablePanel).close()
+				return
+		else:
+			entry["severity"] = minf(1.0, float(entry.get("severity", 1.0)) + 0.05)
+			AudioManager.play("ui_click", 0.5)
+		refresh.call())
+	refresh.call()
+	return panel

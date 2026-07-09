@@ -574,6 +574,114 @@ def gen_props():
         rect(d, x, y, x + 2, y + 3, (74, 120, 66, 255))
     done()
 
+    # -- Sprint 3: two decks, the landing bay, ore processing, damage
+    img, d, done = prop("ladder", 24, 44)
+    orect(d, 4, 0, 7, 43, PAL["hull_light"])
+    orect(d, 16, 0, 19, 43, PAL["hull_light"])
+    for y in range(3, 42, 6):
+        rect(d, 7, y, 16, y + 1, shade(PAL["hull_light"], 0.85))
+    rect(d, 0, 0, 23, 2, PAL["warm"])  # hazard lip at the hatch
+    px(d, 2, 1, PAL["outline"]); px(d, 21, 1, PAL["outline"])
+    done()
+
+    img, d, done = prop("shuttle", 96, 56)
+    # The grafted-on shuttle: stubby lifting body, big enough to read as a craft
+    d.polygon(((6, 28), (20, 12), (72, 10), (90, 24), (90, 36), (72, 46), (20, 44)),
+              fill=PAL["hull"], outline=PAL["outline"])
+    d.polygon(((20, 14), (70, 12), (84, 24), (20, 26)), fill=shade(PAL["hull"], 1.18))
+    orect(d, 66, 16, 82, 26, PAL["screen"])  # canopy
+    px(d, 70, 19, PAL["glow_cyan"]); px(d, 76, 21, PAL["glow_cyan"])
+    rect(d, 8, 30, 18, 34, PAL["warm"])      # engine cowls
+    rect(d, 8, 38, 18, 42, PAL["warm_dark"])
+    for x in (30, 44, 58):
+        d.line((x, 14, x, 44), fill=shade(PAL["hull"], 0.8))
+    rect(d, 36, 30, 54, 42, PAL["hull_dark"])  # hatch
+    px(d, 52, 36, PAL["glow_green"])
+    done()
+
+    img, d, done = prop("landing_clamp", 40, 14)
+    rect(d, 2, 8, 37, 12, PAL["hull_dark"])
+    for x in (4, 18, 32):
+        orect(d, x, 2, x + 4, 9, PAL["hull_light"])
+    px(d, 20, 10, PAL["glow_amber"])
+    done()
+
+    img, d, done = prop("ore_processor", 52, 48)
+    orect(d, 4, 8, 47, 45, PAL["hull_dark"])
+    orect(d, 10, 0, 30, 12, PAL["hull"])         # intake hopper
+    d.polygon(((12, 12), (28, 12), (24, 20), (16, 20)), fill=shade(PAL["hull"], 0.8))
+    for y in (24, 32, 40):
+        rect(d, 8, y, 43, y + 2, shade(PAL["hull_dark"], 1.25))
+    rect(d, 14, 26, 37, 30, shade(PAL["glow_amber"], 0.5))  # crusher glow
+    rect(d, 18, 26, 33, 30, PAL["glow_amber"])
+    orect(d, 38, 2, 46, 10, PAL["screen"]); px(d, 41, 5, PAL["glow_green"])
+    done()
+
+    img, d, done = prop("ore_hopper", 30, 24)
+    d.polygon(((2, 2), (27, 2), (22, 16), (7, 16)), fill=PAL["hull"], outline=PAL["outline"])
+    rect(d, 10, 16, 19, 22, PAL["hull_dark"])
+    rng = random.Random(31)
+    for _ in range(14):  # raw ore chunks in the mouth
+        x, y = rng.randint(5, 24), rng.randint(3, 8)
+        px(d, x, y, rng.choice((PAL["warm_dark"], (140, 120, 90, 255), PAL["grate"])))
+    done()
+
+    img, d, done = prop("handrail", 40, 10)
+    rect(d, 0, 2, 39, 4, PAL["warm"])
+    for x in (2, 19, 36):
+        rect(d, x, 4, x + 1, 9, PAL["hull_light"])
+    done()
+
+    # Damage decals: two frames each; the engine flickers between them.
+    for frame, seed in (("a", 41), ("b", 87)):
+        img, d, done = prop(f"damage_fire_{frame}", 26, 30)
+        rng = random.Random(seed)
+        flames = ((13, 4), (6, 12), (20, 10), (10, 8), (16, 6))
+        for i, (fx, fy) in enumerate(flames):
+            h = rng.randint(10, 18)
+            d.polygon(((fx - 3, 28), (fx, fy + (3 if frame == "b" else 0)), (fx + 3, 28)),
+                      fill=(240, 120 + rng.randint(0, 60), 40, 255))
+            d.polygon(((fx - 1, 28), (fx, fy + 6), (fx + 1, 28)),
+                      fill=(255, 220, 120, 255))
+        rect(d, 2, 27, 23, 29, (30, 24, 22, 255))  # scorched base
+        done()
+
+        img, d, done = prop(f"damage_sparks_{frame}", 24, 24)
+        rng = random.Random(seed + 3)
+        orect(d, 6, 8, 17, 20, PAL["hull_dark"])  # torn panel
+        d.line((8, 10, 15, 17), fill=PAL["outline"])
+        for _ in range(8):
+            x, y = rng.randint(2, 21), rng.randint(1, 14)
+            px(d, x, y, rng.choice((PAL["glow_amber"], (255, 240, 180, 255), PAL["glow_red"])))
+            if frame == "b":
+                px(d, x + 1, y + 1, (255, 240, 180, 160))
+        done()
+
+    img, d, done = prop("damage_breach", 28, 24)
+    d.ellipse((4, 4, 23, 19), fill=(10, 10, 14, 255), outline=PAL["outline"])
+    d.ellipse((8, 7, 19, 16), fill=(4, 4, 8, 255))
+    for (x, y) in ((3, 10), (24, 8), (14, 2), (12, 21)):  # peeled hull petals
+        rect(d, x, y, x + 2, y + 2, PAL["hull_light"])
+    px(d, 25, 18, PAL["glow_red"])
+    done()
+
+    img, d, done = prop("scorch_mark", 34, 16)
+    rng = random.Random(53)
+    for _ in range(70):
+        x, y = rng.randint(0, 33), rng.randint(0, 15)
+        if ((x - 17) / 17.0) ** 2 + ((y - 8) / 8.0) ** 2 < 1.0:
+            px(d, x, y, (26, 22, 24, rng.randint(70, 160)))
+    done()
+
+    img, d, done = prop("repair_locker", 20, 28)
+    orect(d, 1, 1, 18, 26, (120, 60, 44, 255))
+    rect(d, 2, 2, 17, 5, shade((120, 60, 44, 255), 1.2))
+    d.line((10, 2, 10, 25), fill=shade((120, 60, 44, 255), 0.7))
+    # white cross: the damage-control locker
+    rect(d, 4, 10, 8, 12, PAL["pale"]); rect(d, 5, 8, 7, 14, PAL["pale"])
+    px(d, 14, 13, PAL["glow_amber"])
+    done()
+
 
 if __name__ == "__main__":
     gen_characters()
