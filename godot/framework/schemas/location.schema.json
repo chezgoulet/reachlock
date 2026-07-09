@@ -148,6 +148,19 @@
         }
       }
     },
+    "self_jump": {
+      "type": "object",
+      "description": "A self-generated jump route available from this location's space — no gate, no clearance. Requires a hull with stats.jump_drive_capable. Organic crew enter cryosleep for the transit (GAME-DESIGN.md §6.3); a synthetic crew member pilots. Read by the space flight mode and the CryoTransit sequence.",
+      "additionalProperties": false,
+      "required": ["to"],
+      "properties": {
+        "to": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Destination location id." },
+        "name": { "type": "string", "description": "Route name shown on the jump prompt (e.g. a Duskway leg)." },
+        "pilot_line": { "type": "string", "description": "What the jump pilot says as the crew goes under. Fallback when no mind daemon is running; the soul may improvise its own when one is." },
+        "arrival_line": { "type": "string", "description": "What the jump pilot says as the crew wakes on the far side." },
+        "transit_seconds": { "type": "number", "minimum": 1, "description": "Real-time length of the cryo transit sequence. Default 8." }
+      }
+    },
     "jump_gates": {
       "type": "array",
       "description": "Jump gates in this location. Fly through to transit systems.",

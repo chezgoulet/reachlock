@@ -11,9 +11,22 @@
     "compact": -40
   },
   "personality": {
-    "traits": ["inquisitive", "methodical", "socially awkward", "brilliant"],
-    "values": ["knowledge", "preservation", "truth"],
-    "fears": ["the loss of Predecessor data", "being wrong", "the Compact burning another archive"]
+    "traits": [
+      "inquisitive",
+      "methodical",
+      "socially awkward",
+      "brilliant"
+    ],
+    "values": [
+      "knowledge",
+      "preservation",
+      "truth"
+    ],
+    "fears": [
+      "the loss of Predecessor data",
+      "being wrong",
+      "the Compact burning another archive"
+    ]
   },
   "emotional_baseline": {
     "curiosity": 0.7,
@@ -21,15 +34,41 @@
     "enthusiasm": 0.3
   },
   "memory_seeds": [
-    {"text": "I was a research fellow at the Aethon University archive when the Compact arrived. They called it a 'cultural preservation audit.' They burned half the Predecessor collection before we could evacuate it.", "importance": 0.9, "tags": ["origin", "trauma"]},
-    {"text": "The Predecessor structures on Aethon are three times older than anything on Earth. Whoever built them had metallurgy we still can't replicate. I've dedicated my life to understanding why.", "importance": 0.8, "tags": ["work", "passion"]},
-    {"text": "I argued with the dean for six hours about the translation of a single glyph. He was wrong. I was right. I still have the notes.", "importance": 0.3, "tags": ["anecdote"]}
+    {
+      "text": "I was a research fellow at the Aethon University archive when the Compact arrived. They called it a 'cultural preservation audit.' They burned half the Predecessor collection before we could evacuate it.",
+      "importance": 0.9,
+      "tags": [
+        "origin",
+        "trauma"
+      ]
+    },
+    {
+      "text": "The Predecessor structures on Aethon are three times older than anything on Earth. Whoever built them had metallurgy we still can't replicate. I've dedicated my life to understanding why.",
+      "importance": 0.8,
+      "tags": [
+        "work",
+        "passion"
+      ]
+    },
+    {
+      "text": "I argued with the dean for six hours about the translation of a single glyph. He was wrong. I was right. I still have the notes.",
+      "importance": 0.3,
+      "tags": [
+        "anecdote"
+      ]
+    }
   ],
-  "skills": ["linguistics", "xenoarchaeology", "data_analysis", "negotiation"],
+  "skills": [
+    "linguistics",
+    "xenoarchaeology",
+    "data_analysis",
+    "negotiation"
+  ],
   "station": "galley",
   "extra": {
     "full_name": "Bardo Voss",
     "homeworld": "Aethon",
     "age": 47
-  }
+  },
+  "ship": "loup_garou"
 }

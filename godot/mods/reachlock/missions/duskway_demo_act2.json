@@ -1,0 +1,24 @@
+{
+  "id": "duskway_demo_act2",
+  "name": "Sorrow",
+  "description": "Limp in damaged, broke, and out of options. The frontier's economics meet you at the airlock; the frontier's politics meet you at the bar. Beats 3-4 of the Duskway Run demo.",
+  "stages": [
+    {
+      "id": "limp_in",
+      "type": "waypoint",
+      "objective": "Dock at Sorrow Station — fly to the station and press R in range",
+      "completion": {"type": "arrive", "target_id": "sorrow_station"}
+    },
+    {
+      "id": "the_interval",
+      "type": "dialogue",
+      "objective": "Trouble at the bar — Prudence is in it",
+      "completion": {"type": "dialogue_end", "target_id": "prudence"}
+    }
+  ],
+  "failure_global": {"on_ship_destroyed": true},
+  "epilogue": {
+    "failure": "The Loup-Garou dies within scope range of a dock she couldn't reach. Sorrow Station logs the debris field and pours one out at the Interval, which is the whole of the frontier's funeral rite."
+  },
+  "next": "duskway_demo_act3"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "patch_armor",
+  "name": "Patch Armor Plating",
+  "description": "Corp Charter surplus hull plate, cut to fit where the Loup-Garou is thinnest.",
+  "cost": 900,
+  "category": "ship",
+  "effects": {
+    "hull_bonus": 0.5
+  },
+  "flavor": "Ugly as a debt and twice as reliable. Bolts over what that skiff chewed up. You'll fly out of here whole."
+}

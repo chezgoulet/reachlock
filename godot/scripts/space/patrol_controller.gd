@@ -13,6 +13,7 @@ class_name PatrolController
 signal contact_detected(ship_id: String, faction: String, threat_level: int)
 signal engagement_started(ship_id: String)
 signal destroyed(ship_id: String)
+signal fired(ship_id: String)
 
 enum State {
 	PATROL = 0,
@@ -55,6 +56,13 @@ var _soul_id: String = ""
 var _faction_id: String = ""
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
+## Multiplies every detection range. Stealth gear on the target lowers it
+## (<1); an alerted picket line could raise it. Set by the host scene.
+var _detection_mult := 1.0
+## Hostile patrols (engagement "engage"/"ambush") escalate straight from
+## detection to weapons instead of shadowing first.
+var _hostile := false
+
 
 func _ready() -> void:
 	_rng.seed = randi() % 100000
@@ -94,6 +102,18 @@ func _make_material(color: Color) -> Material:
 func set_patrol_route(waypoints: Array) -> void:
 	_patrol_route = waypoints.duplicate()
 	_route_index = 0
+
+
+func set_detection_multiplier(mult: float) -> void:
+	_detection_mult = maxf(0.1, mult)
+
+
+func set_hostile(hostile: bool) -> void:
+	_hostile = hostile
+
+
+func faction_id() -> String:
+	return _faction_id
 
 
 ## ___steering_behaviors_______________________________________________________
@@ -169,10 +189,11 @@ func _patrol_tick(delta: float) -> void:
 			_target = _patrol_route[_route_index]
 	
 	_move_toward(_target, delta, 0.5)
-	
+
 	# Detect player
-	if _player != null and _ship.global_position.distance_to(_player.global_position) < DETECT_RANGE:
-		_set_state(State.INVESTIGATE)
+	if _player != null and _ship.global_position.distance_to(_player.global_position) < DETECT_RANGE * _detection_mult:
+		contact_detected.emit(_soul_id, _faction_id, 2 if _hostile else 1)
+		_set_state(State.ENGAGE if _hostile else State.INVESTIGATE)
 
 
 func _investigate_tick(delta: float) -> void:
@@ -181,11 +202,11 @@ func _investigate_tick(delta: float) -> void:
 		return
 	
 	_move_toward(_player.global_position, delta, 0.7)
-	
+
 	var dist := _ship.global_position.distance_to(_player.global_position)
-	if dist < ENGAGE_RANGE:
+	if dist < ENGAGE_RANGE * _detection_mult:
 		_set_state(State.ENGAGE)
-	elif dist > INVESTIGATE_RANGE:
+	elif dist > INVESTIGATE_RANGE * _detection_mult:
 		_set_state(State.PATROL)
 
 
@@ -254,8 +275,8 @@ func _fire() -> void:
 	if _player == null:
 		return
 	_fire_clock = 1.5  # fire interval
-	# Damage player (handled by the host scene)
-	destroyed.emit(_soul_id + "_fired")
+	# Damage is the host scene's call — it knows the player's ship.
+	fired.emit(_soul_id)
 
 
 func hit(damage: int = 1) -> bool:

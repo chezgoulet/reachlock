@@ -55,6 +55,9 @@ var _ambush_done := false
 var _tick_accumulator := 0.0
 var _rng := RandomNumberGenerator.new()
 
+var _jump_route: Dictionary = {}   # this space's self_jump block, if any
+var _transit: CryoTransit = null   # live cryo transit sequence, if any
+
 @onready var _camera: Camera3D = $Camera3D
 @onready var _speed_label: Label = $ModeOverlay/SpeedLabel
 @onready var _ship_label: Label = $ModeOverlay/ShipLabel
@@ -64,8 +67,7 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_rng.seed = 0x4C6F7570
-	_location = DataRegistry.get_entity(
-		"locations", DataRegistry.start_config().get("location", ""))
+	_location = DataRegistry.get_entity("locations", GameState.current_space())
 	_load_flight_stats()
 	_build_environment()
 	_ship = _build_ship(Color(0.42, 0.44, 0.48))
@@ -78,6 +80,7 @@ func _ready() -> void:
 	_build_minable_rocks()
 	_build_patrols()
 	_build_jump_gate()
+	_jump_route = _location.get("self_jump", {})
 	# Configure gravity from location
 	var loc_grav: Dictionary = _location.get("gravity", {"type": "energy_plate", "strength": 1.0, "safe": true})
 	GravitySystem.configure_location(loc_grav)
@@ -103,7 +106,10 @@ func _physics_process(delta: float) -> void:
 	# more against nodes already out of the tree (global transforms error).
 	if not is_inside_tree() or _ship == null or not _ship.is_inside_tree():
 		return
-	
+	# During a cryo transit the ship flies itself (the crew is asleep).
+	if _transit != null:
+		return
+
 	# Read pilot controls: player occupancy uses keyboard + sync to ShipOperation,
 	# crew occupancy reads from ShipOperation, unoccupied = keyboard fallback.
 	var pilot_controls: Dictionary = {}
@@ -152,6 +158,7 @@ func _physics_process(delta: float) -> void:
 	_update_pirate(delta)
 	_update_patrols(delta)
 	_update_docking()
+	_update_self_jump()
 	_update_hud()
 
 
@@ -248,6 +255,8 @@ func _load_flight_stats() -> void:
 	for key: String in _stats:
 		if flight.has(key):
 			_stats[key] = flight[key]
+	# Owned upgrades tune the hull (upgrade contract: speed_mult).
+	_stats.top_speed = float(_stats.top_speed) * GameState.upgrade_effect_product("speed_mult")
 
 
 func _advance_tick(delta: float) -> void:
@@ -311,6 +320,7 @@ func _update_mining(delta: float) -> void:
 		target.ore -= 1
 		_ore_mined_total += 1
 		GameState.add_cargo(_location.mining.good, 1)
+		MissionManager.report_event("ore_mined", {"good": _location.mining.good})
 		(target.node as Node3D).scale *= 0.82
 		if target.ore <= 0:
 			(target.node as MeshInstance3D).visible = false
@@ -361,18 +371,33 @@ func _update_combat(delta: float) -> void:
 	_fire_clock = FIRE_COOLDOWN
 	ShipOperation.set_effect("weapons_firing", true)
 	AudioManager.laser_fire()
-	var to_pirate: Vector3 = _pirate.global_position - _ship.global_position
-	if to_pirate.length() > FIRE_RANGE:
-		return
-	if (-_ship.basis.z).angle_to(to_pirate.normalized()) > deg_to_rad(FIRE_CONE_DEG):
-		return
-	_pirate_hp -= 1
-	_pirate.scale = Vector3.ONE * 1.15  # hit flash, decays in _update_pirate
-	if _pirate_hp <= 1 and not _pirate_fleeing:
-		_pirate_fleeing = true  # a coward's math: one more hit isn't worth it
-		_hint_label.text = "%s is running for it" % _pirate_soul.get("name", "The pirate")
-	if _pirate_hp <= 0:
-		_end_ambush(true)
+	var damage := 1 + int(GameState.upgrade_effect_sum("damage_bonus"))
+	if _pirate != null and _in_fire_cone(_pirate.global_position):
+		_pirate_hp -= damage
+		_pirate.scale = Vector3.ONE * 1.15  # hit flash, decays in _update_pirate
+		if _pirate_hp <= 1 and not _pirate_fleeing:
+			_pirate_fleeing = true  # a coward's math: one more hit isn't worth it
+			_hint_label.text = "%s is running for it" % _pirate_soul.get("name", "The pirate")
+		if _pirate_hp <= 0:
+			_end_ambush(true)
+	for pc: PatrolController in _patrols:
+		if not pc.is_alive():
+			continue
+		if not _in_fire_cone(pc.global_position):
+			continue
+		if pc.hit(damage):
+			MissionManager.report_event("patrol_destroyed", {"faction": pc.faction_id()})
+			# Shooting down a patrol is loud: the faction remembers.
+			if pc.faction_id() != "":
+				GameState.adjust_faction_standing(pc.faction_id(), "notoriety", 10)
+				GameState.adjust_faction_standing(pc.faction_id(), "trust", -10)
+
+
+func _in_fire_cone(target: Vector3) -> bool:
+	var to_target := target - _ship.global_position
+	if to_target.length() > FIRE_RANGE:
+		return false
+	return (-_ship.basis.z).angle_to(to_target.normalized()) <= deg_to_rad(FIRE_CONE_DEG)
 
 
 func _update_pirate(delta: float) -> void:
@@ -415,6 +440,7 @@ func _player_hit() -> void:
 func _end_ambush(destroyed: bool) -> void:
 	_ambush_done = true
 	GameState.set_flag("survived_ambush")
+	MissionManager.report_event("survived_ambush")
 	if _pirate != null:
 		_pirate.queue_free()
 		_pirate = null
@@ -423,6 +449,13 @@ func _end_ambush(destroyed: bool) -> void:
 
 
 func _player_downed() -> void:
+	# An active mission that fails on ship loss owns what happens next — the
+	# epilogue card presents the ending and rewinds to the last save.
+	var was_active := MissionManager.is_active()
+	MissionManager.report_event("ship_destroyed")
+	if was_active and not MissionManager.is_active():
+		GameState.player.ship.hull_integrity = 0.35
+		return
 	# Design doc §2: emergency — you wake up in the med bay. The station takes
 	# you in; half the hold pays for the tow.
 	for good_id in GameState.player.ship.cargo.keys():
@@ -470,10 +503,13 @@ func _build_patrols() -> void:
 			if hull.is_empty():
 				continue
 			pc.configure(mock_soul, hull, _ship)
+			pc.set_hostile(engagement in ["engage", "ambush"])
+			pc.set_detection_multiplier(GameState.upgrade_effect_product("detection_mult"))
 			pc.set_patrol_route(_random_route())
 			pc.engagement_started.connect(_on_patrol_alert.bind(pc))
 			pc.destroyed.connect(_on_patrol_destroyed.bind(pc))
-			
+			pc.fired.connect(_on_patrol_fired)
+
 			# Position patrol at a random offset from the player
 			var theta := _rng.randf() * TAU
 			var dist := _rng.randf_range(60.0, 100.0)
@@ -526,6 +562,50 @@ func _on_patrol_destroyed(_ship_id: String, _patrol: Node3D) -> void:
 	pass
 
 
+## A patrol fired on us. Kinetic slugs at range: a coin-flip hit, real damage.
+func _on_patrol_fired(_ship_id: String) -> void:
+	if _rng.randf() < PIRATE_HIT_CHANCE:
+		_player_hit()
+
+
+## ___self_jump________________________________________________________________
+##
+## A location with a `self_jump` route lets a jump-capable hull leave without
+## a gate — the Duskway's whole trick. The organic crew must be in cryo for
+## the crossing (GAME-DESIGN.md §6.3): the CryoTransit sequence is mandatory,
+## not decorative.
+
+
+func _update_self_jump() -> void:
+	if _jump_route.is_empty() or _transit != null:
+		return
+	if not Input.is_action_just_pressed("jump"):
+		return
+	var hull := DataRegistry.get_entity("ships", GameState.player.ship.hull_id)
+	if not hull.get("stats", {}).get("jump_drive_capable", false):
+		_hint_label.text = "No jump drive on this hull — a gate is the only way out."
+		return
+	_transit = CryoTransit.new()
+	_transit.finished.connect(_on_self_jump_finished)
+	add_child(_transit)
+	_transit.begin(_jump_route)
+	ShipOperation.set_effect("engine_glow", 1.0)
+
+
+func _on_self_jump_finished(route: Dictionary) -> void:
+	var to_id: String = route.get("to", "")
+	if not GameState.player.has("travel_log"):
+		GameState.player["travel_log"] = []
+	GameState.player.travel_log.append({
+		"from": _location.get("id", ""), "to": to_id,
+		"time": Time.get_unix_time_from_system(), "kind": "self_jump",
+	})
+	GameState.player.current_space = to_id
+	MissionManager.report_event("self_jump_completed", {"to": to_id})
+	# Rebuild space flight for the new system.
+	GameManager.request_mode(GameManager.Mode.SPACE_FLIGHT)
+
+
 ## ___jump_gate________________________________________________________________
 
 
@@ -549,7 +629,10 @@ func _random_gate_position(_entry: Dictionary) -> Vector3:
 
 func _on_transit_completed(from_system: String, to_system: String) -> void:
 	_hint_label.text = "Transit complete — entering %s" % to_system
+	MissionManager.report_event("jump_completed", {"to": to_system})
 	# Update the save data and reload the flight scene for the new location
+	if not GameState.player.has("travel_log"):
+		GameState.player["travel_log"] = []
 	GameState.player.travel_log.append({"to": to_system, "from": from_system, "time": Time.get_unix_time_from_system()})
 	GameState.save_game()
 	# Force a location change by triggering the sim to update
@@ -570,6 +653,8 @@ func _update_hud() -> void:
 		_hint_label.text = "R — dock at %s" % _location.get("name", "station")
 	elif not _nearest_minable().is_empty():
 		_hint_label.text = "hold F — mine %s" % str(_location.get("mining", {}).get("good", "ore")).replace("_", " ")
+	elif not _jump_route.is_empty() and _transit == null:
+		_hint_label.text = "J — jump: %s (crew enters cryo)" % _jump_route.get("name", _jump_route.get("to", "?"))
 	elif _ambush_done or _ore_mined_total == 0:
 		_hint_label.text = ""
 
@@ -639,7 +724,9 @@ func _build_ship(base_color: Color) -> Node3D:
 
 
 func _build_station() -> Node3D:
-	if _location.is_empty():
+	# Only dockable places get a dock beacon in their space; a bare drift
+	# or blockade picket line has nothing to park at.
+	if _location.is_empty() or "dock" not in _location.get("services", []):
 		return null
 	var station := Node3D.new()
 	station.name = "Station"

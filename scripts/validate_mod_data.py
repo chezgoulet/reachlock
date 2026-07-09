@@ -36,6 +36,7 @@ KIND_SCHEMAS = {
     "goods": "good",
     "faction_actions": "faction_action",
     "missions": "mission",
+    "upgrades": "upgrade",
 }
 
 

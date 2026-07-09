@@ -38,6 +38,7 @@ func start(dialogue: Dictionary, soul: SoulInstance) -> bool:
 	if _soul != null:
 		_soul.spoke.connect(_on_soul_spoke)
 		_soul.concluded.connect(_on_soul_concluded)
+	print("dialogue: started '%s' (npc %s)" % [dialogue.get("id", "?"), dialogue.get("npc", "?")])
 	_enter_node(dialogue.get("entry", ""))
 	return true
 
@@ -72,6 +73,7 @@ func _enter_node(node_id: String) -> void:
 		push_warning("dialogue: node '%s' missing in '%s'" % [node_id, _dialogue.get("id", "?")])
 		_finish()
 		return
+	_current_node_id = node_id
 	_apply_mutations(node.get("mutations", []))
 	match node.get("kind", "authored"):
 		"authored":
@@ -131,10 +133,15 @@ func _current_generated_node() -> Dictionary:
 	return _generated_node
 
 
+var _current_node_id := ""
+
 func _npc_line(text: String) -> void:
 	if text.strip_edges() != "":
 		_transcript.append({"role": "assistant", "content": text})
-	line_shown.emit(_npc_name, text)
+	# Scene-style dialogues can voice a node through a bystander
+	# (dialogue schema `speaker_names`: node id -> display name).
+	var speaker: String = _dialogue.get("speaker_names", {}).get(_current_node_id, _npc_name)
+	line_shown.emit(speaker, text)
 
 
 func _generated_fallback(node: Dictionary) -> String:

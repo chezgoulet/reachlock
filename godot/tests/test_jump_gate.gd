@@ -52,10 +52,16 @@ func test_physics_process_runs() -> void:
 
 
 func test_emergency_jump_allowed() -> void:
-	var signals = watch_signals(_gate)
-	var ok = _gate.emergency_jump("reach_space")
-	# emergency jump has 80% success rate — it SHOULD work most of the time
-	assert_true(ok, "Emergency jump should succeed on first try")
+	watch_signals(_gate)
+	# Emergency jump has a 20% random malfunction — a failed roll returns
+	# false without entering transit, so retrying is legal. Ten rolls make
+	# the flake odds ~1e-7 while still exercising the success path.
+	var ok := false
+	for i in 10:
+		ok = _gate.emergency_jump("reach_space")
+		if ok:
+			break
+	assert_true(ok, "Emergency jump should succeed within a few attempts (80% rate)")
 
 
 func test_double_emergency_jump_blocked() -> void:

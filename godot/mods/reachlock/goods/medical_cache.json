@@ -1,0 +1,14 @@
+{
+  "id": "medical_cache",
+  "name": "Sealed Medical Cache",
+  "description": "A cold-chain crate, Compact export seals expertly counterfeited. Antivirals, surgical kits, cryo drugs — the categories the blockade taxes hardest. The manifest says machine parts. The manifest is the point.",
+  "base_price": 900,
+  "unit_mass": 2.0,
+  "legality": {
+    "compact": "contraband",
+    "reach": "legal",
+    "isc": "restricted",
+    "earth_remnant": "legal"
+  },
+  "tags": ["medical", "contraband", "duskway"]
+}

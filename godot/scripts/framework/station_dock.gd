@@ -72,6 +72,9 @@ func configure(location: Dictionary) -> void:
 	_spawner.broadcast_event("location.player_arrived", {"location": location.get("id", "")})
 	GameState.state_changed.connect(_refresh_status)
 	_refresh_status()
+	# Scripted scenes: a dialogue marked `auto` whose guard passes plays as
+	# soon as you step off the ship (the content decides when — the guard).
+	_maybe_auto_dialogue.call_deferred()
 	# Fire the on_dock / on_visit_location faction action trigger.
 	Reputation.trigger("on_dock", {
 		"location_id": location.get("id", ""),
@@ -156,21 +159,26 @@ func _talk_to(soul: SoulInstance) -> void:
 	if _runner != null:
 		return
 	var dialogue := _find_dialogue_for(soul.soul_id)
-	if not dialogue.is_empty():
-		_runner = DialogueRunnerScript.new()
-		add_child(_runner)
-		_runner.line_shown.connect(_on_line_shown)
-		_runner.choices_shown.connect(_on_choices_shown)
-		_runner.ended.connect(_on_dialogue_ended)
-		if _runner.start(dialogue, soul):
-			return
-		_runner.queue_free()
-		_runner = null
+	if not dialogue.is_empty() and _start_dialogue(dialogue, soul):
+		return
 	if SoulGateway.is_ready():
 		_append_log("[i]You catch %s's attention.[/i]" % _soul_name(soul))
 		soul.perceive_utterance("player", "Got a minute?")
 	else:
 		_append_log("[i]%s gives you a nod but says nothing.[/i]" % _soul_name(soul))
+
+
+func _start_dialogue(dialogue: Dictionary, soul: SoulInstance) -> bool:
+	_runner = DialogueRunnerScript.new()
+	add_child(_runner)
+	_runner.line_shown.connect(_on_line_shown)
+	_runner.choices_shown.connect(_on_choices_shown)
+	_runner.ended.connect(_on_dialogue_ended)
+	if _runner.start(dialogue, soul):
+		return true
+	_runner.queue_free()
+	_runner = null
+	return false
 
 
 func _find_dialogue_for(soul_id: String) -> Dictionary:
@@ -183,6 +191,26 @@ func _find_dialogue_for(soul_id: String) -> Dictionary:
 		if guard == "" or TriggerDSL.evaluate(guard, context):
 			return dialogue
 	return {}
+
+
+## Play the first `auto` dialogue whose npc is present and whose guard
+## passes — a scripted scene the player walks into rather than starts.
+func _maybe_auto_dialogue() -> void:
+	if _runner != null:
+		return
+	var context := GameState.context()
+	for dialogue_id in DataRegistry.ids("dialogues"):
+		var dialogue := DataRegistry.get_entity("dialogues", dialogue_id)
+		if not dialogue.get("auto", false):
+			continue
+		var soul := _spawner.get_spawned(dialogue.get("npc", ""))
+		if soul == null:
+			continue
+		var guard: String = dialogue.get("condition", "")
+		if guard != "" and not TriggerDSL.evaluate(guard, context):
+			continue
+		if _start_dialogue(dialogue, soul):
+			return
 
 
 func _on_line_shown(speaker: String, text: String) -> void:
@@ -203,11 +231,15 @@ func _on_choices_shown(choices: Array) -> void:
 func _on_dialogue_ended() -> void:
 	_clear_choices()
 	if _runner != null:
-		MemoryStore.ingest_conversation(_runner.npc_id(), _runner.transcript(), {
+		var npc_id: String = _runner.npc_id()
+		MemoryStore.ingest_conversation(npc_id, _runner.transcript(), {
 			"tick": GameState.universe.tick, "location": _location.get("id", ""),
 		})
 		_runner.queue_free()
 		_runner = null
+		MissionManager.report_event("dialogue_end", {"npc_id": npc_id})
+		# One scene can hand off to the next (guards decide).
+		_maybe_auto_dialogue.call_deferred()
 
 
 func _on_ambient_bark(text: String, soul: SoulInstance) -> void:
@@ -308,9 +340,17 @@ func _build_ui() -> void:
 	points.add_theme_constant_override("separation", 6)
 	root.add_child(points)
 	for service: String in services:
-		if service in ["market", "bar"]:
+		if service in ["market", "bar", "shipyard"]:
 			continue  # mounted as full panels below
 		points.add_child(_service_point(service))
+
+	if "shipyard" in services:
+		var shop := UpgradeShop.new()
+		shop.purchased.connect(func(upgrade_id: String) -> void:
+			var upgrade := DataRegistry.get_entity("upgrades", upgrade_id)
+			_append_log("[i]Purchased %s.[/i]" % upgrade.get("name", upgrade_id)))
+		root.add_child(shop)
+		shop.configure()
 
 	if "market" in services:
 		_market = MarketBoardScene.instantiate()

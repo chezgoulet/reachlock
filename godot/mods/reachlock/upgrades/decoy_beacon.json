@@ -1,0 +1,11 @@
+{
+  "id": "decoy_beacon",
+  "name": "Decoy Drive Beacon",
+  "description": "A disposable beacon that mimics a mid-bulk drive signature. Pickets that are busy squinting at it squint at you a little less.",
+  "cost": 700,
+  "category": "gadget",
+  "effects": {
+    "detection_mult": 0.85
+  },
+  "flavor": "It won't fool anyone forever. It fools everyone briefly, and briefly is a flight plan."
+}

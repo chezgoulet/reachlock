@@ -1,0 +1,45 @@
+{
+  "id": "earth_landing",
+  "name": "Earth — Charlevoix Field",
+  "kind": "planet",
+  "system": "sol",
+  "description": "A gravel airstrip on the north shore of the St. Lawrence, three hundred kilometers downriver from the crater where Québec City used to be. The Duskway's receiving end: floodlights that only come on when a ship is already committed, and people who unload fast and don't ask names. Above it, the blockade — a Compact cordon that calls itself a reconstruction protection zone.",
+  "faction_control": "earth_remnant",
+  "services": ["dock"],
+  "population": 340,
+  "npcs_present": ["noor"],
+  "economy": {
+    "produces": [],
+    "consumes": ["rations", "medical_cache"]
+  },
+  "docking": {
+    "clearance_required": false,
+    "fee": 0
+  },
+  "biome": {
+    "ground": "#4a5a3e",
+    "sky": "#2c3548",
+    "accent": "#7a8a6a",
+    "terrain": "boreal"
+  },
+  "points_of_interest": [
+    {"id": "landing_strip", "name": "Landing Strip", "kind": "landing_pad", "position": [0.30, 0.55]},
+    {"id": "receiving_shed", "name": "Receiving Shed", "kind": "settlement", "position": [0.62, 0.42], "npc": "noor"},
+    {"id": "river_overlook", "name": "River Overlook", "kind": "ruins", "position": [0.82, 0.70]}
+  ],
+  "patrols": [
+    {
+      "id": "blockade_picket",
+      "ship": "compact_picket_boat",
+      "soul": "compact_picket_drone",
+      "faction": "compact",
+      "count": 4,
+      "engagement": "engage",
+      "color": "#8c3030"
+    }
+  ],
+  "extra": {
+    "blockade_leg": "duskway_final",
+    "note": "The space around this location IS the blockade corridor — the run itself. The patrols are the cordon; the dock beacon is the landing window."
+  }
+}

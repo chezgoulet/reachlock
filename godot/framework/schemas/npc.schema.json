@@ -173,6 +173,14 @@
     "aboard": {
       "type": "boolean",
       "description": "True when this crew member is currently serving aboard their ship (CrewRoster membership). Authored-but-ashore characters (future hires, story joins) omit it or set false."
+    },
+    "synthetic": {
+      "type": "boolean",
+      "description": "True for droids and robots. Synthetic crew do not need cryosleep during self-generated jumps (GAME-DESIGN.md §6.3) and stay conscious through hyperspace transit. Omitted = organic."
+    },
+    "jump_pilot": {
+      "type": "boolean",
+      "description": "True for the crew member who pilots the ship through self-generated hyperspace jumps while the organic crew sleeps. Must be synthetic. Read by the CryoTransit sequence; the first aboard synthetic is the fallback."
     }
   }
 }

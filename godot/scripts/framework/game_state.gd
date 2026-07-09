@@ -17,8 +17,10 @@ const SAVE_PATH := "user://saves/slot0.json"
 var universe := {"tick": 0, "flags": []}
 var player := {
 	"location": "",       # location id when landed/docked, "" in space
+	"current_space": "",  # location id whose space we fly in; survives undock
 	"credits": 200,
 	"flags": [],
+	"upgrades": [],       # upgrade ids owned (upgrade contract)
 	"ship": {
 		"hull_id": "",
 		"hull_integrity": 1.0,
@@ -26,6 +28,9 @@ var player := {
 		"cargo": {},        # good id -> qty
 	},
 }
+# Active mission progress (save schema `mission` block). MissionManager owns
+# the semantics and keeps this mirrored; this node owns persistence.
+var mission := {}
 var souls := {}            # npc id -> {relationships:{to:{axis:val}}, emotions:{}, flags:[], pending_memories:[]}
 var factions := {}         # faction id -> {standing:{axis:val}}
 # The crew block (P6): membership, station assignments, the relationship
@@ -37,15 +42,29 @@ var crew := {"seeded": false, "aboard": [], "assignments": {}, "edges": {}, "his
 
 func _ready() -> void:
 	DataRegistry.mods_loaded.connect(_on_mods_loaded)
+	# DataRegistry is an earlier autoload: on a normal boot its mods_loaded
+	# fired before this node existed. Apply content fallbacks now.
+	if DataRegistry.entity_count() > 0:
+		_on_mods_loaded(DataRegistry.load_order())
 
 
 func _on_mods_loaded(_order: Array) -> void:
 	if player.ship.hull_id == "":
 		player.ship.hull_id = DataRegistry.start_config().get("player_ship", "")
+	if player.current_space == "":
+		player.current_space = DataRegistry.start_config().get("location", "")
 
 
 func is_docked() -> bool:
 	return player.location != ""
+
+
+## The location id whose space the ship occupies (start location fallback,
+## for saves and states from before the field existed).
+func current_space() -> String:
+	if player.get("current_space", "") != "":
+		return player.current_space
+	return DataRegistry.start_config().get("location", "")
 
 
 ## --- flags -------------------------------------------------------------------
@@ -84,6 +103,42 @@ func cargo_count(good_id: String) -> int:
 func adjust_credits(amount: int) -> void:
 	player.credits = maxi(0, int(player.credits) + amount)
 	state_changed.emit()
+
+
+## --- upgrades (upgrade contract) ------------------------------------------------
+
+
+## Record an owned upgrade. Also sets the flag upgrade_<id> so trigger-DSL
+## conditions and dialogue choices can see it without a new namespace.
+func add_upgrade(upgrade_id: String) -> void:
+	if upgrade_id in player.upgrades:
+		return
+	player.upgrades.append(upgrade_id)
+	set_flag("upgrade_" + upgrade_id)
+
+
+func has_upgrade(upgrade_id: String) -> bool:
+	return upgrade_id in player.get("upgrades", [])
+
+
+## Sum a named numeric effect across every owned upgrade (additive effects:
+## hull_bonus, damage_bonus, timer_bonus_seconds, ...).
+func upgrade_effect_sum(key: String) -> float:
+	var total := 0.0
+	for upgrade_id: String in player.get("upgrades", []):
+		var effects: Dictionary = DataRegistry.get_entity("upgrades", upgrade_id).get("effects", {})
+		total += float(effects.get(key, 0.0))
+	return total
+
+
+## Multiply a named numeric effect across every owned upgrade (multiplicative
+## effects: detection_mult, speed_mult, ...). 1.0 when none owned.
+func upgrade_effect_product(key: String) -> float:
+	var product := 1.0
+	for upgrade_id: String in player.get("upgrades", []):
+		var effects: Dictionary = DataRegistry.get_entity("upgrades", upgrade_id).get("effects", {})
+		product *= float(effects.get(key, 1.0))
+	return product
 
 
 ## --- faction standing ---------------------------------------------------------
@@ -180,6 +235,10 @@ func apply_soul_mutation(soul_id: String, mutation: Dictionary) -> void:
 				state.flags.append(mutation.get("flag", ""))
 		"clear_flag":
 			state.flags.erase(mutation.get("flag", ""))
+		"set_player_flag":
+			set_flag(mutation.get("flag", ""))
+		"clear_player_flag":
+			clear_flag(mutation.get("flag", ""))
 		_:
 			push_warning("game_state: unknown mutation op %s" % mutation.get("op", "?"))
 	state_changed.emit()
@@ -209,6 +268,7 @@ func context() -> Dictionary:
 			"location": player.location,
 			"credits": player.credits,
 			"flags": player.flags,
+			"upgrades": player.get("upgrades", []),
 			"docked": is_docked(),
 		},
 		"soul": soul_ns,
@@ -229,6 +289,7 @@ func save_game() -> bool:
 		"player": player,
 		"factions": factions,
 		"crew": crew,
+		"mission": mission,
 		"souls": _souls_for_save(),
 		"mods": {
 			"load_order": DataRegistry.load_order(),
@@ -263,6 +324,12 @@ func load_game() -> bool:
 	# fallback (mods are loaded before any save load in the boot order).
 	if player.ship.get("hull_id", "") == "":
 		player.ship.hull_id = DataRegistry.start_config().get("player_ship", "")
+	# Fields added after v0 saves existed: default them in place.
+	if not player.has("current_space") or player.current_space == "":
+		player["current_space"] = DataRegistry.start_config().get("location", "")
+	if not player.has("upgrades"):
+		player["upgrades"] = []
+	mission = snapshot.get("mission", {})
 	factions = snapshot.get("factions", {})
 	var saved_crew: Dictionary = snapshot.get("crew", {})
 	if not saved_crew.is_empty():

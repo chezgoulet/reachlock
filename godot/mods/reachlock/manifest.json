@@ -1,27 +1,29 @@
 {
   "id": "reachlock",
   "name": "REACHLOCK: A Space Western",
-  "version": "0.1.0",
-  "description": "The official REACHLOCK content mod. Factions, locations, NPCs, ships, and storylines for the authored universe.",
+  "version": "0.2.0",
+  "description": "The official REACHLOCK content mod. Factions, locations, NPCs, ships, storylines, and the Duskway Run demo campaign for the authored universe.",
   "author": "chezgoulet",
   "license": "AGPL-3.0",
   "dependencies": [],
   "conflicts": [],
   "provides": {
     "factions": ["compact", "isc", "corp_charter", "reach", "earth_remnant"],
-    "locations": ["sorrow_station", "aethon", "verne", "cadence", "the_veil", "earth"],
+    "locations": ["sorrow_station", "aethon", "verne", "cadence", "the_veil", "earth", "the_drift", "earth_landing"],
     "ships": ["loup_garou", "loup_garou_shuttle", "compact_picket_boat", "reaver_skiff"],
-    "npcs": ["tib", "tove", "bardo", "doc_keene", "prudence", "risc", "boris", "vex", "compact_picket_drone"],
+    "npcs": ["tib", "tove", "bardo", "doc_keene", "prudence", "risc", "boris", "vex", "compact_picket_drone", "doss", "grissom", "noor"],
     "storylines": ["veil_escalation", "duskway_runs", "alexander_long_game", "predecessor_revelation"],
-    "goods": ["raw_ore", "refined_alloys", "rations"],
-    "dialogues": ["tib_dock_debrief", "tib_station_greeting", "tove_cargo_check", "tove_duskway_offer"],
+    "goods": ["raw_ore", "refined_alloys", "rations", "medical_cache"],
+    "dialogues": ["tib_dock_debrief", "tib_station_greeting", "tove_cargo_check", "tove_duskway_offer", "tove_galley_briefing", "prudence_bar_fight", "doss_offer", "doss_post_deal", "noor_delivery", "noor_after", "doc_keene_cryo_primer", "boris_pod_check"],
     "faction_actions": ["trade_with_compact"],
-    "missions": ["test_trade_run"],
-    "economy_tables": ["base"]
+    "missions": ["test_trade_run", "duskway_demo_act1", "duskway_demo_act2", "duskway_demo_act3", "duskway_demo_act4"],
+    "economy_tables": ["base"],
+    "upgrades": ["patch_armor", "rail_overcharge", "drive_tune", "transponder_ghost", "cryo_recalibration", "decoy_beacon", "lucky_dice"]
   },
   "start": {
-    "mode": "space_flight",
+    "mode": "on_board",
     "player_ship": "loup_garou",
-    "location": "sorrow_station"
+    "location": "the_drift",
+    "mission": "duskway_demo_act1"
   }
 }

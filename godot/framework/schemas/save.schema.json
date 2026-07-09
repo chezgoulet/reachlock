@@ -16,7 +16,8 @@
       "properties": {
         "tick": { "type": "integer", "minimum": 0 },
         "seed": { "type": "integer" },
-        "flags": { "type": "array", "items": { "type": "string" } }
+        "flags": { "type": "array", "items": { "type": "string" } },
+        "sim": { "type": "object", "description": "The sim daemon's full universe snapshot (Sim Protocol `advanced` reply), cached by SimGateway so a save captures the universe mid-motion. Opaque to the client." }
       }
     },
     "player": {
@@ -25,8 +26,11 @@
       "additionalProperties": false,
       "properties": {
         "location": { "type": "string" },
+        "current_space": { "type": "string", "description": "Location id whose space the ship is flying in (or docked at). Unlike `location` it survives undocking — it is how space flight knows which system to build after a jump. Empty = the content start location." },
         "credits": { "type": "integer", "minimum": 0 },
         "flags": { "type": "array", "items": { "type": "string" } },
+        "upgrades": { "type": "array", "items": { "type": "string" }, "description": "Upgrade ids owned (upgrade contract). Each purchase also sets the flag upgrade_<id>." },
+        "travel_log": { "type": "array", "items": { "type": "object" }, "description": "Append-only jump/transit history: {from, to, time}." },
         "ship": {
           "type": "object",
           "required": ["hull_id"],
@@ -102,6 +106,29 @@
             }
           }
         }
+      }
+    },
+    "crew": {
+      "type": "object",
+      "description": "CrewRoster persistence (P6): membership, station assignments, the crew relationship graph, shared history. CrewRoster owns the semantics; GameState owns this block.",
+      "additionalProperties": false,
+      "properties": {
+        "seeded": { "type": "boolean" },
+        "aboard": { "type": "array", "items": { "type": "string" } },
+        "assignments": { "type": "object", "additionalProperties": { "type": "string" } },
+        "edges": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "type": "number" } } },
+        "history": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "mission": {
+      "type": "object",
+      "description": "Active mission progress (mission contract). Empty object = no mission active. Restored by MissionManager on load; the mission definition itself stays authored data.",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "stage_index": { "type": "integer", "minimum": 0 },
+        "event_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "timer_remaining": { "type": "number" }
       }
     },
     "mods": {

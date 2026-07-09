@@ -1,0 +1,27 @@
+{
+  "id": "duskway_demo_act3",
+  "name": "The Offer",
+  "description": "Doss has repairs, credit, and a problem shaped like a solution to yours: one crate, one blockade, one landing field on Earth that doesn't appear on manifests. Beat 5 of the Duskway Run demo. The credit amount lives on this file — tune it here.",
+  "stages": [
+    {
+      "id": "see_doss",
+      "type": "dialogue",
+      "objective": "Find Doss at the dock office — she has a way out of this hole",
+      "completion": {"type": "dialogue_end", "target_id": "doss"},
+      "rewards": {
+        "credits": 2400,
+        "cargo": {"medical_cache": 1}
+      }
+    },
+    {
+      "id": "outfit_and_lift",
+      "type": "undock",
+      "objective": "Spend Doss's credit at the Outfitting counter — armor, guns, drive work, or gadgets. There is no right loadout. Undock when you're committed.",
+      "completion": {"type": "undock"}
+    }
+  ],
+  "epilogue": {
+    "failure": "The deal dies on the table, and the crate goes back into Doss's ledger to wait for a braver ship."
+  },
+  "next": "duskway_demo_act4"
+}

@@ -332,11 +332,13 @@ func _on_choices_shown(choices: Array) -> void:
 func _on_dialogue_ended() -> void:
 	_clear_choices()
 	if _runner != null:
-		MemoryStore.ingest_conversation(_runner.npc_id(), _runner.transcript(), {
+		var npc_id: String = _runner.npc_id()
+		MemoryStore.ingest_conversation(npc_id, _runner.transcript(), {
 			"tick": GameState.universe.tick, "location": _location.get("id", ""),
 		})
 		_runner.queue_free()
 		_runner = null
+		MissionManager.report_event("dialogue_end", {"npc_id": npc_id})
 	_frozen = false
 
 

@@ -41,7 +41,8 @@
       "properties": {
         "mode": { "type": "string", "enum": ["space_flight", "on_board", "landed"] },
         "player_ship": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-        "location": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+        "location": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "mission": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Mission started automatically on a fresh playthrough (no save). With mission `next` chaining this is how content declares an authored campaign opening." }
       }
     },
     "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }

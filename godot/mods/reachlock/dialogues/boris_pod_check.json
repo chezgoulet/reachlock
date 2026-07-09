@@ -1,0 +1,26 @@
+{
+  "id": "boris_pod_check",
+  "npc": "boris",
+  "condition": "not player.docked",
+  "entry": "start",
+  "nodes": {
+    "start": {
+      "kind": "authored",
+      "text": "Captain. Cryo maintenance cycle complete. All pods functional. Sleep efficiency 97.3 percent. Note: crew member Tove has left her boots in pod two again. Retrieval protocol engaged. The Loup-Garou is ready for transit whenever transit is required.",
+      "choices": [
+        {"text": "You always use her full name. The ship's.", "goto": "full_name"},
+        {"text": "Good work, Boris.", "goto": "acknowledged"}
+      ]
+    },
+    "full_name": {
+      "kind": "authored",
+      "text": "Affirmative. Designations are load-bearing. The crew shortens the name because the name is theirs to shorten. I maintain the pods that keep the crew alive inside the Loup-Garou; precision in small protocols predicts precision in critical ones. Also — and I file this observation under 'ambiguous' — I believe the ship prefers it.",
+      "goto": "end"
+    },
+    "acknowledged": {
+      "kind": "authored",
+      "text": "Acknowledged. Filing under: crew relations — successful.",
+      "goto": "end"
+    }
+  }
+}

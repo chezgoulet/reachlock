@@ -2,18 +2,20 @@
   "id": "sorrow_station",
   "name": "Sorrow Station",
   "kind": "station",
-  "description": "A Reach waystation built into the bones of a decommissioned ore refinery. Nobody runs it, exactly — it runs on grudges, favors, and the fact that everyone needs somewhere to drink. The bar outlasted three owners and two decompressions.",
+  "description": "A Reach waystation built into the bones of a decommissioned ore refinery. Nobody runs it, exactly — it runs on grudges, favors, and the fact that everyone needs somewhere to drink. The bar outlasted three owners and two decompressions. The memorial wall in the main corridor lists 847 names; there is a second, smaller one nobody authorized and nobody removes.",
   "faction_control": "reach",
-  "services": ["dock", "market", "bar", "med_bay", "fuel"],
+  "services": ["dock", "market", "bar", "med_bay", "fuel", "shipyard"],
   "population": 2400,
-  "npcs_present": ["tib"],
+  "npcs_present": ["doss", "grissom", "prudence"],
   "economy": {
     "produces": ["rations"],
     "consumes": ["raw_ore", "refined_alloys"]
   },
   "dock": {
     "npc_positions": {
-      "tib": [0.12, 0.48]
+      "doss": [0.12, 0.48],
+      "grissom": [0.48, 0.66],
+      "prudence": [0.56, 0.62]
     },
     "style": "frontier"
   },
@@ -36,14 +38,14 @@
       "color": "#8c3030"
     }
   ],
-  "jump_gates": [
-    {
-      "id": "sorrow_gate",
-      "system": "sorrow_system",
-      "connects_to": "earth_system",
-      "requires_clearance": true,
-      "faction_control": "compact",
-      "name": "Compact Gate A-7"
-    }
-  ]
+  "self_jump": {
+    "to": "earth_landing",
+    "name": "The Duskway — final leg",
+    "pilot_line": "Route's loaded. Tove's waypoints, my corrections. When you wake up we'll be inside the cordon and everything after that happens fast. Sleep well. That's not optional.",
+    "arrival_line": "Wake up. We're in. The cordon is behind us and closing — the field is marked on your scope. Fly like you mean it.",
+    "transit_seconds": 10
+  },
+  "extra": {
+    "gate_note": "The Compact gate that used to serve this system is clearance-locked; nobody at Sorrow bothers asking anymore. Ships that leave the map leave under their own drives."
+  }
 }

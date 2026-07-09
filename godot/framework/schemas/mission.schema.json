@@ -38,10 +38,10 @@
             "properties": {
               "type": {
                 "type": "string",
-                "enum": ["arrive", "dialogue_end", "kill_all", "timer", "deliver", "dock", "undock", "jump", "manual"]
+                "enum": ["arrive", "dialogue_end", "kill_all", "timer", "deliver", "dock", "undock", "jump", "event", "manual"]
               },
-              "target_id": { "type": "string", "description": "Location ID, NPC ID, or good ID depending on type." },
-              "count": { "type": "integer", "minimum": 1, "description": "How many (kills, deliveries, etc.)" }
+              "target_id": { "type": "string", "description": "Location ID, NPC ID, good ID, or event name depending on type." },
+              "count": { "type": "integer", "minimum": 1, "description": "How many (kills, deliveries, event occurrences, etc.)" }
             }
           },
           "failure": {
@@ -58,6 +58,11 @@
             "description": "Rewards granted when this stage completes.",
             "properties": {
               "credits": { "type": "integer", "minimum": 0 },
+              "cargo": {
+                "type": "object",
+                "description": "good id -> qty loaded into the player's hold (a mission handing you its McGuffin).",
+                "additionalProperties": { "type": "integer" }
+              },
               "faction_deltas": {
                 "type": "object",
                 "additionalProperties": {
@@ -93,6 +98,25 @@
       "properties": {
         "on_death": { "type": "boolean", "default": true },
         "on_ship_destroyed": { "type": "boolean", "default": true }
+      }
+    },
+    "next": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Mission id to start automatically when this one completes. Data-driven chaining — an authored campaign is a linked list of missions; the engine never names one."
+    },
+    "epilogue": {
+      "type": "object",
+      "description": "Full-screen cards shown when the mission ends. `success` shows on completion, `failure` on any failure (a per-reason override wins when `failure_reasons` has a matching key). Shown by the framework MissionHud.",
+      "additionalProperties": false,
+      "properties": {
+        "success": { "type": "string" },
+        "failure": { "type": "string" },
+        "failure_reasons": {
+          "type": "object",
+          "description": "failure reason keyword -> epilogue text override (e.g. ship_destroyed, time_expired).",
+          "additionalProperties": { "type": "string" }
+        }
       }
     },
     "rewards_final": {

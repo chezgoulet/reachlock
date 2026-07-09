@@ -10,6 +10,8 @@
     "npc": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
     "entry": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
     "condition": { "type": "string", "description": "Trigger-DSL guard: when this dialogue is available at all." },
+    "auto": { "type": "boolean", "description": "True = this dialogue starts by itself when the player arrives somewhere its npc is present and the condition passes (a scripted scene, not a talk option). Authored scenes should set a flag in their closing node so the guard goes false and the scene runs once." },
+    "speaker_names": { "type": "object", "description": "Optional display-name overrides per node id, for scene-style dialogues where lines in this npc's graph are voiced by bystanders (e.g. a bar heckler). node id -> display name.", "additionalProperties": { "type": "string" } },
     "nodes": {
       "type": "object",
       "additionalProperties": {
@@ -82,6 +84,25 @@
           "additionalProperties": false,
           "properties": {
             "op": { "const": "clear_flag" },
+            "flag": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Set a flag on the PLAYER (player.flags in trigger-DSL), not the npc's soul — the vocabulary for story-progress gates that other dialogues and missions read.",
+          "required": ["op", "flag"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "set_player_flag" },
+            "flag": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op", "flag"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "clear_player_flag" },
             "flag": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
           }
         }

@@ -7,6 +7,9 @@ func _ready() -> void:
 	# v0 continue-behavior: a save always resumes. "New game" = delete the
 	# save; a proper title menu replaces this later.
 	GameState.load_game()
+	# Fresh playthroughs open on the content's start.mission (a loaded save
+	# restores its own mission via GameState.universe_loaded instead).
+	MissionManager.autostart_if_idle()
 	_load_mode(_initial_mode())
 	if OS.is_debug_build():
 		# Test/CI hook (same family as REACHLOCK_FORCE_MODE): run headless

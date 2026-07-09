@@ -1,0 +1,9 @@
+{
+  "id": "lucky_dice",
+  "name": "Magnetized Lucky Dice",
+  "description": "A pair of dice that stick to the cockpit console. They do not do anything.",
+  "cost": 150,
+  "category": "gadget",
+  "effects": {},
+  "flavor": "Every ship that ever came back had a pair. I'm not saying it's the dice. I'm saying nobody who skipped them is here to argue."
+}

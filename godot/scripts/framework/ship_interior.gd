@@ -17,8 +17,11 @@ class_name ShipInterior
 signal launch_requested
 signal disembark_requested
 
+const DialogueRunnerScript := preload("res://scripts/framework/dialogue_runner.gd")
+
 const WALK_SPEED := 200.0
 const INTERACT_RANGE := 48.0
+const CREW_INTERACT_RANGE := 56.0
 
 const INTERIOR_SIZE := Vector2(1280, 800)
 
@@ -63,6 +66,9 @@ var _spawned: Array = []
 var _hud: CanvasLayer
 var _log: RichTextLabel
 var _hint: Label
+var _choice_box: VBoxContainer
+var _runner: DialogueRunner = null
+var _crew: Array = []  # {id, name, pos:Vector2, node}
 
 
 func _ready() -> void:
@@ -85,6 +91,7 @@ func configure(hull: Dictionary) -> void:
 	for soul in _spawned:
 		soul.spoke.connect(_on_crew_spoke.bind(soul))
 		soul.concluded.connect(_on_crew_concluded.bind(soul))
+	_place_crew()
 
 	# Reset ShipOperation for this session
 	ShipOperation.reset()
@@ -204,6 +211,43 @@ func _rebuild_interactables() -> void:
 			"station_id": s.id,
 			"ref": s,
 		})
+	for member: Dictionary in _crew:
+		_interactables.append({
+			"kind": "crew",
+			"name": member.name,
+			"pos": member.pos,
+			"station_id": "",
+			"crew_id": member.id,
+			"ref": member,
+		})
+
+
+## Put each aboard crew member in their assigned room as a visible,
+## talkable figure. Data decides who is aboard and where they stand.
+func _place_crew() -> void:
+	_crew.clear()
+	var room_counts := {}
+	for crew_id: String in CrewRoster.aboard():
+		var npc := DataRegistry.get_entity("npcs", crew_id)
+		var room := _find_room(CrewRoster.assignment(crew_id))
+		var pos: Vector2 = INTERIOR_SIZE * 0.5
+		if not room.is_empty():
+			var rect: Rect2 = room.rect
+			var index := int(room_counts.get(room.id, 0))
+			room_counts[room.id] = index + 1
+			# Fan out crew sharing a room; keep clear of the station marker.
+			pos = rect.position + rect.size * Vector2(0.30 + 0.22 * (index % 3), 0.62)
+		var figure := _CrewFigure.new()
+		figure.setup(crew_id, StandIn.character_color(npc, crew_id))
+		figure.position = pos
+		add_child(figure)
+		_crew.append({
+			"id": crew_id,
+			"name": npc.get("name", crew_id),
+			"pos": pos,
+			"node": figure,
+		})
+	_rebuild_interactables()
 
 
 func _find_room(room_id: String) -> Dictionary:
@@ -322,7 +366,10 @@ func _update_hint() -> void:
 	if target.is_empty():
 		_hint.text = ""
 		return
-	_hint.text = "R — use %s" % target.name
+	if target.kind == "crew":
+		_hint.text = "R — talk to %s" % target.name
+	else:
+		_hint.text = "R — use %s" % target.name
 
 
 func _interact() -> void:
@@ -331,6 +378,81 @@ func _interact() -> void:
 		return
 	if target.kind == "station":
 		_use_station(target)
+	elif target.kind == "crew":
+		_talk_to_crew(target.crew_id)
+
+
+## --- talking (authored dialogue first, mind-carried exchange otherwise) ------
+
+
+func _talk_to_crew(crew_id: String) -> void:
+	if _runner != null:
+		return
+	var soul := _spawner.get_spawned(crew_id)
+	var dialogue := _find_dialogue_for(crew_id)
+	if not dialogue.is_empty():
+		_runner = DialogueRunnerScript.new()
+		add_child(_runner)
+		_runner.line_shown.connect(_on_line_shown)
+		_runner.choices_shown.connect(_on_choices_shown)
+		_runner.ended.connect(_on_dialogue_ended)
+		if _runner.start(dialogue, soul):
+			return
+		_runner.queue_free()
+		_runner = null
+	if soul != null and SoulGateway.is_ready():
+		_append_log("[i]You catch %s's attention.[/i]" % _crew_name(crew_id))
+		soul.perceive_utterance("player", "Got a minute?")
+	else:
+		_append_log("[i]%s gives you a nod and keeps working.[/i]" % _crew_name(crew_id))
+
+
+func _find_dialogue_for(soul_id: String) -> Dictionary:
+	var context := GameState.context()
+	for dialogue_id in DataRegistry.ids("dialogues"):
+		var dialogue := DataRegistry.get_entity("dialogues", dialogue_id)
+		if dialogue.get("npc", "") != soul_id:
+			continue
+		var guard: String = dialogue.get("condition", "")
+		if guard == "" or TriggerDSL.evaluate(guard, context):
+			return dialogue
+	return {}
+
+
+func _on_line_shown(speaker: String, text: String) -> void:
+	_append_log("[b]%s:[/b] %s" % [speaker, text])
+
+
+func _on_choices_shown(choices: Array) -> void:
+	for choice: Dictionary in choices:
+		var button := Button.new()
+		button.text = choice.text
+		button.pressed.connect(func() -> void:
+			_clear_choices()
+			if _runner != null:
+				_runner.choose(int(choice.index)))
+		_choice_box.add_child(button)
+
+
+func _on_dialogue_ended() -> void:
+	_clear_choices()
+	if _runner != null:
+		var npc_id := _runner.npc_id()
+		MemoryStore.ingest_conversation(npc_id, _runner.transcript(), {
+			"tick": GameState.universe.tick, "location": _hull.get("id", ""),
+		})
+		_runner.queue_free()
+		_runner = null
+		MissionManager.report_event("dialogue_end", {"npc_id": npc_id})
+
+
+func _clear_choices() -> void:
+	for child in _choice_box.get_children():
+		child.queue_free()
+
+
+func _crew_name(crew_id: String) -> String:
+	return DataRegistry.get_entity("npcs", crew_id).get("name", crew_id)
 
 
 func _use_station(target: Dictionary) -> void:
@@ -422,10 +544,12 @@ func _build_hud() -> void:
 	launch_btn.pressed.connect(func() -> void: launch_requested.emit())
 	actions.add_child(launch_btn)
 
-	var dock_btn := Button.new()
-	dock_btn.text = "Disembark"
-	dock_btn.pressed.connect(func() -> void: disembark_requested.emit())
-	actions.add_child(dock_btn)
+	# You can only step off the ship somewhere there is a somewhere.
+	if GameState.is_docked():
+		var dock_btn := Button.new()
+		dock_btn.text = "Disembark"
+		dock_btn.pressed.connect(func() -> void: disembark_requested.emit())
+		actions.add_child(dock_btn)
 
 	var save_btn := Button.new()
 	save_btn.text = "Save"
@@ -444,6 +568,15 @@ func _build_hud() -> void:
 	_log.offset_bottom = -40
 	_log.custom_minimum_size = Vector2(0, 80)
 	_hud.add_child(_log)
+
+	_choice_box = VBoxContainer.new()
+	_choice_box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_choice_box.offset_left = -460
+	_choice_box.offset_right = -12
+	_choice_box.offset_top = -320
+	_choice_box.offset_bottom = -110
+	_choice_box.alignment = BoxContainer.ALIGNMENT_END
+	_hud.add_child(_choice_box)
 
 	_hint = Label.new()
 	_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
@@ -586,6 +719,34 @@ class _Floor extends Node2D:
 					result.append({"rect": Rect2(wall_rect.position.x, start_y, wall_rect.size.x, wall_rect.position.y + wall_rect.size.y - start_y)})
 		
 		return result
+
+
+## --- crew figure ---------------------------------------------------------------
+##
+## A crew member standing at their post: the shared StandIn character
+## vocabulary painted in world space, name below, gentle idle bob.
+
+class _CrewFigure extends Node2D:
+	var _crew_id := ""
+	var _color := Color.GRAY
+	var _t := 0.0
+	var _phase := 0.0
+
+	func setup(crew_id: String, color: Color) -> void:
+		_crew_id = crew_id
+		_color = color
+		_phase = float(hash(crew_id) % 100) / 100.0 * TAU
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var bob := sin(_t * 2.0 + _phase) * 2.0
+		StandIn.paint_character(self, Rect2(-14, -40 + bob, 28, 46), _color, _crew_id)
+		var display_name: String = DataRegistry.get_entity("npcs", _crew_id).get("name", _crew_id)
+		draw_string(ThemeDB.fallback_font, Vector2(-30, 22), display_name,
+			HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color(0.92, 0.92, 0.95))
 
 
 ## --- player walker -----------------------------------------------------------

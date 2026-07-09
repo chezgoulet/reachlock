@@ -140,6 +140,10 @@ func _ensure_seeded() -> void:
 	GameState.crew.seeded = true
 	var hull := DataRegistry.get_entity("ships", hull_id)
 	var rooms: Array = hull.get("interior_rooms", [])
+	if rooms.is_empty():
+		# Freeform-room hulls (ship schema `rooms`) carry ids per entry.
+		for entry: Dictionary in hull.get("rooms", []):
+			rooms.append(entry.get("id", ""))
 	var fallback_room: String = rooms[0] if not rooms.is_empty() else ""
 	for npc_id in DataRegistry.ids("npcs"):
 		var npc := DataRegistry.get_entity("npcs", npc_id)

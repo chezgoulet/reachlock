@@ -25,6 +25,10 @@ func _ready() -> void:
 		GameState.player.location = location_id
 	_location = DataRegistry.get_entity("locations", location_id)
 
+	# Arriving somewhere is a mission event (stage completions: dock/arrive).
+	GameState.player.current_space = _location.get("id", GameState.player.get("current_space", ""))
+	MissionManager.report_event("docked", {"location_id": _location.get("id", "")})
+
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	match _location.get("kind", "station"):
@@ -49,6 +53,7 @@ func _undock() -> void:
 	SimGateway.advance_batch(UNDOCK_DEPARTURE_TICKS)
 	GameState.player.location = ""
 	GameState.clear_flag("survived_ambush")  # each flight earns its own stories
+	MissionManager.report_event("undocked", {"location_id": _location.get("id", "")})
 	GameManager.request_mode(GameManager.Mode.SPACE_FLIGHT)
 
 

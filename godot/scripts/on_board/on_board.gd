@@ -16,4 +16,12 @@ func _ready() -> void:
 
 
 func on_launch() -> void:
+	# Launching from a berth IS undocking — same departure bookkeeping as
+	# the landed mode's undock path (M6: time passes while you fly).
+	if GameState.is_docked():
+		SimGateway.advance_batch(30)
+		GameState.player.location = ""
+		GameState.clear_flag("survived_ambush")
+		MissionManager.report_event("undocked")
+	MissionManager.report_event("launched")
 	GameManager.request_mode(GameManager.Mode.SPACE_FLIGHT)

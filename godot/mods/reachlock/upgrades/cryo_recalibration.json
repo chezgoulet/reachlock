@@ -1,0 +1,11 @@
+{
+  "id": "cryo_recalibration",
+  "name": "Cryo Revival Recalibration",
+  "description": "Recalibrated revival cycles on all pods. The crew wakes cleaner and moves sooner on the far side of a jump.",
+  "cost": 600,
+  "category": "equipment",
+  "effects": {
+    "timer_bonus_seconds": 60
+  },
+  "flavor": "Every second between the pod lid and the pilot's seat is a second the cordon spends closing. Buy some back."
+}
