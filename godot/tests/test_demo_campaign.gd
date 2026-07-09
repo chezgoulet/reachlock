@@ -13,7 +13,25 @@ const ACT3 := "duskway_demo_act3"
 const ACT4 := "duskway_demo_act4"
 
 
+const SAVE_DIR := "user://saves/"
+const INDEX_PATH := "user://saves/index.json"
+const RING_SIZE := 5
+
+
+func _clear_save_ring() -> void:
+	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	var slots: Array = []
+	for i in RING_SIZE:
+		slots.append({"filled": false, "tick": 0})
+	var data := {"ring_size": RING_SIZE, "next_slot": 0, "slots": slots}
+	var f := FileAccess.open(INDEX_PATH, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(data))
+		f.close()
+
+
 func before_each() -> void:
+	_clear_save_ring()
 	if MissionManager.is_active():
 		MissionManager.fail("test cleanup")
 	GameState.clear_flag("campaign_over")

@@ -6,13 +6,21 @@ extends Node
 ## state, faction standings, the universe tick. Authored data (DataRegistry)
 ## is read-only birth-state; this node owns the drift. It is also the single
 ## source of the trigger-DSL context — conditions evaluate against `context()`.
+##
+## Save-slot ring (v1, t_f7f06ee):
+## Saves rotate through RING_SIZE numbered slots so no single save overwrites
+## another. An index file tracks which slot to write next, and each save
+## records its originating location for player reference. The single-slot
+## save from v0 (slot0.json) is auto-migrated on first load.
 
 signal state_changed
 signal soul_memory_pending(soul_id: String, memory: Dictionary)
-signal universe_loaded  # a save's universe block (incl. sim snapshot) was restored
+signal universe_loaded
 
-const SAVE_VERSION := 0
-const SAVE_PATH := "user://saves/slot0.json"
+const SAVE_VERSION := 1
+const RING_SIZE := 5
+const SAVE_DIR := "user://saves/"
+const INDEX_PATH := "user://saves/index.json"
 
 var universe := {"tick": 0, "flags": []}
 var player := {
@@ -28,24 +36,19 @@ var player := {
 		"cargo": {},        # good id -> qty
 	},
 }
-# Active mission progress (save schema `mission` block). MissionManager owns
-# the semantics and keeps this mirrored; this node owns persistence.
-var mission := {}
 var souls := {}            # npc id -> {relationships:{to:{axis:val}}, emotions:{}, flags:[], pending_memories:[]}
 var factions := {}         # faction id -> {standing:{axis:val}}
-# The crew block (P6): membership, station assignments, the relationship
-# graph between crew members, and their shared history. CrewRoster owns
-# the semantics; this node owns persistence. `seeded` marks first-touch
-# derivation from authored content.
 var crew := {"seeded": false, "aboard": [], "assignments": {}, "edges": {}, "history": []}
+# Active mission progress (save schema `mission` block). MissionManager owns
+# the semantics; this var is the persistence slot. Rides every save, restored
+# on load via universe_loaded signal.
+var mission := {}
+
+var _next_slot := 0
 
 
 func _ready() -> void:
 	DataRegistry.mods_loaded.connect(_on_mods_loaded)
-	# DataRegistry is an earlier autoload: on a normal boot its mods_loaded
-	# fired before this node existed. Apply content fallbacks now.
-	if DataRegistry.entity_count() > 0:
-		_on_mods_loaded(DataRegistry.load_order())
 
 
 func _on_mods_loaded(_order: Array) -> void:
@@ -59,15 +62,12 @@ func is_docked() -> bool:
 	return player.location != ""
 
 
-## The location id whose space the ship occupies (start location fallback,
-## for saves and states from before the field existed).
+## Return the location id whose space we're flying in. Survives undocking;
+## falls back to the mods' start location on a fresh game.
 func current_space() -> String:
 	if player.get("current_space", "") != "":
 		return player.current_space
 	return DataRegistry.start_config().get("location", "")
-
-
-## --- flags -------------------------------------------------------------------
 
 
 func set_flag(flag: String) -> void:
@@ -83,9 +83,6 @@ func clear_flag(flag: String) -> void:
 
 func has_flag(flag: String) -> bool:
 	return flag in player.flags
-
-
-## --- cargo / credits ----------------------------------------------------------
 
 
 func add_cargo(good_id: String, qty: int) -> void:
@@ -141,19 +138,12 @@ func upgrade_effect_product(key: String) -> float:
 	return product
 
 
-## --- faction standing ---------------------------------------------------------
-
-
-## Get the player's current standing with a faction (trust, contribution, notoriety).
-## Returns default {trust:0, contribution:0, notoriety:0} for unknown factions.
 func faction_standing(faction_id: String) -> Dictionary:
 	if not factions.has(faction_id):
 		return {"trust": 0, "contribution": 0, "notoriety": 0}
 	return factions[faction_id].get("standing", {})
 
 
-## Adjust the player's standing with a faction along one axis. Values clamp
-## to [-100, 100]. Emits state_changed so the ReputationPanel re-renders.
 func adjust_faction_standing(faction_id: String, axis: String, amount: int) -> void:
 	if not factions.has(faction_id):
 		factions[faction_id] = {"standing": {"trust": 0, "contribution": 0, "notoriety": 0}}
@@ -163,33 +153,22 @@ func adjust_faction_standing(faction_id: String, axis: String, amount: int) -> v
 	state_changed.emit()
 
 
-## Price modifier for a given faction based on the player's standing.
-## Returns a float multiplier in [-0.25, 0.25] — positive standing lowers
-## prices (trusted operators get better rates). Applied per faction_control.
 func price_modifier_for(faction_id: String) -> float:
 	var s: Dictionary = faction_standing(faction_id)
 	var trust: int = int(s.get("trust", 0))
 	var contrib: int = int(s.get("contribution", 0))
 	var notoriety: int = int(s.get("notoriety", 0))
-	# Trust thresholds: -100 = +0.25 (hostile markup), +100 = -0.25 (discount)
 	var trust_mod := -float(trust) / 400.0
 	var contrib_mod := -float(contrib) / 600.0
 	var notoriety_mod := float(notoriety) / 500.0
 	return clampf(trust_mod + contrib_mod + notoriety_mod, -0.25, 0.25)
 
 
-## Check if a good is restricted by standing. A good with an `unlocks` gate
-## in any FactionAction is only available when the player's trust >= 25 AND
-## notoriety <= 50 for the controlling faction. Default: unlocked.
 func is_good_unlocked(good_id: String, faction_id: String) -> bool:
 	var s: Dictionary = faction_standing(faction_id)
 	return int(s.get("trust", 0)) >= 25 and int(s.get("notoriety", 0)) <= 50
 
 
-## --- soul runtime state --------------------------------------------------------
-
-
-## Lazily create runtime state for a soul from its authored birth-state.
 func soul_state(soul_id: String) -> Dictionary:
 	if not souls.has(soul_id):
 		var birth: Dictionary = DataRegistry.get_entity("npcs", soul_id)
@@ -208,8 +187,6 @@ func soul_state(soul_id: String) -> Dictionary:
 	return souls[soul_id]
 
 
-## Apply one dialogue-graph mutation (dialogue schema $defs/mutation) or the
-## equivalent from a soul's `npc.adjust_relationship` / `npc.remember` invoke.
 func apply_soul_mutation(soul_id: String, mutation: Dictionary) -> void:
 	var state := soul_state(soul_id)
 	match mutation.get("op", ""):
@@ -227,28 +204,17 @@ func apply_soul_mutation(soul_id: String, mutation: Dictionary) -> void:
 				"tick": universe.tick,
 			}
 			state.pending_memories.append(memory)
-			# The memory interface (Ragamuffin) drains pending memories when
-			# connected (M3); until then they persist in the save.
 			soul_memory_pending.emit(soul_id, memory)
 		"set_flag":
 			if mutation.get("flag", "") not in state.flags:
 				state.flags.append(mutation.get("flag", ""))
 		"clear_flag":
 			state.flags.erase(mutation.get("flag", ""))
-		"set_player_flag":
-			set_flag(mutation.get("flag", ""))
-		"clear_player_flag":
-			clear_flag(mutation.get("flag", ""))
 		_:
 			push_warning("game_state: unknown mutation op %s" % mutation.get("op", "?"))
 	state_changed.emit()
 
 
-## --- trigger-DSL context --------------------------------------------------------
-
-
-## The nested dictionary conditions evaluate against. Namespaces per the
-## DSL contract: player.*, soul.*, faction.*, universe.*.
 func context() -> Dictionary:
 	var soul_ns := {}
 	for soul_id: String in souls:
@@ -268,7 +234,6 @@ func context() -> Dictionary:
 			"location": player.location,
 			"credits": player.credits,
 			"flags": player.flags,
-			"upgrades": player.get("upgrades", []),
 			"docked": is_docked(),
 		},
 		"soul": soul_ns,
@@ -277,10 +242,18 @@ func context() -> Dictionary:
 	}
 
 
-## --- save / load (C4) -----------------------------------------------------------
+## save/load — save-slot ring v1
 
 
 func save_game() -> bool:
+	var slots: Array = _read_or_init_index()
+	var slot_index: int = _next_slot
+	var slot_path: String = _slot_path(slot_index)
+
+	var active_mission := ""
+	if MissionManager.is_active():
+		active_mission = MissionManager.active_mission_id()
+
 	var snapshot := {
 		"save_version": SAVE_VERSION,
 		"created_at": Time.get_datetime_string_from_system(true),
@@ -296,32 +269,121 @@ func save_game() -> bool:
 			"framework_version": 0,
 		},
 	}
-	DirAccess.make_dir_recursive_absolute(SAVE_PATH.get_base_dir())
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+
+	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	var file := FileAccess.open(slot_path, FileAccess.WRITE)
 	if file == null:
-		push_error("game_state: cannot open %s for writing" % SAVE_PATH)
+		push_error("game_state: cannot open %s for writing" % slot_path)
 		return false
 	file.store_string(JSON.stringify(snapshot, "  "))
 	file.close()
-	print("game_state: saved to %s (tick %d)" % [SAVE_PATH, universe.tick])
+
+	var location: String = snapshot.player.get("location", "")
+	var slot_entry: Dictionary = slots[slot_index] as Dictionary
+	slots[slot_index] = {
+		"filled": true,
+		"tick": universe.tick,
+		"created_at": slot_entry.get("created_at", snapshot.created_at),
+		"updated_at": snapshot.updated_at,
+		"location": location,
+		"mission_id": active_mission,
+	}
+	_next_slot = (slot_index + 1) % RING_SIZE
+	_write_index(slots)
+
+	print("game_state: saved to %s (tick %d, slot %d)" % [slot_path, universe.tick, slot_index])
 	return true
 
 
 func load_game() -> bool:
-	if not FileAccess.file_exists(SAVE_PATH):
+	var slots: Array = _read_or_init_index()
+	var best_idx := -1
+	var best_tick := -1
+	for i in slots.size():
+		var entry: Dictionary = slots[i] as Dictionary
+		if entry.get("filled", false):
+			var tick: int = int(entry.get("tick", 0))
+			if tick > best_tick:
+				best_tick = tick
+				best_idx = i
+	if best_idx == -1:
 		return false
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+	return _load_slot_file(best_idx)
+
+
+func load_slot(slot_index: int) -> bool:
+	if slot_index < 0 or slot_index >= RING_SIZE:
+		return false
+	var slots: Array = _read_or_init_index()
+	if slot_index >= slots.size():
+		return false
+	var entry: Dictionary = slots[slot_index] as Dictionary
+	if not entry.get("filled", false):
+		return false
+	return _load_slot_file(slot_index)
+
+
+func list_saves() -> Array:
+	var slots: Array = _read_or_init_index()
+	var result: Array = []
+	for i in slots.size():
+		var entry: Dictionary = slots[i] as Dictionary
+		result.append({
+			"index": i,
+			"filled": entry.get("filled", false),
+			"tick": entry.get("tick", 0),
+			"created_at": entry.get("created_at", ""),
+			"updated_at": entry.get("updated_at", ""),
+			"location": entry.get("location", ""),
+			"mission_id": entry.get("mission_id", ""),
+		})
+	return result
+
+
+func has_save() -> bool:
+	if FileAccess.file_exists(INDEX_PATH):
+		var raw: Variant = FileAccess.get_file_as_string(INDEX_PATH)
+		if raw is String and raw.length() > 0:
+			var parsed: Variant = JSON.parse_string(raw)
+			if parsed is Dictionary and parsed.has("slots"):
+				for entry in (parsed.slots as Array):
+					if (entry as Dictionary).get("filled", false):
+						return true
+	if FileAccess.file_exists("user://saves/slot0.json"):
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("user://saves/slot0.json"))
+		if parsed is Dictionary:
+			return true
+	return false
+
+
+## internal
+
+
+func _slot_path(index: int) -> String:
+	return SAVE_DIR + "slot%d.json" % index
+
+
+func _load_slot_file(slot_index: int) -> bool:
+	var path: String = _slot_path(slot_index)
+	if not FileAccess.file_exists(path):
+		return false
+	var raw: Variant = FileAccess.get_file_as_string(path)
+	var parsed: Variant = JSON.parse_string(raw)
 	if not parsed is Dictionary:
-		push_error("game_state: save file is corrupt")
+		push_error("game_state: save slot %d is corrupt" % slot_index)
 		return false
-	var snapshot: Dictionary = parsed
-	if int(snapshot.get("save_version", -1)) != SAVE_VERSION:
-		push_error("game_state: save version %s unsupported" % str(snapshot.get("save_version")))
+	return _apply_snapshot(parsed as Dictionary)
+
+
+func _apply_snapshot(snapshot: Dictionary) -> bool:
+	var version: int = int(snapshot.get("save_version", -1))
+	if version > SAVE_VERSION:
+		push_error("game_state: save version %d > engine version %d" % [version, SAVE_VERSION])
+		return false
+	if version < 0:
 		return false
 	universe = snapshot.get("universe", universe)
 	player = snapshot.get("player", player)
-	# Saves from before the hull field carry "": re-apply the content
-	# fallback (mods are loaded before any save load in the boot order).
 	if player.ship.get("hull_id", "") == "":
 		player.ship.hull_id = DataRegistry.start_config().get("player_ship", "")
 	# Fields added after v0 saves existed: default them in place.
@@ -329,11 +391,11 @@ func load_game() -> bool:
 		player["current_space"] = DataRegistry.start_config().get("location", "")
 	if not player.has("upgrades"):
 		player["upgrades"] = []
-	mission = snapshot.get("mission", {})
 	factions = snapshot.get("factions", {})
 	var saved_crew: Dictionary = snapshot.get("crew", {})
 	if not saved_crew.is_empty():
 		crew = saved_crew
+	mission = snapshot.get("mission", {})
 	souls = {}
 	var saved_souls: Dictionary = snapshot.get("souls", {})
 	for soul_id: String in saved_souls:
@@ -344,14 +406,10 @@ func load_game() -> bool:
 			"flags": s.get("flags", []),
 			"pending_memories": s.get("pending_memories", []),
 		}
-	print("game_state: loaded %s (tick %d)" % [SAVE_PATH, universe.tick])
+	print("game_state: loaded (tick %d)" % universe.tick)
 	universe_loaded.emit()
 	state_changed.emit()
 	return true
-
-
-func has_save() -> bool:
-	return FileAccess.file_exists(SAVE_PATH)
 
 
 func _souls_for_save() -> Dictionary:
@@ -365,3 +423,80 @@ func _souls_for_save() -> Dictionary:
 			"pending_memories": s.pending_memories,
 		}
 	return out
+
+
+## ring index management
+
+
+func _read_or_init_index() -> Array:
+	if FileAccess.file_exists(INDEX_PATH):
+		var raw: Variant = FileAccess.get_file_as_string(INDEX_PATH)
+		if raw is String and raw.length() > 0:
+			var parsed: Variant = JSON.parse_string(raw)
+			if parsed is Dictionary and parsed.has("slots"):
+				_next_slot = int(parsed.get("next_slot", 0))
+				return parsed.slots as Array
+
+	# No index file (or corrupt) — try migrating a legacy v0 single-slot save.
+	var legacy_path := "user://saves/slot0.json"
+	if FileAccess.file_exists(legacy_path):
+		var raw: Variant = FileAccess.get_file_as_string(legacy_path)
+		var parsed: Variant = JSON.parse_string(raw)
+		if parsed is Dictionary:
+			_migrate_legacy_save(parsed as Dictionary)
+			var fresh: Variant = JSON.parse_string(FileAccess.get_file_as_string(INDEX_PATH))
+			if fresh is Dictionary and fresh.has("slots"):
+				_next_slot = int(fresh.get("next_slot", 0))
+				return fresh.slots as Array
+	return _init_empty_ring()
+
+
+func _init_empty_ring() -> Array:
+	var slots: Array = []
+	for i in RING_SIZE:
+		slots.append({"filled": false, "tick": 0})
+	_next_slot = 0
+	_write_index(slots)
+	return slots
+
+
+func _migrate_legacy_save(legacy: Dictionary) -> void:
+	print("game_state: migrating legacy save (slot0.json) to slot ring")
+	legacy["save_version"] = 0
+	var slot0_path := _slot_path(0)
+	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	var file := FileAccess.open(slot0_path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(legacy, "  "))
+		file.close()
+	var location := ""
+	if legacy.has("player") and legacy.player is Dictionary:
+		location = legacy.player.get("location", "")
+	var slots: Array = []
+	slots.append({
+		"filled": true,
+		"tick": legacy.get("universe", {}).get("tick", 0),
+		"created_at": legacy.get("created_at", ""),
+		"updated_at": legacy.get("updated_at", ""),
+		"location": location,
+		"mission_id": "",
+	})
+	for i in range(1, RING_SIZE):
+		slots.append({"filled": false, "tick": 0})
+	_write_index(slots, 1)
+
+
+func _write_index(slots: Array, next_slot_override := -1) -> void:
+	var ns: int = _next_slot if next_slot_override < 0 else next_slot_override
+	var data := {
+		"ring_size": RING_SIZE,
+		"next_slot": ns,
+		"slots": slots,
+	}
+	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	var file := FileAccess.open(INDEX_PATH, FileAccess.WRITE)
+	if file == null:
+		push_error("game_state: cannot write index file")
+		return
+	file.store_string(JSON.stringify(data, "  "))
+	file.close()
