@@ -41,6 +41,7 @@
   "self_jump": {
     "to": "earth_landing",
     "name": "The Duskway — final leg",
+    "gate_flag": "doss_deal_struck",
     "pilot_line": "Route's loaded. Tove's waypoints, my corrections. When you wake up we'll be inside the cordon and everything after that happens fast. Sleep well. That's not optional.",
     "arrival_line": "Wake up. We're in. The cordon is behind us and closing — the field is marked on your scope. Fly like you mean it.",
     "transit_seconds": 10

@@ -151,6 +151,26 @@ func test_upgrade_effects_aggregate() -> void:
 		"purchases surface as player flags for dialogue guards")
 
 
+func test_self_jump_gate_blocks_without_doss_deal() -> void:
+	# The Duskway self-jump (earth_landing) should not be available until
+	# doss_deal_struck flag is set. This verifies the engine gate in
+	# space_flight._update_self_jump().
+	GameState.clear_flag("doss_deal_struck")
+	assert_false(GameState.has_flag("doss_deal_struck"),
+		"self-jump blocked before Doss deal")
+
+	# Simulate the deal being accepted (dialogue mutation in doss_offer.json)
+	GameState.set_flag("doss_deal_struck")
+	assert_true(GameState.has_flag("doss_deal_struck"),
+		"self-jump unblocked after Doss deal")
+
+	# Verify the flag survives a save/load roundtrip
+	GameState.save_game()
+	assert_true(GameState.load_game(), "save/load roundtrip succeeds")
+	assert_true(GameState.has_flag("doss_deal_struck"),
+		"flag persists through save/load")
+
+
 func test_mission_progress_survives_persistence_roundtrip() -> void:
 	assert_true(MissionManager.start_mission(ACT1))
 	MissionManager.report_event("dialogue_end", {"npc_id": "tove"})

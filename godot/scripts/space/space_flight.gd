@@ -585,6 +585,11 @@ func _update_self_jump() -> void:
 	if not hull.get("stats", {}).get("jump_drive_capable", false):
 		_hint_label.text = "No jump drive on this hull — a gate is the only way out."
 		return
+	# Data-driven gate: if the route declares a required flag, check it.
+	var gate: String = _jump_route.get("gate_flag", "")
+	if gate != "" and not GameState.has_flag(gate):
+		_hint_label.text = "The route is locked — finish your business at the station first."
+		return
 	_transit = CryoTransit.new()
 	_transit.finished.connect(_on_self_jump_finished)
 	add_child(_transit)
@@ -654,7 +659,12 @@ func _update_hud() -> void:
 	elif not _nearest_minable().is_empty():
 		_hint_label.text = "hold F — mine %s" % str(_location.get("mining", {}).get("good", "ore")).replace("_", " ")
 	elif not _jump_route.is_empty() and _transit == null:
-		_hint_label.text = "J — jump: %s (crew enters cryo)" % _jump_route.get("name", _jump_route.get("to", "?"))
+		var gate: String = _jump_route.get("gate_flag", "")
+		if gate != "" and not GameState.has_flag(gate):
+			_hint_label.text = ""
+		else:
+			_hint_label.text = "J — jump: %s (crew enters cryo)" \
+					% _jump_route.get("name", _jump_route.get("to", "?"))
 	elif _ambush_done or _ore_mined_total == 0:
 		_hint_label.text = ""
 

@@ -104,47 +104,19 @@
         "required": ["id", "ship", "count"],
         "additionalProperties": false,
         "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
-          },
-          "ship": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
-          },
-          "soul": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
-          },
-          "faction": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
-          },
-          "count": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 8
-          },
-          "engagement": {
-            "type": "string",
-            "enum": ["passive", "investigate", "engage", "ambush"],
-            "default": "investigate"
-          },
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "ship": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "soul": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "faction": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "count": { "type": "integer", "minimum": 1, "maximum": 8 },
+          "engagement": { "type": "string", "enum": ["passive", "investigate", "engage", "ambush"], "default": "investigate" },
           "route": {
             "type": "array",
             "items": {
-              "type": "array",
-              "minItems": 3,
-              "maxItems": 3,
-              "items": {
-                "type": "number"
-              }
+              "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number" }
             }
           },
-          "color": {
-            "type": "string",
-            "pattern": "^#[0-9a-fA-F]{6}$"
-          }
+          "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
         }
       }
     },
@@ -158,7 +130,8 @@
         "name": { "type": "string", "description": "Route name shown on the jump prompt (e.g. a Duskway leg)." },
         "pilot_line": { "type": "string", "description": "What the jump pilot says as the crew goes under. Fallback when no mind daemon is running; the soul may improvise its own when one is." },
         "arrival_line": { "type": "string", "description": "What the jump pilot says as the crew wakes on the far side." },
-        "transit_seconds": { "type": "number", "minimum": 1, "description": "Real-time length of the cryo transit sequence. Default 8." }
+        "transit_seconds": { "type": "number", "minimum": 1, "description": "Real-time length of the cryo transit sequence. Default 8." },
+        "gate_flag": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Optional player flag that gates the route. Until this flag is set, the jump prompt is hidden and the trigger is blocked. The engine never names a flag." }
       }
     },
     "jump_gates": {
