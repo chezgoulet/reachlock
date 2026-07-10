@@ -262,7 +262,25 @@
           "minimum": 0.1,
           "maximum": 2.0,
           "default": 1.0
+        },
+        "zero_g_speed_mult": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 1.0,
+          "description": "Speed multiplier while mag-locked in zero-G. Distinct from gravity_speed_mult (which only applies under real gravity) — a chassis can be built for one regime and clumsy in the other."
         }
+      }
+    },
+    "barks": {
+      "type": "object",
+      "description": "Authored one-liners keyed by engine situation (rescue_start, rescue_done, ...). The engine picks one at random when the situation fires; NPCs without a key get a plain framework fallback. This is where a droid's sense of humor lives.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1
       }
     },
     "repairs": {

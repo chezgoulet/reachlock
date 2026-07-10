@@ -187,10 +187,14 @@ func _select(index: int) -> void:
 		text += "[color=#d87d6d]▼[/color]  %s\n" % disadvantage
 	var locomotion: Dictionary = npc.get("locomotion", {})
 	if str(locomotion.get("zero_g", "")) == "magnetic":
-		text += "\n[color=#8fb8e8]◆  Mag-locked: walks zero-G decks like corridors"
+		text += "\n[color=#8fb8e8]◆  Mag-locked: walks zero-G decks"
+		if float(locomotion.get("zero_g_speed_mult", 1.0)) < 0.7:
+			text += " (slowly — a nav chassis, not a deck chassis)"
 		if float(locomotion.get("gravity_speed_mult", 1.0)) < 0.7:
 			text += "; crawls under gravity"
 		text += ".[/color]\n"
+	else:
+		text += "\n[color=#8fb8e8]◆  Drifts in zero-G — grab the flight suit below decks before climbing the ladder.[/color]\n"
 	_traits.text = text
 
 
@@ -237,14 +241,22 @@ func _begin() -> void:
 	paragraphs.append_array(DataRegistry.get_entity("npcs", character)
 		.get("playable", {}).get("scrawl", []))
 
+	# Anchor-centered rather than positioned from a size read at creation
+	# time: horizontal centering must hold regardless of when layout catches
+	# up, so pin both edges to the midline instead of computing an offset.
 	_scrawl_text = RichTextLabel.new()
 	_scrawl_text.bbcode_enabled = true
 	_scrawl_text.fit_content = true
 	_scrawl_text.custom_minimum_size = Vector2(680, 0)
-	_scrawl_text.position = Vector2((size.x - 680) * 0.5, size.y)
+	_scrawl_text.anchor_left = 0.5
+	_scrawl_text.anchor_right = 0.5
+	_scrawl_text.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_scrawl_text.offset_left = -340
+	_scrawl_text.offset_right = 340
+	_scrawl_text.offset_top = size.y
 	_scrawl_text.add_theme_font_size_override("normal_font_size", 19)
 	_scrawl_text.add_theme_color_override("default_color", Color(0.85, 0.88, 0.95))
-	_scrawl_text.text = "\n\n".join(PackedStringArray(paragraphs))
+	_scrawl_text.text = "[center]" + "\n\n".join(PackedStringArray(paragraphs)) + "[/center]"
 	_scrawl_layer.add_child(_scrawl_text)
 
 	var skip := Label.new()
@@ -260,9 +272,9 @@ func _begin() -> void:
 func _process(delta: float) -> void:
 	if _scrawl_text == null or _done:
 		return
-	_scrawl_text.position.y -= SCRAWL_SPEED * delta
+	_scrawl_text.offset_top -= SCRAWL_SPEED * delta
 	# The whole text has climbed past the fold: the story starts itself.
-	if _scrawl_text.position.y + _scrawl_text.size.y < size.y * 0.25:
+	if _scrawl_text.offset_top + _scrawl_text.size.y < size.y * 0.25:
 		_finish(selected_id())
 
 

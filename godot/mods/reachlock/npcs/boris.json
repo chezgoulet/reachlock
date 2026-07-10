@@ -95,7 +95,7 @@
       "savvy": 1
     },
     "advantages": [
-      "Mag-locked feet: walks zero-G like it's a corridor",
+      "The only soul aboard who moves FAST in zero-G — the upper deck is his",
       "Five engineering: damage control is his native language"
     ],
     "disadvantages": [
@@ -114,7 +114,20 @@
   },
   "locomotion": {
     "zero_g": "magnetic",
-    "gravity_speed_mult": 0.3
+    "gravity_speed_mult": 0.3,
+    "zero_g_speed_mult": 1.0
+  },
+  "barks": {
+    "rescue_start": [
+      "Hold position. That is a joke. I am aware you cannot do otherwise.",
+      "Do not attempt further swimming. The deck reports you are losing.",
+      "Remain calm. Buoyancy is not coming. I am."
+    ],
+    "rescue_done": [
+      "Delivered. Next time: the flight suit. It hangs in your quarters, where flight suits live.",
+      "Rescue log 41: cause of incident, optimism. Filed under 'recurring'.",
+      "You are welcome. I have appended this to your maintenance record, between the coffee spills."
+    ]
   },
   "repairs": true
 }

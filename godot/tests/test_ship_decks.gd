@@ -63,20 +63,75 @@ func test_ladder_connects_the_decks() -> void:
 
 
 func test_locomotion_rules_come_from_npc_data() -> void:
-	# Find the mag-locked crew member (locomotion.zero_g: magnetic).
-	var magnetic := ""
+	# Both droids are mag-locked, but their chassis differ: one walks
+	# zero-G at full clip and crawls under gravity, the other mag-walks
+	# slowly everywhere weightless. Organics drift.
+	var fast_zero_g := ""
+	var slow_zero_g := ""
 	var walker := ""
 	for npc_id in DataRegistry.ids("npcs"):
-		var locomotion: Dictionary = DataRegistry.get_entity("npcs", npc_id).get("locomotion", {})
+		var npc := DataRegistry.get_entity("npcs", npc_id)
+		var locomotion: Dictionary = npc.get("locomotion", {})
 		if str(locomotion.get("zero_g", "")) == "magnetic":
-			magnetic = npc_id
-		elif DataRegistry.get_entity("npcs", npc_id).get("aboard", false) and walker == "":
+			if float(locomotion.get("zero_g_speed_mult", 1.0)) >= 0.99:
+				fast_zero_g = npc_id
+			else:
+				slow_zero_g = npc_id
+		elif npc.get("aboard", false) and walker == "":
 			walker = npc_id
-	assert_ne(magnetic, "", "the demo content ships a mag-locked droid")
-	assert_true(_interior._is_magnetic(magnetic))
-	assert_false(_interior._is_magnetic(walker), "organics drift unless they buy boots")
-	assert_lt(_interior._gravity_speed_mult(magnetic), 0.7,
-		"the heavy chassis crawls under gravity")
+	assert_ne(fast_zero_g, "", "one chassis owns the upper deck")
+	assert_ne(slow_zero_g, "", "one chassis mag-walks it slowly")
+	assert_true(_interior._is_magnetic(fast_zero_g))
+	assert_true(_interior._is_magnetic(slow_zero_g))
+	assert_false(_interior._is_magnetic(walker), "organics drift unless equipped")
+	assert_lt(_interior._gravity_speed_mult(fast_zero_g), 0.7,
+		"the deck chassis crawls under gravity")
+	assert_lt(_interior._zero_g_speed_mult(slow_zero_g), 0.7,
+		"the nav chassis mag-walks zero-G at half speed")
+
+
+func test_flight_suit_flag_makes_the_player_magnetic() -> void:
+	var walker := ""
+	for npc_id in DataRegistry.ids("npcs"):
+		var npc := DataRegistry.get_entity("npcs", npc_id)
+		if npc.get("aboard", false) \
+				and str(npc.get("locomotion", {}).get("zero_g", "drift")) == "drift":
+			walker = npc_id
+			break
+	assert_ne(walker, "", "an organic crew member exists")
+	GameState.set_player_character(walker)
+	assert_false(_interior._is_magnetic(walker), "bare boots drift")
+	GameState.set_flag("flight_suit_on")
+	assert_true(_interior._is_magnetic(walker), "the flight suit's mag-soles bite")
+	GameState.clear_flag("flight_suit_on")
+	assert_false(_interior._is_magnetic(walker), "racking the suit hands zero-G back")
+
+
+func test_ladder_sprite_is_stamped_into_the_rooms() -> void:
+	var stamped := 0
+	for room: Dictionary in _interior._rooms:
+		for prop: Dictionary in room.props:
+			if prop.get("sprite", "") == "ladder":
+				stamped += 1
+	assert_eq(stamped, 2, "one visible ladder end per deck")
+
+
+func test_rescuer_candidate_is_the_fastest_magnetic_crew() -> void:
+	var rescuer := _interior._rescuer_candidate()
+	assert_false(rescuer.is_empty(), "someone aboard can walk out and get you")
+	var locomotion: Dictionary = DataRegistry.get_entity("npcs", rescuer.id).get("locomotion", {})
+	assert_eq(str(locomotion.get("zero_g", "")), "magnetic")
+	assert_almost_eq(float(locomotion.get("zero_g_speed_mult", 1.0)), 1.0, 0.01,
+		"the fast chassis gets the job")
+
+
+func test_flight_suit_locker_is_a_station_in_the_hull() -> void:
+	var found := false
+	for s: Dictionary in _interior._stations:
+		if s.id == "flight_suit":
+			found = true
+			assert_eq(str(s.deck), "lower", "the suit hangs below decks — that's the lesson")
+	assert_true(found, "the hull ships a flight suit locker")
 
 
 func test_repair_crew_exists_in_data() -> void:

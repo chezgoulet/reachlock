@@ -113,10 +113,12 @@
       "savvy": 1
     },
     "advantages": [
-      "Five grit: chassis-rated for rooms that go wrong, steady as a bolt in zero-G",
+      "Five grit: chassis-rated for rooms that go wrong",
+      "Mag-locked feet: never floats away on the zero-G deck",
       "Jump math without the drama"
     ],
     "disadvantages": [
+      "Nav chassis, not a deck chassis: mag-walks zero-G at half speed",
       "One savvy: quotes merchants their own margins out loud",
       "Empathy present, tact still installing"
     ],
@@ -135,5 +137,19 @@
         ]
       }
     }
+  },
+  "locomotion": {
+    "zero_g": "magnetic",
+    "zero_g_speed_mult": 0.45
+  },
+  "barks": {
+    "rescue_start": [
+      "I have you. Your vector was a circle.",
+      "Stop flailing. You are adding rotation, not progress."
+    ],
+    "rescue_done": [
+      "The suit exists. Consider it.",
+      "Filed: one retrieval. The paperwork will say 'cargo'."
+    ]
   }
 }

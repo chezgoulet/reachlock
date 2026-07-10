@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import random
+import zlib
 
 from PIL import Image, ImageDraw
 
@@ -246,7 +247,9 @@ TILE = 16
 
 def gen_tile(name, base, seams=True, rivets=False, grate=False, planks=False,
              noise=0.05, seed=7):
-    rng = random.Random(seed + hash(name) % 1000)
+    # zlib.crc32, not hash(): Python salts str hashes per process, which made
+    # every regeneration churn the tile noise. Stable input, stable pixels.
+    rng = random.Random(seed + zlib.crc32(name.encode()) % 1000)
     img = Image.new("RGBA", (TILE, TILE), base)
     d = ImageDraw.Draw(img)
     for y in range(TILE):
@@ -680,6 +683,25 @@ def gen_props():
     # white cross: the damage-control locker
     rect(d, 4, 10, 8, 12, PAL["pale"]); rect(d, 5, 8, 7, 14, PAL["pale"])
     px(d, 14, 13, PAL["glow_amber"])
+    done()
+
+    # The flight suit on its rack: mag-soled EVA gear, unmistakably wearable.
+    img, d, done = prop("flight_suit", 24, 34)
+    rect(d, 2, 0, 21, 1, PAL["hull_light"])            # rack bar
+    rect(d, 11, 1, 12, 4, PAL["hull_dark"])            # hanger hook
+    orect(d, 7, 4, 16, 11, (222, 140, 60, 255))        # helmet (high-vis orange)
+    rect(d, 9, 6, 14, 9, PAL["screen"])                # visor
+    px(d, 10, 7, PAL["glow_cyan"])
+    orect(d, 5, 11, 18, 24, (206, 122, 48, 255))       # torso
+    rect(d, 7, 13, 16, 15, shade((206, 122, 48, 255), 1.2))
+    rect(d, 10, 16, 13, 22, PAL["hull_dark"])          # front seam
+    orect(d, 2, 12, 5, 21, (206, 122, 48, 255))        # arms
+    orect(d, 18, 12, 21, 21, (206, 122, 48, 255))
+    orect(d, 6, 24, 10, 30, (188, 110, 44, 255))       # legs
+    orect(d, 13, 24, 17, 30, (188, 110, 44, 255))
+    rect(d, 5, 30, 11, 33, PAL["hull_dark"])           # the mag boots
+    rect(d, 12, 30, 18, 33, PAL["hull_dark"])
+    px(d, 8, 31, PAL["glow_amber"]); px(d, 15, 31, PAL["glow_amber"])
     done()
 
 

@@ -70,6 +70,11 @@ var _pos: Vector2 = INTERIOR_SIZE * 0.5
 var _drift_velocity := Vector2.ZERO
 var _frozen := false
 var _climbing := false
+var _stranded := false          # adrift in zero-G with nothing in reach
+var _stuck_time := 0.0
+var _being_towed := false       # a crewmate has you; they drive
+var _has_rescuer := false       # someone aboard is mag-locked
+var _prop_points: Dictionary = {}  # deck -> [Vector2] — furniture you can push off
 var _spawner: NpcSpawner
 var _spawned: Array = []
 
@@ -108,6 +113,7 @@ func configure(hull: Dictionary) -> void:
 	_apply_deck_gravity()
 	GameState.state_changed.connect(_on_state_changed)
 	_refresh_damage()
+	_has_rescuer = not _rescuer_candidate().is_empty()
 	_maybe_self_scene.call_deferred()
 
 
@@ -215,12 +221,15 @@ func _build_rooms() -> void:
 				"color": color,
 				"doors": doors,
 				"stations": stations,
-				"props": entry.get("props", []),
+				# Duplicated: the engine injects ladder sprites below and must
+				# never mutate the DataRegistry's own arrays.
+				"props": (entry.get("props", []) as Array).duplicate(),
 			}
 			_rooms.append(room)
 			(_decks[deck].rooms as Array).append(room)
 			for s: Dictionary in stations:
 				_stations.append(s)
+		_inject_ladder_props()
 	else:
 		# Fallback: grid layout from interior_rooms (legacy compat)
 		var room_ids: Array = _hull.get("interior_rooms", [])
@@ -252,6 +261,29 @@ func _build_rooms() -> void:
 			}
 			_rooms.append(room)
 			(_decks[deck].rooms as Array).append(room)
+
+
+## The ladder is a place you can SEE: stamp its sprite into whichever room
+## holds each end, and remember every prop position per deck — furniture
+## and handrails are what an adrift body pushes off.
+func _inject_ladder_props() -> void:
+	for ladder: Dictionary in _ladders:
+		var positions: Dictionary = ladder.positions
+		for deck_id: String in positions:
+			var pos: Vector2 = positions[deck_id]
+			for room: Dictionary in _rooms:
+				if room.deck == deck_id and (room.rect as Rect2).has_point(pos):
+					(room.props as Array).append({
+						"sprite": "ladder", "x": pos.x, "y": pos.y - 4})
+					break
+	_prop_points.clear()
+	for room: Dictionary in _rooms:
+		var deck: String = room.deck
+		if not _prop_points.has(deck):
+			_prop_points[deck] = []
+		for prop: Dictionary in room.props:
+			(_prop_points[deck] as Array).append(
+				Vector2(prop.get("x", 0.0), prop.get("y", 0.0)))
 
 
 func _find_room(room_id: String) -> Dictionary:
@@ -337,10 +369,18 @@ func _show_deck(deck: String) -> void:
 	_damage_layer.set_deck(deck)
 	_refresh_crew_visibility()
 	_rebuild_interactables()
-	if _deck_label != null:
-		_deck_label.text = str(_decks.get(deck, {}).get("name", ""))
+	_refresh_deck_label()
 	if _damage_layer != null:
 		_refresh_damage()
+
+
+func _refresh_deck_label() -> void:
+	if _deck_label == null:
+		return
+	var text := str(_decks.get(_deck, {}).get("name", ""))
+	if GameState.has_flag("flight_suit_on"):
+		text += "   ·   FLIGHT SUIT ON"
+	_deck_label.text = text
 
 
 func _active_world() -> InteriorWorld:
@@ -361,14 +401,16 @@ func _player_start() -> Dictionary:
 
 
 ## Mag-locked in zero-G? Data first (the character's own chassis), then the
-## mag-boots upgrade effect (any owned upgrade carrying `mag_boots: true`).
+## player's borrowed soles: the mag-boots upgrade, or the ship's flight suit
+## (equipped at its locker; the `flight_suit_on` flag rides player.flags).
 func _is_magnetic(npc_id: String) -> bool:
 	if npc_id != "":
 		var locomotion: Dictionary = DataRegistry.get_entity("npcs", npc_id).get("locomotion", {})
 		if str(locomotion.get("zero_g", "drift")) == "magnetic":
 			return true
 	if npc_id == GameState.player_character():
-		return GameState.upgrade_effect_bool("magnetic_soles")
+		return GameState.upgrade_effect_bool("magnetic_soles") \
+			or GameState.has_flag("flight_suit_on")
 	return false
 
 
@@ -377,6 +419,16 @@ func _gravity_speed_mult(npc_id: String) -> float:
 		return 1.0
 	var locomotion: Dictionary = DataRegistry.get_entity("npcs", npc_id).get("locomotion", {})
 	return float(locomotion.get("gravity_speed_mult", 1.0))
+
+
+## Mag-walk speed in zero-G. A chassis built for it (Boris) walks at full
+## clip; a nav chassis (Prudence) at half; borrowed soles at 0.9.
+func _zero_g_speed_mult(npc_id: String) -> float:
+	if npc_id != "":
+		var locomotion: Dictionary = DataRegistry.get_entity("npcs", npc_id).get("locomotion", {})
+		if str(locomotion.get("zero_g", "drift")) == "magnetic":
+			return float(locomotion.get("zero_g_speed_mult", 1.0))
+	return 0.9
 
 
 func _process(delta: float) -> void:
@@ -391,17 +443,24 @@ func _process(delta: float) -> void:
 
 
 func _move_player(delta: float) -> void:
+	if _being_towed:
+		_walker.set_float_mode(true)
+		_walker.set_motion(Vector2.ZERO, true)
+		return
 	var move := Input.get_vector("strafe_left", "strafe_right", "thrust_forward", "thrust_back")
 	var character := GameState.player_character()
 	var zero_g := deck_gravity_strength(_deck) < 0.1
 	var step := Vector2.ZERO
 
 	if zero_g and not _is_magnetic(character):
-		# Adrift: thrust adds momentum; releasing the keys stops nothing.
+		# Adrift: thrust is only real when something is in reach to push
+		# off — a wall, a handrail, a console, a crewmate. Out in the open,
+		# the keys are just swimming. Think before you climb.
+		var can_push := _can_push_off()
+		if move != Vector2.ZERO and can_push:
+			var gfx := GravitySystem.apply_movement(move, delta, _drift_velocity)
+			_drift_velocity = gfx.get("move", _drift_velocity)
 		# Grit steadies the body — a practiced spacer bleeds drift faster.
-		var gfx := GravitySystem.apply_movement(move, delta, _drift_velocity)
-		_drift_velocity = gfx.get("move", Vector2.ZERO) if move != Vector2.ZERO \
-			else _drift_velocity
 		var damping := 0.10 + 0.08 * float(GameState.player_stat("grit") - 2)
 		_drift_velocity *= maxf(0.0, 1.0 - clampf(damping, 0.05, 0.5) * delta)
 		if _drift_velocity.length() < 2.0:
@@ -409,14 +468,17 @@ func _move_player(delta: float) -> void:
 		step = _drift_velocity * delta
 		_walker.set_float_mode(true)
 		_walker.set_motion(move if move != Vector2.ZERO else _drift_velocity.normalized(),
-			step.length() > 0.2)
+			move != Vector2.ZERO or step.length() > 0.2)
+		_update_stranded(delta, can_push)
 	else:
 		var speed := WALK_SPEED
 		if not zero_g:
 			speed *= _gravity_speed_mult(character)
 		else:
-			speed *= 0.9  # mag-soles bite the deck a hair slower than a run
+			speed *= _zero_g_speed_mult(character)
 		_drift_velocity = Vector2.ZERO
+		_stranded = false
+		_stuck_time = 0.0
 		step = move * speed * delta
 		_walker.set_float_mode(false)
 		_walker.set_motion(move, step != Vector2.ZERO)
@@ -427,6 +489,42 @@ func _move_player(delta: float) -> void:
 			_drift_velocity = Vector2.ZERO  # you hit a wall; the wall wins
 		_pos = moved
 		_walker.position = _pos
+
+
+## Anything to push against? Walls within arm's reach, or any prop,
+## station, ladder, or crew member close enough to grab.
+func _can_push_off() -> bool:
+	var world := _active_world()
+	if world != null:
+		for i in 12:
+			var probe := _pos + Vector2.RIGHT.rotated(TAU * i / 12.0) * 36.0
+			if not world.is_walkable(probe):
+				return true
+	for point: Vector2 in _prop_points.get(_deck, []):
+		if _pos.distance_to(point) < 48.0:
+			return true
+	for member: Dictionary in _crew:
+		if member.deck == _deck and _pos.distance_to(member.pos) < 44.0:
+			return true
+	return false
+
+
+## Adrift with nothing in reach and no momentum: after a beat, whoever
+## aboard is mag-locked comes to get you. If nobody can, weak swimming
+## authority keeps the stranding survivable (a modded crew of all organics).
+func _update_stranded(delta: float, can_push: bool) -> void:
+	_stranded = _drift_velocity == Vector2.ZERO and not can_push
+	if not _stranded or _being_towed or _rescue_underway():
+		_stuck_time = 0.0
+		return
+	_stuck_time += delta
+	if not _has_rescuer:
+		# Nobody aboard can walk out here: flailing barely works, but works.
+		var move := Input.get_vector("strafe_left", "strafe_right", "thrust_forward", "thrust_back")
+		_drift_velocity += move * 14.0 * delta
+		return
+	if _stuck_time > 2.5:
+		_begin_rescue()
 
 
 func _try_move(from: Vector2, step: Vector2, world: InteriorWorld) -> Vector2:
@@ -481,6 +579,9 @@ func _use_ladder(ladder: Dictionary) -> void:
 	_apply_deck_gravity()
 	_show_deck(_deck)
 	_climbing = false
+	# The teaching beat: stepping off the ladder into zero-G without soles.
+	if deck_gravity_strength(_deck) < 0.1 and not _is_magnetic(GameState.player_character()):
+		_append_log("[i]Your boots leave the deck. Zero-G — you'll drift between handholds up here. The flight suit hangs below decks.[/i]")
 
 
 func _apply_deck_gravity() -> void:
@@ -541,6 +642,16 @@ func _update_hint() -> void:
 		return
 	if _frozen or _climbing:
 		_hint.text = ""
+		return
+	if _being_towed:
+		_hint.text = "hold on"
+		return
+	if _stranded:
+		if _rescue_underway():
+			var rescuer := _rescuer_candidate()
+			_hint.text = "adrift — %s is coming. Hold on." % rescuer.get("name", "someone")
+		else:
+			_hint.text = "adrift — nothing close enough to push off. (This is what the flight suit was for.)"
 		return
 	var target := _nearest()
 	var world := _active_world()
@@ -652,7 +763,9 @@ func _update_crew_member(member: Dictionary, delta: float) -> void:
 			var speed := CREW_SPEED
 			if not zero_g:
 				speed *= _gravity_speed_mult(member.id)
-			elif not _is_magnetic(member.id):
+			elif _is_magnetic(member.id):
+				speed *= _zero_g_speed_mult(member.id)
+			else:
 				speed *= 0.7  # hand-over-hand along the rails
 			var to_target: Vector2 = member.target - member.pos
 			if to_target.length() < 8.0:
@@ -681,6 +794,56 @@ func _update_crew_member(member: Dictionary, delta: float) -> void:
 					var pos_arr: Array = job.get("pos", [])
 					member.target = Vector2(pos_arr[0], pos_arr[1]) if pos_arr.size() == 2 \
 						else member.home
+		"rescue_to_ladder":
+			member.target = (_ladder_between(member.deck, _deck).get("positions", {}) as Dictionary) \
+				.get(member.deck, member.home)
+			if _crew_step(member, delta) < 8.0:
+				member.state = "rescue_climbing"
+				member.climb_left = LADDER_CLIMB_SECONDS
+		"rescue_climbing":
+			member.climb_left -= delta
+			if member.climb_left <= 0.0:
+				var ladder := _ladder_between(member.deck, _deck)
+				member.deck = _deck
+				if not ladder.is_empty():
+					member.pos = (ladder.positions[_deck] as Vector2) + Vector2(24, 30)
+				figure.position = member.pos
+				_refresh_crew_visibility()
+				member.state = "rescue_approach"
+		"rescue_approach":
+			if member.deck != _deck:
+				# You climbed away on your own: stand down.
+				_crew_go_home(member)
+				return
+			member.target = _pos
+			if _crew_step(member, delta) < 26.0:
+				member.state = "rescue_tow"
+				_being_towed = true
+				_drift_velocity = Vector2.ZERO
+				_append_log("[i]%s clamps a hand around your arm.[/i]" % member.name)
+		"rescue_tow":
+			var ladder := _ladder_between(_deck, _other_deck(_deck))
+			var drop: Vector2 = (ladder.get("positions", {}) as Dictionary) \
+				.get(_deck, member.home) if not ladder.is_empty() else member.home
+			member.target = drop + Vector2(-30, 0)
+			var dist := _crew_step(member, delta)
+			# You ride their grip, one pace behind.
+			_pos = member.pos + Vector2(26, 4)
+			_walker.position = _pos
+			if dist < 12.0:
+				_being_towed = false
+				_stuck_time = 0.0
+				_bark_from_data(member.id, "rescue_done",
+					"There. The ladder. Use it — or the suit, next time.")
+				var character := GameState.player_character()
+				if character != "":
+					CrewRoster.record_shared_event([character, member.id],
+						"zero_g_retrieval", 1)
+				# The rescuer remembers — and a mind that remembers, teases.
+				GameState.apply_soul_mutation(member.id, {"op": "add_memory",
+					"text": "Retrieved a crewmate adrift on the zero-G deck. No suit, no handhold, considerable flailing. Towed them to the ladder. Filed for future reference and future teasing.",
+					"importance": 0.55, "tags": ["rescue", "zero_g", "player"]})
+				_crew_go_home(member)
 		"repairing":
 			figure.set_motion(Vector2.ZERO, false)
 			var entry := _damage_by_id(member.damage_id)
@@ -713,6 +876,76 @@ func _crew_arrived(member: Dictionary) -> void:
 		"to_home":
 			member.state = "idle"
 			(member.node as CharacterSprite).set_motion(Vector2.ZERO, false)
+
+
+## --- the zero-G rescue ---------------------------------------------------------
+## You floated somewhere with nothing in reach. A mag-locked crewmate walks
+## out, clamps on, and tows you to the ladder — then files it under humor
+## (npc `barks`: rescue_start / rescue_done).
+
+
+func _rescue_underway() -> bool:
+	for member: Dictionary in _crew:
+		if str(member.state).begins_with("rescue"):
+			return true
+	return false
+
+
+## The best-built rescuer aboard: mag-locked, fastest in zero-G.
+func _rescuer_candidate() -> Dictionary:
+	var best := {}
+	var best_speed := 0.0
+	for member: Dictionary in _crew:
+		if not _is_magnetic(member.id):
+			continue
+		var speed := _zero_g_speed_mult(member.id)
+		if speed > best_speed:
+			best_speed = speed
+			best = member
+	return best
+
+
+func _begin_rescue() -> void:
+	var member := _rescuer_candidate()
+	if member.is_empty():
+		return
+	member.damage_id = -1
+	_bark_from_data(member.id, "rescue_start", "Hold on. I'm coming to you.")
+	if member.deck == _deck:
+		member.state = "rescue_approach"
+	else:
+		var ladder := _ladder_between(member.deck, _deck)
+		if ladder.is_empty():
+			return
+		member.state = "rescue_to_ladder"
+		member.target = ladder.positions[member.deck]
+
+
+func _bark_from_data(npc_id: String, key: String, fallback: String) -> void:
+	var lines: Array = DataRegistry.get_entity("npcs", npc_id).get("barks", {}).get(key, [])
+	var text: String = lines[randi() % lines.size()] if not lines.is_empty() else fallback
+	_dialogue_panel.bark(_crew_name(npc_id), text)
+
+
+## One frame of walking toward member.target at the member's own speed for
+## the deck's gravity regime. Returns the remaining distance.
+func _crew_step(member: Dictionary, delta: float) -> float:
+	var figure: CharacterSprite = member.node
+	var zero_g := deck_gravity_strength(member.deck) < 0.1
+	var speed := CREW_SPEED
+	if not zero_g:
+		speed *= _gravity_speed_mult(member.id)
+	elif _is_magnetic(member.id):
+		speed *= _zero_g_speed_mult(member.id)
+	else:
+		speed *= 0.7
+	var to_target: Vector2 = member.target - member.pos
+	if to_target.length() > 4.0:
+		member.pos = _try_move(member.pos, to_target.normalized() * speed * delta,
+			_worlds.get(member.deck))
+		figure.position = member.pos
+		figure.set_motion(to_target.normalized(), true)
+	return (member.target - member.pos).length()
 
 
 func _crew_go_home(member: Dictionary) -> void:
@@ -789,6 +1022,7 @@ func _other_deck(deck: String) -> String:
 func _on_state_changed() -> void:
 	_refresh_damage()
 	_apply_deck_gravity()
+	_refresh_deck_label()
 
 
 func _refresh_damage() -> void:
@@ -960,6 +1194,14 @@ func _use_station(target: Dictionary) -> void:
 		"cryopod":
 			AudioManager.play("force_field", 0.7)
 			_append_log("[i]The pods idle at standby chill. The next crossing, you'll be inside one.[/i]")
+		"flight_suit":
+			if GameState.has_flag("flight_suit_on"):
+				GameState.clear_flag("flight_suit_on")
+				_append_log("[i]You rack the flight suit.[/i]")
+			else:
+				GameState.set_flag("flight_suit_on")
+				AudioManager.play("force_field", 0.6)
+				_append_log("[i]You pull on the flight suit. The mag-soles hum against the deck — the zero-G level is walkable now.[/i]")
 		_:
 			_append_log("[i]You interact with the %s station.[/i]" % station_id.capitalize())
 	_auto_vacate(station_id, 2.0)
