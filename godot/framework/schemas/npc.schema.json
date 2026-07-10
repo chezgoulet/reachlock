@@ -16,6 +16,71 @@
     "name": {
       "type": "string"
     },
+    "wardrobe": {
+      "type": "object",
+      "description": "Wardrobe is worldbuilding: no aliens have been discovered — humans dressed by their biome and their work, droids as chassis with humanizing touches. The pixel-art generator consumes this block (scripts/gen_pixel_art.py); artists replacing PNGs may ignore it.",
+      "required": ["culture", "work"],
+      "additionalProperties": false,
+      "properties": {
+        "culture": {
+          "enum": ["reach", "station", "earth_remnant", "corp_charter", "droid"],
+          "description": "The dressing tradition: Reach miners in sun-faded canvas, tool belts, sealed boots; station dwellers in layered synthetics that never see weather; Earth-remnant in old-world fabric; Corp Charter crisp and uniform; droids as chassis (presentation is authored — honor it)."
+        },
+        "work": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "What the clothes are for (pilot, medic, engineer, dockmaster…) — costume detail keys off it."
+        },
+        "skin": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        },
+        "hair": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "style": { "enum": ["short", "crop", "buzz", "tail", "bun", "wrap", "dome", "none"] },
+            "color": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+            }
+          }
+        },
+        "palette": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "top": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+            },
+            "pants": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+            },
+            "accent": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+            }
+          }
+        },
+        "gear": {
+          "type": "array",
+          "description": "Visible kit worn on the body: jacket, coat, medcoat, toolbelt, scarf, datapad, heavy (bulked frame), chest_lamp…",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+        }
+      }
+    },
     "soul_version": {
       "type": "integer",
       "minimum": 0,

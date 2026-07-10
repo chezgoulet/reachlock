@@ -303,8 +303,8 @@ class _Portrait extends Control:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.08, 0.09, 0.13))
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.42, 0.52, 0.68, 0.7), false, 2.0)
 		if _tex != null:
-			var frame := Rect2(0, 0, 24, 32)
-			var dest_size := Vector2(24, 32) * 4.5
+			var frame := Rect2(Vector2.ZERO, CharacterSprite.FRAME)
+			var dest_size := CharacterSprite.FRAME * 3.0
 			draw_texture_rect_region(_tex,
 				Rect2((size - dest_size) * 0.5, dest_size), frame)
 		elif _id != "":

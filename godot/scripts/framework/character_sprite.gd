@@ -3,8 +3,9 @@ extends Node2D
 ##
 ## Renders a character from a 4x4 sprite sheet (assets convention:
 ## `assets/npcs/<id>_sheet.png`, or `assets/player/character_sheet.png` for
-## the player) — rows down/up/left/right, four walk frames per row, 24x32
-## per frame, drawn at 2x. `set_motion()` every frame is the whole API:
+## the player) — rows down/up/left/right, four walk frames per row, 32x48
+## per frame (the Terraria-school art pass), drawn at 2x. `set_motion()`
+## every frame is the whole API:
 ## direction picks the row, movement drives the frame clock, idle breathes
 ## on a slow two-frame cycle.
 ##
@@ -14,7 +15,7 @@ extends Node2D
 
 class_name CharacterSprite
 
-const FRAME := Vector2(24, 32)
+const FRAME := Vector2(32, 48)
 const DRAW_SCALE := 2.0
 const WALK_FPS := 7.0
 const IDLE_FPS := 1.6

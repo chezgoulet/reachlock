@@ -78,160 +78,297 @@ def save(img: Image.Image, *parts):
 
 # --- characters -----------------------------------------------------------------
 #
-# 24x32 frame. Facing rows: 0 down, 1 up, 2 left, 3 right. Frames: stand,
-# step-A, stand, step-B. Anatomy: head 10px, torso 9px, legs 8px, shoes 2px.
+# The Terraria-school pass: 32x48 frames, big readable head (~1/3 of height),
+# expressive hair/headgear as the identity silhouette, layered body, 3-step
+# shading ramps (base, top-left light, bottom-right dark), 1px outline, walk
+# cycles with visible leg/arm swing and hair bounce.
+#
+# Wardrobe comes from npc data (npc schema `wardrobe`): no aliens have been
+# discovered — humans dressed by their biome and their work, droids as
+# chassis with humanizing touches. Facing rows: 0 down, 1 up, 2 left,
+# 3 right. Frames: stand, step-A, stand, step-B.
 
-CHARACTERS = {
-    # Crew
-    "tib":       dict(skin=(214, 170, 132), hair=(70, 52, 40), style="short",
-                      top=(96, 74, 52), top2=(120, 96, 66), pants=(60, 62, 72),
-                      shoes=(42, 38, 40), extra="jacket"),      # worn flight jacket
-    "tove":      dict(skin=(198, 154, 118), hair=(38, 34, 36), style="tail",
-                      top=(88, 96, 88), top2=(108, 118, 106), pants=(70, 66, 58),
-                      shoes=(46, 42, 40), extra="scarf", accent=(150, 60, 48)),
-    "bardo":     dict(skin=(140, 100, 72), hair=(28, 26, 28), style="short",
-                      top=(122, 104, 142), top2=(142, 124, 162), pants=(66, 60, 74),
-                      shoes=(50, 44, 46), extra="datapad", accent=(110, 190, 255)),
-    "doc_keene": dict(skin=(120, 84, 60), hair=(20, 18, 20), style="crop",
-                      top=(210, 214, 218), top2=(188, 192, 198), pants=(76, 82, 92),
-                      shoes=(52, 50, 52), extra="medcoat", accent=(180, 60, 60)),
-    "risc":      dict(skin=(188, 142, 110), hair=(90, 84, 78), style="buzz",
-                      top=(170, 110, 60), top2=(190, 130, 74), pants=(80, 74, 64),
-                      shoes=(48, 44, 42), extra="toolbelt", accent=(220, 180, 90)),
-    # Droids — metal skin, visor optics, no hair
-    "prudence":  dict(skin=(168, 148, 178), hair=None, style="dome",
-                      top=(120, 78, 130), top2=(140, 96, 150), pants=(88, 74, 96),
-                      shoes=(60, 54, 66), extra="droid", accent=(96, 226, 219)),
-    "boris":     dict(skin=(140, 152, 160), hair=None, style="dome",
-                      top=(96, 116, 128), top2=(112, 134, 146), pants=(74, 86, 94),
-                      shoes=(54, 60, 64), extra="droid_heavy", accent=(255, 186, 84)),
-    # Station & Earth
-    "doss":      dict(skin=(206, 160, 124), hair=(150, 140, 130), style="bun",
-                      top=(146, 116, 62), top2=(168, 136, 76), pants=(62, 58, 54),
-                      shoes=(44, 42, 40), extra="coat", accent=(210, 170, 90)),
-    "grissom":   dict(skin=(196, 148, 112), hair=(84, 62, 46), style="buzz",
-                      top=(112, 104, 88), top2=(128, 120, 102), pants=(70, 64, 56),
-                      shoes=(46, 42, 40), extra="heavy", accent=(160, 140, 90)),
-    "noor":      dict(skin=(132, 94, 66), hair=(24, 22, 26), style="wrap",
-                      top=(70, 110, 100), top2=(86, 130, 118), pants=(64, 68, 62),
-                      shoes=(48, 46, 44), extra="scarf", accent=(210, 190, 140)),
-    "vex":       dict(skin=(190, 150, 120), hair=(120, 40, 40), style="tail",
-                      top=(90, 50, 50), top2=(110, 64, 62), pants=(56, 50, 54),
-                      shoes=(40, 36, 40), extra="jacket", accent=(220, 90, 70)),
-    # The player: a neutral spacer in Reach colors
-    "player":    dict(skin=(202, 158, 122), hair=(60, 48, 44), style="short",
-                      top=(74, 104, 128), top2=(90, 124, 150), pants=(64, 66, 76),
-                      shoes=(46, 44, 46), extra="jacket", accent=(110, 190, 255)),
+import json
+
+NPCS_DIR = os.path.join(REPO, "godot", "mods", "reachlock", "npcs")
+
+FW, FH = 32, 48  # frame size — CharacterSprite.FRAME mirrors this
+
+# The player: a neutral Reach spacer. Engine-side art, so the wardrobe
+# lives here rather than in a soul file.
+PLAYER_WARDROBE = dict(
+    culture="reach", work="spacer",
+    skin=[202, 158, 122], hair=dict(style="short", color=[62, 48, 42]),
+    palette=dict(top=[74, 112, 142], pants=[62, 66, 80], accent=[110, 190, 255]),
+    gear=["jacket"],
+)
+
+CULTURE_DEFAULTS = {
+    # culture -> (top, pants, accent) when a wardrobe omits its palette
+    "reach": ([140, 130, 100], [88, 78, 60], [220, 180, 90]),
+    "station": ([110, 118, 148], [66, 70, 88], [110, 190, 255]),
+    "earth_remnant": ([110, 92, 64], [70, 66, 58], [190, 160, 110]),
+    "corp_charter": ([84, 96, 140], [52, 54, 66], [228, 176, 96]),
+    "droid": ([120, 130, 142], [84, 92, 102], [96, 226, 219]),
 }
 
-FW, FH = 24, 32  # frame size
+
+def load_wardrobes() -> dict:
+    """Every npc soul file that ships a wardrobe block gets a sheet."""
+    specs = {}
+    for name in sorted(os.listdir(NPCS_DIR)):
+        if not name.endswith(".json"):
+            continue
+        with open(os.path.join(NPCS_DIR, name), encoding="utf-8") as fh:
+            data = json.load(fh)
+        if "wardrobe" in data:
+            specs[data["id"]] = data["wardrobe"]
+    return specs
 
 
-def draw_character_frame(spec: dict, facing: str, frame: int) -> Image.Image:
+def _rgb(value, fallback):
+    if isinstance(value, (list, tuple)) and len(value) >= 3:
+        return (int(value[0]), int(value[1]), int(value[2]), 255)
+    return tuple(fallback) + (255,)
+
+
+def ramp(c):
+    """The 3-step ramp: (light, base, dark) — light from top-left."""
+    return shade(c, 1.22), c, shade(c, 0.72)
+
+
+def draw_character_frame(wardrobe: dict, facing: str, frame: int) -> Image.Image:
     img = Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    heavy = spec.get("extra") in ("droid_heavy", "heavy")
-    half = 6 if heavy else 5              # torso half-width
+    culture = wardrobe.get("culture", "station")
+    gear = wardrobe.get("gear", [])
+    droid = culture == "droid"
+    heavy = "heavy" in gear
+    defaults = CULTURE_DEFAULTS.get(culture, CULTURE_DEFAULTS["station"])
+    palette = wardrobe.get("palette", {})
+    skin = _rgb(wardrobe.get("skin"), [200, 156, 120])
+    top = _rgb(palette.get("top"), defaults[0])
+    pants = _rgb(palette.get("pants"), defaults[1])
+    accent = _rgb(palette.get("accent"), defaults[2])
+    hair_spec = wardrobe.get("hair", {}) or {}
+    hair = _rgb(hair_spec.get("color"), [50, 42, 38])
+    style = hair_spec.get("style", "dome" if droid else "short")
+    top_l, _, top_d = ramp(top)
+    pants_l, _, pants_d = ramp(pants)
+    skin_l, _, skin_d = ramp(skin)
+
     cx = FW // 2
-    skin, top, top2 = spec["skin"], spec["top"], spec["top2"]
-    pants, shoes = spec["pants"], spec["shoes"]
-    accent = spec.get("accent", (200, 200, 200))
-    droid = spec.get("extra", "").startswith("droid")
+    side = facing in ("left", "right")
+    mirror = facing == "right"
 
-    # Walk cycle: legs alternate; body bobs 1px on step frames.
-    step = {0: (0, 0), 1: (-2, 1), 2: (0, 0), 3: (2, 1)}[frame]
-    leg_off, bob = step
+    # Walk cycle: stride alternates; body lifts 1px on step frames; hair
+    # bounce reads as the hair lagging that lift by one pixel.
+    stride = {0: 0, 1: -3, 2: 0, 3: 3}[frame]
+    bob = -1 if frame in (1, 3) else 0
+    hair_bob = bob + (1 if frame in (1, 3) else 0)  # the bounce
 
-    # -- legs & shoes (y 22..29 shoes 28..29), two 3px legs
-    ly = 22 + bob
-    lgap = 1
-    lw = 3
-    left_x0 = cx - lgap - lw
-    right_x0 = cx + lgap
-    lshift = leg_off if facing in ("left", "right") else 0
-    l_dy = max(0, leg_off) if facing in ("down", "up") else 0
-    r_dy = max(0, -leg_off) if facing in ("down", "up") else 0
-    orect(d, left_x0 - lshift, ly + l_dy, left_x0 + lw - 1 - lshift, 27 + bob, pants)
-    orect(d, right_x0 + lshift, ly + r_dy, right_x0 + lw - 1 + lshift, 27 + bob, pants)
-    rect(d, left_x0 - lshift, 28 + bob, left_x0 + lw - 1 - lshift, 29 + bob, shoes)
-    rect(d, right_x0 + lshift, 28 + bob, right_x0 + lw - 1 + lshift, 29 + bob, shoes)
+    # Side views are genuinely narrower — a person in profile, not a front
+    # view with one eye.
+    half = (8 if heavy else 6) if not side else (6 if heavy else 4)
+    hw = (8 if heavy else 7) if not side else (6 if heavy else 5)
+    coat = ("coat" in gear) or ("medcoat" in gear) or culture == "earth_remnant"
 
-    # -- torso (y 13..22); coat variants extend to 25
-    ty0, ty1 = 13 + bob, 22 + bob
-    coat = spec.get("extra") in ("coat", "medcoat", "jacket")
-    if spec.get("extra") in ("coat", "medcoat"):
-        ty1 = 25 + bob
-    orect(d, cx - half, ty0, cx + half - 1, ty1, top)
-    # two-tone: light from top-left
-    rect(d, cx - half + 1, ty0 + 1, cx - 1, ty1 - 1, top2)
-    if coat:  # lapel line
-        d.line((cx, ty0 + 1, cx, ty1 - 1), fill=shade(top, 0.7))
-    if spec.get("extra") == "toolbelt":
-        rect(d, cx - half, ty1 - 1, cx + half - 1, ty1, accent)
-    if spec.get("extra") == "scarf":
-        rect(d, cx - half + 1, ty0, cx + half - 2, ty0 + 1, accent)
-    if droid:  # chest indicator
-        px(d, cx - 1, ty0 + 3, accent)
-
-    # -- arms: 2px columns beside torso, swing with walk
-    a_dy = leg_off if facing in ("left", "right") else 0
-    arm_c = top if not droid else spec["skin"]
-    orect(d, cx - half - 2, ty0 + 1 - a_dy // 2, cx - half - 1, ty0 + 7 - a_dy // 2, arm_c)
-    orect(d, cx + half, ty0 + 1 + a_dy // 2, cx + half + 1, ty0 + 7 + a_dy // 2, arm_c)
-    if spec.get("extra") == "datapad" and facing != "up":
-        rect(d, cx + half, ty0 + 5, cx + half + 2, ty0 + 8, PAL["screen"])
-        px(d, cx + half + 1, ty0 + 6, accent)
-
-    # -- head (y 3..12): skin block + hair/dome
-    hw = 5 if not heavy else 6
-    orect(d, cx - hw, 4 + bob, cx + hw - 1, 12 + bob, skin)
-    if droid:
-        # visor strip instead of eyes; dome crown
-        rect(d, cx - hw + 1, 4 + bob, cx + hw - 2, 5 + bob, shade(skin, 0.8))
-        if facing != "up":
-            vx0 = cx - hw + 1 if facing != "right" else cx - 1
-            vx1 = cx + hw - 2 if facing != "left" else cx
-            rect(d, vx0, 8 + bob, vx1, 9 + bob, accent)
+    # ---- legs & boots (y 34..46)
+    ly0, ly1 = 34 + bob, 42 + bob
+    boot = shade(pants, 0.55)
+    boot_h = 4 if culture == "reach" else 3   # sealed boots run taller
+    if side:
+        # Profile stride: the legs scissor around cx, the whole ±3px of
+        # it. Far leg first, in shadow; near leg over it, lit; the near
+        # boot grows a toe pointing the way we walk.
+        far = -stride
+        near = stride
+        orect(d, cx - 2 + far, ly0 + 1, cx + 2 + far, ly1, pants_d)
+        rect(d, cx - 2 + far, ly1 - boot_h + 1, cx + 2 + far, ly1 + 3, shade(boot, 0.75))
+        orect(d, cx - 2 + near, ly0, cx + 2 + near, ly1, pants)
+        rect(d, cx - 1 + near, ly0 + 1, cx + near, ly1 - boot_h, pants_l)
+        rect(d, cx - 2 + near, ly1 - boot_h + 1, cx + 2 + near, ly1 + 3, boot)
+        toe_dx = 3 if mirror else -3
+        rect(d, cx + near + (1 if mirror else -2) + toe_dx, ly1 + 1,
+             cx + near + (2 if mirror else -1) + toe_dx, ly1 + 3, boot)
     else:
-        hair = spec["hair"]
-        style = spec.get("style", "short")
-        rect(d, cx - hw, 3 + bob, cx + hw - 1, 6 + bob, hair)
-        if facing == "up":
-            rect(d, cx - hw, 3 + bob, cx + hw - 1, 10 + bob, hair)
-        if style == "tail" and facing != "down":
-            rect(d, cx + (hw - 1 if facing != "left" else -hw), 7 + bob,
-                 cx + (hw if facing != "left" else -hw + 1), 13 + bob, hair)
-        if style == "bun":
-            rect(d, cx - 2, 2 + bob, cx + 1, 3 + bob, hair)
+        lw = 5
+        left_x0 = cx - 1 - lw
+        right_x0 = cx + 1
+        l_dy = 2 if stride > 0 else 0   # the stepping leg lifts, visibly
+        r_dy = 2 if stride < 0 else 0
+        orect(d, left_x0, ly0 + l_dy, left_x0 + lw - 1, ly1, pants)
+        orect(d, right_x0, ly0 + r_dy, right_x0 + lw - 1, ly1, pants)
+        rect(d, left_x0 + 1, ly0 + l_dy + 1, left_x0 + 2, ly1 - boot_h, pants_l)
+        rect(d, right_x0 + lw - 2, ly0 + r_dy + 1, right_x0 + lw - 1, ly1 - boot_h, pants_d)
+        rect(d, left_x0, ly1 - boot_h + 1 + l_dy, left_x0 + lw - 1, ly1 + 3, boot)
+        rect(d, right_x0, ly1 - boot_h + 1 + r_dy, right_x0 + lw - 1, ly1 + 3, boot)
+    if culture == "reach" and not droid and not side:
+        # sealed-boot clasp catches the light
+        px(d, cx - 3, ly1 + 1, shade(accent, 0.9))
+        px(d, cx + 2, ly1 + 1, shade(accent, 0.9))
+
+    # ---- torso (y 18..34); coats run longer and a pixel wider at the hip
+    ty0, ty1 = 18 + bob, 34 + bob
+    tx0, tx1 = cx - half, cx + half - 1
+    if coat:
+        ty1 = 38 + bob
+        orect(d, tx0 - 1, ty0 + 8, tx1 + 1, ty1, shade(top, 0.9))  # skirt of the coat
+    orect(d, tx0, ty0, tx1, min(ty1, 34 + bob) if coat else ty1, top)
+    rect(d, tx0 + 1, ty0 + 1, cx - 1, (ty1 if not coat else 33 + bob) - 1, top_l)
+    rect(d, tx1 - 1, ty0 + 2, tx1 - 1, (ty1 if not coat else 33 + bob) - 1, top_d)
+
+    # culture layering on the torso; front-of-garment details (zips,
+    # lapels, crosses) only exist where a front is visible
+    front = facing == "down"
+    if culture == "station" and not droid:
+        # layered synthetics: a vest panel over an under-layer
+        rect(d, tx0 + 1, ty0 + 7, tx1 - 1, ty0 + 8, shade(top, 0.62))
+        rect(d, tx0 + 2, ty0 + 9, tx1 - 2, ty1 - 2, shade(top, 0.86))
+        if front:
+            d.line((cx, ty0 + 1, cx, ty0 + 6), fill=shade(accent, 0.85))  # collar zip
+    if culture == "corp_charter":
+        # crisp: shoulder bars and a belt line, nothing out of place
+        if not side:
+            rect(d, tx0 + 1, ty0, tx0 + 3, ty0 + 1, accent)
+            rect(d, tx1 - 3, ty0, tx1 - 1, ty0 + 1, accent)
+        rect(d, tx0 + 1, ty1 - 3, tx1 - 1, ty1 - 3, shade(top, 0.5))
+    if culture == "earth_remnant":
+        # old-world fabric: a visible hem and a patch pocket
+        d.line((tx0, ty0 + 12, tx1, ty0 + 12), fill=shade(top, 0.7))
+        if front:
+            rect(d, tx0 + 2, ty0 + 9, tx0 + 4, ty0 + 11, shade(top, 0.8))
+    if "jacket" in gear and front:
+        d.line((cx, ty0 + 1, cx, ty1 - 1), fill=shade(top, 0.6))       # open front
+        rect(d, cx - 2, ty0, cx + 1, ty0 + 1, top_d)                    # collar
+    if "medcoat" in gear:
+        rect(d, tx0, ty0, tx0 + 1, ty1, (232, 236, 240, 255))
+        rect(d, tx1 - 1, ty0, tx1, ty1, (232, 236, 240, 255))
+        if front:
+            rect(d, cx + 2, ty0 + 4, cx + 4, ty0 + 6, (196, 60, 56, 255))  # the cross
+    if "toolbelt" in gear:
+        rect(d, tx0, ty1 - 2, tx1, ty1 - 1, shade(accent, 0.8))
+        rect(d, cx + 2, ty1 - 3, cx + 4, ty1, shade(accent, 0.55))      # pouch
+    if "scarf" in gear:
+        rect(d, tx0 + 1, ty0 - 1, tx1 - 1, ty0 + 1, accent)
+        if front:
+            rect(d, cx - 1, ty0 + 1, cx, ty0 + 5, shade(accent, 0.85))  # tail of it
+    if droid:
+        # chassis seams and the humanizing touch of a heartbeat lamp
+        d.line((tx0 + 2, ty0 + 5, tx1 - 2, ty0 + 5), fill=shade(top, 0.6))
+        if front:
+            d.line((cx, ty0 + 6, cx, ty1 - 2), fill=shade(top, 0.6))
+            if "chest_lamp" in gear:
+                rect(d, cx - 1, ty0 + 2, cx, ty0 + 3, accent)
+
+    # ---- arms: 3px columns, swinging opposite the legs
+    swing = -stride if side else (1 if frame == 1 else -1 if frame == 3 else 0)
+    ay0 = ty0 + 1
+    arm_len = 11
+    sleeve = top if not droid else skin
+    sleeve_d = shade(sleeve, 0.72)
+    if side:
+        # One visible arm sweeps the full stride in front of the torso;
+        # no outline (it would read as a slab), just a darker sleeve with
+        # a lit edge and a hand.
+        ax = cx + swing
+        arm_sleeve = shade(top, 0.8) if not droid else shade(skin, 0.84)
+        rect(d, ax - 1, ay0 + 1, ax + 1, ay0 + arm_len, arm_sleeve)
+        rect(d, ax - 1, ay0 + 2, ax - 1, ay0 + arm_len - 3, shade(top, 0.95) if not droid else skin)
+        rect(d, ax - 1, ay0 + arm_len - 2, ax + 1, ay0 + arm_len,
+             skin if not droid else skin_d)
+    else:
+        orect(d, tx0 - 3, ay0 + swing, tx0 - 1, ay0 + arm_len + swing, sleeve)
+        orect(d, tx1 + 1, ay0 - swing, tx1 + 3, ay0 + arm_len - swing, sleeve)
+        rect(d, tx0 - 3, ay0 + arm_len + swing - 1, tx0 - 1, ay0 + arm_len + swing, skin if not droid else skin_d)
+        rect(d, tx1 + 1, ay0 + arm_len - swing - 1, tx1 + 3, ay0 + arm_len - swing, skin if not droid else skin_d)
+        rect(d, tx0 - 2, ay0 + swing + 1, tx0 - 2, ay0 + 4 + swing, shade(sleeve, 1.18))
+        rect(d, tx1 + 2, ay0 - swing + 1, tx1 + 2, ay0 + 4 - swing, sleeve_d)
+    if "datapad" in gear and facing != "up":
+        hx = (cx + 1) if side else tx1 + 1
+        rect(d, hx, ay0 + arm_len - 4, hx + 3, ay0 + arm_len, PAL["screen"])
+        px(d, hx + 1, ay0 + arm_len - 3, accent)
+
+    # ---- head (y 2..17): the big readable third
+    hy0, hy1 = 2 + bob, 17 + bob
+    orect(d, cx - hw, hy0 + 2, cx + hw - 1, hy1, skin)
+    rect(d, cx - hw + 1, hy0 + 3, cx - 1, hy1 - 2, skin_l)
+    rect(d, cx + hw - 2, hy0 + 4, cx + hw - 2, hy1 - 2, skin_d)
+
+    if droid:
+        # dome crown, optic band, jaw seam — a face, machined
+        rect(d, cx - hw + 1, hy0, cx + hw - 2, hy0 + 3, shade(skin, 0.82))
+        d.line((cx - hw + 1, hy0 + 3, cx + hw - 2, hy0 + 3), fill=shade(skin, 0.6))
+        if facing != "up":
+            vx0 = cx - hw + 2 if facing != "right" else cx - 1
+            vx1 = cx + hw - 3 if facing != "left" else cx
+            rect(d, vx0, hy0 + 7, vx1, hy0 + 9, accent)
+            px(d, (vx0 + vx1) // 2, hy0 + 8, shade(accent, 1.3))
+        d.line((cx - 3, hy1 - 2, cx + 2, hy1 - 2), fill=shade(skin, 0.6))
+    else:
+        hb = hair_bob
         if style == "wrap":
-            rect(d, cx - hw, 3 + bob, cx + hw - 1, 8 + bob, accent)
-        if style == "crop":
-            rect(d, cx - hw, 3 + bob, cx + hw - 1, 5 + bob, hair)
-        # eyes
+            # headscarf: covers the crown, knotted at the side
+            rect(d, cx - hw, hy0 + hb, cx + hw - 1, hy0 + 7 + hb, accent)
+            rect(d, cx - hw + 1, hy0 + 1 + hb, cx - 1, hy0 + 5 + hb, shade(accent, 1.18))
+            rect(d, cx + hw - 2, hy0 + 6 + hb, cx + hw, hy0 + 9 + hb, shade(accent, 0.8))
+        elif style == "buzz":
+            rect(d, cx - hw, hy0 + 1 + hb, cx + hw - 1, hy0 + 4 + hb, shade(hair, 0.9))
+        elif style == "crop":
+            rect(d, cx - hw, hy0 + hb, cx + hw - 1, hy0 + 5 + hb, hair)
+            rect(d, cx - hw + 1, hy0 + 1 + hb, cx - 1, hy0 + 3 + hb, shade(hair, 1.25))
+        else:
+            # short / tail / bun share the cap-and-fringe crown
+            rect(d, cx - hw, hy0 + hb, cx + hw - 1, hy0 + 6 + hb, hair)
+            rect(d, cx - hw + 1, hy0 + 1 + hb, cx - 1, hy0 + 4 + hb, shade(hair, 1.25))
+            for fx in range(cx - hw + 1, cx + hw - 1, 3):  # fringe teeth
+                px(d, fx, hy0 + 7 + hb, hair)
+        if facing == "up" and style != "wrap":
+            rect(d, cx - hw, hy0 + hb, cx + hw - 1, hy0 + 11 + hb, hair)
+            rect(d, cx - hw + 1, hy0 + 1 + hb, cx - 1, hy0 + 8 + hb, shade(hair, 1.25))
+        if style == "tail":
+            # The ponytail hangs off the BACK of the head (walking left,
+            # the back is +x) and bounces a pixel behind the step.
+            if facing == "left":
+                tx = cx + hw - 1
+            elif facing == "right":
+                tx = cx - hw - 2
+            else:
+                tx = cx + hw - 1  # down/up: it peeks past one shoulder
+            rect(d, tx, hy0 + 6 + hb, tx + 2, hy0 + 16 + hb, hair)
+            rect(d, tx, hy0 + 15 + hb, tx + 2, hy0 + 16 + hb, shade(hair, 0.75))
+        if style == "bun":
+            rect(d, cx - 2, hy0 - 2 + hb, cx + 2, hy0 + 1 + hb, hair)
+            px(d, cx - 1, hy0 - 1 + hb, shade(hair, 1.25))
+        # eyes: 2px, whites make the face read at distance
+        ey = hy0 + 9
         if facing == "down":
-            px(d, cx - 3, 9 + bob, PAL["outline"])
-            px(d, cx + 2, 9 + bob, PAL["outline"])
+            for ex in (cx - 4, cx + 2):
+                rect(d, ex, ey, ex + 1, ey + 1, (244, 244, 246, 255))
+                px(d, ex + 1, ey, PAL["outline"])
+            px(d, cx - 1, ey + 3, skin_d)  # nose
+            d.line((cx - 2, ey + 5, cx + 1, ey + 5), fill=shade(skin, 0.6))  # mouth
         elif facing == "left":
-            px(d, cx - 3, 9 + bob, PAL["outline"])
+            rect(d, cx - 5, ey, cx - 4, ey + 1, (244, 244, 246, 255))
+            px(d, cx - 5, ey, PAL["outline"])
         elif facing == "right":
-            px(d, cx + 2, 9 + bob, PAL["outline"])
-    # medcoat: white coat over shoulders reads from all sides
-    if spec.get("extra") == "medcoat":
-        rect(d, cx - half, ty0, cx - half + 1, ty1, (222, 226, 230, 255))
-        rect(d, cx + half - 2, ty0, cx + half - 1, ty1, (222, 226, 230, 255))
+            rect(d, cx + 3, ey, cx + 4, ey + 1, (244, 244, 246, 255))
+            px(d, cx + 4, ey, PAL["outline"])
 
     return img
 
 
 def gen_characters():
     rows = ["down", "up", "left", "right"]
-    for cid, spec in CHARACTERS.items():
+    wardrobes = load_wardrobes()
+    wardrobes["player"] = PLAYER_WARDROBE
+    for cid, wardrobe in sorted(wardrobes.items()):
         sheet = Image.new("RGBA", (FW * 4, FH * 4), (0, 0, 0, 0))
         for r, facing in enumerate(rows):
             for f in range(4):
-                frame = draw_character_frame(spec, facing, f)
+                frame = draw_character_frame(wardrobe, facing, f)
                 sheet.paste(frame, (f * FW, r * FH))
-        single = draw_character_frame(spec, "down", 0)
+        single = draw_character_frame(wardrobe, "down", 0)
         if cid == "player":
             save(sheet, "player", "character_sheet.png")
             save(single, "player", "character.png")
