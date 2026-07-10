@@ -213,6 +213,13 @@
           "minimum": 0,
           "maximum": 1,
           "description": "Yield rate scalar; 1 = a full unit per mining cycle."
+        },
+        "rock_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Prospector names for the minable rocks, in placement order. Nine days on a claim, you name things. Also sets the rock count (minimum 6). Omitted = 'Rock N'."
         }
       }
     },
@@ -277,6 +284,11 @@
           "color": {
             "type": "string",
             "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "bribe": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "This patrol runs its own economy: when it catches the player, a hail window opens — pay this many credits and it stands down. 0/omitted = incorruptible. The fee works once per run; word travels."
           }
         }
       }

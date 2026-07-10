@@ -5,12 +5,19 @@
   "system": "sol",
   "description": "A gravel airstrip on the north shore of the St. Lawrence, three hundred kilometers downriver from the crater where Québec City used to be. The Duskway's receiving end: floodlights that only come on when a ship is already committed, and people who unload fast and don't ask names. Above it, the blockade — a Compact cordon that calls itself a reconstruction protection zone.",
   "faction_control": "earth_remnant",
-  "services": ["dock"],
+  "services": [
+    "dock"
+  ],
   "population": 340,
-  "npcs_present": ["noor"],
+  "npcs_present": [
+    "noor"
+  ],
   "economy": {
     "produces": [],
-    "consumes": ["rations", "medical_cache"]
+    "consumes": [
+      "rations",
+      "medical_cache"
+    ]
   },
   "docking": {
     "clearance_required": false,
@@ -23,9 +30,34 @@
     "terrain": "boreal"
   },
   "points_of_interest": [
-    {"id": "landing_strip", "name": "Landing Strip", "kind": "landing_pad", "position": [0.30, 0.55]},
-    {"id": "receiving_shed", "name": "Receiving Shed", "kind": "settlement", "position": [0.62, 0.42], "npc": "noor"},
-    {"id": "river_overlook", "name": "River Overlook", "kind": "ruins", "position": [0.82, 0.70]}
+    {
+      "id": "landing_strip",
+      "name": "Landing Strip",
+      "kind": "landing_pad",
+      "position": [
+        0.3,
+        0.55
+      ]
+    },
+    {
+      "id": "receiving_shed",
+      "name": "Receiving Shed",
+      "kind": "settlement",
+      "position": [
+        0.62,
+        0.42
+      ],
+      "npc": "noor"
+    },
+    {
+      "id": "river_overlook",
+      "name": "River Overlook",
+      "kind": "ruins",
+      "position": [
+        0.82,
+        0.7
+      ]
+    }
   ],
   "patrols": [
     {
@@ -35,7 +67,8 @@
       "faction": "compact",
       "count": 4,
       "engagement": "engage",
-      "color": "#8c3030"
+      "color": "#8c3030",
+      "bribe": 450
     }
   ],
   "extra": {

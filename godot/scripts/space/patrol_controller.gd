@@ -112,6 +112,40 @@ func set_hostile(hostile: bool) -> void:
 	_hostile = hostile
 
 
+## The inspection fee cleared: the patrol breaks contact and goes back to
+## its route, blind to the player for a grace period so it doesn't re-latch
+## the moment it turns around.
+func stand_down(grace_seconds := 20.0) -> void:
+	_blind_until = Time.get_ticks_msec() / 1000.0 + grace_seconds
+	_set_state(State.PATROL)
+
+
+## A decoy beacon: chase THIS spot instead, deaf to the player until the
+## charge burns out.
+func distract(pos: Vector3, seconds: float) -> void:
+	_distract_pos = pos
+	_distract_until = Time.get_ticks_msec() / 1000.0 + seconds
+	_blind_until = _distract_until
+	_set_state(State.PATROL)
+
+
+func is_engaged() -> bool:
+	return _state in [State.ENGAGE, State.PURSUE, State.ALERT]
+
+
+func _now() -> float:
+	return Time.get_ticks_msec() / 1000.0
+
+
+func _is_blind() -> bool:
+	return _now() < _blind_until
+
+
+var _blind_until := -1.0
+var _distract_until := -1.0
+var _distract_pos := Vector3.ZERO
+
+
 func faction_id() -> String:
 	return _faction_id
 
@@ -178,6 +212,10 @@ func _physics_process(delta: float) -> void:
 
 
 func _patrol_tick(delta: float) -> void:
+	# A live decoy owns the patrol's attention outright.
+	if _now() < _distract_until:
+		_move_toward(_distract_pos, delta, 0.8)
+		return
 	# Fly toward current waypoint
 	if _patrol_route.is_empty():
 		# No route — orbit current position
@@ -187,11 +225,12 @@ func _patrol_tick(delta: float) -> void:
 		if _ship.global_position.distance_to(_target) < 10.0:
 			_route_index = (_route_index + 1) % _patrol_route.size()
 			_target = _patrol_route[_route_index]
-	
+
 	_move_toward(_target, delta, 0.5)
 
-	# Detect player
-	if _player != null and _ship.global_position.distance_to(_player.global_position) < DETECT_RANGE * _detection_mult:
+	# Detect player (a paid-off or decoyed patrol is blind for a while)
+	if _player != null and not _is_blind() \
+			and _ship.global_position.distance_to(_player.global_position) < DETECT_RANGE * _detection_mult:
 		contact_detected.emit(_soul_id, _faction_id, 2 if _hostile else 1)
 		_set_state(State.ENGAGE if _hostile else State.INVESTIGATE)
 

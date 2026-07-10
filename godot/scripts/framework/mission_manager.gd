@@ -234,6 +234,10 @@ func _fails_on(key: String) -> bool:
 
 
 func _finish_stage(stage: Dictionary) -> void:
+	# Beating a timed stage is a bragging right: remember the margin so the
+	# epilogue can put a number on how close it was.
+	if _stage_timers.has(_active.get("id", "")):
+		GameState.mission["beat_timer_by"] = _stage_timers[_active.id]
 	_apply_stage_rewards(stage)
 	advance()
 
@@ -247,6 +251,14 @@ func _apply_rewards_dict(rewards: Dictionary) -> void:
 	var credits: int = rewards.get("credits", 0)
 	if credits > 0:
 		GameState.adjust_credits(credits)
+
+	# Yard work in the deal (mission schema `hull_min`): the hull is patched
+	# UP TO this fraction — Doss's promised repairs, honestly delivered, and
+	# still worth less than real plate at the counter.
+	var hull_min := float(rewards.get("hull_min", 0.0))
+	if hull_min > 0.0 and float(GameState.player.ship.hull_integrity) < hull_min:
+		GameState.player.ship.hull_integrity = hull_min
+		GameState.state_changed.emit()
 
 	var cargo: Dictionary = rewards.get("cargo", {})
 	for good_id: String in cargo:
@@ -270,7 +282,7 @@ func _complete_mission() -> void:
 	_apply_rewards_dict(_active.get("rewards_final", {}))
 	mission_completed.emit(mid)
 	if epilogue.get("success", "") != "":
-		epilogue_ready.emit(mid, epilogue.success, true)
+		epilogue_ready.emit(mid, str(epilogue.success) + _run_by_the_numbers(), true)
 	_active = {}
 	_stage_timers.erase(mid)
 	_persist()
@@ -287,10 +299,42 @@ func _fail_mission(reason: String) -> void:
 	mission_failed.emit(mid, reason)
 	var text: String = epilogue.get("failure_reasons", {}).get(reason, epilogue.get("failure", ""))
 	if text != "":
+		if reason == "ship_destroyed":
+			text += _crew_names_postscript()
 		epilogue_ready.emit(mid, text, false)
 	_active = {}
 	_stage_timers.erase(mid)
 	_persist()
+
+
+## Success should feel earned, not just relieving: put numbers under it.
+## Only speaks when a timed stage was actually beaten this mission.
+func _run_by_the_numbers() -> String:
+	var margin := float(GameState.mission.get("beat_timer_by", -1.0))
+	if margin < 0.0:
+		return ""
+	var hull := int(GameState.player.ship.hull_integrity * 100.0)
+	var wounds := GameState.ship_damage().size()
+	var line := "\n\n[i]The run, by the numbers: %d seconds left on the window · hull at %d%%" % [
+		int(margin), hull]
+	if wounds > 0:
+		line += " · %d damage report(s) still open below decks" % wounds
+	else:
+		line += " · not a fire aboard"
+	line += " · %d credits to your name.[/i]" % int(GameState.player.credits)
+	return line
+
+
+## Total loss gets the names. Not a count — the names, read like the wall
+## reads them. Every one comes from data.
+func _crew_names_postscript() -> String:
+	var names: Array = []
+	for crew_id: String in CrewRoster.aboard():
+		names.append(str(DataRegistry.get_entity("npcs", crew_id).get("name", crew_id)))
+	if names.is_empty():
+		return ""
+	return "\n\n[i]The second wall, the small one:[/i]\n[b]%s.[/b]\n[i]And the ship.[/i]" \
+		% ".  ".join(PackedStringArray(names))
 
 
 ## --- persistence ---------------------------------------------------------------

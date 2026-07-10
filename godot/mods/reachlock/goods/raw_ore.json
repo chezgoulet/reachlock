@@ -10,5 +10,9 @@
     "corp_charter": "legal",
     "reach": "legal"
   },
-  "tags": ["mineral", "bulk"]
+  "tags": [
+    "mineral",
+    "bulk"
+  ],
+  "loose_cargo": true
 }

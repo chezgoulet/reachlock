@@ -52,6 +52,10 @@
                 "personhood",
                 "sorrow_station"
               ]
+            },
+            {
+              "op": "set_player_flag",
+              "flag": "stood_for_prudence"
             }
           ]
         },
@@ -74,12 +78,22 @@
                 "personhood",
                 "sorrow_station"
               ]
+            },
+            {
+              "op": "set_player_flag",
+              "flag": "trusted_prudence"
             }
           ]
         },
         {
           "text": "Buy Grissom a drink and talk him down.",
-          "goto": "drink_fails"
+          "goto": "drink_fails",
+          "mutations": [
+            {
+              "op": "set_player_flag",
+              "flag": "bought_grissom_drink"
+            }
+          ]
         }
       ]
     },

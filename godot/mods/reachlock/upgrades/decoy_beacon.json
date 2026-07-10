@@ -1,11 +1,11 @@
 {
   "id": "decoy_beacon",
   "name": "Decoy Drive Beacon",
-  "description": "A disposable beacon that mimics a mid-bulk drive signature. Pickets that are busy squinting at it squint at you a little less.",
+  "description": "A one-shot transponder liar. Press G in flight to drop it: every picket in earshot chases the ghost for eighteen seconds while you are somewhere else. Rebuilds its charge at dock.",
   "cost": 700,
   "category": "gadget",
   "effects": {
-    "detection_mult": 0.85
+    "decoy_charges": 1
   },
-  "flavor": "It won't fool anyone forever. It fools everyone briefly, and briefly is a flight plan."
+  "flavor": "It screams your name in the wrong place. Buy the minutes; bring your own forgiveness."
 }

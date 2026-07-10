@@ -78,15 +78,15 @@
     "greenlit": {
       "kind": "authored",
       "text": "Good. I'll send word through the usual channels. Don't expect fast — Duskway runners don't hurry for anyone. But they deliver.",
-      "goto": "end"
+      "goto": "signoff"
     },
     "deferred": {
       "kind": "generated",
       "prompt_hint": "The captain wants to wait before activating your Duskway contact. You respect that — a patient captain is better than a trigger-happy one. Respond as Tove: acknowledging the call, but letting them know the offer stands and you've already started thinking about angles.",
-      "goto": "end",
+      "goto": "signoff",
       "buffer_line": "Fair. Give me a breath to say that right."
     },
-    "end": {
+    "signoff": {
       "kind": "authored",
       "text": "Anyway. Keep your sidearm close and your credits closer. I'll be in the hold.",
       "choices": [

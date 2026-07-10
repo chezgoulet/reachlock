@@ -26,6 +26,10 @@ var _lines: Array[Dictionary] = []  # {text, hold_seconds}
 var _line_index := -1
 var _clock := 0.0
 var _phase := "boarding"  # boarding -> tunnel -> wake -> done
+var _awake := false         # the player is synthetic: no pod, open eyes
+var _player_flies := false  # the player IS the jump pilot
+var _tunnel_lines: Array = []   # the pilot's thoughts, spaced through the fold
+var _tunnel_line_clock := 0.0
 
 var _dim: ColorRect
 var _title: Label
@@ -75,13 +79,21 @@ func _ready() -> void:
 
 ## Kick off the sequence for a `self_jump` route. Builds the pod-up script
 ## from whoever is actually aboard: organics sleep, the jump pilot flies.
+## If the player IS synthetic, they stay awake — and see the crossing the
+## crew never does.
 func begin(route: Dictionary) -> void:
 	_route = route
 	_title.text = ("JUMP — %s" % route.get("name", "self-generated")).to_upper()
 
+	var character := GameState.player_character()
+	var player_synthetic: bool = character != "" \
+		and DataRegistry.get_entity("npcs", character).get("synthetic", false)
+
 	var organics: Array[String] = []
 	var pilot_id := ""
 	for crew_id: String in CrewRoster.aboard():
+		if crew_id == character:
+			continue  # the player's own body is the "you" pod (or the seat)
 		var npc := DataRegistry.get_entity("npcs", crew_id)
 		if not npc.get("synthetic", false):
 			organics.append(crew_id)
@@ -89,16 +101,23 @@ func begin(route: Dictionary) -> void:
 			pilot_id = crew_id
 		elif pilot_id == "":
 			pilot_id = crew_id  # first synthetic stands in if nobody is rated
-	if pilot_id != "":
+	_player_flies = player_synthetic and character != "" \
+		and DataRegistry.get_entity("npcs", character).get("jump_pilot", false)
+	_awake = player_synthetic
+	if _player_flies:
+		pilot_id = character
+		_pilot_name = "You"
+	elif pilot_id != "":
 		_pilot_name = DataRegistry.get_entity("npcs", pilot_id).get("name", pilot_id)
 
-	# The pods, visible: one per organic plus the player's, sealing as the
-	# script reads them off.
+	# The pods, visible: one per sleeping organic (plus the player's, if the
+	# player sleeps), sealing as the script reads them off.
 	_pod_row.reset()
 	for crew_id: String in organics:
 		var npc := DataRegistry.get_entity("npcs", crew_id)
 		_pod_row.add_pod(npc.get("name", crew_id), StandIn.character_color(npc, crew_id))
-	_pod_row.add_pod("You", Color(0.74, 0.82, 0.92))
+	if not _awake:
+		_pod_row.add_pod("You", Color(0.74, 0.82, 0.92))
 
 	_lines = []
 	_lines.append({"text": "[i]Jump drive spinning up. Conscious transit is not survivable. Cryo protocol begins.[/i]", "hold_seconds": 1.6})
@@ -107,10 +126,31 @@ func begin(route: Dictionary) -> void:
 		var display_name: String = DataRegistry.get_entity("npcs", crew_id).get("name", crew_id)
 		_lines.append({"text": "Pod %d sealed — %s. Vitals green." % [pod, display_name], "hold_seconds": POD_LINE_SECONDS})
 		pod += 1
-	_lines.append({"text": "Pod %d sealed — you. The lid hisses shut. Cold crawls up your arms." % pod, "hold_seconds": 1.6})
 	var pilot_line: String = _route.get("pilot_line", "")
-	if pilot_line != "":
-		_lines.append({"text": "[b]%s:[/b] %s" % [_pilot_name, pilot_line], "hold_seconds": 2.2})
+	if _awake:
+		# You are the thing that stays awake.
+		if _player_flies:
+			_lines.append({"text": "[i]The deck goes quiet. %d slow pulses on the board, all green, all yours to carry. You run the pre-fold checks alone, the way you always do.[/i]" % organics.size(), "hold_seconds": 3.2})
+		else:
+			_lines.append({"text": "[i]You and %s are the only things awake on the boat. She crosses to the pilot's seat without ceremony and sits down next to the thing that unmakes minds. You hold the rail, and watch.[/i]" % _pilot_name, "hold_seconds": 3.6})
+			if pilot_line != "":
+				_lines.append({"text": "[b]%s:[/b] %s" % [_pilot_name, pilot_line], "hold_seconds": 2.2})
+	else:
+		_lines.append({"text": "Pod %d sealed — you. The lid hisses shut. Cold crawls up your arms." % pod, "hold_seconds": 1.6})
+		if pilot_line != "":
+			_lines.append({"text": "[b]%s:[/b] %s" % [_pilot_name, pilot_line], "hold_seconds": 2.2})
+		# The held beat: the last thing you see through the frost.
+		_lines.append({"text": "[i]The last thing you see through the frost is %s, alone at the board — the only mind left awake on the boat, settling in beside the thing that unmakes minds. A small, precise wave. Then the cold takes the window.[/i]" % _pilot_name, "hold_seconds": 4.5})
+
+	# The awake crossing runs long, and the pilot's own thoughts surface
+	# through it (npc `barks.transit_alone` — authored, hers).
+	_tunnel_lines = []
+	if _awake and pilot_id != "":
+		var barks: Array = DataRegistry.get_entity("npcs", pilot_id) \
+			.get("barks", {}).get("transit_alone", [])
+		for bark: String in barks:
+			_tunnel_lines.append("[i]%s[/i]" % bark if _player_flies
+				else "[b]%s:[/b] %s" % [_pilot_name, bark])
 
 	# Let any live minds aboard know the crossing is happening — a soul can
 	# form its own memory of another transit spent awake and alone.
@@ -145,6 +185,13 @@ func _process(delta: float) -> void:
 			if _clock <= 0.0:
 				_advance_line()
 		"tunnel":
+			# The awake crossing thinks out loud, one long-held line at a time.
+			if not _tunnel_lines.is_empty():
+				_tunnel_line_clock -= delta
+				if _tunnel_line_clock <= 0.0:
+					_log.append_text(str(_tunnel_lines.pop_front()) + "\n")
+					AudioManager.play("ui_click", 0.5)
+					_tunnel_line_clock = 4.2
 			if _clock <= 0.0:
 				_start_wake()
 		"wake":
@@ -171,7 +218,12 @@ func _advance_line() -> void:
 
 func _start_tunnel() -> void:
 	_phase = "tunnel"
-	_clock = float(_route.get("transit_seconds", DEFAULT_TRANSIT_SECONDS))
+	var seconds := float(_route.get("transit_seconds", DEFAULT_TRANSIT_SECONDS))
+	if _awake:
+		# Awake, the crossing is not a cut — it is a duration. Sit with it.
+		seconds = maxf(seconds * 1.8, seconds + _tunnel_lines.size() * 4.5)
+	_clock = seconds
+	_tunnel_line_clock = 2.5
 	_log.append_text("\n[i]The world folds.[/i]\n")
 	_tunnel.visible = true
 	_pod_row.visible = false
@@ -186,9 +238,12 @@ func _start_wake() -> void:
 	_pod_row.visible = true
 	_pod_row.open_all()
 	_shake = 1.0
-	_log.append_text("\n[i]Revival cycle. Light. The smell of recycled antiseptic — the sensory signature of arrival.[/i]\n")
+	if _awake:
+		_log.append_text("\n[i]The window remembers how to be a window. You initiate the revival cycle; the pods hiss open and the crew comes up gasping, the way organics do — as if surfacing. None of them will ask what it looked like. Both facts are load-bearing.[/i]\n")
+	else:
+		_log.append_text("\n[i]Revival cycle. Light. The smell of recycled antiseptic — the sensory signature of arrival.[/i]\n")
 	var arrival: String = _route.get("arrival_line", "")
-	if arrival != "":
+	if arrival != "" and not _player_flies:
 		_log.append_text("[b]%s:[/b] %s\n" % [_pilot_name, arrival])
 	AudioManager.play("power_up", 0.9)
 

@@ -9,12 +9,24 @@
   "population": 0,
   "npcs_present": [],
   "economy": {
-    "produces": ["raw_ore"],
+    "produces": [
+      "raw_ore"
+    ],
     "consumes": []
   },
   "mining": {
     "good": "raw_ore",
-    "richness": 1.0
+    "richness": 1.0,
+    "rock_names": [
+      "Tove's Maybe",
+      "The Molar",
+      "Ledger's Hope",
+      "Old Grudge",
+      "The Widow",
+      "Ninth Day",
+      "Bardo's Sermon",
+      "Payday"
+    ]
   },
   "self_jump": {
     "to": "sorrow_station",

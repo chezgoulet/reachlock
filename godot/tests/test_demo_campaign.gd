@@ -144,9 +144,16 @@ func test_cryo_recalibration_buys_cordon_time() -> void:
 
 
 func test_upgrade_effects_aggregate() -> void:
+	# The expectation comes from the data, not a copy of it: content tuning
+	# (the decoy became an active gadget) must not break this contract test.
 	GameState.add_upgrade("transponder_ghost")
 	GameState.add_upgrade("decoy_beacon")
-	assert_almost_eq(GameState.upgrade_effect_product("detection_mult"), 0.55 * 0.85, 0.001)
+	var expected := 1.0
+	for upgrade_id in ["transponder_ghost", "decoy_beacon"]:
+		expected *= float(DataRegistry.get_entity("upgrades", upgrade_id)
+			.get("effects", {}).get("detection_mult", 1.0))
+	assert_almost_eq(GameState.upgrade_effect_product("detection_mult"), expected, 0.001)
+	assert_lt(expected, 1.0, "at least one stealth purchase genuinely shrinks the rings")
 	assert_true(GameState.has_flag("upgrade_transponder_ghost"),
 		"purchases surface as player flags for dialogue guards")
 

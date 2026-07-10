@@ -7,17 +7,25 @@
       "id": "see_doss",
       "type": "dialogue",
       "objective": "Find Doss at the dock office — she has a way out of this hole",
-      "completion": {"type": "dialogue_end", "target_id": "doss"},
+      "completion": {
+        "type": "dialogue_end",
+        "target_id": "doss"
+      },
       "rewards": {
         "credits": 2400,
-        "cargo": {"medical_cache": 1}
+        "cargo": {
+          "medical_cache": 1
+        },
+        "hull_min": 0.7
       }
     },
     {
       "id": "outfit_and_lift",
       "type": "undock",
       "objective": "Spend Doss's credit at the Outfitting counter — armor, guns, drive work, or gadgets. There is no right loadout. Undock when you're committed.",
-      "completion": {"type": "undock"}
+      "completion": {
+        "type": "undock"
+      }
     }
   ],
   "epilogue": {

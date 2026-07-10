@@ -344,6 +344,9 @@ func apply_soul_mutation(soul_id: String, mutation: Dictionary) -> void:
 			set_flag(mutation.get("flag", ""))
 		"clear_player_flag":
 			clear_flag(mutation.get("flag", ""))
+		"adjust_faction":
+			adjust_faction_standing(mutation.get("faction", ""),
+				mutation.get("axis", "trust"), int(mutation.get("amount", 0)))
 		_:
 			push_warning("game_state: unknown mutation op %s" % mutation.get("op", "?"))
 	state_changed.emit()

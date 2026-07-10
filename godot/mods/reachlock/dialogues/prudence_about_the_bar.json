@@ -1,0 +1,52 @@
+{
+  "id": "prudence_about_the_bar",
+  "npc": "prudence",
+  "condition": "not player.docked and \"stood_for_prudence\" in player.flags and not (\"prudence_closed_the_loop\" in player.flags)",
+  "entry": "opens",
+  "nodes": {
+    "opens": {
+      "kind": "authored",
+      "text": "Captain. Before the board gets loud again — the Interval. You stepped in before I had to decide what I was going to do about him. I have run the decision I was spared eleven times since. I do not like every branch. What you spent there was not nothing, and I log my debts.",
+      "choices": [
+        {
+          "text": "You'd have handled it.",
+          "goto": "handled",
+          "mutations": [
+            {
+              "op": "set_player_flag",
+              "flag": "prudence_closed_the_loop"
+            }
+          ]
+        },
+        {
+          "text": "It wasn't a debt. It's what crew is.",
+          "goto": "crew",
+          "mutations": [
+            {
+              "op": "adjust_relationship",
+              "target": "player",
+              "axis": "trust",
+              "amount": 6
+            },
+            {
+              "op": "set_player_flag",
+              "flag": "prudence_closed_the_loop"
+            }
+          ]
+        }
+      ]
+    },
+    "handled": {
+      "kind": "authored",
+      "text": "Yes. That is what I keep filing. And then I file the eleventh branch, the one where handling it costs a man his hand and this crew its berth rights, and I amend: you did not step in because I could not handle it. You stepped in so I would not have to. The distinction is load-bearing.",
+      "goto": "end"
+    },
+    "crew": {
+      "kind": "generated",
+      "prompt_hint": "You are Prudence, a blunt, fiercely loyal droid jump pilot. The captain just told you that stepping in front of a bigot's swing for you wasn't a debt — 'it's what crew is.' Answer in your voice: precise, unsentimental — but let the weight of being counted as crew, as a person, land for exactly one line before you return to practical matters.",
+      "text": "Then I have been keeping the wrong ledger. Noted, and — noted. Now clear the board, captain; the cordon will not care what either of us is.",
+      "buffer_line": "Processing that. The honest answer is taking a moment to compile.",
+      "goto": "end"
+    }
+  }
+}

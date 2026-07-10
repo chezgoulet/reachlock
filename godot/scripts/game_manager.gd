@@ -42,6 +42,8 @@ func _register_actions() -> void:
 		"interact":         KEY_R,
 		"jump":             KEY_J,
 		"board":            KEY_B,
+		"hail":             KEY_H,
+		"gadget":           KEY_G,
 		"debug_mode_space": KEY_F1,
 		"debug_mode_board": KEY_F2,
 		"debug_mode_landed":KEY_F3,

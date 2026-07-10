@@ -1,0 +1,62 @@
+{
+  "id": "grissom_after_stood",
+  "npc": "grissom",
+  "condition": "player.docked and player.location == \"sorrow_station\" and \"stood_for_prudence\" in player.flags and not (\"grissom_said_his_piece\" in player.flags)",
+  "entry": "opens",
+  "nodes": {
+    "opens": {
+      "kind": "authored",
+      "text": "You. Yeah, I know you — you're the one put your body between me and the machine. Whole deck knows. Dockers buy each other's drinks over stories like that, and nobody's bought mine since.",
+      "choices": [
+        {
+          "text": "She's crew. I'd do it again.",
+          "goto": "crew_answer",
+          "mutations": [
+            {
+              "op": "adjust_relationship",
+              "target": "player",
+              "axis": "trust",
+              "amount": -8
+            },
+            {
+              "op": "adjust_faction",
+              "faction": "reach",
+              "axis": "notoriety",
+              "amount": 2
+            },
+            {
+              "op": "set_player_flag",
+              "flag": "grissom_said_his_piece"
+            }
+          ]
+        },
+        {
+          "text": "How's the wrist?",
+          "goto": "wrist",
+          "mutations": [
+            {
+              "op": "adjust_relationship",
+              "target": "player",
+              "axis": "trust",
+              "amount": 4
+            },
+            {
+              "op": "set_player_flag",
+              "flag": "grissom_said_his_piece"
+            }
+          ]
+        }
+      ]
+    },
+    "crew_answer": {
+      "kind": "authored",
+      "text": "Crew. Right. The loader that took my contract was somebody's crew too, I figure. — He turns back to his glass. — Fly safe, captain. Word gets around about people who pick machines over men. Both kinds of word.",
+      "goto": "end"
+    },
+    "wrist": {
+      "kind": "authored",
+      "text": "He looks at his wrist like it belongs to someone else. — Sprained. She could've snapped it and the room knows she chose not to. You asking is more than the arbiter did. — It isn't forgiveness. It's the shape forgiveness would take, later, if it came.",
+      "goto": "end"
+    }
+  }
+}

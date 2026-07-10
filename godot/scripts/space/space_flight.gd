@@ -61,6 +61,20 @@ var _calibrated_fire_mult := 1.0   # gunnery calibration payout (consumed)
 var _damage_cooldown_mult := 1.0   # interior damage: guns cycle slower
 var _damage_vulnerability := 1.0   # interior damage: hits land harder
 
+# The hail window: a patrol that catches you clean would rather have your
+# money than your debris. One fee per run; word travels.
+var _hail_patrol: PatrolController = null
+var _hail_window := 0.0
+var _hail_cost := 0
+var _bribe_used := false
+
+# The decoy beacon (upgrade effect decoy_charges): one loud lie per flight.
+var _decoy_charges := 0
+var _decoy_node: Node3D = null
+
+# Cargo spilled from a breached hold: drifting canisters, briefly recoverable.
+var _spilled: Array = []  # {node, good, vel:Vector3}
+
 var _alert_rect: ColorRect = null  # red-alert vignette
 var _alert_time := 0.0
 var _callout_box: VBoxContainer = null
@@ -183,6 +197,9 @@ func _physics_process(delta: float) -> void:
 	_update_combat(delta)
 	_update_pirate(delta)
 	_update_patrols(delta)
+	_update_spilled(delta)
+	_update_hail(delta)
+	_update_gadget()
 	_update_docking()
 	_update_self_jump()
 	_update_combat_theater(delta)
@@ -297,6 +314,8 @@ func _load_flight_stats() -> void:
 	_calibrated_fire_mult = 1.15 if GameState.consume_weapons_calibration() else 1.0
 	_damage_cooldown_mult = float(penalty.cooldown_mult)
 	_damage_vulnerability = float(penalty.vulnerability)
+	# The decoy beacon rebuilds its charge at dock: one lie per flight.
+	_decoy_charges = int(GameState.upgrade_effect_sum("decoy_charges"))
 	if not GameState.ship_damage().is_empty():
 		# Deferred: stats load before the combat overlay (and its callout
 		# box) exists; the line lands once the HUD is up.
@@ -316,16 +335,31 @@ func _advance_tick(delta: float) -> void:
 ## --- the slice: mining -------------------------------------------------------
 
 
+## Rocks are individuals: each carries a prospector's name (location
+## `mining.rock_names` — nine days on a claim, you name things), a seam
+## tier that changes how fast it cuts and how it glows, and a finite hold
+## of ore. A spent rock cracks apart in front of you; the next one is
+## somewhere out there, and the rich ones are worth the flying.
+const SEAM_TIERS := [
+	{"label": "lean seam", "speed": 0.65, "glow": 0.25, "ore": 2},
+	{"label": "fair seam", "speed": 1.0, "glow": 0.55, "ore": 3},
+	{"label": "rich seam", "speed": 1.6, "glow": 1.1, "ore": 4},
+]
+
+
 func _build_minable_rocks() -> void:
 	if not _location.has("mining"):
 		return
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.5, 0.42, 0.3)
-	material.roughness = 0.9
-	material.emission_enabled = true
-	material.emission = Color(0.35, 0.2, 0.05)
-	material.emission_energy_multiplier = 0.5
-	for i in 6:
+	var names: Array = _location.get("mining", {}).get("rock_names", [])
+	var count := maxi(6, names.size())
+	for i in count:
+		var tier: Dictionary = SEAM_TIERS[_rng.randi() % SEAM_TIERS.size()]
+		var material := StandardMaterial3D.new()
+		material.albedo_color = Color(0.5, 0.42, 0.3)
+		material.roughness = 0.9
+		material.emission_enabled = true
+		material.emission = Color(0.5, 0.3, 0.08)
+		material.emission_energy_multiplier = float(tier.glow)
 		var rock := MeshInstance3D.new()
 		var mesh := SphereMesh.new()
 		mesh.radius = 3.0
@@ -334,11 +368,19 @@ func _build_minable_rocks() -> void:
 		mesh.rings = 6
 		rock.mesh = mesh
 		rock.material_override = material
-		var angle := TAU * i / 6.0
-		rock.position = Vector3(cos(angle) * 70.0, _rng.randf_range(-12.0, 12.0), sin(angle) * 70.0 - 40.0)
-		rock.scale = Vector3.ONE * _rng.randf_range(0.8, 1.6)
+		var angle := TAU * i / float(count)
+		rock.position = Vector3(cos(angle) * _rng.randf_range(60.0, 95.0),
+			_rng.randf_range(-14.0, 14.0), sin(angle) * _rng.randf_range(60.0, 95.0) - 40.0)
+		# Lumpy, not spherical: every rock has a shape of its own.
+		rock.scale = Vector3(_rng.randf_range(0.7, 1.7), _rng.randf_range(0.6, 1.3),
+			_rng.randf_range(0.7, 1.7))
 		add_child(rock)
-		_minable.append({"node": rock, "ore": 3})
+		_minable.append({
+			"node": rock,
+			"ore": int(tier.ore),
+			"name": str(names[i]) if i < names.size() else "Rock %d" % (i + 1),
+			"tier": tier,
+		})
 
 
 func _nearest_minable() -> Dictionary:
@@ -359,7 +401,8 @@ func _update_mining(delta: float) -> void:
 	if target.is_empty() or not Input.is_action_pressed("mine"):
 		_mine_progress = 0.0
 		return
-	var richness: float = _location.get("mining", {}).get("richness", 1.0)
+	var richness: float = _location.get("mining", {}).get("richness", 1.0) \
+		* float(target.get("tier", {}).get("speed", 1.0))
 	_mine_progress += delta * richness
 	if _mine_progress >= MINE_SECONDS_PER_UNIT:
 		_mine_progress = 0.0
@@ -367,11 +410,87 @@ func _update_mining(delta: float) -> void:
 		_ore_mined_total += 1
 		GameState.add_cargo(_location.mining.good, 1)
 		MissionManager.report_event("ore_mined", {"good": _location.mining.good})
-		(target.node as Node3D).scale *= 0.82
+		# The chunk breaks off and comes home: the cut you can feel.
+		_fly_chunk_to_ship(target.node as Node3D)
+		AudioManager.play("ui_click", 0.9)
+		(target.node as Node3D).scale *= 0.84
+		if _ore_mined_total == 1:
+			_callout_by_role(["smuggler", "pilot"],
+				"Clean cut. Ride the seam till the rock's bones show — every unit in the hold is credit at Sorrow.", "first_cut")
 		if target.ore <= 0:
-			(target.node as MeshInstance3D).visible = false
-		if _ore_mined_total == 1 and not _ambush_done:
+			_crack_rock(target)
+		# The skiff has been watching the claim: it jumps you the moment the
+		# hold is worth taking — right when the drift was getting generous.
+		if _ore_mined_total == 3 and not _ambush_done:
 			_spawn_pirate()
+
+
+## A fist-sized chunk splits off the rock face and arcs into the hold.
+func _fly_chunk_to_ship(rock: Node3D) -> void:
+	var chunk := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.6
+	mesh.height = 1.2
+	mesh.radial_segments = 6
+	mesh.rings = 4
+	chunk.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.62, 0.5, 0.32)
+	mat.emission_enabled = true
+	mat.emission = Color(0.7, 0.45, 0.15)
+	chunk.material_override = mat
+	add_child(chunk)
+	chunk.global_position = rock.global_position \
+		+ (_ship.global_position - rock.global_position).normalized() * rock.scale.length() * 2.0
+	var tween := create_tween()
+	tween.tween_property(chunk, "global_position",
+		_ship.global_position, 0.55).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.parallel().tween_property(chunk, "scale", Vector3.ONE * 0.4, 0.55)
+	tween.tween_callback(chunk.queue_free)
+
+
+## A spent rock doesn't vanish — it cracks into drifting shards, and the
+## scope already knows where the next seam is.
+func _crack_rock(entry: Dictionary) -> void:
+	var rock: Node3D = entry.node
+	for i in 3:
+		var shard := MeshInstance3D.new()
+		var mesh := SphereMesh.new()
+		mesh.radius = 0.9
+		mesh.height = 1.6
+		mesh.radial_segments = 6
+		mesh.rings = 4
+		shard.mesh = mesh
+		shard.material_override = (rock as MeshInstance3D).material_override
+		add_child(shard)
+		shard.global_position = rock.global_position
+		var drift := Vector3(_rng.randf_range(-1, 1), _rng.randf_range(-0.4, 0.4),
+			_rng.randf_range(-1, 1)).normalized() * _rng.randf_range(4.0, 9.0)
+		var tween := create_tween()
+		tween.tween_property(shard, "global_position",
+			rock.global_position + drift, 2.2)
+		tween.parallel().tween_property(shard, "transparency", 1.0, 2.2)
+		tween.tween_callback(shard.queue_free)
+	(rock as MeshInstance3D).visible = false
+	AudioManager.play("explosion", 0.4)
+	var richest := _richest_remaining()
+	if not richest.is_empty():
+		_hint_label.text = "%s is bones. Scope reads %s two burns out — %s." % [
+			entry.get("name", "That rock"), richest.get("name", "another rock"),
+			str(richest.get("tier", {}).get("label", "seam"))]
+
+
+func _richest_remaining() -> Dictionary:
+	var best := {}
+	var best_speed := 0.0
+	for entry: Dictionary in _minable:
+		if int(entry.ore) <= 0:
+			continue
+		var speed := float(entry.get("tier", {}).get("speed", 1.0))
+		if speed > best_speed:
+			best_speed = speed
+			best = entry
+	return best
 
 
 ## --- the slice: the ambush ----------------------------------------------------
@@ -506,6 +625,7 @@ func _player_hit() -> void:
 	GameState.set_flag("took_the_hit")
 	_camera.fov += 3.0  # a flinch the lerp settles
 	_maybe_interior_damage()
+	_maybe_spill_cargo()
 	var hull := int(GameState.player.ship.hull_integrity * 100.0)
 	if hull <= 25:
 		_callout_by_role(["medic"],
@@ -524,6 +644,12 @@ func _player_hit() -> void:
 ## visible and fixable when you next walk the deck. A good medic runs triage
 ## that keeps the casualty list short.
 func _maybe_interior_damage() -> void:
+	# A ship only has so many rooms: past six open reports, new hits deepen
+	# the existing fires instead of papering the deck with markers.
+	if GameState.ship_damage().size() >= 6:
+		for entry: Dictionary in GameState.ship_damage():
+			entry["severity"] = minf(1.0, float(entry.get("severity", 1.0)) + 0.1)
+		return
 	var chance := 0.45 * (1.0 - 0.07 * float(GameState.player_stat("medicine") - 2))
 	if GameState.player.ship.hull_integrity <= 0.25:
 		chance = maxf(chance, 0.8)  # a shredded hull sheds sparks
@@ -551,6 +677,67 @@ func _maybe_interior_damage() -> void:
 		"breach":
 			_callout_by_role(["medic", "engineer"],
 				"Breach in the %s! Small one. Everyone keep breathing out of habit." % room_name)
+
+
+## A hit past the shields can breach the hold: loose cargo (good schema
+## `loose_cargo`) vents into space as a drifting canister. Fly close and
+## you get it back; jump or dock and it's gone — and nobody tells you the
+## count. The manifest does, later, quietly.
+func _maybe_spill_cargo() -> void:
+	if _rng.randf() > 0.5:
+		return
+	var cargo: Dictionary = GameState.player.ship.cargo
+	for good_id: String in cargo:
+		if int(cargo[good_id]) < 1:
+			continue
+		if not bool(DataRegistry.get_entity("goods", good_id).get("loose_cargo", false)):
+			continue
+		GameState.add_cargo(good_id, -1)
+		var canister := MeshInstance3D.new()
+		var mesh := CapsuleMesh.new()
+		mesh.radius = 0.5
+		mesh.height = 1.6
+		canister.mesh = mesh
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.75, 0.6, 0.3)
+		mat.emission_enabled = true
+		mat.emission = Color(0.9, 0.6, 0.2)
+		mat.emission_energy_multiplier = 0.8
+		canister.material_override = mat
+		add_child(canister)
+		canister.global_position = _ship.global_position + Vector3(0, -1.5, 0)
+		_spilled.append({"node": canister, "good": good_id, "age": 0.0,
+			"vel": Vector3(_rng.randf_range(-1, 1), _rng.randf_range(-0.5, 0.5),
+				_rng.randf_range(-1, 1)).normalized() * _rng.randf_range(4.0, 8.0)})
+		_callout_by_role(["smuggler", "engineer"],
+			"We're venting the hold! Cargo's going over the side!", "hold_breached")
+		return
+
+
+func _update_spilled(delta: float) -> void:
+	for i in range(_spilled.size() - 1, -1, -1):
+		var entry: Dictionary = _spilled[i]
+		var node: Node3D = entry.node
+		entry["age"] = float(entry.get("age", 0.0)) + delta
+		node.global_position += (entry.vel as Vector3) * delta
+		node.rotate_y(delta * 2.0)
+		# The grace keeps a fresh spill from teleporting straight back into
+		# the breach it just left: you have to TURN AROUND for it.
+		if float(entry.age) > 2.5 \
+				and _ship.global_position.distance_to(node.global_position) < 7.0:
+			GameState.add_cargo(entry.good, 1)
+			AudioManager.play("ui_switch", 0.8)
+			_hint_label.text = "Canister recovered — back in the hold."
+			node.queue_free()
+			_spilled.remove_at(i)
+
+
+## Spilled cargo does not survive a departure: what's still drifting when
+## you jump or dock is the drift's now.
+func _clear_spilled() -> void:
+	for entry: Dictionary in _spilled:
+		(entry.node as Node3D).queue_free()
+	_spilled.clear()
 
 
 func _end_ambush(destroyed: bool) -> void:
@@ -625,7 +812,9 @@ func _build_patrols() -> void:
 			pc.set_hostile(engagement in ["engage", "ambush"])
 			pc.set_detection_multiplier(GameState.upgrade_effect_product("detection_mult"))
 			pc.set_patrol_route(_random_route())
+			pc.set_meta("bribe", int(entry.get("bribe", 0)))
 			pc.engagement_started.connect(_on_patrol_alert.bind(pc))
+			pc.contact_detected.connect(_on_patrol_contact.bind(pc))
 			pc.destroyed.connect(_on_patrol_destroyed.bind(pc))
 			pc.fired.connect(_on_patrol_fired)
 
@@ -655,7 +844,90 @@ func _random_route() -> Array:
 	return route
 
 
-func _on_patrol_alert(_ship_id: String) -> void:
+## A hostile patrol just latched on. Some of them would rather have your
+## money than your debris (location patrol entry `bribe` > 0) — a short
+## hail window opens: pay the "inspection fee" and it breaks off. Once.
+## The second patrol has heard about the first one's good afternoon.
+func _on_patrol_contact(_ship_id: String, _faction: String, threat: int,
+		pc: PatrolController) -> void:
+	if threat < 2 or _bribe_used or _hail_patrol != null:
+		return
+	var cost := int(pc.get_meta("bribe", 0))
+	if cost <= 0 or GameState.player.credits < cost:
+		return
+	_hail_patrol = pc
+	_hail_cost = cost
+	_hail_window = 6.0
+	AudioManager.play("computer_noise", 1.2)
+	_callout_by_role(["droid", "pilot"],
+		"They're hailing, not firing. That's a price, captain — pickets this far out run their own economy.", "hail_open")
+
+
+func _update_hail(delta: float) -> void:
+	if _hail_patrol == null:
+		return
+	if not _hail_patrol.is_alive() or not _hail_patrol.is_engaged():
+		_hail_patrol = null
+		return
+	_hail_window -= delta
+	if _hail_window <= 0.0:
+		_hint_label.text = "The hail window closes. They've committed."
+		_hail_patrol = null
+		return
+	if Input.is_action_just_pressed("hail"):
+		GameState.adjust_credits(-_hail_cost)
+		_bribe_used = true
+		_hail_patrol.stand_down()
+		if _hail_patrol.faction_id() != "":
+			GameState.adjust_faction_standing(_hail_patrol.faction_id(), "notoriety", 3)
+		_hint_label.text = "'Inspection complete. Mind the traffic.' The picket peels off."
+		_callout_by_role(["smuggler", "engineer"],
+			"That fee only works once — the next boat over heard the transaction. Fly like it.", "hail_paid")
+		AudioManager.play("ui_switch")
+		_hail_patrol = null
+
+
+## The decoy beacon (G): one loud lie per flight. Every patrol that can
+## hear it goes to look at it instead of you.
+func _update_gadget() -> void:
+	if _decoy_charges <= 0 or not Input.is_action_just_pressed("gadget"):
+		return
+	_decoy_charges -= 1
+	_decoy_node = MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 1.2
+	mesh.height = 2.4
+	_decoy_node.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.8, 0.3)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.7, 0.2)
+	mat.emission_energy_multiplier = 3.0
+	_decoy_node.material_override = mat
+	add_child(_decoy_node)
+	_decoy_node.global_position = _ship.global_position
+	var distracted := 0
+	for pc: PatrolController in _patrols:
+		if not pc.is_alive():
+			continue
+		if pc.global_position.distance_to(_ship.global_position) < 220.0:
+			pc.distract(_decoy_node.global_position, 18.0)
+			distracted += 1
+	if _hail_patrol != null:
+		_hail_patrol = null  # the lie outbids the fee
+	AudioManager.play("phase_jump", 0.5)
+	_hint_label.text = "Decoy away — it's louder than you are. %d contact(s) bite. Run." % distracted
+	_callout_by_role(["droid", "engineer"],
+		"Beacon's screaming our transponder in the wrong place. It buys minutes, not forgiveness.", "decoy_away")
+	var tween := create_tween()
+	tween.tween_interval(18.0)
+	tween.tween_callback(func() -> void:
+		if _decoy_node != null:
+			_decoy_node.queue_free()
+			_decoy_node = null)
+
+
+func _on_patrol_alert(_ship_id: String, _source: PatrolController = null) -> void:
 	# A patrol called reinforcements — spawn another patrol nearby
 	var theta := _rng.randf() * TAU
 	var dist := _rng.randf_range(80.0, 120.0)
@@ -730,6 +1002,7 @@ func _update_self_jump() -> void:
 
 
 func _on_self_jump_finished(route: Dictionary) -> void:
+	_clear_spilled()  # what's still drifting stays behind
 	var to_id: String = route.get("to", "")
 	if not GameState.player.has("travel_log"):
 		GameState.player["travel_log"] = []
@@ -782,6 +1055,10 @@ func _on_transit_completed(from_system: String, to_system: String) -> void:
 func _update_hud() -> void:
 	var status := "  [BOOST]" if _boosting else ""
 	_speed_label.text = "%3.0f u/s%s" % [_velocity.length(), status]
+	if _hail_patrol != null:
+		_hint_label.text = "INCOMING HAIL — H: transmit 'inspection fee' (%d cr) — %ds" % [
+			_hail_cost, int(ceil(_hail_window))]
+		return
 	if _pirate != null and not _pirate_fleeing:
 		var dist := _ship.global_position.distance_to(_pirate.global_position)
 		_hint_label.text = "%s — hull %d — %.0f u  (CTRL to fire)" % [
@@ -789,7 +1066,9 @@ func _update_hud() -> void:
 	elif _station != null and _ship.global_position.distance_to(_station.global_position) <= DOCK_RANGE:
 		_hint_label.text = "R — dock at %s" % _location.get("name", "station")
 	elif not _nearest_minable().is_empty():
-		_hint_label.text = "hold F — mine %s" % str(_location.get("mining", {}).get("good", "ore")).replace("_", " ")
+		var rock := _nearest_minable()
+		_hint_label.text = "hold F — cut into %s (%s)" % [rock.get("name", "the rock"),
+			str(rock.get("tier", {}).get("label", "seam"))]
 	elif not _jump_route.is_empty() and _transit == null:
 		_hint_label.text = "J — jump: %s (crew enters cryo)" % _jump_route.get("name", _jump_route.get("to", "?"))
 	elif _ambush_done or _ore_mined_total == 0:
@@ -1199,6 +1478,7 @@ func _build_asteroid_field() -> MultiMeshInstance3D:
 
 
 func on_dock_initiated(_station_id: String) -> void:
+	_clear_spilled()
 	GameManager.request_mode(GameManager.Mode.LANDED)
 
 

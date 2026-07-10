@@ -48,7 +48,9 @@ func _ready() -> void:
 	MissionManager.mission_started.connect(func(_id: String, _name: String) -> void: _refresh())
 	MissionManager.stage_advanced.connect(func(_id: String, _sid: String, _obj: String) -> void: _refresh())
 	MissionManager.mission_completed.connect(func(_id: String) -> void: _refresh())
-	MissionManager.mission_failed.connect(func(_id: String, _reason: String) -> void: _refresh())
+	MissionManager.mission_failed.connect(func(id: String, reason: String) -> void:
+		_on_mission_failed(id, reason)
+		_refresh())
 	MissionManager.epilogue_ready.connect(_show_epilogue)
 	_refresh()
 
@@ -137,7 +139,53 @@ func _update_timer() -> void:
 ## --- epilogue cards --------------------------------------------------------------
 
 
-func _show_epilogue(_mission_id: String, text: String, success: bool) -> void:
+## Failure doesn't cut straight to prose: the moment lands first. A beat of
+## red and a verdict line — THE WINDOW CLOSES / HULL LOST — then the card.
+const FAIL_BEATS := {
+	"time_expired": "THE WINDOW CLOSES",
+	"ship_destroyed": "HULL LOST",
+}
+var _fail_reason := ""
+
+
+func _on_mission_failed(_mission_id: String, reason: String) -> void:
+	_fail_reason = reason
+
+
+func _show_epilogue(mission_id: String, text: String, success: bool) -> void:
+	if not success and FAIL_BEATS.has(_fail_reason):
+		_fanfare_then_card(mission_id, text)
+		return
+	_present_card(text, success)
+
+
+func _fanfare_then_card(mission_id: String, text: String) -> void:
+	var beat := Control.new()
+	beat.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(beat)
+	var red := ColorRect.new()
+	red.color = Color(0.45, 0.04, 0.03, 0.0)
+	red.set_anchors_preset(Control.PRESET_FULL_RECT)
+	beat.add_child(red)
+	var verdict := Label.new()
+	verdict.text = FAIL_BEATS.get(_fail_reason, "THE RUN ENDS HERE")
+	verdict.add_theme_font_size_override("font_size", 44)
+	verdict.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3, 0.0))
+	verdict.set_anchors_preset(Control.PRESET_CENTER)
+	verdict.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	beat.add_child(verdict)
+	AudioManager.play("explosion", 0.5)
+	var tween := create_tween()
+	tween.tween_property(red, "color:a", 0.55, 0.35)
+	tween.parallel().tween_property(verdict, "theme_override_colors/font_color",
+		Color(1.0, 0.35, 0.3, 1.0), 0.5)
+	tween.tween_interval(1.9)
+	tween.tween_callback(func() -> void:
+		beat.queue_free()
+		_present_card(text, false))
+
+
+func _present_card(text: String, success: bool) -> void:
 	if _overlay != null:
 		_overlay.queue_free()
 	_overlay = Control.new()

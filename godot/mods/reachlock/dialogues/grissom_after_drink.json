@@ -1,0 +1,41 @@
+{
+  "id": "grissom_after_drink",
+  "npc": "grissom",
+  "condition": "player.docked and player.location == \"sorrow_station\" and \"bought_grissom_drink\" in player.flags and not (\"grissom_said_his_piece\" in player.flags)",
+  "entry": "opens",
+  "nodes": {
+    "opens": {
+      "kind": "authored",
+      "text": "He sees you and lifts two fingers off the bar — not a wave, an acknowledgment of debt. — You bought a drink for a man about to do something stupid. Didn't stop me. Wasn't your job to. But I drank it, and I remember it, which is more than I can say for the rest of that night.",
+      "choices": [
+        {
+          "text": "Next one's on you, then.",
+          "goto": "next_one",
+          "mutations": [
+            {
+              "op": "adjust_relationship",
+              "target": "player",
+              "axis": "trust",
+              "amount": 8
+            },
+            {
+              "op": "adjust_faction",
+              "faction": "reach",
+              "axis": "trust",
+              "amount": 2
+            },
+            {
+              "op": "set_player_flag",
+              "flag": "grissom_said_his_piece"
+            }
+          ]
+        }
+      ]
+    },
+    "next_one": {
+      "kind": "authored",
+      "text": "When the commercial deck's back up and I'm working again — yeah. It is. — He almost smiles, discovers his face out of practice, abandons the attempt. — Your machine hits like a docking clamp, by the way. Tell her the wrist respects the wrist.",
+      "goto": "end"
+    }
+  }
+}

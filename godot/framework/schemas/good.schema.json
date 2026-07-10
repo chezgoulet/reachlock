@@ -3,20 +3,55 @@
   "title": "Trade good",
   "description": "One tradeable commodity. base_price is the universe-average the economy engine perturbs from; supply/demand at each location moves the live price.",
   "type": "object",
-  "required": ["id", "name", "base_price"],
+  "required": [
+    "id",
+    "name",
+    "base_price"
+  ],
   "additionalProperties": false,
   "properties": {
-    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-    "name": { "type": "string" },
-    "description": { "type": "string" },
-    "base_price": { "type": "integer", "minimum": 1 },
-    "unit_mass": { "type": "number", "minimum": 0 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "base_price": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "unit_mass": {
+      "type": "number",
+      "minimum": 0
+    },
     "legality": {
       "type": "object",
       "description": "faction id -> legal status of carrying this good in their space.",
-      "additionalProperties": { "enum": ["legal", "restricted", "contraband"] }
+      "additionalProperties": {
+        "enum": [
+          "legal",
+          "restricted",
+          "contraband"
+        ]
+      }
     },
-    "tags": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
-    "extra": { "type": "object" }
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    },
+    "extra": {
+      "type": "object"
+    },
+    "loose_cargo": {
+      "type": "boolean",
+      "description": "Rides the hold unsecured: a hit that breaches the hold can vent a unit of this good into space as a drifting, briefly recoverable canister. Mission-critical crates should never set this."
+    }
   }
 }
