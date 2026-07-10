@@ -16,10 +16,10 @@ var _join_box: Control = null
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var backdrop := ColorRect.new()
 	backdrop.color = Color(0.04, 0.05, 0.08)
-	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(backdrop)
 	_star_field(backdrop)
 
@@ -148,7 +148,7 @@ func _close_panels() -> void:
 
 func _star_field(parent: Control) -> void:
 	var stars := Control.new()
-	stars.set_anchors_preset(Control.PRESET_FULL_RECT)
+	stars.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stars.draw.connect(func() -> void:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 8471

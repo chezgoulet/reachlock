@@ -36,7 +36,7 @@ var _done := false
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_load_roster()
 	_build_ui()
 	if _roster.is_empty():
@@ -76,7 +76,7 @@ func selected_id() -> String:
 func _build_ui() -> void:
 	var bg := ColorRect.new()
 	bg.color = Color(0.04, 0.05, 0.08)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
 	var title := Label.new()
@@ -229,11 +229,11 @@ func _begin() -> void:
 	AudioManager.play("ui_switch")
 
 	_scrawl_layer = Control.new()
-	_scrawl_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_scrawl_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_scrawl_layer)
 	var black := ColorRect.new()
 	black.color = Color(0.01, 0.015, 0.03)
-	black.set_anchors_preset(Control.PRESET_FULL_RECT)
+	black.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_scrawl_layer.add_child(black)
 
 	var paragraphs: Array = []
