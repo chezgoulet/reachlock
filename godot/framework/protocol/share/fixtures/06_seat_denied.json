@@ -1,0 +1,10 @@
+{
+  "direction": "host_to_client",
+  "message": {
+    "kind": "seat_denied",
+    "body": {
+      "npc_id": "tib",
+      "held_by": 2
+    }
+  }
+}

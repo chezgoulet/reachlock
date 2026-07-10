@@ -1,0 +1,12 @@
+{
+  "direction": "host_to_daemon",
+  "message": {
+    "v": 0,
+    "seq": 2,
+    "type": "audio_chunk",
+    "body": {
+      "utterance_id": "utt_1",
+      "data": "AAABAAIAAwAEAAUABgAHAA=="
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "no `may` block = words only - every proposed mutation is dropped",
+  "node": {
+    "kind": "woven",
+    "prompt_hint": "Small talk at the counter.",
+    "text": "\"Weather's the same as yesterday. There isn't any.\"",
+    "return_to": "end"
+  },
+  "proposal": {
+    "line": "\"Free ore for everyone!\"",
+    "mutations": [
+      {
+        "op": "adjust_faction",
+        "faction": "reach_compact",
+        "axis": "trust",
+        "amount": 3
+      }
+    ],
+    "choices": [
+      {
+        "text": "Generous.",
+        "mutations": [
+          {
+            "op": "set_player_flag",
+            "flag": "rich_now"
+          }
+        ]
+      }
+    ]
+  },
+  "resolved": {
+    "line": "\"Free ore for everyone!\"",
+    "mutations": [],
+    "choices": [
+      {
+        "text": "Generous.",
+        "mutations": [],
+        "goto": "end"
+      }
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-.PHONY: all godot godot-run godot-import server-build server-run server-test server-tidy validate architecture check clean
+.PHONY: all godot godot-run godot-import server-build server-run server-test server-tidy validate architecture protocol ear weave share dsl dsl-bridge harness test check clean
 
 GODOT := flatpak run org.godotengine.Godot
 SERVER_BIN := ./server/bin/reachlock-server
@@ -52,6 +52,18 @@ architecture:
 protocol:
 	python3 scripts/check_soul_protocol.py
 
+# Ear Protocol conformance: wire fixtures + the choice-matcher reference.
+ear:
+	python3 scripts/check_ear_protocol.py
+
+# Weave contract conformance: allowlist clamping over golden + adversarial fixtures.
+weave:
+	python3 scripts/check_weave_contract.py
+
+# Ship-Share conformance: multiplayer payload shapes + intent/state direction.
+share:
+	python3 scripts/check_ship_share.py
+
 # Trigger-DSL reference evaluator self-test (the storyline condition language).
 dsl:
 	python3 scripts/trigger_dsl.py --self-test
@@ -74,7 +86,7 @@ test:
 	$(GODOT) --headless --path godot/ -s addons/gut/gut_cmdln.gd -gdir=res://tests -gexit
 
 # Full local pre-push gate.
-check: server-test validate architecture protocol dsl
+check: server-test validate architecture protocol ear weave share dsl
 
 clean:
 	rm -rf server/bin

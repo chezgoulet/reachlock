@@ -1,0 +1,11 @@
+{
+  "direction": "host_to_client",
+  "message": {
+    "kind": "refuse",
+    "body": {
+      "reason": "version_mismatch",
+      "host_version": 0,
+      "yours": 1
+    }
+  }
+}

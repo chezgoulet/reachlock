@@ -393,6 +393,33 @@
         }
       }
     },
+    "weaves": {
+      "type": "object",
+      "description": "Resolved woven-dialogue branches (WEAVE-CONTRACT.md), keyed \"<dialogue_id>/<node_id>\". A weave is generated once at the authority, clamped against its node's allowlist, then persisted here — replays, reloads, and every multiplayer client consume this data instead of re-generating.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["line", "mutations", "choices", "tick"],
+        "additionalProperties": false,
+        "properties": {
+          "line": { "type": "string" },
+          "mutations": { "type": "array", "items": { "type": "object" } },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["text", "mutations", "goto"],
+              "additionalProperties": false,
+              "properties": {
+                "text": { "type": "string" },
+                "mutations": { "type": "array", "items": { "type": "object" } },
+                "goto": { "type": "string" }
+              }
+            }
+          },
+          "tick": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
     "mods": {
       "type": "object",
       "required": [

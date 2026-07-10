@@ -1,0 +1,10 @@
+{
+  "direction": "client_to_host",
+  "message": {
+    "kind": "station",
+    "body": {
+      "op": "occupy",
+      "station_id": "engineering"
+    }
+  }
+}

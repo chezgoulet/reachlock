@@ -1,0 +1,15 @@
+{
+  "direction": "daemon_to_host",
+  "message": {
+    "v": 0,
+    "seq": 0,
+    "re": 0,
+    "type": "welcome",
+    "body": {
+      "protocol_version": 0,
+      "server": "reachlock-eard/0.1.0",
+      "engine": "whisper.cpp",
+      "model": "base.en"
+    }
+  }
+}

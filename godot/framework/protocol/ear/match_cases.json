@@ -1,0 +1,92 @@
+[
+  {
+    "name": "exact phrasing lands",
+    "transcript": "I'd do it again. She's crew.",
+    "choices": ["I'd do it again — she's crew.", "It wasn't my business.", "Buy him a drink."],
+    "expect": 0
+  },
+  {
+    "name": "paraphrase with the load-bearing words lands",
+    "transcript": "she's crew, I'd do it again",
+    "choices": ["I'd do it again — she's crew.", "It wasn't my business.", "Buy him a drink."],
+    "expect": 0
+  },
+  {
+    "name": "the drink order finds the drink",
+    "transcript": "let me buy you a drink",
+    "choices": ["I'd do it again — she's crew.", "It wasn't my business.", "Buy him a drink."],
+    "expect": 2
+  },
+  {
+    "name": "casing and punctuation are invisible",
+    "transcript": "BUY HIM A DRINK!!!",
+    "choices": ["I'd do it again — she's crew.", "It wasn't my business.", "Buy him a drink."],
+    "expect": 2
+  },
+  {
+    "name": "free speech matches nothing",
+    "transcript": "what happened to the cargo we lost near the belt",
+    "choices": ["I'd do it again — she's crew.", "It wasn't my business.", "Buy him a drink."],
+    "expect": -1
+  },
+  {
+    "name": "empty transcript is silence",
+    "transcript": "",
+    "choices": ["Take the deal.", "Walk away."],
+    "expect": -1
+  },
+  {
+    "name": "all stopwords carry no intent",
+    "transcript": "i would just really you know",
+    "choices": ["Take the deal.", "Walk away."],
+    "expect": -1
+  },
+  {
+    "name": "no choices offered means no match",
+    "transcript": "take the deal",
+    "choices": [],
+    "expect": -1
+  },
+  {
+    "name": "landing between two choices is ambiguity, not a match",
+    "transcript": "take the deal and walk away",
+    "choices": ["Take the deal.", "Walk away."],
+    "expect": -1
+  },
+  {
+    "name": "single strong content word against short choices",
+    "transcript": "pay the inspection fee",
+    "choices": ["Pay the inspection fee.", "Run the blockade.", "Cut the engines."],
+    "expect": 0
+  },
+  {
+    "name": "verbed paraphrase without shared nouns misses",
+    "transcript": "give the man his money",
+    "choices": ["Pay the inspection fee.", "Run the blockade.", "Cut the engines."],
+    "expect": -1
+  },
+  {
+    "name": "stopword padding does not drown the signal",
+    "transcript": "you know what, I think we should just run the blockade",
+    "choices": ["Pay the inspection fee.", "Run the blockade.", "Cut the engines."],
+    "expect": 1
+  },
+  {
+    "name": "close but clearly second choice wins by margin",
+    "transcript": "cut engines now",
+    "choices": ["Cut the comms.", "Cut the engines."],
+    "expect": 1
+  },
+  {
+    "name": "shared verb between choices is not enough",
+    "transcript": "cut it",
+    "choices": ["Cut the comms.", "Cut the engines."],
+    "expect": -1
+  },
+  {
+    "name": "one-word yes with a yes-shaped choice",
+    "transcript": "deal",
+    "choices": ["Deal.", "No deal."],
+    "expect": 0
+  }
+]

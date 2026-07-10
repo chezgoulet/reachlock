@@ -1,0 +1,11 @@
+{
+  "direction": "host_to_client",
+  "message": {
+    "kind": "dialogue_line",
+    "body": {
+      "dialogue_id": "grissom_rumor",
+      "speaker": "Grissom",
+      "text": "Third shift, the picket thins."
+    }
+  }
+}

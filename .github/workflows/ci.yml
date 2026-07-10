@@ -61,6 +61,20 @@ jobs:
       - name: Validate mod JSON files parse
         run: python3 scripts/validate_mod_data.py
 
+  contracts:
+    name: Contract conformance (soul, ear, weave, ship-share)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Soul Protocol fixtures vs wire schema
+        run: python3 scripts/check_soul_protocol.py
+      - name: Ear Protocol fixtures + choice-matcher reference
+        run: python3 scripts/check_ear_protocol.py
+      - name: Weave allowlist clamping (golden + adversarial)
+        run: python3 scripts/check_weave_contract.py
+      - name: Ship-Share payload shapes + intent/state direction
+        run: python3 scripts/check_ship_share.py
+
   architecture:
     name: Three-ring architecture guard
     runs-on: ubuntu-latest

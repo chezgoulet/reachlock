@@ -24,12 +24,23 @@ explicit migration. Design accordingly.
 | [good.schema.json](schemas/good.schema.json) | `<mod>/goods/*.json` | Trade goods: base price, legality by faction |
 | [save.schema.json](schemas/save.schema.json) | runtime saves | The *runtime* counterpart of authored data; storage engine is swappable |
 
-Beyond entity schemas, three sibling contracts:
+Beyond entity schemas, the sibling contracts:
 
 - **[The Soul Protocol](protocol/SOUL-PROTOCOL.md)** — the wire contract with
   the mind daemon (Pan). Golden fixtures under `protocol/fixtures/` are the
   conformance suite (`make protocol`); Pan round-trips the same fixtures in
   its own CI.
+- **[The Sim Protocol](protocol/SIM-PROTOCOL.md)** — the wire contract with
+  the simulation daemon (`reachlock-simd`): prices, factions, the journal.
+- **[The Ear Protocol](protocol/EAR-PROTOCOL.md)** — the wire contract with
+  the speech daemon (`reachlock-eard`): push-to-talk audio in, transcripts
+  out, and the deterministic choice matcher (`make ear`). Voice is an input
+  method, never a dialogue system.
+- **[The Weave contract](WEAVE-CONTRACT.md)** — how `woven` dialogue nodes
+  let a mind propose branches with world effects, clamped against the
+  node's `may` allowlist and persisted in the save (`make weave`).
+- **[Ship-Share](protocol/SHIP-SHARE.md)** — the LAN co-op contract:
+  host-authoritative, seat-claiming, intents in / state out (`make share`).
 - **[The trigger DSL](../../scripts/trigger_dsl.py)** — the condition language
   of storyline cards and dialogue branches. The reference evaluator's
   self-test battery IS the semantics (`make dsl`); other implementations must

@@ -1,0 +1,10 @@
+{
+  "direction": "client_to_host",
+  "message": {
+    "kind": "choose",
+    "body": {
+      "dialogue_id": "grissom_rumor",
+      "index": 1
+    }
+  }
+}

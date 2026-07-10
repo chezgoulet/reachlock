@@ -1,0 +1,15 @@
+{
+  "direction": "host_to_client",
+  "message": {
+    "kind": "pawn",
+    "body": {
+      "peer": 2,
+      "position": [
+        412.0,
+        96.5
+      ],
+      "facing": "left",
+      "anim": "walk"
+    }
+  }
+}

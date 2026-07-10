@@ -1,0 +1,19 @@
+{
+  "direction": "host_to_client",
+  "message": {
+    "kind": "dialogue_choices",
+    "body": {
+      "dialogue_id": "grissom_rumor",
+      "choices": [
+        {
+          "index": 0,
+          "text": "Why tell me?"
+        },
+        {
+          "index": 1,
+          "text": "I owe you one."
+        }
+      ]
+    }
+  }
+}
