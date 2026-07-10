@@ -156,6 +156,22 @@ func test_say_reaches_the_dialogue_layer_as_plain_text() -> void:
 		"typed or spoken, the host cannot tell — by design")
 
 
+func test_remote_pawns_render_and_bury_players() -> void:
+	var pawns := RemotePawns.new()
+	add_child_autofree(pawns)
+	ShipShare.players[2] = {"name": "Boris", "npc_id": "tib"}
+	# The client-side path: a pawn state payload arrives off the wire.
+	ShipShare._apply_state({"kind": "pawn", "body": {
+		"peer": 2, "position": [100.0, 50.0], "facing": "left", "anim": "walk"}})
+	assert_eq(pawns.get_child_count(), 1, "a pawn exists for the other player")
+	var sprite := pawns.get_child(0) as CharacterSprite
+	assert_eq(sprite.facing_row(), CharacterSprite.ROWS.left, "state drives facing")
+	ShipShare.players.erase(2)
+	ShipShare.roster_changed.emit()
+	await get_tree().process_frame
+	assert_eq(pawns.get_child_count(), 0, "a departed player's pawn is buried")
+
+
 func test_solo_intents_take_the_same_door() -> void:
 	# A solo game is a hosted game with zero peers: the local player's
 	# station intent runs through handle_intent, same rules as everyone.

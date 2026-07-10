@@ -145,6 +145,9 @@ func _build_world() -> void:
 	_walker.position = _pos
 	add_child(_walker)
 
+	# The other players, if any (SHIP-SHARE.md) — Sorrow, together.
+	add_child(RemotePawns.new())
+
 	_camera = Camera2D.new()
 	_camera.position = _pos
 	_camera.zoom = Vector2(1.5, 1.5)
@@ -197,9 +200,25 @@ func _process(delta: float) -> void:
 			_try_move(move * WALK_SPEED * delta)
 		_walker.set_motion(move, move != Vector2.ZERO)
 		_camera.position = _camera.position.lerp(_pos, 1.0 - exp(-6.0 * delta))
+		_share_position(delta, move != Vector2.ZERO)
 		if Input.is_action_just_pressed("interact"):
 			_interact()
 	_update_hint()
+
+
+## ~10 Hz movement intents when shared (SHIP-SHARE.md `move`). Solo: no-op.
+var _share_clock := 0.0
+const _ROW_NAMES := ["down", "up", "left", "right"]
+
+func _share_position(delta: float, moving: bool) -> void:
+	if ShipShare.mode == ShipShare.Mode.SOLO:
+		return
+	_share_clock += delta
+	if _share_clock < 0.1:
+		return
+	_share_clock = 0.0
+	ShipShare.send_move(_pos, _ROW_NAMES[_walker.facing_row()],
+		"walk" if moving else "idle")
 
 
 func _try_move(step: Vector2) -> void:

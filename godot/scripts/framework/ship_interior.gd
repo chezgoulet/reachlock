@@ -355,6 +355,9 @@ func _build_world() -> void:
 	_walker.position = _pos
 	add_child(_walker)
 
+	# The other players, if any (SHIP-SHARE.md). Solo: inert and empty.
+	add_child(RemotePawns.new())
+
 	_camera = Camera2D.new()
 	_camera.position = _walker.position
 	_camera.zoom = Vector2(1.5, 1.5)
@@ -490,6 +493,22 @@ func _move_player(delta: float) -> void:
 			_drift_velocity = Vector2.ZERO  # you hit a wall; the wall wins
 		_pos = moved
 		_walker.position = _pos
+	_share_position(delta, move != Vector2.ZERO or step.length() > 0.2)
+
+
+## ~10 Hz movement intents when shared (SHIP-SHARE.md `move`). Solo: no-op.
+var _share_clock := 0.0
+const _ROW_NAMES := ["down", "up", "left", "right"]
+
+func _share_position(delta: float, moving: bool) -> void:
+	if ShipShare.mode == ShipShare.Mode.SOLO:
+		return
+	_share_clock += delta
+	if _share_clock < 0.1:
+		return
+	_share_clock = 0.0
+	ShipShare.send_move(_pos, _ROW_NAMES[_walker.facing_row()],
+		"walk" if moving else "idle")
 
 
 ## Anything to push against? Walls within arm's reach, or any prop,
