@@ -46,6 +46,10 @@ var factions := {}         # faction id -> {standing:{axis:val}}
 # the semantics; this node owns persistence. `seeded` marks first-touch
 # derivation from authored content.
 var crew := {"seeded": false, "aboard": [], "assignments": {}, "edges": {}, "history": []}
+# Resolved woven-dialogue branches (WEAVE-CONTRACT.md), "<dialogue>/<node>"
+# -> {line, mutations, choices, tick}. Written once at the authority, then
+# replays/reloads/clients consume this data instead of re-generating.
+var weaves := {}
 
 
 func _ready() -> void:
@@ -352,6 +356,23 @@ func apply_soul_mutation(soul_id: String, mutation: Dictionary) -> void:
 	state_changed.emit()
 
 
+## --- weaves (WEAVE-CONTRACT.md) ---------------------------------------------------
+
+
+## The persisted resolution for a woven node, or {} if none yet.
+func weave_for(key: String) -> Dictionary:
+	return weaves.get(key, {})
+
+
+## Persist a freshly clamped resolution — BEFORE its mutations apply, per
+## the contract, so a crash mid-application replays the same branch.
+func record_weave(key: String, resolution: Dictionary) -> void:
+	var entry := resolution.duplicate(true)
+	entry["tick"] = int(universe.tick)
+	weaves[key] = entry
+	state_changed.emit()
+
+
 ## --- trigger-DSL context --------------------------------------------------------
 
 
@@ -399,6 +420,7 @@ func save_game() -> bool:
 		"factions": factions,
 		"crew": crew,
 		"mission": mission,
+		"weaves": weaves,
 		"souls": _souls_for_save(),
 		"mods": {
 			"load_order": DataRegistry.load_order(),
@@ -449,6 +471,7 @@ func load_game() -> bool:
 	if not player.ship.has("weapons_calibrated"):
 		player.ship["weapons_calibrated"] = false
 	mission = snapshot.get("mission", {})
+	weaves = snapshot.get("weaves", {})
 	factions = snapshot.get("factions", {})
 	var saved_crew: Dictionary = snapshot.get("crew", {})
 	if not saved_crew.is_empty():

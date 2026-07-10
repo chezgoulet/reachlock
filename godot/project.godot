@@ -28,6 +28,7 @@ AssetLibrary="*res://scripts/framework/asset_library.gd"
 GameState="*res://scripts/framework/game_state.gd"
 MemoryStore="*res://scripts/framework/memory_store.gd"
 SoulGateway="*res://scripts/framework/soul_gateway.gd"
+EarGateway="*res://scripts/framework/ear_gateway.gd"
 SimGateway="*res://scripts/framework/sim_gateway.gd"
 CrewRoster="*res://scripts/framework/crew_roster.gd"
 ShipOperation="*res://scripts/framework/ship_operation.gd"
@@ -37,6 +38,10 @@ GravitySystem="*res://scripts/framework/gravity_system.gd"
 AudioManager="*res://scripts/framework/audio_manager.gd"
 Reputation="*res://scripts/framework/reputation_manager.gd"
 GameManager="*res://scripts/game_manager.gd"
+
+[audio]
+
+driver/enable_input=true
 
 [display]
 

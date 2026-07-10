@@ -40,6 +40,7 @@ func _register_actions() -> void:
 		"fire":             KEY_CTRL,
 		"mine":             KEY_F,
 		"interact":         KEY_R,
+		"voice_ptt":        KEY_V,
 		"jump":             KEY_J,
 		"board":            KEY_B,
 		"hail":             KEY_H,

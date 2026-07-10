@@ -533,6 +533,9 @@ func _build_hud() -> void:
 	_dialogue_panel.choice_picked.connect(func(index: int) -> void:
 		if _runner != null:
 			_runner.choose(index))
+	_dialogue_panel.free_speech.connect(func(text: String) -> void:
+		if _runner != null:
+			_runner.speak_freely(text))
 	_hud.add_child(_dialogue_panel)
 
 	_hint = Label.new()

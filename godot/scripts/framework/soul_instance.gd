@@ -67,13 +67,37 @@ func _ensure_instantiated() -> void:
 ## message form) — it rides the protocol's history channel so multi-turn
 ## exchanges cohere: the mind sees what was already said, not just the
 ## latest line.
-func perceive_utterance(from: String, content: String, objective := "", history: Array = []) -> void:
+## `grounding` (woven nodes, WEAVE-CONTRACT.md) is an array of
+## {vault, query} recall refs run against shared lore vaults, read-only;
+## their fragments ride the same memory channel after the soul's own.
+func perceive_utterance(from: String, content: String, objective := "", history: Array = [], grounding: Array = []) -> void:
 	var trigger := {"kind": "utterance", "from": from, "content": content}
 	var framed := objective if objective != "" else "Respond in character."
 	MemoryStore.recall(soul_id, content, func(fragments: Array) -> void:
 		if not is_instance_valid(self):
 			return
-		_perceive(trigger, framed, fragments, history))
+		_recall_grounding(grounding, fragments, func(grounded: Array) -> void:
+			if not is_instance_valid(self):
+				return
+			_perceive(trigger, framed, grounded, history)))
+
+
+## Chain the grounding recalls (usually zero or one) onto the soul's own
+## fragments, then hand the merged list on. Offline: the callback fires
+## immediately with what we have — grounding never blocks a conversation.
+func _recall_grounding(grounding: Array, fragments: Array, callback: Callable) -> void:
+	if grounding.is_empty() or not MemoryStore.online:
+		callback.call(fragments)
+		return
+	var merged := fragments.duplicate()
+	var remaining: Array = [grounding.size()]
+	for ref: Dictionary in grounding:
+		MemoryStore.recall_vault(ref.get("vault", ""), ref.get("query", ""),
+			func(found: Array) -> void:
+				merged.append_array(found)
+				remaining[0] = int(remaining[0]) - 1
+				if int(remaining[0]) == 0:
+					callback.call(merged))
 
 
 func perceive_event(topic: String, payload: Dictionary, objective := "") -> void:

@@ -73,11 +73,22 @@ func _is_valid_vault_prefix(prefix: String) -> bool:
 ## Fire a hybrid recall; `callback` receives Array[String] fragments (possibly
 ## empty). Never blocks: offline or on error the callback gets [].
 func recall(soul_id: String, query: String, callback: Callable) -> void:
-	if not online or query.strip_edges() == "":
+	_recall_from(vault_name(soul_id), soul_id, query, callback)
+
+
+## Recall from a NAMED vault (weave grounding: shared lore/compendium
+## vaults, read-only). The prefix still applies — automated runs must
+## never touch a play vault, lore included.
+func recall_vault(vault: String, query: String, callback: Callable) -> void:
+	_recall_from(_vault_prefix + vault, vault, query, callback)
+
+
+func _recall_from(full_vault: String, label: String, query: String, callback: Callable) -> void:
+	if not online or query.strip_edges() == "" or full_vault.strip_edges() == "":
 		callback.call([])
 		return
 	var url := "%s/vault/%s/v1/hybrid?query=%s&limit=%d" % [
-		_base, vault_name(soul_id), query.uri_encode(), RECALL_LIMIT]
+		_base, full_vault, query.uri_encode(), RECALL_LIMIT]
 	_request(url, HTTPClient.METHOD_GET, "", func(code: int, body: Variant) -> void:
 		var fragments: Array = []
 		if code == 200 and body is Dictionary:
@@ -91,7 +102,7 @@ func recall(soul_id: String, query: String, callback: Callable) -> void:
 							fragments.append(content)
 					"fact":
 						fragments.append("%s: %s" % [result.get("key", ""), result.get("value", "")])
-		recalled.emit(soul_id, query, fragments)
+		recalled.emit(label, query, fragments)
 		callback.call(fragments))
 
 

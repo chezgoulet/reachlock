@@ -326,6 +326,9 @@ func _build_ui() -> void:
 	_dialogue_panel.choice_picked.connect(func(index: int) -> void:
 		if _runner != null:
 			_runner.choose(index))
+	_dialogue_panel.free_speech.connect(func(text: String) -> void:
+		if _runner != null:
+			_runner.speak_freely(text))
 	add_child(_dialogue_panel)
 
 	# Service points. Market and bar mount their live framework scenes; the

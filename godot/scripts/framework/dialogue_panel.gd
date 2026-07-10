@@ -22,6 +22,10 @@ class_name DialoguePanel
 
 signal choice_picked(index: int)
 signal narration_done
+## Voice free speech (EAR-PROTOCOL.md): a transcript that matched no
+## offered choice. The host hands it to the runner; the panel has already
+## shown what it heard.
+signal free_speech(text: String)
 
 const CPS := 55.0            # characters per second, the SNES cadence
 const LINE_GAP := 0.30       # beat between queued lines, seconds
@@ -32,6 +36,7 @@ const LAMP_STATES := {
 	"linked": {"color": Color(0.45, 0.85, 0.55), "label": "MIND LINKED"},
 	"composing": {"color": Color(1.0, 0.75, 0.35), "label": "COMPOSING…"},
 	"offline": {"color": Color(0.5, 0.5, 0.55), "label": "LINK OFFLINE"},
+	"listening": {"color": Color(0.45, 0.75, 1.0), "label": "LISTENING…"},
 }
 
 var _name_label: Label
@@ -51,6 +56,9 @@ var _thinking := false
 var _narrating := false
 var _bark_timer := 0.0
 var _open := false
+var _offered: Array = []      # the live choices, kept for voice matching
+var _listening := false
+var _voice_hint: Label = null
 
 
 func _ready() -> void:
@@ -111,6 +119,19 @@ func _ready() -> void:
 	_continue_hint.visible = false
 	box.add_child(_continue_hint)
 
+	# The voice affordance (EAR-PROTOCOL.md): exists only while the speech
+	# daemon is up. Not greyed out — absent.
+	_voice_hint = Label.new()
+	_voice_hint.text = "V — hold to speak"
+	_voice_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_voice_hint.add_theme_font_size_override("font_size", 12)
+	_voice_hint.add_theme_color_override("font_color", Color(0.45, 0.65, 0.9))
+	_voice_hint.visible = false
+	box.add_child(_voice_hint)
+	EarGateway.transcript_ready.connect(_on_transcript)
+	EarGateway.listening_changed.connect(_on_listening_changed)
+	EarGateway.disconnected.connect(func() -> void: _refresh_voice_hint())
+
 	visible = false
 
 
@@ -129,7 +150,9 @@ func open(npc_name: String, link_state: String) -> void:
 	_queue.clear()
 	_typing = false
 	_clear_choices()
+	_offered = []
 	_refresh_lamp()
+	_refresh_voice_hint()
 	visible = true
 
 
@@ -143,9 +166,11 @@ func show_line(speaker: String, text: String) -> void:
 
 
 ## Choices arrive from the runner; they render once the current line has
-## finished printing (or on fast-forward).
+## finished printing (or on fast-forward). A copy stays behind for the
+## voice matcher — spoken words are matched against exactly what's offered.
 func show_choices(choices: Array) -> void:
 	_pending_choices = choices
+	_offered = choices.duplicate()
 	if not _typing:
 		_render_choices()
 
@@ -189,11 +214,14 @@ func show_narration(title: String, text: String) -> void:
 
 
 func close() -> void:
+	if _listening or EarGateway.is_listening():
+		EarGateway.cancel_listening()
 	_open = false
 	_narrating = false
 	_typing = false
 	_queue.clear()
 	_clear_choices()
+	_offered = []
 	visible = false
 
 
@@ -264,6 +292,17 @@ func _after_line() -> void:
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
+	if InputMap.has_action("voice_ptt") and _open and not _narrating:
+		# Push-to-talk: deliberate speech, no accidental hot mic. The key
+		# does nothing at all when the daemon is away.
+		if event.is_action_pressed("voice_ptt") and EarGateway.available():
+			accept_event()
+			EarGateway.start_listening()
+			return
+		if event.is_action_released("voice_ptt") and EarGateway.is_listening():
+			accept_event()
+			EarGateway.stop_listening()
+			return
 	if event.is_action_pressed("interact") or event.is_action_pressed("ui_accept"):
 		if _typing:
 			accept_event()
@@ -309,27 +348,68 @@ func _pick(child_position: int) -> void:
 
 func _pick_by_runner_index(index: int) -> void:
 	_clear_choices()
+	_offered = []
 	choice_picked.emit(index)
 
 
 func _clear_choices() -> void:
+	# _offered survives here on purpose: rendering calls this first, and
+	# the voice matcher needs the live choices for as long as they're up.
 	_choices_up = false
 	for child in _choice_box.get_children():
 		child.queue_free()
+
+
+## --- voice (EAR-PROTOCOL.md: an input method, nothing more) ------------------------
+
+
+## The contract's four steps, in order: show it; match it (fires the choice
+## exactly as if clicked); no match + whatever mind there is → free_speech
+## (the host feeds the runner); silence → the moment passes.
+func _on_transcript(text: String, _confidence: float) -> void:
+	if not _open or _narrating:
+		return
+	if text.strip_edges() == "":
+		return
+	show_line("", "[i]“%s”[/i]" % text.strip_edges())
+	if _choices_up and not _offered.is_empty():
+		var texts: Array = []
+		for choice: Dictionary in _offered:
+			texts.append(str(choice.text))
+		var matched := EarMatch.match_choice(text, texts)
+		if matched >= 0:
+			var index := int(_offered[matched].index)
+			_pick_by_runner_index(index)
+			return
+	free_speech.emit(text.strip_edges())
+
+
+func _on_listening_changed(listening: bool) -> void:
+	_listening = listening
+	_refresh_lamp()
+	_refresh_voice_hint()
+
+
+func _refresh_voice_hint() -> void:
+	if _voice_hint == null:
+		return
+	_voice_hint.visible = EarGateway.available() and _open and not _narrating
+	_voice_hint.text = "…listening" if _listening else "V — hold to speak"
 
 
 ## --- the lamp ---------------------------------------------------------------------
 
 
 func _refresh_lamp() -> void:
-	var state := _link_state
-	if _thinking:
-		state = "composing"
+	var state := lamp_state()
 	_lamp.set_state(state, LAMP_STATES.get(state, LAMP_STATES.scripted))
 
 
-## Current lamp state name (contract-testable).
+## Current lamp state name (contract-testable). Listening outranks
+## composing: the player's own held key is the state they care about.
 func lamp_state() -> String:
+	if _listening:
+		return "listening"
 	return "composing" if _thinking else _link_state
 
 

@@ -32,6 +32,7 @@ var _soul: SoulInstance = null
 var _npc_name := ""
 var _last_player_line := ""
 var _awaiting_generated := false
+var _awaiting_weave := false  # the in-flight generation is a woven proposal
 var _current_choices: Array = []
 var _transcript: Array = []  # [{role: "user"|"assistant", content}] for memory ingest
 
@@ -82,6 +83,36 @@ func choose(index: int) -> void:
 	_enter_node(choice.get("goto", "end"))
 
 
+## Voice free speech (EAR-PROTOCOL.md): a transcript that matched no
+## offered choice enters the conversation as ordinary player input. The
+## panel already displayed what it heard, so no line_shown here — this
+## records it and, given a live mind, gets a reply as a follow-up beat
+## while the current choices stay up. No mind: the moment passes, nothing
+## pretends.
+func speak_freely(transcript: String) -> void:
+	if transcript.strip_edges() == "":
+		return
+	_last_player_line = transcript.strip_edges()
+	_transcript.append({"role": "user", "content": _last_player_line})
+	if not _can_generate() or _awaiting_generated:
+		return
+	_awaiting_generated = true
+	# "offered" semantics: the reply is a beat, nothing else moves — the
+	# choices that were up stay up, exactly like a buffered generated node.
+	_buffer_mode = "offered"
+	_set_thinking(true)
+	_request_free_speech()
+	var timer := get_tree().create_timer(GENERATED_TIMEOUT)
+	timer.timeout.connect(_on_generated_timeout.bind(_generated_node), CONNECT_ONE_SHOT)
+
+
+## Seam for tests: free speech reaches the mind as a plain utterance.
+func _request_free_speech() -> void:
+	var history := _transcript.slice(maxi(0, _transcript.size() - 9), _transcript.size() - 1) \
+		if _transcript.size() > 1 else []
+	_soul.perceive_utterance("player", _last_player_line, "", history)
+
+
 func _enter_node(node_id: String) -> void:
 	if node_id == "end" or node_id == "":
 		_finish()
@@ -99,6 +130,8 @@ func _enter_node(node_id: String) -> void:
 			_offer_or_continue(node)
 		"generated":
 			_run_generated(node)
+		"woven":
+			_run_woven(node)
 
 
 func _run_generated(node: Dictionary) -> void:
@@ -128,6 +161,74 @@ func _run_generated(node: Dictionary) -> void:
 	timer.timeout.connect(_on_generated_timeout.bind(node), CONNECT_ONE_SHOT)
 
 
+## A woven node (WEAVE-CONTRACT.md): the mind proposes a branch as
+## structured data; the loom clamps it against the node's `may` allowlist;
+## the resolution persists in the save and replays as ordinary dialogue.
+func _run_woven(node: Dictionary) -> void:
+	_generated_node = node
+	var persisted := GameState.weave_for(_weave_key())
+	if not persisted.is_empty():
+		_play_weave(persisted)
+		return
+	if not _can_generate():
+		_npc_line(_generated_fallback(node))
+		_offer_or_continue(node)  # the authored fallback path: text + goto
+		return
+	_awaiting_generated = true
+	_awaiting_weave = true
+	_request_generation(node)
+	# Choices come from the proposal, so nothing can be offered while the
+	# mind works: a buffer line bridges ("held"), else the indicator pulses.
+	var buffer: String = node.get("buffer_line", "")
+	if buffer == "":
+		_buffer_mode = "none"
+	else:
+		_npc_line(buffer)
+		_buffer_mode = "held"
+	_set_thinking(true)
+	var timer := get_tree().create_timer(GENERATED_TIMEOUT)
+	timer.timeout.connect(_on_generated_timeout.bind(node), CONNECT_ONE_SHOT)
+
+
+func _weave_key() -> String:
+	return "%s/%s" % [_dialogue.get("id", ""), _current_node_id]
+
+
+## Play a resolution — freshly loomed or persisted, the runner can't tell.
+## Node-level mutations apply when the line plays; choice mutations ride
+## the ordinary choose() path because resolved choices ARE ordinary choices.
+func _play_weave(resolution: Dictionary) -> void:
+	_apply_mutations(resolution.get("mutations", []))
+	_npc_line(resolution.get("line", ""))
+	_offer_or_continue({
+		"choices": resolution.get("choices", []),
+		"goto": _generated_node.get("return_to", "end"),
+	})
+
+
+## The Express body should be one JSON object (the v0 transport for
+## proposals, per the contract's pan-gap note). Extract and parse it;
+## null means "not a proposal" and the authored fallback plays.
+func _parse_weave_proposal(text: String) -> Variant:
+	var start := text.find("{")
+	var finish := text.rfind("}")
+	if start < 0 or finish <= start:
+		return null
+	return JSON.parse_string(text.substr(start, finish - start + 1))
+
+
+func _on_weave_spoke(text: String) -> void:
+	var node := _generated_node
+	var proposal: Variant = _parse_weave_proposal(text)
+	var resolution := WeaveLoom.resolve(node, proposal) if proposal != null else {}
+	if resolution.is_empty():
+		_npc_line(_generated_fallback(node))
+		_offer_or_continue(node)
+		return
+	GameState.record_weave(_weave_key(), resolution)
+	_play_weave(resolution)
+
+
 ## Seam for tests and future providers: is a live mind available?
 func _can_generate() -> bool:
 	return _soul != null and SoulGateway.is_ready()
@@ -140,7 +241,19 @@ func _request_generation(node: Dictionary) -> void:
 	# player line (it rides the trigger), so exclude it.
 	var history := _transcript.slice(maxi(0, _transcript.size() - 9), _transcript.size() - 1) \
 		if _transcript.size() > 1 else []
-	_soul.perceive_utterance("player", _last_player_line, node.get("prompt_hint", ""), history)
+	var objective: String = node.get("prompt_hint", "")
+	if _awaiting_weave:
+		objective = _weave_objective(node)
+	_soul.perceive_utterance("player", _last_player_line, objective, history,
+		node.get("grounding", []))
+
+
+## v0 proposal transport (the contract's pan-gap note): the mind answers
+## with one JSON object in the Express body; the loom does the governing.
+func _weave_objective(node: Dictionary) -> String:
+	return "%s\nAnswer with ONLY one JSON object, no prose around it: " % node.get("prompt_hint", "") \
+		+ "{\"line\": \"what you say aloud\", \"choices\": [{\"text\": \"a way they might answer\"}]}. " \
+		+ "Offer 2 or 3 choices."
 
 
 func _on_soul_spoke(text: String) -> void:
@@ -148,6 +261,10 @@ func _on_soul_spoke(text: String) -> void:
 		return
 	_awaiting_generated = false
 	_set_thinking(false)
+	if _awaiting_weave:
+		_awaiting_weave = false
+		_on_weave_spoke(text)
+		return
 	_npc_line(text)
 	if _buffer_mode != "offered":
 		_offer_or_continue(_current_generated_node())
@@ -159,6 +276,7 @@ func _on_generated_timeout(node: Dictionary) -> void:
 	if not _awaiting_generated:
 		return
 	_awaiting_generated = false
+	_awaiting_weave = false
 	_set_thinking(false)
 	match _buffer_mode:
 		"offered":
@@ -177,6 +295,7 @@ func _on_soul_concluded(outcome: String) -> void:
 	if not _awaiting_generated or outcome != "abandoned":
 		return
 	_awaiting_generated = false
+	_awaiting_weave = false
 	_set_thinking(false)
 	match _buffer_mode:
 		"offered":

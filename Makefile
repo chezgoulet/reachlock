@@ -27,6 +27,11 @@ simd-build:
 	mkdir -p server/bin
 	cd server && go build -o bin/reachlock-simd ./cmd/reachlock-simd/
 
+# Build the speech daemon (the Ear Protocol sidecar).
+eard-build:
+	mkdir -p server/bin
+	cd server && go build -o bin/reachlock-eard ./cmd/reachlock-eard/
+
 # Run the Go server locally.
 server-run: server-build
 	$(SERVER_BIN)
