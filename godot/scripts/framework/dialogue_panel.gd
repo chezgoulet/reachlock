@@ -62,6 +62,7 @@ var _voice_hint: Label = null
 
 
 func _ready() -> void:
+	add_to_group("dialogue_surface")  # the pause menu asks before eating Esc
 	set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	offset_left = 120
 	offset_right = -120
@@ -268,7 +269,7 @@ func _process(delta: float) -> void:
 			_next_line()
 	if not _typing:
 		return
-	_type_clock += delta * CPS
+	_type_clock += delta * float(Settings.get_value("typewriter_cps") if Settings.get_value("typewriter_cps") != null else CPS)
 	var total := _body.get_total_character_count()
 	if int(_type_clock) >= total:
 		_body.visible_characters = -1

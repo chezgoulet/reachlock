@@ -524,6 +524,29 @@ func has_save() -> bool:
 	return FileAccess.file_exists(SAVE_PATH)
 
 
+## Back to birth-state for a fresh run (the title screen's New Game after
+## a Quit-to-Title, when this node still carries the old playthrough).
+## The save file on disk is untouched until the next save_game().
+func reset_for_new_game() -> void:
+	universe = {"tick": 0, "flags": []}
+	player = {
+		"location": "", "current_space": "", "credits": 200, "flags": [],
+		"upgrades": [], "character": "",
+		"ship": {
+			"hull_id": "", "hull_integrity": 1.0, "position": [0.0, 0.0, 0.0],
+			"cargo": {}, "power": {"weapons": 0.33, "shields": 0.33, "engines": 0.34},
+			"damage": [], "damage_seq": 0, "weapons_calibrated": false,
+		},
+	}
+	mission = {}
+	souls = {}
+	factions = {}
+	weaves = {}
+	crew = {"seeded": false, "aboard": [], "assignments": {}, "edges": {}, "history": []}
+	_on_mods_loaded(DataRegistry.load_order())
+	state_changed.emit()
+
+
 func _souls_for_save() -> Dictionary:
 	var out := {}
 	for soul_id: String in souls:
