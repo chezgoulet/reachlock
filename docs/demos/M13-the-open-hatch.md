@@ -140,3 +140,8 @@ is byte-for-byte the old contract.
   stack is up (vault hygiene; the suite connects to whatever's live).
 - `export_presets.cfg` is now tracked deliberately (no secrets in ours;
   CI exports from it) — the .gitignore documents this.
+- Code-built full-rect Controls need `set_anchors_and_offsets_preset`,
+  not `set_anchors_preset` — the latter sets anchors but never adjusts
+  offsets, so the control stays 0×0 and its children pile up top-left
+  (Christopher's first playtest finding; fixed across title/pause/select
+  in f58c891, verified with a headless layout probe).
