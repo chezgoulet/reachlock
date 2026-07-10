@@ -117,11 +117,12 @@ func configure(hull: Dictionary) -> void:
 	_maybe_self_scene.call_deferred()
 
 
-## The crew as NPCs: everyone aboard except the character the player IS.
+## The crew as NPCs: everyone aboard except crew a player IS — the local
+## character, plus every Ship-Share claimed seat (SHIP-SHARE.md).
 func _npc_crew_ids() -> Array:
 	var ids: Array = []
 	for crew_id: String in CrewRoster.aboard():
-		if crew_id != GameState.player_character():
+		if not ShipShare.is_claimed(crew_id):
 			ids.append(crew_id)
 	return ids
 
