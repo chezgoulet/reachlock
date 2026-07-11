@@ -4,6 +4,7 @@ members = [
     "reachlock-core",
     "reachlock-client",
     "reachlock-cli",
+    "reachlock-server",
 ]
 
 [workspace.package]
