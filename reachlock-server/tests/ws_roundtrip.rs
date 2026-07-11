@@ -17,6 +17,7 @@ async fn boot() -> String {
     let config = reachlock_server::Config {
         bind: "127.0.0.1:0".into(),
         tick_interval_secs: 3600, // effectively silent during tests
+        ..Default::default()
     };
     let state = std::sync::Arc::new(reachlock_server::AppState::new(&config));
     let app = reachlock_server::router(state);
