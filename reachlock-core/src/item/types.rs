@@ -310,7 +310,11 @@ impl EquipmentKind {
     }
 
     pub fn all() -> Vec<EquipmentKind> {
-        let mut v: Vec<EquipmentKind> = WeaponKind::ALL.iter().copied().map(EquipmentKind::Weapon).collect();
+        let mut v: Vec<EquipmentKind> = WeaponKind::ALL
+            .iter()
+            .copied()
+            .map(EquipmentKind::Weapon)
+            .collect();
         v.extend([
             EquipmentKind::Armor,
             EquipmentKind::Shield,
@@ -348,8 +352,16 @@ impl ItemType {
 
     /// Every leaf item type — used by exhaustive tests and CLI help.
     pub fn all() -> Vec<ItemType> {
-        let mut v: Vec<ItemType> = EquipmentKind::all().into_iter().map(ItemType::Equipment).collect();
-        v.extend(ConsumableKind::ALL.iter().copied().map(ItemType::Consumable));
+        let mut v: Vec<ItemType> = EquipmentKind::all()
+            .into_iter()
+            .map(ItemType::Equipment)
+            .collect();
+        v.extend(
+            ConsumableKind::ALL
+                .iter()
+                .copied()
+                .map(ItemType::Consumable),
+        );
         v.extend(ComponentKind::ALL.iter().copied().map(ItemType::Component));
         v.extend(ImplantKind::ALL.iter().copied().map(ItemType::Implant));
         v.extend(CosmeticKind::ALL.iter().copied().map(ItemType::Cosmetic));
@@ -358,11 +370,21 @@ impl ItemType {
 
     pub fn family(self) -> ItemFamily {
         match self {
-            ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Energy(_))) => ItemFamily::EnergyWeapon,
-            ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Kinetic(_))) => ItemFamily::KineticWeapon,
-            ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Missile(_))) => ItemFamily::MissileWeapon,
-            ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Melee(_))) => ItemFamily::MeleeWeapon,
-            ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Boarding(_))) => ItemFamily::BoardingWeapon,
+            ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Energy(_))) => {
+                ItemFamily::EnergyWeapon
+            }
+            ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Kinetic(_))) => {
+                ItemFamily::KineticWeapon
+            }
+            ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Missile(_))) => {
+                ItemFamily::MissileWeapon
+            }
+            ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Melee(_))) => {
+                ItemFamily::MeleeWeapon
+            }
+            ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Boarding(_))) => {
+                ItemFamily::BoardingWeapon
+            }
             ItemType::Equipment(EquipmentKind::Armor) => ItemFamily::Armor,
             ItemType::Equipment(EquipmentKind::Shield) => ItemFamily::Shield,
             ItemType::Equipment(EquipmentKind::Engine) => ItemFamily::Engine,
@@ -457,21 +479,21 @@ impl ItemFamily {
     /// family" without enumerating every leaf.
     pub fn representative_item_type(self) -> ItemType {
         match self {
-            ItemFamily::EnergyWeapon => {
-                ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Energy(EnergyWeapon::Laser)))
-            }
-            ItemFamily::KineticWeapon => {
-                ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Kinetic(KineticWeapon::Cannon)))
-            }
-            ItemFamily::MissileWeapon => {
-                ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Missile(MissileWeapon::Torpedo)))
-            }
+            ItemFamily::EnergyWeapon => ItemType::Equipment(EquipmentKind::Weapon(
+                WeaponKind::Energy(EnergyWeapon::Laser),
+            )),
+            ItemFamily::KineticWeapon => ItemType::Equipment(EquipmentKind::Weapon(
+                WeaponKind::Kinetic(KineticWeapon::Cannon),
+            )),
+            ItemFamily::MissileWeapon => ItemType::Equipment(EquipmentKind::Weapon(
+                WeaponKind::Missile(MissileWeapon::Torpedo),
+            )),
             ItemFamily::MeleeWeapon => {
                 ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Melee(MeleeWeapon::Blade)))
             }
-            ItemFamily::BoardingWeapon => ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Boarding(
-                BoardingWeapon::BreachingCharge,
-            ))),
+            ItemFamily::BoardingWeapon => ItemType::Equipment(EquipmentKind::Weapon(
+                WeaponKind::Boarding(BoardingWeapon::BreachingCharge),
+            )),
             ItemFamily::Armor => ItemType::Equipment(EquipmentKind::Armor),
             ItemFamily::Shield => ItemType::Equipment(EquipmentKind::Shield),
             ItemFamily::Engine => ItemType::Equipment(EquipmentKind::Engine),
@@ -603,15 +625,15 @@ mod tests {
     fn cli_examples_parse() {
         assert_eq!(
             ItemType::from_token("energy_laser"),
-            Some(ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Energy(
-                EnergyWeapon::Laser
-            ))))
+            Some(ItemType::Equipment(EquipmentKind::Weapon(
+                WeaponKind::Energy(EnergyWeapon::Laser)
+            )))
         );
         assert_eq!(
             ItemType::from_token("kinetic_cannon"),
-            Some(ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Kinetic(
-                KineticWeapon::Cannon
-            ))))
+            Some(ItemType::Equipment(EquipmentKind::Weapon(
+                WeaponKind::Kinetic(KineticWeapon::Cannon)
+            )))
         );
     }
 

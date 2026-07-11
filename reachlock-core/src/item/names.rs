@@ -38,22 +38,8 @@ const ADJECTIVES: &[&str] = &[
 ];
 
 const MATERIALS: &[&str] = &[
-    "Ferrite",
-    "Titanium",
-    "Carbon",
-    "Ceramic",
-    "Tungsten",
-    "Graphene",
-    "Chromium",
-    "Obsidian",
-    "Bone",
-    "Copper",
-    "Silicate",
-    "Polymer",
-    "Adamant",
-    "Nickel",
-    "Cobalt",
-    "Basalt",
+    "Ferrite", "Titanium", "Carbon", "Ceramic", "Tungsten", "Graphene", "Chromium", "Obsidian",
+    "Bone", "Copper", "Silicate", "Polymer", "Adamant", "Nickel", "Cobalt", "Basalt",
 ];
 
 /// Base noun per leaf `ItemType` — the fixed, meaningful part of the name
@@ -153,7 +139,14 @@ const DESCRIPTION_TEMPLATES: &[&str] = &[
     "A tier-{tier} {base}, {rarity} by any {faction} appraiser's standard.",
 ];
 
-fn render_template(template: &str, base: &str, rarity: &str, tier: u8, faction: &str, biome: &str) -> String {
+fn render_template(
+    template: &str,
+    base: &str,
+    rarity: &str,
+    tier: u8,
+    faction: &str,
+    biome: &str,
+) -> String {
     template
         .replace("{base}", base)
         .replace("{rarity}", rarity)
@@ -177,7 +170,8 @@ pub fn generate_naming(
 
     let display_name = format!("{adjective} {material} {base}");
 
-    let template = DESCRIPTION_TEMPLATES[rng.next_below(DESCRIPTION_TEMPLATES.len() as u64) as usize];
+    let template =
+        DESCRIPTION_TEMPLATES[rng.next_below(DESCRIPTION_TEMPLATES.len() as u64) as usize];
     let rarity_str = format!("{rarity:?}").to_lowercase();
     let description = render_template(
         template,
@@ -208,9 +202,9 @@ mod tests {
 
     #[test]
     fn deterministic() {
-        let s = seed(ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Kinetic(
-            KineticWeapon::Autocannon,
-        ))));
+        let s = seed(ItemType::Equipment(EquipmentKind::Weapon(
+            WeaponKind::Kinetic(KineticWeapon::Autocannon),
+        )));
         let mut a = SeededRng::new(1);
         let mut b = SeededRng::new(1);
         assert_eq!(
@@ -228,7 +222,10 @@ mod tests {
             assert!(!name.is_empty());
             assert!(!desc.is_empty());
             assert!(!name.contains("{{"), "unrendered template in name: {name}");
-            assert!(!desc.contains('{'), "unrendered placeholder in description: {desc}");
+            assert!(
+                !desc.contains('{'),
+                "unrendered placeholder in description: {desc}"
+            );
         }
     }
 
@@ -245,9 +242,9 @@ mod tests {
     #[test]
     fn spec_example_shape() {
         // "Scorched Ferrite Autocannon" — three words, title-cased.
-        let s = seed(ItemType::Equipment(EquipmentKind::Weapon(WeaponKind::Kinetic(
-            KineticWeapon::Autocannon,
-        ))));
+        let s = seed(ItemType::Equipment(EquipmentKind::Weapon(
+            WeaponKind::Kinetic(KineticWeapon::Autocannon),
+        )));
         let mut rng = SeededRng::new(0);
         let (name, _) = generate_naming(&mut rng, &s, Rarity::Common);
         assert!(name.ends_with("Autocannon"));

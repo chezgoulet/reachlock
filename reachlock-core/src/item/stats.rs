@@ -32,71 +32,70 @@ const fn r(key: StatKey, base_lo: i64, base_hi: i64, growth: i64) -> StatRange {
 /// Which stats apply to a family, and their tier-1 band + per-tier growth.
 /// Every family includes `Weight` — every item has mass (spec: "weight is
 /// fixed-point too" — index rule 2 overrides the spec's `f32`).
-fn family_stat_ranges(family: ItemFamily) -> &'static [StatRange] {
+fn family_stat_ranges(family: ItemFamily) -> Vec<StatRange> {
     match family {
-        ItemFamily::EnergyWeapon => &[
+        ItemFamily::EnergyWeapon => vec![
             r(StatKey::Damage, 8, 14, 6),
             r(StatKey::Range, 40, 70, 15),
             r(StatKey::FireRate, 2, 5, 1),
             r(StatKey::Weight, 3, 6, 1),
         ],
-        ItemFamily::KineticWeapon => &[
+        ItemFamily::KineticWeapon => vec![
             r(StatKey::Damage, 12, 20, 8),
             r(StatKey::Range, 30, 55, 12),
             r(StatKey::FireRate, 3, 7, 1),
             r(StatKey::Weight, 5, 9, 2),
         ],
-        ItemFamily::MissileWeapon => &[
+        ItemFamily::MissileWeapon => vec![
             r(StatKey::Damage, 20, 35, 14),
             r(StatKey::Range, 80, 140, 30),
             r(StatKey::FireRate, 1, 2, 1),
             r(StatKey::Weight, 6, 10, 2),
         ],
-        ItemFamily::MeleeWeapon => &[
+        ItemFamily::MeleeWeapon => vec![
             r(StatKey::Damage, 6, 10, 4),
             r(StatKey::FireRate, 4, 8, 2),
             r(StatKey::Weight, 2, 4, 1),
         ],
-        ItemFamily::BoardingWeapon => &[
-            r(StatKey::Damage, 10, 18, 6),
-            r(StatKey::Weight, 3, 6, 1),
-        ],
-        ItemFamily::Armor => &[
+        ItemFamily::BoardingWeapon => {
+            vec![r(StatKey::Damage, 10, 18, 6), r(StatKey::Weight, 3, 6, 1)]
+        }
+        ItemFamily::Armor => vec![
             r(StatKey::ShieldHp, 20, 40, 12),
             r(StatKey::Weight, 8, 14, 3),
         ],
-        ItemFamily::Shield => &[
+        ItemFamily::Shield => vec![
             r(StatKey::ShieldHp, 30, 60, 18),
             r(StatKey::Recharge, 2, 5, 1),
             r(StatKey::Weight, 4, 8, 1),
         ],
-        ItemFamily::Engine => &[
+        ItemFamily::Engine => vec![
             r(StatKey::Thrust, 20, 40, 10),
             r(StatKey::Turn, 5, 12, 2),
             r(StatKey::Weight, 10, 18, 3),
         ],
-        ItemFamily::Sensor => &[
+        ItemFamily::Sensor => vec![
             r(StatKey::SensorRange, 50, 100, 20),
             r(StatKey::Weight, 1, 3, 1),
         ],
-        ItemFamily::MiningTool => &[
+        ItemFamily::MiningTool => vec![
             r(StatKey::MiningRate, 5, 12, 3),
             r(StatKey::Weight, 4, 8, 1),
         ],
-        ItemFamily::RepairTool => &[
+        ItemFamily::RepairTool => vec![
             r(StatKey::RepairRate, 5, 12, 3),
             r(StatKey::Weight, 3, 6, 1),
         ],
-        ItemFamily::Cybernetic => &[r(StatKey::Weight, 1, 2, 0)],
-        ItemFamily::Augmentation => &[r(StatKey::Weight, 1, 2, 0)],
-        ItemFamily::Spacesuit => &[
+        ItemFamily::Cybernetic => vec![r(StatKey::Weight, 1, 2, 0)],
+        ItemFamily::Augmentation => vec![r(StatKey::Weight, 1, 2, 0)],
+        ItemFamily::Spacesuit => vec![
             r(StatKey::ShieldHp, 10, 20, 5),
             r(StatKey::Weight, 6, 12, 2),
         ],
-        ItemFamily::Consumable => &[r(StatKey::Weight, 1, 3, 0)],
-        ItemFamily::Component => &[r(StatKey::Weight, 2, 6, 1)],
-        ItemFamily::Implant => &[r(StatKey::Weight, 1, 2, 0)],
-        ItemFamily::Cosmetic => &[r(StatKey::Weight, 0, 1, 0)],
+        ItemFamily::Consumable => vec![r(StatKey::Weight, 1, 3, 0)],
+        ItemFamily::Component => vec![r(StatKey::Weight, 2, 6, 1)],
+        ItemFamily::Implant => vec![r(StatKey::Weight, 1, 2, 0)],
+        ItemFamily::Cosmetic => vec![r(StatKey::Weight, 0, 1, 0)],
     }
 }
 
@@ -106,10 +105,13 @@ fn family_stat_ranges(family: ItemFamily) -> &'static [StatRange] {
 /// stat in band" without re-deriving the table.
 pub fn stat_band(family: ItemFamily, key: StatKey, tier: u8) -> Option<(i64, i64)> {
     let tier = tier.clamp(TIER_MIN, TIER_MAX) as i64;
-    family_stat_ranges(family).iter().find(|range| range.key == key).map(|range| {
-        let bonus = range.growth * (tier - 1);
-        (range.base_lo + bonus, range.base_hi + bonus)
-    })
+    family_stat_ranges(family)
+        .iter()
+        .find(|range| range.key == key)
+        .map(|range| {
+            let bonus = range.growth * (tier - 1);
+            (range.base_lo + bonus, range.base_hi + bonus)
+        })
 }
 
 /// Roll fixed-point stats for a family at a tier. Same `(rng state, family,

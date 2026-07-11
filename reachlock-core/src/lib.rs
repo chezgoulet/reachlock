@@ -8,6 +8,7 @@
 pub mod contract;
 pub mod determinism;
 pub mod generator;
+pub mod item;
 pub mod network;
 pub mod seed;
 pub mod universe;
