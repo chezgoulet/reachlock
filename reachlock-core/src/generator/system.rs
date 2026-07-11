@@ -179,7 +179,11 @@ fn asteroid_count_range(biome: Biome) -> (usize, usize) {
 
 fn station_kind_pool(biome: Biome) -> &'static [StationKind] {
     match biome {
-        Biome::Core => &[StationKind::Trade, StationKind::Trade, StationKind::Military],
+        Biome::Core => &[
+            StationKind::Trade,
+            StationKind::Trade,
+            StationKind::Military,
+        ],
         Biome::Frontier => &[
             StationKind::Trade,
             StationKind::Mining,
@@ -224,7 +228,7 @@ fn generate_orbits(
         let turn = rng.next_below(65536) as u16;
         let position = polar(radius, turn);
         let planet_radius = 24 + rng.next_below(56) as i64;
-        let planet_seed = child_seed(seed, 0x9147_A1, i as u64);
+        let planet_seed = child_seed(seed, 0x0091_47A1, i as u64);
         orbits.push(Orbit {
             radius,
             planet_radius,
@@ -568,7 +572,6 @@ mod tests {
         /// (orbit count, field count, station count, threat, checksum) for
         /// seed 42 / Frontier / Full. Captured on x86_64; must match on
         /// every target.
-        pub const SEED_42: (usize, usize, usize, u8, i64) =
-            (4, 2, 2, 56, -372411290521051861);
+        pub const SEED_42: (usize, usize, usize, u8, i64) = (4, 2, 2, 56, -372411290521051861);
     }
 }

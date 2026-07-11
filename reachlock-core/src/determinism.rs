@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::generator;
+use crate::item;
 use crate::seed::types::Biome;
 use crate::util::{color, noise};
 
@@ -56,6 +57,17 @@ impl Hasher {
     fn finish(self) -> u64 {
         self.0
     }
+}
+
+/// Hash any serializable generator output by its canonical JSON encoding.
+/// Deterministic because these generators use only integer/fixed-point
+/// values (no floats) and BTreeMap-backed maps, so serde_json emits
+/// byte-identical output on every target.
+fn hash_serde<T: Serialize>(value: &T) -> u64 {
+    let bytes = serde_json::to_vec(value).expect("generator output serializes");
+    let mut h = Hasher::new();
+    h.write(&bytes);
+    h.finish()
 }
 
 fn hash_mesh(mesh: &generator::GeneratedMesh) -> u64 {
@@ -159,10 +171,45 @@ pub fn manifest() -> Manifest {
             seed,
             checksum: h.finish(),
         });
+
+        // S04 — whole-system generator, both fidelities.
+        entries.push(Entry {
+            generator: "system_full".into(),
+            seed,
+            checksum: hash_serde(&generator::system::generate_system(
+                seed,
+                Biome::Frontier,
+                generator::system::Fidelity::Full,
+            )),
+        });
+        entries.push(Entry {
+            generator: "system_sparse".into(),
+            seed,
+            checksum: hash_serde(&generator::system::generate_system(
+                seed,
+                Biome::DeepSpace,
+                generator::system::Fidelity::Sparse,
+            )),
+        });
+
+        // S05 — item generator (representative family; the icon texture is
+        // part of the hashed output).
+        entries.push(Entry {
+            generator: "item_kinetic".into(),
+            seed,
+            checksum: hash_serde(&item::generate_item(&item::ItemSeed {
+                seed,
+                item_type: item::ItemFamily::KineticWeapon.representative_item_type(),
+                tier: 4,
+                faction: "compact".into(),
+                biome: "frontier".into(),
+            })),
+        });
     }
 
     Manifest {
-        version: 1,
+        // v2: added S04 system + S05 item generators.
+        version: 2,
         entries,
     }
 }

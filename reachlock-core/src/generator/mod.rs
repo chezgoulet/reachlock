@@ -20,8 +20,6 @@ pub use station::generate_station;
 pub use system::{generate_starfield, generate_system};
 pub use ui::generate_ui_panel;
 
-use serde::{Deserialize, Serialize};
-
 use crate::util::rng::Fixed;
 use serde::{Deserialize, Serialize};
 
