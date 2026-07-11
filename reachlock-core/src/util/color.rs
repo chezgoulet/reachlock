@@ -1,9 +1,11 @@
 //! Seeded color palettes. 8-bit RGBA — plain data, converted by the client
 //! bridge. Palette construction is integer HSV→RGB so it is deterministic.
 
+use serde::{Deserialize, Serialize};
+
 use super::rng::SeededRng;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ColorRgba8 {
     pub r: u8,
     pub g: u8,

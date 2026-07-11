@@ -1,8 +1,13 @@
 //! Seeded RNG and fixed-point primitives (spec §5, Determinism Guarantee).
 
+use serde::{Deserialize, Serialize};
+
 /// Fixed-point value: 1 unit = 1/1024 world units. All gameplay-critical
 /// math stays in integers; `to_f32` exists only for the visual bridge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
 pub struct Fixed(pub i64);
 
 impl Fixed {

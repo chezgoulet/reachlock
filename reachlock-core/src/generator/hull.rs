@@ -11,6 +11,9 @@ pub enum HullClass {
     Freighter,
     Corvette,
     Station,
+    /// A small, irregular chunk — the system generator's asteroid fields
+    /// reuse this hull class for rocks instead of a bespoke generator.
+    Rock,
 }
 
 impl HullClass {
@@ -21,6 +24,7 @@ impl HullClass {
             HullClass::Freighter => (48, 80),
             HullClass::Corvette => (40, 64),
             HullClass::Station => (96, 160),
+            HullClass::Rock => (4, 12),
         }
     }
 
@@ -30,6 +34,7 @@ impl HullClass {
             HullClass::Freighter => (7, 11),
             HullClass::Corvette => (6, 9),
             HullClass::Station => (10, 16),
+            HullClass::Rock => (5, 7),
         }
     }
 }
@@ -110,6 +115,20 @@ mod tests {
                 .unwrap()
         };
         assert!(max_r(&station) > max_r(&shuttle));
+    }
+
+    #[test]
+    fn rock_is_smaller_than_any_ship_class() {
+        let rock = generate_hull_class(7, HullClass::Rock);
+        let shuttle = generate_hull_class(7, HullClass::Shuttle);
+        let max_r = |m: &GeneratedMesh| {
+            m.vertices
+                .iter()
+                .map(|v| v.x.0.abs().max(v.y.0.abs()))
+                .max()
+                .unwrap()
+        };
+        assert!(max_r(&rock) < max_r(&shuttle));
     }
 
     #[test]
