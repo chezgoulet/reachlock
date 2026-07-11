@@ -10,18 +10,22 @@ pub mod hull;
 pub mod music;
 pub mod planet;
 pub mod station;
+pub mod system;
 pub mod ui;
 
 pub use hull::generate_hull;
 pub use music::{generate_music, generate_tone, Mood};
 pub use planet::generate_planet;
 pub use station::generate_station;
+pub use system::{generate_starfield, generate_system};
 pub use ui::generate_ui_panel;
+
+use serde::{Deserialize, Serialize};
 
 use crate::util::rng::Fixed;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixedVec2 {
     pub x: Fixed,
     pub y: Fixed,

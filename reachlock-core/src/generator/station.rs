@@ -2,12 +2,15 @@
 //! Layout is a spine corridor with rooms budding off both sides —
 //! guaranteed connected by construction, no reachability solver needed.
 
+use serde::{Deserialize, Serialize};
+
 use super::hull::{generate_hull_class, HullClass};
 use super::{Door, GeneratedLayout, GeneratedMesh, Room, RoomKind};
 use crate::util::rng::SeededRng;
 
 /// Station flavor: which rooms can bud off the spine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StationKind {
     Trade,
     Mining,
