@@ -184,78 +184,117 @@ pub mod pg {
     }
 }
 
+/// The one seed-store contract, exercised against ANY implementation. Run it
+/// against `MemorySeedStore` (below) and, when `REACHLOCK_TEST_DB` is set,
+/// against `PgSeedStore` — the whole point is that both stores obey the same
+/// first-write-wins semantics. Every scenario uses distinct system ids so the
+/// battery is order-independent on a single shared (possibly clean) store.
+#[cfg(test)]
+pub fn store_contract_tests(store: &dyn SeedStore) {
+    use std::thread;
+
+    let system = |name: &str| SystemId(name.into());
+
+    // 1. First writer wins; the loser converges on the winner's seed.
+    let a = store.discover(UniverseTier::Classic, &system("fww-s1"), Seed::new(111));
+    let b = store.discover(UniverseTier::Classic, &system("fww-s1"), Seed::new(222));
+    assert!(a.you_discovered, "first discoverer wins");
+    assert!(!b.you_discovered, "second discoverer loses");
+    assert_eq!(
+        b.canonical_seed,
+        Seed::new(111),
+        "loser gets the winner's seed"
+    );
+
+    // 2. Same system id in a different universe is a separate ledger.
+    store.discover(UniverseTier::Classic, &system("iso-s1"), Seed::new(111));
+    let other = store.discover(UniverseTier::Spectrum, &system("iso-s1"), Seed::new(222));
+    assert!(
+        other.you_discovered,
+        "same system, different universe = separate ledger"
+    );
+
+    // 3. 32-way concurrent race: exactly one winner. Against real Postgres
+    //    this exercises the UNIQUE(universe, system_id, object_key) index as
+    //    the atomic arbiter, not just the in-memory mutex.
+    let winners: usize = thread::scope(|scope| {
+        let handles: Vec<_> = (0..32u64)
+            .map(|i| {
+                scope.spawn(move || {
+                    store
+                        .discover(
+                            UniverseTier::FairPlay,
+                            &system("race-contested"),
+                            Seed::new(1000 + i),
+                        )
+                        .you_discovered as usize
+                })
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).sum()
+    });
+    assert_eq!(winners, 1, "the race must have exactly one winner");
+
+    // 4. modify merges diffs and requires prior discovery.
+    assert!(
+        !store.modify(
+            UniverseTier::Classic,
+            &system("mod-nowhere"),
+            serde_json::json!({"x": 1})
+        ),
+        "cannot modify an undiscovered system"
+    );
+    store.discover(UniverseTier::Classic, &system("mod-s1"), Seed::new(1));
+    assert!(store.modify(
+        UniverseTier::Classic,
+        &system("mod-s1"),
+        serde_json::json!({"station": "destroyed"})
+    ));
+    let d = store.discover(UniverseTier::Classic, &system("mod-s1"), Seed::new(9));
+    assert_eq!(d.diffs["station"], "destroyed", "diffs merged and persisted");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn system(name: &str) -> SystemId {
-        SystemId(name.into())
-    }
-
     #[test]
-    fn first_writer_wins() {
-        let store = MemorySeedStore::default();
-        let a = store.discover(UniverseTier::Classic, &system("s1"), Seed::new(111));
-        let b = store.discover(UniverseTier::Classic, &system("s1"), Seed::new(222));
-        assert!(a.you_discovered);
-        assert!(!b.you_discovered);
-        assert_eq!(
-            b.canonical_seed,
-            Seed::new(111),
-            "loser gets the winner's seed"
-        );
+    fn memory_store_obeys_the_contract() {
+        store_contract_tests(&MemorySeedStore::default());
     }
+}
 
-    #[test]
-    fn universes_are_isolated() {
-        let store = MemorySeedStore::default();
-        store.discover(UniverseTier::Classic, &system("s1"), Seed::new(111));
-        let other = store.discover(UniverseTier::Spectrum, &system("s1"), Seed::new(222));
-        assert!(
-            other.you_discovered,
-            "same system, different universe = separate ledger"
-        );
-    }
+/// Live-Postgres battery. Skipped (passes trivially) unless `REACHLOCK_TEST_DB`
+/// points at a reachable Postgres — CI's `postgres` job sets it. Runs the
+/// shared `store_contract_tests` against a freshly-migrated, truncated DB.
+#[cfg(all(test, feature = "postgres"))]
+mod pg_tests {
+    use super::pg::PgSeedStore;
+    use super::store_contract_tests;
 
-    #[test]
-    fn concurrent_discovery_has_exactly_one_winner() {
-        use std::sync::Arc;
-        let store = Arc::new(MemorySeedStore::default());
-        let mut handles = Vec::new();
-        for i in 0..32u64 {
-            let store = store.clone();
-            handles.push(std::thread::spawn(move || {
-                store
-                    .discover(
-                        UniverseTier::FairPlay,
-                        &system("contested"),
-                        Seed::new(1000 + i),
-                    )
-                    .you_discovered
-            }));
-        }
-        let winners: usize = handles
-            .into_iter()
-            .map(|h| h.join().unwrap() as usize)
-            .sum();
-        assert_eq!(winners, 1, "the race must have exactly one winner");
-    }
+    #[tokio::test]
+    async fn pg_store_obeys_the_contract() {
+        let Ok(url) = std::env::var("REACHLOCK_TEST_DB") else {
+            eprintln!("REACHLOCK_TEST_DB unset — skipping live Postgres seed battery");
+            return;
+        };
+        let pool = sqlx::PgPool::connect(&url)
+            .await
+            .expect("connect REACHLOCK_TEST_DB");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("run migrations");
+        sqlx::query("TRUNCATE seeds")
+            .execute(&pool)
+            .await
+            .expect("clean seeds");
 
-    #[test]
-    fn modify_merges_and_requires_discovery() {
-        let store = MemorySeedStore::default();
-        assert!(!store.modify(
-            UniverseTier::Classic,
-            &system("nowhere"),
-            serde_json::json!({"x": 1})
-        ));
-        store.discover(UniverseTier::Classic, &system("s1"), Seed::new(1));
-        assert!(store.modify(
-            UniverseTier::Classic,
-            &system("s1"),
-            serde_json::json!({"station": "destroyed"})
-        ));
-        let d = store.discover(UniverseTier::Classic, &system("s1"), Seed::new(9));
-        assert_eq!(d.diffs["station"], "destroyed");
+        // The store uses block_on internally, so run the (sync) battery on a
+        // blocking thread — never on this async worker.
+        let store = PgSeedStore::new(pool);
+        tokio::task::spawn_blocking(move || store_contract_tests(&store))
+            .await
+            .expect("pg battery task");
     }
 }
