@@ -1,7 +1,0 @@
-{
-  "direction": "client_to_host",
-  "message": {
-    "kind": "release_seat",
-    "body": {}
-  }
-}

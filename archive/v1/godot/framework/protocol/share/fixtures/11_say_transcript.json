@@ -1,9 +1,0 @@
-{
-  "direction": "client_to_host",
-  "message": {
-    "kind": "say",
-    "body": {
-      "text": "I'd do it again. She's crew."
-    }
-  }
-}
