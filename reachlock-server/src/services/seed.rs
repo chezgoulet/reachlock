@@ -251,7 +251,10 @@ pub fn store_contract_tests(store: &dyn SeedStore) {
         serde_json::json!({"station": "destroyed"})
     ));
     let d = store.discover(UniverseTier::Classic, &system("mod-s1"), Seed::new(9));
-    assert_eq!(d.diffs["station"], "destroyed", "diffs merged and persisted");
+    assert_eq!(
+        d.diffs["station"], "destroyed",
+        "diffs merged and persisted"
+    );
 }
 
 #[cfg(test)]

@@ -58,7 +58,12 @@ impl VerifyService {
     /// NOTE: when backed by a Postgres `EvalStore`, this performs a blocking
     /// DB write, so it must be dispatched via `spawn_blocking` from the async
     /// WS handler — never called directly on an async worker thread.
-    pub fn submit(&self, player_id: &str, universe: UniverseTier, eval: &SignedEvaluation) -> Verdict {
+    pub fn submit(
+        &self,
+        player_id: &str,
+        universe: UniverseTier,
+        eval: &SignedEvaluation,
+    ) -> Verdict {
         let mut last = self.last.lock().expect("verify state poisoned");
         let key = (player_id.to_string(), eval.contract_id.clone());
 
@@ -163,7 +168,10 @@ mod tests {
         let mut chain = SignatureChain::default();
         let eval = chain.sign_next("c", 1, &Action::verb("x"));
         assert_eq!(service.submit("p", U, &eval), Verdict::Accepted);
-        assert!(matches!(service.submit("p", U, &eval), Verdict::Rejected(_)));
+        assert!(matches!(
+            service.submit("p", U, &eval),
+            Verdict::Rejected(_)
+        ));
     }
 
     #[test]
@@ -192,6 +200,9 @@ mod tests {
         // And a replay of an old link is still rejected after reload.
         let mut replay_chain = SignatureChain::default();
         let stale = replay_chain.sign_next("cryo-pilot", 1, &Action::verb("maintain_course"));
-        assert!(matches!(after.submit("boris", U, &stale), Verdict::Rejected(_)));
+        assert!(matches!(
+            after.submit("boris", U, &stale),
+            Verdict::Rejected(_)
+        ));
     }
 }

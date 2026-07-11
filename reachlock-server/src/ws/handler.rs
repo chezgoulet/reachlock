@@ -21,7 +21,11 @@ pub async fn upgrade(
     RawQuery(query): RawQuery,
 ) -> Response {
     ws.on_upgrade(move |socket| async move {
-        let session = match Session::from_query(query.as_deref().unwrap_or("")) {
+        let session = match Session::authenticate(
+            query.as_deref().unwrap_or(""),
+            &*state.sessions,
+            state.auth_required,
+        ) {
             Ok(s) => s,
             Err(reason) => {
                 let mut socket = socket;
@@ -146,7 +150,10 @@ async fn route(
         }
         ClientMessage::EvalSubmit { eval } => {
             let eval_id = eval.signature.chars().take(16).collect::<String>();
-            match state.verify.submit(&session.player_id, &eval) {
+            match state
+                .verify
+                .submit(&session.player_id, session.universe, &eval)
+            {
                 Verdict::Accepted => Some(ServerMessage::EvalVerified {
                     eval_id,
                     accepted: true,
