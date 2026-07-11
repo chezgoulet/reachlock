@@ -19,6 +19,7 @@ pub use station::generate_station;
 pub use ui::generate_ui_panel;
 
 use crate::util::rng::Fixed;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FixedVec2 {
@@ -33,8 +34,10 @@ pub struct GeneratedMesh {
     pub indices: Vec<u32>,
 }
 
-/// Plain-data RGBA image.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Plain-data RGBA image. Serde-enabled (unlike its mesh/audio/layout
+/// siblings above) because S05's `GeneratedItem` embeds an icon texture and
+/// needs the whole struct to round-trip over the wire/into storage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeneratedTexture {
     pub width: u32,
     pub height: u32,
