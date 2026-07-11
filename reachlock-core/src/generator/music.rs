@@ -70,9 +70,42 @@ pub fn generate_music(seed: u64, mood: Mood, duration_secs: u32) -> GeneratedAud
     }
 }
 
+/// Wrap mono PCM in a WAV container. Not a generator — a plain data
+/// transform shared by the client bridge (bevy_audio decodes WAV) and the
+/// CLI (`gen music --wav out.wav`).
+pub fn to_wav_bytes(audio: &GeneratedAudio) -> Vec<u8> {
+    let data_len = (audio.samples.len() * 2) as u32;
+    let mut bytes = Vec::with_capacity(44 + data_len as usize);
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&(36 + data_len).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16u32.to_le_bytes()); // PCM chunk size
+    bytes.extend_from_slice(&1u16.to_le_bytes()); // PCM format
+    bytes.extend_from_slice(&1u16.to_le_bytes()); // mono
+    bytes.extend_from_slice(&audio.sample_rate.to_le_bytes());
+    bytes.extend_from_slice(&(audio.sample_rate * 2).to_le_bytes()); // byte rate
+    bytes.extend_from_slice(&2u16.to_le_bytes()); // block align
+    bytes.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&data_len.to_le_bytes());
+    for s in &audio.samples {
+        bytes.extend_from_slice(&s.to_le_bytes());
+    }
+    bytes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wav_header_well_formed() {
+        let audio = generate_music(1, Mood::Calm, 1);
+        let wav = to_wav_bytes(&audio);
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..16], b"WAVEfmt ");
+        assert_eq!(wav.len(), 44 + audio.samples.len() * 2);
+    }
 
     #[test]
     fn deterministic() {

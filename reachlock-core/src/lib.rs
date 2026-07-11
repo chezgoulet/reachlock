@@ -6,6 +6,7 @@
 //! neither adds gameplay logic of its own.
 
 pub mod contract;
+pub mod determinism;
 pub mod generator;
 pub mod network;
 pub mod seed;

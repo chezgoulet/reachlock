@@ -67,9 +67,13 @@ fn setup(
         Transform::from_xyz(0.0, 150.0, 0.0),
     ));
 
-    // Audio: a seeded tone from the core generator, played through bevy_audio.
-    let tone = reachlock_core::generator::generate_tone(0x5EED_0001, 44100, 1);
+    // Audio: a seeded phrase from the core generator, through bevy_audio.
+    let music = reachlock_core::generator::generate_music(
+        0x5EED_0001,
+        reachlock_core::generator::Mood::Calm,
+        2,
+    );
     commands.spawn(AudioPlayer(
-        audio_sources.add(bridge::audio_from_samples(&tone)),
+        audio_sources.add(bridge::audio_from_generated(&music)),
     ));
 }

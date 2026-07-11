@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "reachlock-core",
     "reachlock-client",
+    "reachlock-cli",
 ]
 
 [workspace.package]
