@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = [
+    "reachlock-core",
+    "reachlock-client",
+]
+
+[workspace.package]
+edition = "2021"
+license = "AGPL-3.0"
+repository = "https://github.com/chezgoulet/reachlock"
+
+[workspace.dependencies]
+# SPIKE FINDING (2026-07-10): the spec names Bevy 0.19, but bevy_rapier2d 0.34
+# (newest) targets bevy 0.18.1. The newest fully-coherent stack is
+# bevy 0.18 + rapier 0.34 + lyon 0.16. Upgrade to 0.19 when rapier 0.35 ships.
+bevy = "0.18.1"
+bevy_rapier2d = "0.34"
+bevy_prototype_lyon = "0.16"
+
+# Dev-profile opt for dependencies keeps incremental client builds tolerable
+# while Bevy itself is compiled with optimizations.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1

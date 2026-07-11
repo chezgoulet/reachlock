@@ -26,4 +26,10 @@ The ideas, not the code:
 
 ## Status
 
-Pre-spike. First deliverable: validate the full Bevy plugin stack compiles to `wasm32-unknown-unknown` (spec §2, WASM Build Risk).
+**Spike #1 passed (2026-07-10):** the full plugin stack — bevy + bevy_rapier2d + bevy_prototype_lyon + bevy_audio — compiles to `wasm32-unknown-unknown` (spec §2, WASM Build Risk). Version note: rapier lags bevy by one release, so the workspace pins **bevy 0.18.1 + rapier 0.34 + lyon 0.16**; bump to bevy 0.19 when rapier 0.35 ships.
+
+Native Linux builds need the usual Bevy system deps:
+
+```sh
+sudo apt-get install -y libwayland-dev libxkbcommon-dev libudev-dev libasound2-dev
+```
