@@ -24,6 +24,31 @@ pub fn mesh_from_generated(gen: &GeneratedMesh) -> Mesh {
     mesh
 }
 
+/// GeneratedTexture → bevy Image (RGBA8, nearest filtering — procedural
+/// pixels should stay crisp).
+pub fn image_from_generated(tex: &reachlock_core::generator::GeneratedTexture) -> Image {
+    use bevy::image::ImageSampler;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    let mut image = Image::new(
+        Extent3d {
+            width: tex.width,
+            height: tex.height,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        tex.pixels.clone(),
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    image.sampler = ImageSampler::nearest();
+    image
+}
+
+/// Core palette color → bevy Color.
+pub fn color_from_palette(c: reachlock_core::util::color::ColorRgba8) -> Color {
+    Color::srgba_u8(c.r, c.g, c.b, c.a)
+}
+
 /// GeneratedAudio → bevy AudioSource, via core's WAV container encoding
 /// (bevy_audio is built with the "wav" feature).
 pub fn audio_from_generated(audio: &reachlock_core::generator::GeneratedAudio) -> AudioSource {
