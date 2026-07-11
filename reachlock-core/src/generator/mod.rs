@@ -18,16 +18,22 @@ pub use planet::generate_planet;
 pub use station::generate_station;
 pub use ui::generate_ui_panel;
 
+use serde::{Deserialize, Serialize};
+
 use crate::util::rng::Fixed;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixedVec2 {
     pub x: Fixed,
     pub y: Fixed,
 }
 
-/// Plain-data mesh, target-independent.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Plain-data mesh, target-independent. Serde derives make this the shared
+/// wire/authoring shape for both generated output (spec §5) and authored
+/// content (spec §10) — field names are pinned by
+/// `generator::tests::mesh_round_trip` because authored `.ron` files depend
+/// on them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeneratedMesh {
     pub vertices: Vec<FixedVec2>,
     pub indices: Vec<u32>,
@@ -50,7 +56,7 @@ pub struct GeneratedAudio {
 }
 
 /// A room in a generated (or authored) interior layout. Grid units.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Room {
     pub kind: RoomKind,
     pub x: i32,
@@ -59,7 +65,8 @@ pub struct Room {
     pub height: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RoomKind {
     Hangar,
     Corridor,
@@ -72,7 +79,7 @@ pub enum RoomKind {
 }
 
 /// A door connecting two rooms (indices into the room list).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Door {
     pub from: u32,
     pub to: u32,
@@ -82,7 +89,7 @@ pub struct Door {
 }
 
 /// Interior layout: rooms plus the doors that connect them.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeneratedLayout {
     pub rooms: Vec<Room>,
     pub doors: Vec<Door>,
@@ -95,4 +102,72 @@ pub struct GeneratedLayout {
 pub enum AssetSource {
     Procedural { seed: u64 },
     HandCrafted { asset_id: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pins the JSON field names of the structs authored `.ron` content
+    /// files depend on (spec §10 gotcha: "authored files ARE the
+    /// compatibility surface"). If this test's expected JSON changes, an
+    /// authoring format change is happening — that's a compatibility break,
+    /// not a refactor.
+    #[test]
+    fn mesh_round_trip_and_field_names_are_pinned() {
+        let mesh = GeneratedMesh {
+            vertices: vec![
+                FixedVec2 {
+                    x: Fixed(1024),
+                    y: Fixed(-2048),
+                },
+                FixedVec2 {
+                    x: Fixed(0),
+                    y: Fixed(0),
+                },
+            ],
+            indices: vec![0, 1, 2],
+        };
+        let json = serde_json::to_string(&mesh).unwrap();
+        assert_eq!(
+            json,
+            r#"{"vertices":[{"x":1024,"y":-2048},{"x":0,"y":0}],"indices":[0,1,2]}"#
+        );
+        let back: GeneratedMesh = serde_json::from_str(&json).unwrap();
+        assert_eq!(mesh, back);
+    }
+
+    #[test]
+    fn layout_round_trip_and_field_names_are_pinned() {
+        let layout = GeneratedLayout {
+            rooms: vec![Room {
+                kind: RoomKind::Hangar,
+                x: 0,
+                y: 0,
+                width: 48,
+                height: 32,
+            }],
+            doors: vec![Door {
+                from: 0,
+                to: 1,
+                x: 16,
+                y: 32,
+            }],
+        };
+        let json = serde_json::to_string(&layout).unwrap();
+        assert_eq!(
+            json,
+            r#"{"rooms":[{"kind":"hangar","x":0,"y":0,"width":48,"height":32}],"doors":[{"from":0,"to":1,"x":16,"y":32}]}"#
+        );
+        let back: GeneratedLayout = serde_json::from_str(&json).unwrap();
+        assert_eq!(layout, back);
+    }
+
+    /// A float where a `Fixed` (i64, transparent) is expected must fail to
+    /// parse, not silently truncate (spec §10 gotcha).
+    #[test]
+    fn float_in_place_of_fixed_is_a_parse_error() {
+        let err = serde_json::from_str::<FixedVec2>(r#"{"x":1.5,"y":0}"#).unwrap_err();
+        assert!(err.to_string().contains("invalid type") || err.is_data());
+    }
 }
