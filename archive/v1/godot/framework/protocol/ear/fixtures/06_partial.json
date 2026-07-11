@@ -1,0 +1,12 @@
+{
+  "direction": "daemon_to_host",
+  "message": {
+    "v": 0,
+    "seq": 1,
+    "type": "partial",
+    "body": {
+      "utterance_id": "utt_1",
+      "text": "i'd do it"
+    }
+  }
+}

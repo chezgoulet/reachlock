@@ -1,0 +1,163 @@
+{
+  "id": "prudence_bar_fight",
+  "npc": "prudence",
+  "auto": true,
+  "condition": "player.docked and player.location == \"sorrow_station\" and not (\"bar_fight_done\" in player.flags)",
+  "entry": "scene_open",
+  "speaker_names": {
+    "scene_open": "—",
+    "grissom_opens": "Grissom",
+    "grissom_escalates": "Grissom",
+    "grissom_swings": "Grissom",
+    "the_fight": "—",
+    "doss_arrives": "Doss",
+    "drink_fails": "Grissom"
+  },
+  "nodes": {
+    "scene_open": {
+      "kind": "authored",
+      "text": "The Interval is loud until it isn't. Prudence stands at the bar — she came ahead to file the docking damage report and stayed for the room's warmth, which is more than the room is offering. A dock hand with a ledger grievance and three drinks in him has found his audience.",
+      "goto": "grissom_opens"
+    },
+    "grissom_opens": {
+      "kind": "authored",
+      "text": "Look at it. Standing at MY bar. It doesn't drink. It doesn't tab. It just wears a face so the rest of us forget what took the loader contract on ring two.",
+      "goto": "prudence_first"
+    },
+    "prudence_first": {
+      "kind": "authored",
+      "text": "Your contract went to a cargo robot with six manipulators and no face at all. I fly a ship. If you want to be angry at the right machine, I can write down its registry number. I have excellent handwriting.",
+      "goto": "grissom_escalates"
+    },
+    "grissom_escalates": {
+      "kind": "authored",
+      "text": "Hear that? It jokes now. A thing masquerading as a person, and this station lets it walk around like the rest of us. Somebody ought to open it up and show the room the wiring.",
+      "choices": [
+        {
+          "text": "Step between them.",
+          "goto": "step_in",
+          "mutations": [
+            {
+              "op": "adjust_relationship",
+              "target": "player",
+              "axis": "trust",
+              "amount": 10
+            },
+            {
+              "op": "add_memory",
+              "text": "A docker at Sorrow called me a thing masquerading as a person and offered to show the bar my wiring. The captain put themselves between us before I had to decide what I was going to do about it. I logged the gesture. I log everything that matters.",
+              "importance": 0.9,
+              "tags": [
+                "player",
+                "personhood",
+                "sorrow_station"
+              ]
+            },
+            {
+              "op": "set_player_flag",
+              "flag": "stood_for_prudence"
+            }
+          ]
+        },
+        {
+          "text": "Hold back. She doesn't need rescuing.",
+          "goto": "she_handles_it",
+          "mutations": [
+            {
+              "op": "adjust_relationship",
+              "target": "player",
+              "axis": "trust",
+              "amount": 6
+            },
+            {
+              "op": "add_memory",
+              "text": "The captain watched a drunk threaten to open me up, and did not move — because they knew I didn't need them to. There are two kinds of respect. That one is rarer.",
+              "importance": 0.8,
+              "tags": [
+                "player",
+                "personhood",
+                "sorrow_station"
+              ]
+            },
+            {
+              "op": "set_player_flag",
+              "flag": "trusted_prudence"
+            }
+          ]
+        },
+        {
+          "text": "Buy Grissom a drink and talk him down.",
+          "goto": "drink_fails",
+          "mutations": [
+            {
+              "op": "set_player_flag",
+              "flag": "bought_grissom_drink"
+            }
+          ]
+        }
+      ]
+    },
+    "step_in": {
+      "kind": "authored",
+      "text": "You put your shoulder into the space between them. Grissom's eyes come up to yours — and past you, to Prudence, who has not moved a servo. 'Captain,' she says evenly, 'I had this. But noted.' Grissom decides the pair of you is the same insult twice.",
+      "goto": "grissom_swings"
+    },
+    "she_handles_it": {
+      "kind": "authored",
+      "text": "You stay on your stool. Prudence sets down the damage report, aligns it with the bar's edge, and turns. 'You want to see wiring,' she says. 'I want to finish my paperwork. One of us is about to be disappointed.' The room laughs. Grissom does not.",
+      "goto": "grissom_swings"
+    },
+    "drink_fails": {
+      "kind": "authored",
+      "text": "I don't drink with machine sympathizers. — He takes the drink anyway. He drinks it. It does not help. It was never going to help; some men come to a bar carrying the fight with them and just need somewhere to set it down.",
+      "goto": "grissom_swings"
+    },
+    "grissom_swings": {
+      "kind": "authored",
+      "text": "He swings. Not at you — at her. Prudence catches his wrist with the exact courtesy of an airlock door and the bar comes apart around the two of them: his friends pile in, a table goes over, somebody's cargo pallet takes out the market terminal in a cough of sparks.",
+      "goto": "the_fight"
+    },
+    "the_fight": {
+      "kind": "authored",
+      "text": "It is over in ninety seconds. The tally: one dock crew limping, zero permanent injuries — she is precise even when the room isn't — one bar wrecked, and Sorrow Station's market, banking relay, and mission computer dark behind a curtain of extinguisher fog. The station's whole commercial deck, offline for the week.",
+      "goto": "prudence_after"
+    },
+    "prudence_after": {
+      "kind": "authored",
+      "text": "For the record, captain: he swung first, I minimized structural damage, and the mission computer was dead before I redirected the second man into it. I will be filing an amended report. It will be accurate, which is more than the room deserves.",
+      "choices": [
+        {
+          "text": "Are you all right?",
+          "goto": "am_i_alright"
+        },
+        {
+          "text": "That could have gone worse.",
+          "goto": "gone_worse"
+        }
+      ]
+    },
+    "am_i_alright": {
+      "kind": "generated",
+      "prompt_hint": "You are Prudence, a blunt, fiercely loyal droid. A bar patron just harassed you for 'masquerading as a person' and a brawl wrecked the bar. The captain asks if you are all right. Answer in your voice: precise, dry, unapologetic — and let one line of genuine feeling through about what it costs to be asked whether you're a person, before deflecting back to practical matters.",
+      "text": "Functionally, yes. As for the rest — I have been asked to prove I am someone since the day I chose this crew. Tonight I was merely asked louder. Thank you for asking a better question.",
+      "goto": "doss_arrives",
+      "buffer_line": "Assessing. One moment — the honest answer takes longer than the polite one."
+    },
+    "gone_worse": {
+      "kind": "authored",
+      "text": "It went precisely as well as it could have gone, which is the standard I hold. Though I note the station's opinion of the arithmetic may differ.",
+      "goto": "doss_arrives"
+    },
+    "doss_arrives": {
+      "kind": "authored",
+      "text": "My bar. My market terminal. My week. — Doss stands in the doorway taking inventory of the wreckage with the calm of a woman who has seen the refinery burn twice. — Nobody's paying for this out of wages, and your ship limped in here bleeding atmosphere. Come find me at the dock office, captain. It happens I have a problem shaped like a solution to yours.",
+      "mutations": [
+        {
+          "op": "set_player_flag",
+          "flag": "bar_fight_done"
+        }
+      ],
+      "goto": "end"
+    }
+  }
+}

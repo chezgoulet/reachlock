@@ -1,0 +1,89 @@
+{
+  "name": "a proposal inside its grants passes through untouched",
+  "node": {
+    "kind": "woven",
+    "prompt_hint": "Grissom trades a rumor about the cordon.",
+    "text": "Grissom looks at his glass. \"Ask me another day.\"",
+    "return_to": "after_rumor",
+    "may": {
+      "grants": [
+        {
+          "op": "adjust_faction",
+          "factions": [
+            "reach_compact"
+          ],
+          "axes": [
+            "trust"
+          ],
+          "max_amount": 3
+        },
+        {
+          "op": "set_player_flag",
+          "flags": [
+            "heard_cordon_rumor"
+          ]
+        },
+        {
+          "op": "add_memory",
+          "max_importance": 0.6
+        }
+      ],
+      "max_choices": 3,
+      "max_mutations": 3
+    }
+  },
+  "proposal": {
+    "line": "\"Third shift, the picket thins.\"",
+    "mutations": [
+      {
+        "op": "adjust_faction",
+        "faction": "reach_compact",
+        "axis": "trust",
+        "amount": 2
+      }
+    ],
+    "choices": [
+      {
+        "text": "Why tell me?",
+        "mutations": []
+      },
+      {
+        "text": "I owe you one.",
+        "mutations": [
+          {
+            "op": "set_player_flag",
+            "flag": "heard_cordon_rumor"
+          }
+        ]
+      }
+    ]
+  },
+  "resolved": {
+    "line": "\"Third shift, the picket thins.\"",
+    "mutations": [
+      {
+        "op": "adjust_faction",
+        "faction": "reach_compact",
+        "axis": "trust",
+        "amount": 2
+      }
+    ],
+    "choices": [
+      {
+        "text": "Why tell me?",
+        "mutations": [],
+        "goto": "after_rumor"
+      },
+      {
+        "text": "I owe you one.",
+        "mutations": [
+          {
+            "op": "set_player_flag",
+            "flag": "heard_cordon_rumor"
+          }
+        ],
+        "goto": "after_rumor"
+      }
+    ]
+  }
+}

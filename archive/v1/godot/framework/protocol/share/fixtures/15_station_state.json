@@ -1,0 +1,17 @@
+{
+  "direction": "host_to_client",
+  "message": {
+    "kind": "station_state",
+    "body": {
+      "stations": {
+        "pilot": "prudence",
+        "engineering": "tib"
+      },
+      "controls": {
+        "engineering": {
+          "power_engines": 0.5
+        }
+      }
+    }
+  }
+}

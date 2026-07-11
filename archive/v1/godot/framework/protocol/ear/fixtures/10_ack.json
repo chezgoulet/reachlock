@@ -1,0 +1,10 @@
+{
+  "direction": "daemon_to_host",
+  "message": {
+    "v": 0,
+    "seq": 5,
+    "re": 5,
+    "type": "ack",
+    "body": {}
+  }
+}

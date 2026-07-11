@@ -1,0 +1,67 @@
+{
+  "id": "tove_galley_briefing",
+  "npc": "tove",
+  "condition": "not player.docked and not (\"briefing_done\" in player.flags)",
+  "entry": "start",
+  "nodes": {
+    "start": {
+      "kind": "authored",
+      "text": "You're up. Good. Nine days on this rock pile and the hold's still a third empty — ore doesn't mine itself and the Loup-Garou doesn't fuel herself on scenery. Take the stick when you're ready. Rocks are thickest two clicks out.",
+      "choices": [
+        {
+          "text": "Remind me how this crew runs.",
+          "goto": "crew_rundown"
+        },
+        {
+          "text": "Anything on the scope I should worry about?",
+          "goto": "scope"
+        },
+        {
+          "text": "On it. Launching now.",
+          "goto": "sendoff"
+        }
+      ]
+    },
+    "crew_rundown": {
+      "kind": "authored",
+      "text": "Tib flies when you don't. Risc keeps the drive alive in engineering. Doc's in the med bay pretending she isn't overqualified. Bardo's wherever the quiet is. Prudence runs the cockpit and the jumps — she's awake for the crossings so the rest of us don't have to be. Boris minds the pods. Me? I mind the cargo, and other things that move quietly.",
+      "choices": [
+        {
+          "text": "Other things?",
+          "goto": "other_things"
+        },
+        {
+          "text": "Anything on the scope?",
+          "goto": "scope"
+        },
+        {
+          "text": "Good enough. Launching.",
+          "goto": "sendoff"
+        }
+      ]
+    },
+    "other_things": {
+      "kind": "authored",
+      "text": "Ask me again when the hold's full and we're somewhere with walls. Some cargo is a conversation, not a manifest line.",
+      "goto": "scope"
+    },
+    "scope": {
+      "kind": "generated",
+      "prompt_hint": "You are Tove, a laconic Duskway runner. The captain asked what's on the scope near this unclaimed mining drift. Answer briefly and dry: it's been quiet, and quiet in the Reach is a thing you watch, not a thing you trust. Maybe mention pirates work quiet claims like this one.",
+      "text": "Quiet. Nine days of quiet. In the Reach that's not a comfort, that's a countdown.",
+      "goto": "sendoff",
+      "buffer_line": "Second — pulling the last sweep up now."
+    },
+    "sendoff": {
+      "kind": "authored",
+      "text": "Three units of ore tops off the run. Hold F near a rock, watch your drift, and if anything jumps us — and something always jumps us — the weapons respond to the same hands as the stick. Go earn the fuel.",
+      "mutations": [
+        {
+          "op": "set_player_flag",
+          "flag": "briefing_done"
+        }
+      ],
+      "goto": "end"
+    }
+  }
+}

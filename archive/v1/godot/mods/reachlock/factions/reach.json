@@ -1,0 +1,24 @@
+{
+  "id": "reach",
+  "name": "The Reach",
+  "short_name": "Reach",
+  "description": "The Reach is not a faction in the conventional sense. It is the absence of one. It is the unmapped space beyond the last gate, the stations and outposts that operate without Compact, ISC, or charter authority, the people who refuse any of the above on principle. The Reach is where a crew goes when they cannot be anywhere else. It is also the most convenient place in the galaxy to be a pirate, a salvor, a deserter, or a smuggler — and the most inconvenient place in the galaxy to be a cop. The Reach is its own political position: the refusal of faction, maintained by mutual benefit, sustained by the Compact's indifference to anyone who does not own a gate.",
+  "territory": ["unmapped_systems", "frontier_stations", "drift_settlements"],
+  "resources": {
+    "produces": ["salvage_components", "scrap_alloys", "smuggled_goods"],
+    "consumes": ["rations", "fuel", "refined_alloys"]
+  },
+  "relationships": {
+    "compact": "hostile",
+    "isc": "tense",
+    "corp_charter": "neutral",
+    "earth_remnant": "friendly"
+  },
+  "internal_divisions": ["drift_families", "salvor_clans", "pirate_kings", "frontier_station_councils", "those_who_refuse"],
+  "goals": [
+    "survive",
+    "trade",
+    "no_compact_rule",
+    "keep_the_gates_out"
+  ]
+}

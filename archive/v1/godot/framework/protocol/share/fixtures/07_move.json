@@ -1,0 +1,14 @@
+{
+  "direction": "client_to_host",
+  "message": {
+    "kind": "move",
+    "body": {
+      "position": [
+        412.0,
+        96.5
+      ],
+      "facing": "left",
+      "anim": "walk"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "direction": "daemon_to_host",
+  "message": {
+    "v": 0,
+    "seq": 3,
+    "re": 3,
+    "type": "prices",
+    "body": {
+      "location_id": "sorrow_station",
+      "tick": 181,
+      "prices": [
+        {
+          "good_id": "raw_ore",
+          "base_price": 12,
+          "price": 18,
+          "supply": 24,
+          "demand": 33
+        }
+      ]
+    }
+  }
+}

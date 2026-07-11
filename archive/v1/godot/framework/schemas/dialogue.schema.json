@@ -1,0 +1,353 @@
+{
+  "$id": "reachlock://framework/v0/dialogue",
+  "title": "Dialogue graph",
+  "description": "An authored conversation with an NPC. Nodes are NPC turns: `authored` nodes carry fixed text; `generated` nodes carry a prompt_hint that becomes the perceive objective for the soul's mind (Pan), so authored structure and LLM improvisation interleave in one graph; `woven` nodes additionally let the mind propose choices and world effects, governed by the node's `may` allowlist (WEAVE-CONTRACT.md). Choices are player turns; their conditions are trigger-DSL strings (validated in CI) and their mutations are the soul-mutation vocabulary. `goto: \"end\"` closes the conversation.",
+  "type": "object",
+  "required": [
+    "id",
+    "npc",
+    "entry",
+    "nodes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "npc": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "entry": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "condition": {
+      "type": "string",
+      "description": "Trigger-DSL guard: when this dialogue is available at all."
+    },
+    "auto": {
+      "type": "boolean",
+      "description": "True = this dialogue starts by itself when the player arrives somewhere its npc is present and the condition passes (a scripted scene, not a talk option). Authored scenes should set a flag in their closing node so the guard goes false and the scene runs once."
+    },
+    "speaker_names": {
+      "type": "object",
+      "description": "Optional display-name overrides per node id, for scene-style dialogues where lines in this npc's graph are voiced by bystanders (e.g. a bar heckler). node id -> display name.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "nodes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "authored",
+              "generated",
+              "woven"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "authored only: the NPC line, verbatim. On generated nodes: the offline fallback line. On woven nodes: the offline/authored fallback line, REQUIRED (woven nodes must degrade to authored)."
+          },
+          "prompt_hint": {
+            "type": "string",
+            "description": "generated/woven only: becomes the perceive goal objective; the soul improvises the line (generated) or proposes a branch (woven)."
+          },
+          "buffer_line": {
+            "type": "string",
+            "description": "generated/woven only: an authored line that plays IMMEDIATELY while the mind thinks (the latency mask — 'Let me think how to put that.'). The generated line follows as a second beat when it arrives; if the player has already moved on, it is dropped. Write it in the npc's voice as a natural pre-answer."
+          },
+          "grounding": {
+            "type": "array",
+            "description": "woven only: recall queries the host runs through the memory interface (read-only) and folds into the mind's memory channel — the RAG half of the weave.",
+            "items": {
+              "type": "object",
+              "required": ["vault", "query"],
+              "additionalProperties": false,
+              "properties": {
+                "vault": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+                "query": { "type": "string" }
+              }
+            }
+          },
+          "return_to": {
+            "type": "string",
+            "description": "woven only: the node every woven choice lands on (or \"end\"). The author keeps the spine — woven branches rejoin the tree where the tree says."
+          },
+          "may": {
+            "type": "object",
+            "description": "woven only: the allowlist (WEAVE-CONTRACT.md). Absent or with empty grants = words only, zero mutations.",
+            "additionalProperties": false,
+            "properties": {
+              "grants": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/weave_grant" }
+              },
+              "max_choices": { "type": "integer", "minimum": 0, "maximum": 4 },
+              "max_mutations": { "type": "integer", "minimum": 0, "maximum": 8 }
+            }
+          },
+          "mutations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/mutation"
+            }
+          },
+          "goto": {
+            "type": "string",
+            "description": "Next node when there are no choices. \"end\" closes."
+          },
+          "choices": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "text",
+                "goto"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "condition": {
+                  "type": "string",
+                  "description": "Trigger-DSL: choice shown only when true."
+                },
+                "goto": {
+                  "type": "string"
+                },
+                "mutations": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/mutation"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "extra": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "weave_grant": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["op", "targets", "axes", "max_amount"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "adjust_relationship" },
+            "targets": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+            "axes": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+            "max_amount": { "type": "integer", "minimum": 0, "maximum": 10 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op", "factions", "axes", "max_amount"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "adjust_faction" },
+            "factions": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+            "axes": { "type": "array", "minItems": 1, "items": { "enum": ["trust", "contribution", "notoriety"] } },
+            "max_amount": { "type": "integer", "minimum": 0, "maximum": 10 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op", "flags"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "enum": ["set_flag", "clear_flag", "set_player_flag", "clear_player_flag"] },
+            "flags": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op", "max_importance"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "add_memory" },
+            "max_importance": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      ]
+    },
+    "mutation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "target",
+            "axis",
+            "amount"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "adjust_relationship"
+            },
+            "target": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "axis": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 100
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "text"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "add_memory"
+            },
+            "text": {
+              "type": "string"
+            },
+            "importance": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "flag"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "set_flag"
+            },
+            "flag": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "flag"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "clear_flag"
+            },
+            "flag": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Set a flag on the PLAYER (player.flags in trigger-DSL), not the npc's soul — the vocabulary for story-progress gates that other dialogues and missions read.",
+          "required": [
+            "op",
+            "flag"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "set_player_flag"
+            },
+            "flag": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "flag"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "clear_player_flag"
+            },
+            "flag": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Move the PLAYER's standing with a faction along one axis (trust/contribution/notoriety). How a bar chooses to remember you.",
+          "required": [
+            "op",
+            "faction",
+            "axis",
+            "amount"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "adjust_faction"
+            },
+            "faction": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "axis": {
+              "type": "string",
+              "enum": [
+                "trust",
+                "contribution",
+                "notoriety"
+              ]
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 100
+            }
+          }
+        }
+      ]
+    }
+  }
+}

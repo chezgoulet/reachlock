@@ -1,0 +1,41 @@
+{
+  "id": "duskway_runs",
+  "name": "The Duskway Runs",
+  "description": "Blockade-running for the Earth resistance. The crew flies the Loup-Garou through Compact-controlled space to deliver people, medicine, and testimony out of a system the Compact has decided does not get to trade with the rest of the galaxy. Tove's arc is the spine of this storyline.",
+  "arcs": [
+    {
+      "id": "act_1_first_run",
+      "summary": "Tove brings the crew into the Duskway network. The first run is the one where the captain learns what 'Duskway' actually means.",
+      "triggers": ["tove_introduces_duskway"],
+      "events": [
+        "first_duskway_contact",
+        "compact_patrol_close_call",
+        "tove_mutates_trust"
+      ]
+    },
+    {
+      "id": "act_2_third_run",
+      "summary": "By the third run, the Duskway network begins to treat the Loup-Garou as a known quantity. Tove's trust shifts permanently.",
+      "triggers": ["duskway_runs_completed >= 3"],
+      "events": [
+        "network_recognises_crew",
+        "tove_gain_trust_memory",
+        "new_duskway_passage_opens"
+      ]
+    },
+    {
+      "id": "act_3_carries_people",
+      "summary": "A run that carries people, not cargo. The cost of the Duskway becomes concrete.",
+      "triggers": ["duskway_run_carries_refugees"],
+      "events": [
+        "refugees_on_board",
+        "doc_keene_arc_converges",
+        "compact_blockade_responds"
+      ]
+    }
+  ],
+  "npcs": ["tove", "tib", "doc_keene", "boris", "risc"],
+  "locations": ["earth", "the_veil", "verne", "sorrow_station"],
+  "factions": ["earth_remnant", "compact", "reach"],
+  "tags": ["duskway", "blockade", "tove_arc", "earth_blockade"]
+}

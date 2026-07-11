@@ -1,0 +1,28 @@
+{
+  "$id": "reachlock://framework/v0/upgrade",
+  "title": "Purchasable upgrade",
+  "description": "A ship upgrade, piece of personal equipment, or gadget sold at stations with the `shipyard` service. Buying one deducts credits, records the id in the save's player.upgrades, and sets the player flag `upgrade_<id>` so trigger-DSL conditions and dialogue can see it. `effects` is a flat bag of named numeric/boolean modifiers; engine systems read the ones they understand and ignore the rest — a mod can invent effects its own scripts consume. Nothing promises an upgrade is useful.",
+  "type": "object",
+  "required": ["id", "name", "cost", "category"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "cost": { "type": "integer", "minimum": 0 },
+    "category": {
+      "type": "string",
+      "enum": ["ship", "equipment", "gadget"],
+      "description": "Shop shelf: ship systems, personal/cybernetic equipment, or widgets that may or may not help."
+    },
+    "effects": {
+      "type": "object",
+      "description": "Named modifiers, aggregated across owned upgrades. Known to the engine: hull_bonus (adds to hull integrity, 0..1), damage_bonus (extra weapon damage per hit, integer), detection_mult (multiplies hostile patrol detection ranges, <1 = stealthier; multiplicative across upgrades), speed_mult (multiplies top speed), timer_bonus_seconds (added to mission stage failure timers when the stage starts). Unknown keys are preserved for mod scripts.",
+      "additionalProperties": {
+        "type": ["number", "boolean"]
+      }
+    },
+    "flavor": { "type": "string", "description": "Merchant's pitch, in the seller's voice." },
+    "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
+  }
+}

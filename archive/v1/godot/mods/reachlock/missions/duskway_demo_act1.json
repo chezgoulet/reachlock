@@ -1,0 +1,50 @@
+{
+  "id": "duskway_demo_act1",
+  "name": "Cold Open — Ledger Drift",
+  "description": "Nine days into a mining run on an unclaimed drift. Wake up, work the claim, and learn why quiet in the Reach is a countdown. Beats 0-2 of the Duskway Run demo.",
+  "stages": [
+    {
+      "id": "shift_briefing",
+      "type": "dialogue",
+      "objective": "Find Tove in the galley — she has the shift briefing",
+      "completion": {"type": "dialogue_end", "target_id": "tove"}
+    },
+    {
+      "id": "take_the_stick",
+      "type": "custom",
+      "objective": "Take the ship out — hit Launch when you're ready",
+      "completion": {"type": "event", "target_id": "launched"}
+    },
+    {
+      "id": "work_the_claim",
+      "type": "custom",
+      "objective": "Mine raw ore from the drift — hold F near a rock",
+      "completion": {"type": "event", "target_id": "ore_mined", "count": 3}
+    },
+    {
+      "id": "survive_the_ambush",
+      "type": "combat",
+      "objective": "CONTACT — drive off the ambusher (CTRL to fire)",
+      "completion": {"type": "event", "target_id": "survived_ambush"},
+      "rewards": {
+        "soul_mutations": [
+          {"npc": "tove", "op": "add_memory", "text": "A reaver skiff jumped us over the claim and the captain flew us out the other side of it. Filed the engine whine for later — that hull was Corp Charter surplus with the markings burned off.", "importance": 0.7, "tags": ["player", "ambush"]}
+        ]
+      }
+    },
+    {
+      "id": "limp_home",
+      "type": "jump",
+      "objective": "The hull is bleeding — spin the drive and jump for Sorrow Station (J). The pods are waiting.",
+      "completion": {"type": "jump"}
+    }
+  ],
+  "failure_global": {"on_ship_destroyed": true},
+  "epilogue": {
+    "failure": "The drift keeps what it kills. The Loup-Garou joins nine days of tailings and one pirate's good afternoon, and Sorrow Station's second wall gets seven more names nobody authorized.\n\n[i]The Reach doesn't care who you are. It just waits.[/i]",
+    "failure_reasons": {
+      "ship_destroyed": "The skiff's third pass finds the crack in the patch armor. The drift keeps what it kills — and Sorrow Station's second wall, the small one nobody authorized, gets seven more names.\n\n[i]The Reach doesn't care who you are. It just waits.[/i]"
+    }
+  },
+  "next": "duskway_demo_act2"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "fire_suppression",
+  "name": "Hull Fire Suppression Net",
+  "cost": 560,
+  "category": "ship",
+  "description": "Distributed suppressant lines through both decks. Interior fires burn themselves down over time instead of waiting for a hand.",
+  "effects": {
+    "auto_suppress": true
+  },
+  "flavor": "You can fight the fire, or the ship can. Buy the ship the option."
+}

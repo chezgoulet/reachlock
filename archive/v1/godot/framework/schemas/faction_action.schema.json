@@ -1,0 +1,73 @@
+{
+  "$id": "reachlock://framework/v0/faction_action",
+  "title": "Faction action (P8, Sprint 02)",
+  "description": "A modder-authored rule for how a player action shifts the player's standing with one or more factions. The engine never names a content id from this contract: action ids live in the mod file (and become a denylist for the architecture guard), the trigger vocabulary is closed, the deltas are numbers. `faction_delta` and `rival_faction_delta` keys are axis names (the canonical three: trust, contribution, notoriety; mods may add axes via `extra`). GAME-DESIGN.md §5.",
+  "type": "object",
+  "required": ["id", "description", "trigger"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "The action's unique id. Filename must match (validate_mod_data.py enforces it)."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable: what the action means in plain language."
+    },
+    "trigger": {
+      "type": "string",
+      "description": "The closed trigger vocabulary. The engine dispatches `Reputation.trigger(name, context)` from each hot path; a FactionAction whose trigger matches fires.",
+      "enum": [
+        "on_trade_completed",
+        "on_dock",
+        "on_undock",
+        "on_visit_location",
+        "on_dialogue_completed",
+        "on_kill_in_system"
+      ]
+    },
+    "applies_to": {
+      "type": "string",
+      "description": "Which faction receives `faction_delta`. 'controlling_faction' (default) is the faction_control of the location where the trigger fired; 'target_faction' is named below; 'all_known' broadcasts.",
+      "enum": ["controlling_faction", "target_faction", "all_known"],
+      "default": "controlling_faction"
+    },
+    "target_faction_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Required when applies_to is 'target_faction'. Ignored otherwise."
+    },
+    "faction_delta": {
+      "type": "object",
+      "description": "Per-axis deltas applied to the affected faction. Keys: trust / contribution / notoriety (canonical); mods may extend with any string. Values clamp to [-100, 100].",
+      "additionalProperties": { "type": "integer", "minimum": -100, "maximum": 100 }
+    },
+    "rival_faction_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "The rival faction. If omitted, the engine picks the faction whose authored `relationships` entry toward `applies_to` is the worst (hostile > tense > neutral > friendly > allied)."
+    },
+    "rival_faction_delta": {
+      "type": "object",
+      "description": "Per-axis deltas applied to the rival faction. Same shape as faction_delta.",
+      "additionalProperties": { "type": "integer", "minimum": -100, "maximum": 100 }
+    },
+    "price_modifier": {
+      "type": "object",
+      "description": "Per-axis coefficient in [-0.10, 0.10] applied to the controlling faction's market price (display and charged). Total modifier clamped to [-0.25, 0.25]. positive=price goes UP for friendly standing, DOWN for hostile (e.g. contribution +1 with corp_charter makes corp_charter's goods cheaper).",
+      "additionalProperties": { "type": "number", "minimum": -0.10, "maximum": 0.10 }
+    },
+    "unlocks": {
+      "type": "array",
+      "description": "Good ids that become buyable when the affected faction's `trust` is >= 25 AND `notoriety` is <= 50. Modders can author new restricted goods this way; the engine only checks the gate.",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+    },
+    "requires_standing": {
+      "type": "object",
+      "description": "Per-axis minimum (trust) or maximum (notoriety) the player must hold for the action to fire. Omitted axes are unconstrained. Action skipped (with a log line) when the gate fails — it does NOT consume a charge.",
+      "additionalProperties": { "type": "integer", "minimum": -100, "maximum": 100 }
+    },
+    "extra": { "type": "object", "description": "Free-form escape hatch for mod-specific data. Never read by the engine." }
+  }
+}

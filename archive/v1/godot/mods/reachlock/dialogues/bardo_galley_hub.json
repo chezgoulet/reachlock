@@ -1,0 +1,51 @@
+{
+  "id": "bardo_galley_hub",
+  "npc": "bardo",
+  "condition": "not player.docked",
+  "entry": "start",
+  "nodes": {
+    "start": {
+      "kind": "authored",
+      "text": "Captain. Tea's stewed, the datapad's misbehaving, and I'm three glyphs into an argument with a dead language. Sit, if you like — the argument can wait. It's waited forty thousand years.",
+      "choices": [
+        {"text": "What exactly is it you study?", "goto": "the_work"},
+        {"text": "The Predecessors — what were they?", "goto": "predecessors"},
+        {"text": "You seem far from home out here.", "goto": "home"},
+        {"text": "Something else.", "goto": "open_floor"},
+        {"text": "Just passing through. Enjoy the tea.", "goto": "end"}
+      ]
+    },
+    "the_work": {
+      "kind": "authored",
+      "text": "Languages. Six living ones, fragments of a dozen more, and the one nobody living speaks — Predecessor script. It's agglutinative: meaning built by stacking roots, the way a river builds a delta. You learn to read the shape of the stacking and you start to hear a voice in it. That's the part I don't put in the papers. Reviewers get nervous when you say a dead language has a voice.",
+      "goto": "start_short"
+    },
+    "predecessors": {
+      "kind": "authored",
+      "text": "The official answer: a non-human species, extinct forty to sixty thousand years, unambiguously gone. The Compact holds that position with a confidence I'd call... disproportionate to the evidence. The honest answer is we don't know. The ruins are slightly wrong for us and slightly wrong for anything else. The script keeps rhyming with things it has no business rhyming with. — He stops there, the way a man stops at the edge of a drop he knows is there.",
+      "goto": "start_short"
+    },
+    "home": {
+      "kind": "authored",
+      "text": "I grew up in a community that kept its oral traditions through everything — my grandmother could recite recordings older than the colonial charts. She used to say some of the patterns were older than anyone knew. I thought it was grandmother-talk. Then I started working on Predecessor script. — He turns the datapad face down, gently, like putting a child to bed. — Now I think she was being conservative.",
+      "goto": "start_short"
+    },
+    "open_floor": {
+      "kind": "generated",
+      "prompt_hint": "You are Bardo, the Loup-Garou's linguist — warm, watchful, six living languages and a private theory about Predecessor script he never states in full. The captain raises something open-ended over tea in the galley. Respond in your voice, one to three sentences.",
+      "text": "Hm. You know the best thing about a ship this size? Every conversation is load-bearing. Go on.",
+      "buffer_line": "Give me a moment — the good answer's in a different language and I have to walk it over.",
+      "goto": "start_short"
+    },
+    "start_short": {
+      "kind": "authored",
+      "text": "More tea in the pot, more questions in the drawer. Anything else?",
+      "choices": [
+        {"text": "About your work...", "goto": "the_work"},
+        {"text": "About the Predecessors...", "goto": "predecessors"},
+        {"text": "Something else.", "goto": "open_floor"},
+        {"text": "That's all, Bardo.", "goto": "end"}
+      ]
+    }
+  }
+}

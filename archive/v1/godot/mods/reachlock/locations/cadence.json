@@ -1,0 +1,18 @@
+{
+  "id": "cadence",
+  "name": "Cadence",
+  "kind": "station",
+  "system": "cadence",
+  "description": "A corporate charter station in the trade-bloc lane. Cadence is a working station: a shipyard, a refueling depot, and a permanent supply contract with the ISC's freighters that run the route. The boardroom is the chandlery; the chandlery is the boardroom. Crew that come through here are usually buying something they cannot get anywhere cheaper, or selling something they cannot get rid of anywhere quieter. The bar is the cleanest in the trade lane and the most expensive.",
+  "faction_control": "corp_charter",
+  "services": ["dock", "market", "bar", "shipyard", "med_bay", "mission_board", "fuel"],
+  "population": 5400,
+  "economy": {
+    "produces": ["refined_alloys"],
+    "consumes": ["raw_ore", "rations"]
+  },
+  "docking": {
+    "clearance_required": true,
+    "fee": 75
+  }
+}

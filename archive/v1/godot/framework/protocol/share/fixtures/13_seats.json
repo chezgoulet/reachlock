@@ -1,0 +1,12 @@
+{
+  "direction": "host_to_client",
+  "message": {
+    "kind": "seats",
+    "body": {
+      "claimed": {
+        "prudence": 1,
+        "tib": 2
+      }
+    }
+  }
+}

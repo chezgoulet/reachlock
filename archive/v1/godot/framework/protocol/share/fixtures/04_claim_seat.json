@@ -1,0 +1,9 @@
+{
+  "direction": "client_to_host",
+  "message": {
+    "kind": "claim_seat",
+    "body": {
+      "npc_id": "tib"
+    }
+  }
+}

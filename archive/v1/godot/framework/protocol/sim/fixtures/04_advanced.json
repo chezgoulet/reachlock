@@ -1,0 +1,70 @@
+{
+  "direction": "daemon_to_host",
+  "message": {
+    "v": 0,
+    "seq": 1,
+    "re": 1,
+    "type": "advanced",
+    "body": {
+      "tick": 181,
+      "snapshot": {
+        "tick": 121,
+        "seed": 42,
+        "factions": {
+          "compact": {
+            "id": "compact",
+            "name": "The Compact",
+            "goals": [
+              "expand"
+            ],
+            "trust": -3,
+            "relationships": {
+              "reach": "tense"
+            }
+          },
+          "reach": {
+            "id": "reach",
+            "name": "The Reach",
+            "goals": [
+              "survive"
+            ],
+            "trust": 1,
+            "relationships": {
+              "compact": "tense"
+            }
+          }
+        },
+        "market": {
+          "raw_ore": {
+            "good_id": "raw_ore",
+            "base_price": 12,
+            "price": 14,
+            "net_delta": -9,
+            "last_reprice_tick": 119
+          }
+        },
+        "locations": {
+          "sorrow_station": {
+            "location_id": "sorrow_station",
+            "supply_by_good": {
+              "rations": 24
+            },
+            "demand_by_good": {
+              "raw_ore": 33
+            }
+          }
+        },
+        "events": [],
+        "journal": [
+          {
+            "tick": 119,
+            "kind": "reprice",
+            "good_id": "raw_ore",
+            "amount": 14,
+            "delta": 2
+          }
+        ]
+      }
+    }
+  }
+}

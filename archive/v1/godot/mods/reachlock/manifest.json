@@ -1,0 +1,121 @@
+{
+  "id": "reachlock",
+  "name": "REACHLOCK: A Space Western",
+  "version": "0.2.0",
+  "description": "The official REACHLOCK content mod. Factions, locations, NPCs, ships, storylines, and the Duskway Run demo campaign for the authored universe.",
+  "author": "chezgoulet",
+  "license": "AGPL-3.0",
+  "dependencies": [],
+  "conflicts": [],
+  "provides": {
+    "factions": [
+      "compact",
+      "isc",
+      "corp_charter",
+      "reach",
+      "earth_remnant"
+    ],
+    "locations": [
+      "sorrow_station",
+      "aethon",
+      "verne",
+      "cadence",
+      "the_veil",
+      "earth",
+      "the_drift",
+      "earth_landing"
+    ],
+    "ships": [
+      "loup_garou",
+      "loup_garou_shuttle",
+      "compact_picket_boat",
+      "reaver_skiff"
+    ],
+    "npcs": [
+      "tib",
+      "tove",
+      "bardo",
+      "doc_keene",
+      "prudence",
+      "risc",
+      "boris",
+      "vex",
+      "compact_picket_drone",
+      "doss",
+      "grissom",
+      "noor"
+    ],
+    "storylines": [
+      "veil_escalation",
+      "duskway_runs",
+      "alexander_long_game",
+      "predecessor_revelation"
+    ],
+    "goods": [
+      "raw_ore",
+      "refined_alloys",
+      "rations",
+      "medical_cache"
+    ],
+    "dialogues": [
+      "tib_dock_debrief",
+      "tib_station_greeting",
+      "tove_cargo_check",
+      "tove_duskway_offer",
+      "tove_galley_briefing",
+      "prudence_bar_fight",
+      "doss_offer",
+      "doss_post_deal",
+      "noor_delivery",
+      "noor_after",
+      "doc_keene_cryo_primer",
+      "boris_pod_check",
+      "tib_cockpit_hub",
+      "prudence_flight_hub",
+      "bardo_galley_hub",
+      "grissom_after_stood",
+      "grissom_after_trusted",
+      "grissom_after_drink",
+      "grissom_meets_prudence",
+      "doss_noticed",
+      "prudence_about_the_bar"
+    ],
+    "faction_actions": [
+      "trade_with_compact"
+    ],
+    "missions": [
+      "test_trade_run",
+      "duskway_demo_act1",
+      "duskway_demo_act2",
+      "duskway_demo_act3",
+      "duskway_demo_act4"
+    ],
+    "economy_tables": [
+      "base"
+    ],
+    "upgrades": [
+      "patch_armor",
+      "rail_overcharge",
+      "drive_tune",
+      "transponder_ghost",
+      "cryo_recalibration",
+      "decoy_beacon",
+      "lucky_dice",
+      "mag_boots",
+      "plasma_welder",
+      "fire_suppression",
+      "gyro_stabilizers",
+      "flight_sim_module"
+    ]
+  },
+  "start": {
+    "mode": "on_board",
+    "player_ship": "loup_garou",
+    "location": "the_drift",
+    "mission": "duskway_demo_act1",
+    "scrawl": [
+      "THE FRONTIER DEEP — the Reach. Past the Compact cordons, past the last honest lane light, there is rock, and in the rock there is ore, and around the ore there are people too stubborn or too indebted to be anywhere else.",
+      "The mining corvette LOUP-GAROU sits over an unclaimed drift, nine days into a claim that was supposed to take four. The Compact doesn't patrol out here. That is the good news and the bad news."
+    ]
+  }
+}

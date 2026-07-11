@@ -1,0 +1,19 @@
+{
+  "id": "isc",
+  "name": "Independent State Coalitions",
+  "short_name": "ISC",
+  "description": "A coalition of independently governed worlds. Some are democracies. Some are oligarchies. Some are about to flip. The question is whether genuine independent governance can survive alongside the Compact's weight.",
+  "territory": ["independent_systems"],
+  "resources": {
+    "produces": ["modular_ships", "innovation", "diverse_goods"],
+    "consumes": ["raw_ore", "military_hardware"]
+  },
+  "relationships": {
+    "compact": "tense",
+    "corp_charter": "neutral",
+    "reach": "tense",
+    "earth_remnant": "friendly"
+  },
+  "internal_divisions": ["member_worlds", "trade_bloc", "security_council"],
+  "goals": ["maintain_autonomy", "expand_membership", "prevent_compact_monopoly"]
+}

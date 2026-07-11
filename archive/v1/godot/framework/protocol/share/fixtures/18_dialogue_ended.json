@@ -1,0 +1,9 @@
+{
+  "direction": "host_to_client",
+  "message": {
+    "kind": "dialogue_ended",
+    "body": {
+      "dialogue_id": "grissom_rumor"
+    }
+  }
+}

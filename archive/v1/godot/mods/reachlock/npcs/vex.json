@@ -1,0 +1,65 @@
+{
+ "id": "vex",
+ "name": "Vex",
+ "wardrobe": {
+  "culture": "corp_charter",
+  "work": "broker",
+  "skin": [
+   190,
+   150,
+   120
+  ],
+  "hair": {
+   "style": "tail",
+   "color": [
+    128,
+    42,
+    42
+   ]
+  },
+  "palette": {
+   "top": [
+    142,
+    46,
+    52
+   ],
+   "pants": [
+    54,
+    50,
+    58
+   ],
+   "accent": [
+    228,
+    176,
+    96
+   ]
+  },
+  "gear": [
+   "jacket"
+  ]
+ },
+ "soul_version": 1,
+ "mind": "rules",
+ "role": "pirate",
+ "ship": "reaver_skiff",
+ "description": "A Reach scavenger-pirate who works the asteroid drifts near Sorrow Station. Not a killer by preference — a taker of cargo from anyone who looks slow. Runs the moment a fight stops being profitable.",
+ "personality": {
+  "traits": [
+   "opportunistic",
+   "cowardly",
+   "loud"
+  ],
+  "values": [
+   "easy_money",
+   "own_skin"
+  ],
+  "fears": [
+   "fair_fights",
+   "the_compact"
+  ]
+ },
+ "allegiances": {
+  "reach": 30,
+  "compact": -40
+ }
+}

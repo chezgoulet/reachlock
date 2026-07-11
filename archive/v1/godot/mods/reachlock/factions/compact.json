@@ -1,0 +1,19 @@
+{
+  "id": "compact",
+  "name": "The Commonwealth Compact",
+  "short_name": "Compact",
+  "description": "The dominant interstellar government. Controls the major jump gates. Blockading Earth under the pretext of reconstruction. Alexander's long game advances from within.",
+  "territory": ["core_systems", "earth_blockade_zone"],
+  "resources": {
+    "produces": ["manufactured_goods", "military_hardware", "gate_access"],
+    "consumes": ["raw_ore", "food", "fuel"]
+  },
+  "relationships": {
+    "isc": "tense",
+    "corp_charter": "allied",
+    "reach": "hostile",
+    "earth_remnant": "war"
+  },
+  "internal_divisions": ["parliament", "senate", "crown", "business_lobby"],
+  "goals": ["consolidate_gate_network", "suppress_earth_resistance", "acquire_predecessor_archive"]
+}

@@ -1,0 +1,79 @@
+{
+  "id": "noor_delivery",
+  "npc": "noor",
+  "condition": "not (\"cache_delivered\" in player.flags)",
+  "entry": "start",
+  "nodes": {
+    "start": {
+      "kind": "authored",
+      "text": "Floodlights off in ninety seconds — the orbit track repeats and we are not on it. You're the wolf ship? Doss's manifest said machine parts, which is how I knew it was medicine. Crate to the shed, no names, and whatever you saw on the way down, you saw weather.",
+      "choices": [
+        {
+          "text": "Hand over the cache.",
+          "goto": "handover"
+        },
+        {
+          "text": "What happens to it from here?",
+          "goto": "downstream"
+        }
+      ]
+    },
+    "downstream": {
+      "kind": "authored",
+      "text": "Tonight it's on a river barge under fish. In three days it's insulin in Sept-Îles, surgical kits in what's left of the Beauce, cryo drugs for a children's ward that officially doesn't exist. The Compact taxes medicine like contraband, so contraband is what medicine became. You didn't run cargo tonight, captain. You ran an argument.",
+      "goto": "handover"
+    },
+    "handover": {
+      "kind": "authored",
+      "text": "The crate goes off your ramp and into six hands that move like they've done this two hundred times, because they have. Noor checks the seals, then the cold-chain gauge, and something in her shoulders lets go a centimeter. 'Two hundred and seven,' she says quietly, to nobody.",
+      "goto": "the_bad_news"
+    },
+    "the_bad_news": {
+      "kind": "authored",
+      "text": "Now the part Doss wouldn't have said out loud. The cordon closed the river track behind you — they know a ship came in, they just don't know where it went. Nobody flies out of this field tonight. Maybe not this season. You're stranded, captain. Welcome to Earth; it's what everyone here says instead of I'm sorry.",
+      "choices": [
+        {
+          "text": "The crew knew the odds. We'll winter here.",
+          "goto": "winter_here"
+        },
+        {
+          "text": "Stranded on the homeworld under blockade. Tib is going to laugh.",
+          "goto": "tib_laughs"
+        }
+      ]
+    },
+    "winter_here": {
+      "kind": "authored",
+      "text": "Then you'll winter well. The network takes care of the ships that make it — quiet berths, honest work, and the north shore is beautiful under snow if you don't mind the Compact satellites admiring it with you. Your droid will want to see the aurora. They always do.",
+      "goto": "closing"
+    },
+    "tib_laughs": {
+      "kind": "authored",
+      "text": "Thibodeaux. I know the name — everyone on this river knows the name, from before. He didn't tell you? Then it's not mine to tell. But when he stops laughing, tell him the overlook is a twenty-minute walk east, and on a clear night you can see the glow from where the city was. Some of the crew will want to not talk about it together.",
+      "goto": "closing"
+    },
+    "closing": {
+      "kind": "generated",
+      "prompt_hint": "You are Noor, the steady Duskway receiving contact on blockaded Earth. A crew just delivered a medical cache and learned they're stranded on Earth for the season. Close the scene in your voice: economical, warm underneath the procedure. One or two sentences about what deliveries like this mean for Earth, and a plain welcome to the crew. No speeches.",
+      "text": "Two hundred and seven landings, and every one of them is the same sentence: you are not forgotten. Get some sleep, captain. Tomorrow we'll find your crew real beds — you're not cargo anymore, you're neighbours.",
+      "mutations": [
+        {
+          "op": "set_player_flag",
+          "flag": "cache_delivered"
+        },
+        {
+          "op": "add_memory",
+          "text": "The wolf ship's crew brought the two hundred and seventh landing in and took the news that they were stranded like people who had already decided it was worth it. I found them beds. The captain never once asked what the cargo was worth.",
+          "importance": 0.9,
+          "tags": [
+            "player",
+            "duskway",
+            "delivery"
+          ]
+        }
+      ],
+      "goto": "end",
+      "buffer_line": "Give me a moment, captain. Some arithmetic deserves saying properly."
+    }
+  }
+}

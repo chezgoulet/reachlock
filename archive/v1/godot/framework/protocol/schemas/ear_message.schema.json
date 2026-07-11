@@ -1,0 +1,213 @@
+{
+  "$id": "reachlock://framework/protocol/v0/ear_message",
+  "title": "Ear Protocol wire message (envelope + body)",
+  "description": "One NDJSON line between a REACHLOCK host and the speech daemon (reachlock-eard). Voice is an input method: the only thing that ever comes back is a transcript. See EAR-PROTOCOL.md.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["v", "seq", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "hello" },
+        "body": {
+          "type": "object",
+          "required": ["protocol_version", "profile", "client"],
+          "additionalProperties": false,
+          "properties": {
+            "protocol_version": { "type": "integer", "minimum": 0 },
+            "profile": { "type": "string" },
+            "client": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["v", "seq", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "welcome" },
+        "body": {
+          "type": "object",
+          "required": ["protocol_version", "server", "engine", "model"],
+          "additionalProperties": false,
+          "properties": {
+            "protocol_version": { "type": "integer", "minimum": 0 },
+            "server": { "type": "string" },
+            "engine": { "type": "string" },
+            "model": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["v", "seq", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "audio_begin" },
+        "body": {
+          "type": "object",
+          "required": ["utterance_id", "sample_rate", "format"],
+          "additionalProperties": false,
+          "properties": {
+            "utterance_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+            "sample_rate": { "const": 16000 },
+            "format": { "const": "pcm16" }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["v", "seq", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "audio_chunk" },
+        "body": {
+          "type": "object",
+          "required": ["utterance_id", "data"],
+          "additionalProperties": false,
+          "properties": {
+            "utterance_id": { "type": "string" },
+            "data": { "type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$" }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["v", "seq", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "audio_end" },
+        "body": {
+          "type": "object",
+          "required": ["utterance_id"],
+          "additionalProperties": false,
+          "properties": { "utterance_id": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["v", "seq", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "partial" },
+        "body": {
+          "type": "object",
+          "required": ["utterance_id", "text"],
+          "additionalProperties": false,
+          "properties": {
+            "utterance_id": { "type": "string" },
+            "text": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["v", "seq", "re", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "transcript" },
+        "body": {
+          "type": "object",
+          "required": ["utterance_id", "text", "confidence", "duration_ms"],
+          "additionalProperties": false,
+          "properties": {
+            "utterance_id": { "type": "string" },
+            "text": { "type": "string" },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "duration_ms": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["v", "seq", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "cancel" },
+        "body": {
+          "type": "object",
+          "required": ["utterance_id"],
+          "additionalProperties": false,
+          "properties": { "utterance_id": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["v", "seq", "re", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "ack" },
+        "body": { "type": "object", "additionalProperties": false, "properties": {} }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["v", "seq", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "error" },
+        "body": {
+          "type": "object",
+          "required": ["code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": ["bad_frame", "unknown_type", "version_unsupported", "unknown_utterance", "invalid_args", "no_model", "decode_failure"]
+            },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["v", "seq", "type", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 0 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "re": { "type": "integer", "minimum": 0 },
+        "type": { "const": "shutdown" },
+        "body": { "type": "object", "additionalProperties": false, "properties": {} }
+      }
+    }
+  ]
+}

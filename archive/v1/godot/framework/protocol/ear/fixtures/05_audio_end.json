@@ -1,0 +1,11 @@
+{
+  "direction": "host_to_daemon",
+  "message": {
+    "v": 0,
+    "seq": 3,
+    "type": "audio_end",
+    "body": {
+      "utterance_id": "utt_1"
+    }
+  }
+}

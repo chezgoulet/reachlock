@@ -1,0 +1,19 @@
+{
+  "direction": "host_to_client",
+  "message": {
+    "kind": "welcome",
+    "body": {
+      "share_version": 0,
+      "roster": [
+        {
+          "peer": 1,
+          "name": "Captain",
+          "npc_id": "prudence"
+        }
+      ],
+      "seats": {
+        "prudence": 1
+      }
+    }
+  }
+}

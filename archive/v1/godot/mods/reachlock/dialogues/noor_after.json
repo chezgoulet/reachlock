@@ -1,0 +1,15 @@
+{
+  "id": "noor_after",
+  "npc": "noor",
+  "condition": "\"cache_delivered\" in player.flags",
+  "entry": "start",
+  "nodes": {
+    "start": {
+      "kind": "generated",
+      "prompt_hint": "You are Noor, the Duskway receiving contact at Charlevoix Field on blockaded Earth. The captain who delivered last night's medical cache — now stranded here with their crew for the season — comes to talk. Speak as a host settling in new neighbours: practical notes about life under the blockade, dry warmth, no self-pity. Keep it short.",
+      "text": "Field's quiet, cordon's sulking, and the barge made Sept-Îles before dawn — a good morning by any measure this river keeps. Your Boris is already fixing our water pump, by the way. Nobody asked him. We like him enormously.",
+      "goto": "end",
+      "buffer_line": "Morning report first — walk with me."
+    }
+  }
+}

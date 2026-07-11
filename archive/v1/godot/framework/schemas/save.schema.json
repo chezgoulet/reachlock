@@ -1,0 +1,443 @@
+{
+  "$id": "reachlock://framework/v0/save",
+  "title": "Save snapshot (logical model)",
+  "description": "The runtime-state counterpart of the authored contracts: everything that changes during play, snapshotted. Mod files are birth-state templates; THIS is where lived state goes. The logical model is the contract — the storage engine (a JSON file today, SQLite when saves grow, the server DB in MMO) is an implementation detail. save_version gates migration.",
+  "type": "object",
+  "required": [
+    "save_version",
+    "universe",
+    "player",
+    "souls",
+    "mods"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "save_version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "universe": {
+      "type": "object",
+      "required": [
+        "tick"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tick": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sim": {
+          "type": "object",
+          "description": "The sim daemon's full universe snapshot (Sim Protocol `advanced` reply), cached by SimGateway so a save captures the universe mid-motion. Opaque to the client."
+        }
+      }
+    },
+    "player": {
+      "type": "object",
+      "required": [
+        "ship"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "location": {
+          "type": "string"
+        },
+        "current_space": {
+          "type": "string",
+          "description": "Location id whose space the ship is flying in (or docked at). Unlike `location` it survives undocking — it is how space flight knows which system to build after a jump. Empty = the content start location."
+        },
+        "credits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "upgrades": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Upgrade ids owned (upgrade contract). Each purchase also sets the flag upgrade_<id>."
+        },
+        "travel_log": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Append-only jump/transit history: {from, to, time}."
+        },
+        "ship": {
+          "type": "object",
+          "required": [
+            "hull_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "hull_id": {
+              "type": "string"
+            },
+            "hull_integrity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "position": {
+              "type": "array",
+              "minItems": 3,
+              "items": {
+                "type": "number"
+              }
+            },
+            "cargo": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "power": {
+              "type": "object",
+              "description": "Power routing set at the engineering station (weapons/shields/engines shares, sum ~1.0). Read by space flight: engines drive speed, weapons drive fire rate, shields soak damage.",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "damage": {
+              "type": "array",
+              "description": "Unrepaired interior damage from combat: each entry manifests inside the ship (fire/sparks/breach at a spot in a room), degrades flight until fixed, and is repairable by the player or crew.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "room",
+                  "kind"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "room": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "fire",
+                      "conduit",
+                      "breach"
+                    ]
+                  },
+                  "severity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "pos": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            },
+            "damage_seq": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Monotonic id source for damage entries."
+            },
+            "weapons_calibrated": {
+              "type": "boolean",
+              "description": "Set by the gunnery calibration minigame; the next flight gets a fire-rate edge, then it resets."
+            }
+          }
+        },
+        "character": {
+          "type": "string",
+          "description": "NPC id of the crew member the player chose to embody this playthrough (npc `playable` block). Empty = the unnamed-captain fallback."
+        }
+      }
+    },
+    "factions": {
+      "type": "object",
+      "description": "faction id -> live player standing (multi-axis), live inter-faction stances, and an audit log of FactionAction applications (P8). Authored defaults are the starting point; this is the drift.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "standing": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "relationships": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "action_log": {
+            "type": "array",
+            "description": "Append-only record of FactionAction applications (P8, Sprint 02). The engine writes one entry per apply() call: the action id, the universe tick, the payload (faction affected, deltas applied), and the resulting standing snapshot. Read by audit / debug UIs; never mutated by gameplay code.",
+            "items": {
+              "type": "object",
+              "required": [
+                "action_id",
+                "tick",
+                "resulting_standing"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "action_id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "tick": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "applies_to": {
+                  "type": "string",
+                  "enum": [
+                    "controlling_faction",
+                    "target_faction",
+                    "all_known"
+                  ]
+                },
+                "target_faction_id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "rival_faction_id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "faction_delta": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "rival_faction_delta": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "resulting_standing": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "souls": {
+      "type": "object",
+      "description": "npc id -> runtime soul state. `vault` names the soul's memory vault in the memory store; the vault contents are persisted by that store, referenced (not embedded) here.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "vault": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "relationships": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            }
+          },
+          "emotions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1
+            }
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pending_memories": {
+            "type": "array",
+            "description": "Memories formed in play, not yet shipped to the memory store (offline, or pre-M3). Drained on reconnect.",
+            "items": {
+              "type": "object",
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "importance": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "tick": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "crew": {
+      "type": "object",
+      "description": "CrewRoster persistence (P6): membership, station assignments, the crew relationship graph, shared history. CrewRoster owns the semantics; GameState owns this block.",
+      "additionalProperties": false,
+      "properties": {
+        "seeded": {
+          "type": "boolean"
+        },
+        "aboard": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assignments": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "edges": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "mission": {
+      "type": "object",
+      "description": "Active mission progress (mission contract). Empty object = no mission active. Restored by MissionManager on load; the mission definition itself stays authored data.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "stage_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "event_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "timer_remaining": {
+          "type": "number"
+        }
+      }
+    },
+    "weaves": {
+      "type": "object",
+      "description": "Resolved woven-dialogue branches (WEAVE-CONTRACT.md), keyed \"<dialogue_id>/<node_id>\". A weave is generated once at the authority, clamped against its node's allowlist, then persisted here — replays, reloads, and every multiplayer client consume this data instead of re-generating.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["line", "mutations", "choices", "tick"],
+        "additionalProperties": false,
+        "properties": {
+          "line": { "type": "string" },
+          "mutations": { "type": "array", "items": { "type": "object" } },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["text", "mutations", "goto"],
+              "additionalProperties": false,
+              "properties": {
+                "text": { "type": "string" },
+                "mutations": { "type": "array", "items": { "type": "object" } },
+                "goto": { "type": "string" }
+              }
+            }
+          },
+          "tick": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "mods": {
+      "type": "object",
+      "required": [
+        "load_order"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "load_order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "framework_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

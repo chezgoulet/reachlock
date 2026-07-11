@@ -1,0 +1,124 @@
+{
+  "id": "tib_station_greeting",
+  "npc": "tib",
+  "condition": "player.docked and player.location == \"sorrow_station\" and not (\"talked_tib_station\" in player.flags)",
+  "entry": "start",
+  "nodes": {
+    "start": {
+      "kind": "authored",
+      "text": "Didn't expect to see you back at the bar this quick. Something break, or are you just tired of your own cooking?",
+      "choices": [
+        {
+          "text": "Both. Let me buy you one.",
+          "goto": "buy_round"
+        },
+        {
+          "text": "Need a read on the patrol schedules out past Verne.",
+          "goto": "intel"
+        },
+        {
+          "text": "Just wanted to talk.",
+          "goto": "talk",
+          "mutations": [
+            {
+              "op": "adjust_relationship",
+              "target": "player",
+              "axis": "trust",
+              "amount": 2
+            }
+          ]
+        }
+      ]
+    },
+    "buy_round": {
+      "kind": "authored",
+      "text": "I don't turn down free drinks. But fair warning — I drink slow and I talk slower.",
+      "choices": [
+        {
+          "text": "That's fine. I'm in no rush.",
+          "goto": "companionable"
+        },
+        {
+          "text": "I'll match your pace.",
+          "goto": "companionable"
+        }
+      ]
+    },
+    "companionable": {
+      "kind": "generated",
+      "prompt_hint": "You and the captain share a quiet drink at the Sorrow Station bar. You're off duty. Respond as Tib: guarded but not hostile, letting a little warmth through because the silence between you feels earned. The station's ambient noise fills the gaps.",
+      "goto": "signoff"
+    },
+    "intel": {
+      "kind": "authored",
+      "text": "Compact's been running more patrols since the dustup at the Veil. Verne approach is hot — they've got a picket line three klicks off the beacon. I'd come in from the nadir, burn quiet, and hope they're watching the wrong screen.",
+      "choices": [
+        {
+          "text": "Good intel. I'll log it.",
+          "goto": "signoff"
+        },
+        {
+          "text": "What about the Duskway route?",
+          "goto": "duskway"
+        }
+      ]
+    },
+    "duskway": {
+      "kind": "authored",
+      "text": "Tove's territory, not mine. She knows those lanes the way I know this ship's torque curve. Ask her — but don't push. She shares what she shares.",
+      "choices": [
+        {
+          "text": "Fair enough.",
+          "goto": "signoff",
+          "mutations": [
+            {
+              "op": "add_memory",
+              "text": "The captain asked about the Duskway. I pointed them to Tove. Good to know they're thinking about routes before they need them.",
+              "importance": 0.5,
+              "tags": [
+                "player",
+                "crew",
+                "trust"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "talk": {
+      "kind": "generated",
+      "prompt_hint": "The captain says they just want to talk. No agenda. You're at the Sorrow Station bar. Respond as Tib: quiet, a little uncomfortable with open-ended conversation, but willing to sit with it. You don't offer much — you let the silence do the work. A crack shows through when you mention the station reminds you of a place you knew before.",
+      "goto": "signoff",
+      "mutations": [
+        {
+          "op": "set_flag",
+          "flag": "talked_tib_station"
+        },
+        {
+          "op": "add_memory",
+          "text": "Sat with the captain at the Sorrow Station bar. They didn't want anything. Just company. That's rarer than a clean approach vector.",
+          "importance": 0.6,
+          "tags": [
+            "player",
+            "trust",
+            "sorrow_station"
+          ]
+        }
+      ]
+    },
+    "signoff": {
+      "kind": "authored",
+      "text": "I'll be at the ship when you're ready to go. Don't leave the approach burn to me — you fly better when you're in the seat.",
+      "choices": [
+        {
+          "text": "See you on the Loup-Garou.",
+          "goto": "end"
+        },
+        {
+          "text": "Keep an eye on things here.",
+          "goto": "end"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "plasma_welder",
+  "name": "Plasma Welder",
+  "cost": 420,
+  "category": "equipment",
+  "description": "A proper damage-control torch. Repairs aboard go significantly faster and the timing window is kinder.",
+  "effects": {
+    "repair_speed_mult": 1.6
+  },
+  "flavor": "The difference between a fire and a story about a fire."
+}

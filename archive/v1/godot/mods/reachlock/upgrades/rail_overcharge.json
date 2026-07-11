@@ -1,0 +1,11 @@
+{
+  "id": "rail_overcharge",
+  "name": "Rail Overcharge Kit",
+  "description": "Capacitor bank and barrel shrouds for the forward mass driver. Slugs hit harder.",
+  "cost": 1100,
+  "category": "ship",
+  "effects": {
+    "damage_bonus": 1
+  },
+  "flavor": "If you're planning to argue with the cordon instead of sneaking past it, argue louder."
+}
