@@ -2,22 +2,25 @@
 target/
 Cargo.lock
 
-# Godot
+# Godot (v1, archived)
 .godot/
 import/
 *.import
 .android/
 .ios/
 .mono/
-godot/.godot/
-godot/build/
+archive/v1/godot/.godot/
+archive/v1/godot/build/
 # export_presets.cfg is TRACKED on purpose: ours carries no secrets, and
-# CI exports the player artifacts from it.
+# v1 CI exported the player artifacts from it.
 
-# Go
+# Go (v1, archived)
 vendor/
-server/bin/
-server/vendor/
+archive/v1/server/bin/
+archive/v1/server/vendor/
+
+# Pre-existing local draft, kept untracked on purpose (see v1 commit 36134b6)
+archive/v1/docs/SPRINT-02-the-living-slice.md
 
 # Mods (built packages)
 *.reachmod

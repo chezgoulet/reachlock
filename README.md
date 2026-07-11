@@ -2,43 +2,28 @@
 
 > *A game about surviving the frontier, choosing your allegiances, and living with the consequences of a universe that doesn't wait for you.*
 
-REACHLOCK is a dual-mode space game built in Godot 4. It plays like Escape Velocity, Stardew Valley, FTL, and Star Fox 64 had a child raised on a frontier station.
+A procedurally-generated spacefaring MMO. The universe is generated from seeds, player-authored automations run your ship with LLMs as the fallback at deterministic-tree leaf nodes, and the server is a ledger, not a simulator.
 
-**Single-Player:** You fly the *Loup-Garou* with its crew of seven — Tib, Tove, Bardo, Doc Keene, Prudence, Risc, and Boris. Their story. The Veil. The Duskway. The Predecessor revelation. Played offline or online, with your own AI inference — local (llama.cpp), a cloud key, or our proxy service.
+**v2 is being built fresh** — Rust · Bevy · Postgres · Redis. The full design is in [docs/REACHLOCK-V2-SPEC.md](docs/REACHLOCK-V2-SPEC.md).
 
-**Online MMO:** A persistent shared universe. Same factions, same economy, same soul system — but the universe state is shared. Player actions collectively reshape the galaxy. The Helldivers 2 model: coordinated persistent war, single timeline, every player contributes.
+## Repository Layout
 
-## Architecture
+| Path | What it is |
+|---|---|
+| `docs/REACHLOCK-V2-SPEC.md` | The v2 comprehensive specification (design draft, rev 2) |
+| `archive/v1/` | **ReachLock v1, archived.** Godot 4 client, Go server, Pan soul engine, all sprint docs and demo ledgers. Kept for inspiration — the crew, the contracts, the three-ring architecture, and the design decisions live here. Not maintained, not built by CI |
 
-Three modes, each feeding into the next:
+The pre-archive tree is also tagged as `v1` — `git checkout v1` restores the original v1 layout.
 
-- **Landed** — Stardew × Zelda × Pokémon. Stations, planets, farming, dungeons, crafting, and the people who make a place home.
-- **On Board** — FTL × Among Us (Deeper). The ship as a physical space. Rooms, subsystems, crew management, boarding actions.
-- **Space Flight** — Star Fox 64. Arcade-style dogfighting with meaningful consequences.
+## What carries forward from v1
 
-## Technology Stack
+The ideas, not the code:
 
-| Layer | Language | Role |
-|---|---|---|
-| Game client | GDScript / C# (Godot 4) | Rendering, input, UI |
-| NPC soul engine | Rust (Pan) | Inference decisions, behavior trees |
-| MMO server | Go | State relay, coordination, matchmaking |
-| Knowledge layer | Ragamuffin | Persistent memory, lore, faction state |
+- **The crew of the Loup-Garou** — Tib, Tove, Bardo, Doc Keene, Prudence, Risc, and Boris
+- **Contract-first automation** — player-authored rules with LLM fallback (v1's soul/contract system, redesigned in spec §6)
+- **Fail states are valid outcomes** — emergent stories over scripted safety
+- **The universe moves without you** — v1's universe tick, redesigned in spec §8
 
-## Modding-First
+## Status
 
-REACHLOCK is built to be modded from the ground up. Three layers:
-
-- **Ring 0 — Core:** The engine, netcode, and base systems. Changed rarely.
-- **Ring 1 — Content:** Ships, weapons, factions, missions. Loaded from data files. Anyone can add.
-- **Ring 2 — Soul:** NPC personality, dialogue, decision weights. Plain text prompts and markdown skills.
-
-The layer boundaries are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and **enforced in CI** — the engine is not allowed to contain any REACHLOCK content.
-
-## License
-
-AGPL-3.0 — see [LICENSE](LICENSE).
-
----
-
-*Built by chezgoulet / The House.*
+Pre-spike. First deliverable: validate the full Bevy plugin stack compiles to `wasm32-unknown-unknown` (spec §2, WASM Build Risk).
