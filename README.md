@@ -11,6 +11,7 @@ A procedurally-generated spacefaring MMO. The universe is generated from seeds, 
 | Path | What it is |
 |---|---|
 | `docs/REACHLOCK-V2-SPEC.md` | The v2 comprehensive specification (design draft, rev 2) |
+| `docs/sprints/` | The spec broken into fleet-distributable sprint briefs — start at [00-INDEX.md](docs/sprints/00-INDEX.md) for the dependency waves and the playbook |
 | `reachlock-core/` | Shared library, zero rendering deps: generators, seed protocol, contract engine, signed evaluations, universe tiers, network messages, determinism manifest. Everything integer-math, everything golden-tested |
 | `reachlock-client/` | Bevy client: menu → a flyable generated system (hull, station, planet, ambient music — all from seeds through the bridge layer), contract engine at the helm, deliberation overlay when rules run out |
 | `reachlock-server/` | Axum WebSocket ledger on `127.0.0.1:40711`: first-write-wins seed discovery, signed-evaluation verification, tier-gated LLM proxy (stub responder), non-blocking universe tick. In-memory stores by default; Postgres behind the `postgres` feature (`migrations/0001_init.sql`) |
