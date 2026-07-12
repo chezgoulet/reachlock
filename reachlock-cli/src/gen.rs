@@ -62,6 +62,36 @@ pub enum GenCommand {
         #[arg(long)]
         seed: u64,
     },
+    /// Generate a whole star system (star, orbits, stations, gate).
+    System {
+        #[arg(long)]
+        seed: u64,
+        #[arg(long, default_value = "frontier")]
+        biome: String,
+        /// Fidelity: `full` or `sparse` (deep-space trim, spec §17).
+        #[arg(long, default_value = "full")]
+        fidelity: String,
+        /// Write an SVG map of the system to this path.
+        #[arg(long)]
+        svg: Option<std::path::PathBuf>,
+    },
+    /// Generate a named, stat-banded item with a procedural icon.
+    Item {
+        #[arg(long)]
+        seed: u64,
+        /// Item family token, e.g. `kinetic_weapon`, `shield`, `engine`.
+        #[arg(long, default_value = "kinetic_weapon")]
+        family: String,
+        #[arg(long, default_value_t = 4)]
+        tier: u8,
+        #[arg(long, default_value = "compact")]
+        faction: String,
+        #[arg(long, default_value = "frontier")]
+        biome: String,
+        /// Write a PPM image of the icon to this path.
+        #[arg(long)]
+        ppm: Option<std::path::PathBuf>,
+    },
 }
 
 pub fn run(cmd: GenCommand) -> Result<(), String> {
@@ -146,6 +176,85 @@ pub fn run(cmd: GenCommand) -> Result<(), String> {
             }
             Ok(())
         }
+        GenCommand::System {
+            seed,
+            biome,
+            fidelity,
+            svg,
+        } => {
+            let biome = parse_biome(&biome)?;
+            let fidelity = parse_fidelity(&fidelity)?;
+            let system = generator::system::generate_system(seed, biome, fidelity);
+            println!(
+                "system seed={seed:#x} biome={biome:?} fidelity={fidelity:?}: \
+                 star {:?}, {} orbits, {} asteroid fields, {} stations, threat {}",
+                system.star.class,
+                system.orbits.len(),
+                system.asteroid_fields.len(),
+                system.station_slots.len(),
+                system.threat_level,
+            );
+            for (i, orbit) in system.orbits.iter().enumerate() {
+                println!(
+                    "  orbit[{i}] r={} body={} {:?} seed={:#x}",
+                    orbit.radius, orbit.planet_radius, orbit.biome, orbit.seed
+                );
+            }
+            for (i, slot) in system.station_slots.iter().enumerate() {
+                println!(
+                    "  station[{i}] {:?} at ({}, {})",
+                    slot.kind, slot.position.x.0, slot.position.y.0
+                );
+            }
+            println!(
+                "  gate at ({}, {})",
+                system.gate_position.x.0, system.gate_position.y.0
+            );
+            if let Some(path) = svg {
+                write(&path, system_svg(&system))?;
+                println!("wrote {}", path.display());
+            }
+            Ok(())
+        }
+        GenCommand::Item {
+            seed,
+            family,
+            tier,
+            faction,
+            biome,
+            ppm,
+        } => {
+            let family = parse_item_family(&family)?;
+            let item_seed = reachlock_core::item::ItemSeed {
+                seed,
+                item_type: family.representative_item_type(),
+                tier,
+                faction,
+                biome,
+            };
+            let item = reachlock_core::item::generate_item(&item_seed);
+            println!(
+                "item seed={seed:#x} family={} tier={tier}: {:?} \"{}\"",
+                family.token(),
+                item.rarity,
+                item.display_name
+            );
+            println!("  id={}", item.id);
+            println!("  {}", item.description);
+            for (key, value) in &item.stats.0 {
+                // Stats are fixed-point (1 unit = 1/1024); show the human value.
+                println!(
+                    "  {key:?}: {}.{:03}",
+                    value / 1024,
+                    (value.abs() % 1024) * 1000 / 1024
+                );
+            }
+            if let Some(path) = ppm {
+                write(&path, texture_ppm(&item.icon))?;
+                println!("wrote {}", path.display());
+            }
+            Ok(())
+        }
     }
 }
 
@@ -186,6 +295,21 @@ fn parse_mood(s: &str) -> Result<Mood, String> {
         "derelict" => Ok(Mood::Derelict),
         other => Err(format!("unknown mood: {other}")),
     }
+}
+
+fn parse_fidelity(s: &str) -> Result<generator::system::Fidelity, String> {
+    match s {
+        "full" => Ok(generator::system::Fidelity::Full),
+        "sparse" => Ok(generator::system::Fidelity::Sparse),
+        other => Err(format!("unknown fidelity: {other} (want full|sparse)")),
+    }
+}
+
+fn parse_item_family(s: &str) -> Result<reachlock_core::item::ItemFamily, String> {
+    reachlock_core::item::ItemFamily::ALL
+        .into_iter()
+        .find(|f| f.token() == s)
+        .ok_or_else(|| format!("unknown item family: {s}"))
 }
 
 fn write(path: &std::path::Path, content: String) -> Result<(), String> {
@@ -256,6 +380,83 @@ fn layout_svg(layout: &GeneratedLayout) -> String {
         );
     }
     svg.push_str("</svg>");
+    svg
+}
+
+/// A top-down SVG map of a system. The star sits at the origin; positions
+/// are fixed-point (1 unit = 1/1024 world units), orbit radii are whole
+/// world units, so radii are scaled by 1024 to share the coordinate space.
+fn system_svg(system: &reachlock_core::generator::system::GeneratedSystem) -> String {
+    const FIXED: i64 = 1024;
+    let mut reach = FIXED; // never zero, so the viewBox is always valid
+    for o in &system.orbits {
+        reach = reach.max(o.position.x.0.abs()).max(o.position.y.0.abs());
+        reach = reach.max(o.radius * FIXED);
+    }
+    for s in &system.station_slots {
+        reach = reach.max(s.position.x.0.abs()).max(s.position.y.0.abs());
+    }
+    for f in &system.asteroid_fields {
+        reach = reach.max(f.center.x.0.abs()).max(f.center.y.0.abs());
+    }
+    reach = reach
+        .max(system.gate_position.x.0.abs())
+        .max(system.gate_position.y.0.abs());
+
+    let span = reach * 2 + 2 * FIXED;
+    let mut svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {span} {span}">"#,
+        -reach - FIXED,
+        -reach - FIXED,
+    );
+    // Orbit rings.
+    for o in &system.orbits {
+        let _ = write!(
+            svg,
+            r##"<circle cx="0" cy="0" r="{}" fill="none" stroke="#234" stroke-width="20"/>"##,
+            o.radius * FIXED
+        );
+    }
+    // Asteroid fields.
+    for f in &system.asteroid_fields {
+        let _ = write!(
+            svg,
+            r##"<circle cx="{}" cy="{}" r="{}" fill="#3a3320" fill-opacity="0.4" stroke="#665" stroke-width="12"/>"##,
+            f.center.x.0,
+            f.center.y.0,
+            f.radius * FIXED
+        );
+    }
+    // Planets.
+    for o in &system.orbits {
+        let _ = write!(
+            svg,
+            r##"<circle cx="{}" cy="{}" r="{}" fill="#69c"/>"##,
+            o.position.x.0,
+            o.position.y.0,
+            (o.planet_radius * FIXED).max(120)
+        );
+    }
+    // Stations (diamonds).
+    for s in &system.station_slots {
+        let (x, y) = (s.position.x.0, s.position.y.0);
+        let _ = write!(
+            svg,
+            r##"<rect x="{}" y="{}" width="240" height="240" transform="rotate(45 {x} {y})" fill="#fc6"/>"##,
+            x - 120,
+            y - 120,
+        );
+    }
+    // Gate (magenta ring) and star (center).
+    let _ = write!(
+        svg,
+        r##"<circle cx="{}" cy="{}" r="180" fill="none" stroke="#c6f" stroke-width="40"/>"##,
+        system.gate_position.x.0, system.gate_position.y.0
+    );
+    let _ = write!(
+        svg,
+        r##"<circle cx="0" cy="0" r="360" fill="#ffd"/></svg>"##
+    );
     svg
 }
 
