@@ -546,7 +546,7 @@ mod tests {
         for f in &sys.asteroid_fields {
             checksum = checksum
                 .wrapping_mul(31)
-                .wrapping_add(f.center.x.0 ^ f.center.y.0 ^ f.radius as i64);
+                .wrapping_add(f.center.x.0 ^ f.center.y.0 ^ f.radius);
         }
         for s in &sys.station_slots {
             checksum = checksum
