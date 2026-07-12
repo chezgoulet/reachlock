@@ -3,6 +3,7 @@
 //! contract engine holding the helm and deliberating when rules run out.
 
 mod bridge;
+mod net;
 mod states;
 mod systems;
 
@@ -10,8 +11,9 @@ use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
 
+use net::NetMode;
 use states::AppState;
-use systems::{content_index, contract, hud, menu, setup, ship, starfield};
+use systems::{content_index, contract, hud, menu, network, setup, ship, starfield};
 
 fn main() {
     App::new()
@@ -28,6 +30,15 @@ fn main() {
         .init_resource::<contract::ShipLog>()
         .init_resource::<contract::DeliberationState>()
         .init_resource::<contract::ContractRuntime>()
+        // S02: NetMode is frozen once at startup from REACHLOCK_SERVER;
+        // everything else here defaults to the offline-safe state and is
+        // only ever touched by systems that early-out when NetMode::Offline.
+        .insert_resource(NetMode::from_env())
+        .init_resource::<net::ConnectionState>()
+        .init_resource::<net::NetOutbox>()
+        .init_non_send_resource::<network::NetworkClient>()
+        .init_resource::<network::ReconnectBackoff>()
+        .init_resource::<network::SeedState>()
         .add_systems(
             Startup,
             (content_index::load_content_index, menu::spawn_menu),
@@ -38,7 +49,11 @@ fn main() {
         )
         .add_systems(
             OnEnter(AppState::Playing),
-            (setup::spawn_world, hud::spawn_hud),
+            (
+                setup::spawn_world,
+                hud::spawn_hud,
+                network::connect_on_enter_playing,
+            ),
         )
         .add_systems(
             Update,
@@ -48,8 +63,11 @@ fn main() {
                 starfield::parallax,
                 contract::evaluate_contracts,
                 contract::tick_deliberation,
+                network::poll_network,
+                network::reconnect_backoff,
                 hud::update_hud,
             )
+                .chain()
                 .run_if(in_state(AppState::Playing)),
         )
         .run();

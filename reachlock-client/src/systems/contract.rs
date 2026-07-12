@@ -1,15 +1,21 @@
 //! Contract engine integration (spec §6, §9): the core engine evaluates the
 //! auto-helm contract against live ship state. Rule hits act instantly; the
-//! unresolvable case enters deliberation — offline mode has no LLM, so the
-//! timeout path fires the fallback action, exactly the "Boris couldn't
-//! decide" story.
+//! unresolvable case enters deliberation. Offline mode (or online-but-not-
+//! yet-connected) has no LLM, so the timeout path fires the fallback
+//! action, exactly the "Boris couldn't decide" story. Online + connected
+//! routes the same deliberation through the server instead (S02) — see
+//! `systems::network`, which drives this module's `resolve_response` /
+//! `resolve_timeout` from `llm.response` / `llm.failed` / `llm.deliberating`.
 
 use bevy::prelude::*;
 use reachlock_core::contract::{
     engine::{evaluate, EvalContext, Outcome},
+    signature::SignatureChain,
     types::{Action, Comparison, Condition, Contract, LlmConfig, Rule, Trigger},
 };
+use reachlock_core::network::ClientMessage;
 
+use crate::net::{ConnectionState, NetMode, NetOutbox};
 use crate::systems::ship::ShipSystems;
 
 /// The ship's log: every decision the automation makes, newest last.
@@ -19,7 +25,9 @@ pub struct ShipLog {
 }
 
 impl ShipLog {
-    fn log(&mut self, line: impl Into<String>) {
+    // S02: `systems::network` also logs directly (connection state,
+    // seed sync, server errors) — pub(crate) rather than private.
+    pub(crate) fn log(&mut self, line: impl Into<String>) {
         let line = line.into();
         info!("ship log: {line}");
         self.entries.push(line);
@@ -39,8 +47,21 @@ pub struct DeliberationState {
 pub struct Deliberation {
     pub crew_member: String,
     pub context_summary: String,
+    /// Offline: the LLM timeout. Online: a generous safety net — if the
+    /// socket drops mid-call and no `llm.response`/`llm.failed` ever
+    /// arrives, this still expires into the fallback action (spec: online
+    /// adds, never replaces).
     pub remaining: Timer,
     pub fallback: Action,
+    /// S02: `Some(call_id)` while an online LLM call is in flight;
+    /// `systems::network` matches server responses against this. `None`
+    /// offline, and cleared once resolved.
+    pub call_id: Option<String>,
+    /// S02: whether the deliberation overlay should render right now.
+    /// Offline: true immediately. Online: stays false until `llm.deliberating`
+    /// confirms the server is on it, so the overlay reads as deliberation
+    /// (spec finding #5), not as a frozen HUD during ordinary latency.
+    pub overlay_visible: bool,
 }
 
 #[derive(Resource)]
@@ -49,6 +70,12 @@ pub struct ContractRuntime {
     pub eval_timer: Timer,
     /// Last action kind, to log only on change instead of every second.
     last_action: Option<String>,
+    /// S02: signs every fired action for online submission (spec §6).
+    /// Offline mode never touches this.
+    chain: SignatureChain,
+    /// Monotonic counter feeding `chain.sign_next` — `verify_chain` only
+    /// requires strict monotonicity, not wall-clock ticks.
+    next_tick: u64,
 }
 
 impl Default for ContractRuntime {
@@ -57,7 +84,24 @@ impl Default for ContractRuntime {
             contract: auto_helm(),
             eval_timer: Timer::from_seconds(1.0, TimerMode::Repeating),
             last_action: None,
+            chain: SignatureChain::default(),
+            next_tick: 0,
         }
+    }
+}
+
+impl ContractRuntime {
+    fn next_tick(&mut self) -> u64 {
+        self.next_tick += 1;
+        self.next_tick
+    }
+
+    /// Signs `action` as the next link in this runtime's chain and returns
+    /// the wire message ready for `NetOutbox`.
+    fn sign_eval(&mut self, action: &Action) -> ClientMessage {
+        let tick = self.next_tick();
+        let eval = self.chain.sign_next(&self.contract.id, tick, action);
+        ClientMessage::EvalSubmit { eval }
     }
 }
 
@@ -102,12 +146,16 @@ fn auto_helm() -> Contract {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn evaluate_contracts(
     time: Res<Time>,
     mut runtime: ResMut<ContractRuntime>,
     systems: Res<ShipSystems>,
     mut log: ResMut<ShipLog>,
     mut deliberation: ResMut<DeliberationState>,
+    mode: Res<NetMode>,
+    conn: Res<ConnectionState>,
+    mut outbox: ResMut<NetOutbox>,
 ) {
     if !runtime.eval_timer.tick(time.delta()).just_finished() {
         return;
@@ -123,12 +171,12 @@ pub fn evaluate_contracts(
     // Own the verdict before touching `runtime` again — Outcome borrows the
     // contract.
     enum Decision {
-        Act(String),
+        Act(Action),
         Deliberate { timeout_ms: u32, fallback: Action },
         Silence,
     }
     let decision = match evaluate(&runtime.contract, &ctx) {
-        Outcome::Rule { action, .. } => Decision::Act(action.kind.clone()),
+        Outcome::Rule { action, .. } => Decision::Act(action.clone()),
         Outcome::Deliberate { llm } => Decision::Deliberate {
             timeout_ms: llm.timeout_ms,
             fallback: llm
@@ -140,7 +188,8 @@ pub fn evaluate_contracts(
     };
 
     match decision {
-        Decision::Act(kind) => {
+        Decision::Act(action) => {
+            let kind = action.kind.clone();
             if runtime.last_action.as_deref() != Some(kind.as_str()) {
                 match kind.as_str() {
                     "fuel_warning" => log.log("Boris: fuel is low. We should dock soon."),
@@ -149,19 +198,45 @@ pub fn evaluate_contracts(
                 }
                 runtime.last_action = Some(kind);
             }
+            // S02: every fired contract action is signed and submitted in
+            // online mode, whether or not it's a fresh log line.
+            if mode.is_online() {
+                outbox.push(runtime.sign_eval(&action));
+            }
         }
         Decision::Deliberate {
             timeout_ms,
             fallback,
         } => {
-            log.log("Boris: my rules don't cover this. Thinking…");
             runtime.last_action = None;
-            deliberation.active = Some(Deliberation {
-                crew_member: "Boris".into(),
-                context_summary: "Unknown signal detected".into(),
-                remaining: Timer::from_seconds(timeout_ms as f32 / 1000.0, TimerMode::Once),
-                fallback,
-            });
+            if mode.is_online() && matches!(*conn, ConnectionState::Connected) {
+                let tick = runtime.next_tick();
+                let call_id = format!("{}-{tick}", runtime.contract.id);
+                log.log("Boris: my rules don't cover this. Radioing it in…");
+                outbox.push(ClientMessage::LlmCall {
+                    call_id: call_id.clone(),
+                    contract_id: runtime.contract.id.clone(),
+                    context: serde_json::json!({ "unknown_signal": 1 }),
+                });
+                deliberation.active = Some(Deliberation {
+                    crew_member: "Boris".into(),
+                    context_summary: "Unknown signal detected".into(),
+                    remaining: Timer::from_seconds(timeout_ms as f32 / 1000.0, TimerMode::Once),
+                    fallback,
+                    call_id: Some(call_id),
+                    overlay_visible: false,
+                });
+            } else {
+                log.log("Boris: my rules don't cover this. Thinking…");
+                deliberation.active = Some(Deliberation {
+                    crew_member: "Boris".into(),
+                    context_summary: "Unknown signal detected".into(),
+                    remaining: Timer::from_seconds(timeout_ms as f32 / 1000.0, TimerMode::Once),
+                    fallback,
+                    call_id: None,
+                    overlay_visible: true,
+                });
+            }
         }
         Decision::Silence => {
             log.log("The helm is silent. Nobody decides.");
@@ -169,7 +244,8 @@ pub fn evaluate_contracts(
     }
 }
 
-/// Ticks the deliberation timer. Offline mode: expiry = LLM timeout = the
+/// Ticks the deliberation timer. Offline mode (or online with no response
+/// ever arriving — a dropped socket mid-call): expiry = LLM timeout = the
 /// fallback action fires and the log tells the story.
 pub fn tick_deliberation(
     time: Res<Time>,
@@ -183,11 +259,52 @@ pub fn tick_deliberation(
     if !active.remaining.tick(time.delta()).is_finished() {
         return;
     }
-    let fallback = active.fallback.kind.clone();
-    let who = active.crew_member.clone();
-    deliberation.active = None;
+    let note = if active.call_id.is_some() {
+        "no response from the ship's mind — socket may have dropped"
+    } else {
+        "no inference in offline mode"
+    };
+    resolve_timeout(&mut deliberation, &mut systems, &mut log, note);
+}
+
+/// Fallback path: the deliberation expired (offline timeout, or the online
+/// safety net after `llm.failed` / a dropped connection) without a usable
+/// answer. Fires the contract's fallback action and clears the moment.
+pub fn resolve_timeout(
+    deliberation: &mut DeliberationState,
+    systems: &mut ShipSystems,
+    log: &mut ShipLog,
+    note: &str,
+) {
+    let Some(active) = deliberation.active.take() else {
+        return;
+    };
     systems.unknown_signal = false; // the moment passes
     log.log(format!(
-        "{who} couldn't decide — fell back to {fallback}. (No inference in offline mode.)"
+        "{} couldn't decide — fell back to {}. ({note}.)",
+        active.crew_member, active.fallback.kind
     ));
+}
+
+/// Success path: an online deliberation resolved via `llm.response`. Logs
+/// the server stub's actual reasoning (spec §6 deliberation UX) and signs +
+/// submits the resulting action, same as any other fired contract action.
+pub fn resolve_response(
+    deliberation: &mut DeliberationState,
+    systems: &mut ShipSystems,
+    log: &mut ShipLog,
+    runtime: &mut ContractRuntime,
+    outbox: &mut NetOutbox,
+    action_kind: &str,
+    reasoning: &str,
+) {
+    let Some(active) = deliberation.active.take() else {
+        return;
+    };
+    systems.unknown_signal = false;
+    log.log(format!(
+        "{}: {reasoning} (verdict: {action_kind}).",
+        active.crew_member
+    ));
+    outbox.push(runtime.sign_eval(&Action::verb(action_kind.to_string())));
 }

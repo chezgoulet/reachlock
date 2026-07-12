@@ -16,3 +16,20 @@ bevy_rapier2d = { workspace = true }
 # Authoring format for content/ (spec §10) — same crate/version core uses;
 # wasm-safe. The native content_index loader parses .ron with it directly.
 ron = "0.12"
+serde_json = "1"
+# S02: one WebSocket API for native + wasm32, no async runtime pulled in.
+# default-features = false keeps the native backend on a blocking OS thread
+# (tungstenite) instead of the "tokio" feature's tokio-tungstenite — wasm32
+# has no tokio (iron rule #5), and native doesn't need one either since Bevy
+# systems only ever poll the channel. "tls" adds wss:// support natively;
+# on wasm32 the browser handles TLS regardless of this feature.
+ewebsock = { version = "0.8", default-features = false, features = ["tls"] }
+
+[dev-dependencies]
+# S02 integration test only: native, headless, no Bevy. tokio/axum here are
+# fine (dev-dependencies never ship in the binary and never touch wasm32 —
+# iron rule #5 is about `[dependencies]`); they boot the real server crate
+# in-process so the test drives our transport against real wire behavior.
+reachlock-server = { path = "../reachlock-server" }
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
