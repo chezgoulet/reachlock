@@ -81,3 +81,13 @@ is flyable". Crew injury states (Phase 2).
   entity persists, the space scene doesn't.
 - The deliberation overlay already handles the offline timeout; reuse
   `DeliberationState`, don't build a second one for hyperspace.
+- **Wire up S02's canonical-seed adoption (integrator carry-over from Wave 1).**
+  Jumping to a new system is where `setup.rs` finally grows a real per-system
+  `SystemId` and a multi-system registry (today `spawn_world` hardcodes a
+  single `SYSTEM_SEED`). When it does, complete the `// S02 TODO(integrator):`
+  left at the top of `reachlock-client/src/systems/network.rs`: on arrival,
+  `seed.discover` the destination, and if the server's `seed.canonical`
+  differs from the locally generated seed, drive scene (re)generation from
+  `SeedState::adopted` instead of merely logging it. Until this sprint the
+  online path correctly discovers/adopts and logs but has no second system to
+  regenerate into, so the hook is a stub by design — not a bug.

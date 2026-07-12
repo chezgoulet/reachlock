@@ -75,3 +75,9 @@ Interior furnishing (S18). Any authored location content (S07).
   data minimal.
 - The rapier physics world must not tick while `Paused` or in Landed mode —
   gate `RapierConfiguration`/time scaling, don't despawn the ship.
+- If you refactor `setup::spawn_world` toward a per-system `SystemId` /
+  multi-system registry as part of scene setup/teardown, see the
+  `// S02 TODO(integrator):` at the top of `systems/network.rs`: that hook
+  (regenerate the scene when the server's canonical seed differs from ours)
+  gets wired the moment a real `SystemId` exists. S09 owns finishing it when
+  gate-jump introduces a second system; don't leave `SystemId` half-built here.
