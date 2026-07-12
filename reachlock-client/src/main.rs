@@ -11,7 +11,7 @@ use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
 
 use states::AppState;
-use systems::{contract, hud, menu, setup, ship};
+use systems::{content_index, contract, hud, menu, setup, ship, starfield};
 
 fn main() {
     App::new()
@@ -28,7 +28,10 @@ fn main() {
         .init_resource::<contract::ShipLog>()
         .init_resource::<contract::DeliberationState>()
         .init_resource::<contract::ContractRuntime>()
-        .add_systems(Startup, menu::spawn_menu)
+        .add_systems(
+            Startup,
+            (content_index::load_content_index, menu::spawn_menu),
+        )
         .add_systems(
             Update,
             menu::menu_input.run_if(in_state(AppState::MainMenu)),
@@ -42,6 +45,7 @@ fn main() {
             (
                 ship::control,
                 ship::camera_follow,
+                starfield::parallax,
                 contract::evaluate_contracts,
                 contract::tick_deliberation,
                 hud::update_hud,
