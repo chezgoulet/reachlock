@@ -1,15 +1,21 @@
 //! `reachlock content …` — validate and preview authored `.ron` content
 //! files (spec §10, Stage 2: CLI Validation). No Bevy window needed: the
 //! structural integrity checks live in `reachlock-core::content::validate`,
-//! and previews reuse the SVG/PPM exporters from the `gen` module — the
-//! same path a generated asset would take (spec §10: "the bridge doesn't
+//! schema validation checks the JSON projection against the content type's
+//! schema, and previews reuse the SVG/PPM exporters from the `gen` module —
+//! the same path a generated asset would take (spec §10: "the bridge doesn't
 //! know the difference").
 
 use clap::Subcommand;
-use reachlock_core::content::{validate_content, ContentFile, ContentPayload};
+use reachlock_core::content::{validate_content, AssetType, ContentFile, ContentPayload};
 use std::path::{Path, PathBuf};
 
 use crate::gen;
+
+// Load schemas at compile time
+const HULL_SCHEMA: &str = include_str!("../../content/schemas/hull.schema.json");
+const STATION_SCHEMA: &str = include_str!("../../content/schemas/station.schema.json");
+const CONTRACT_SCHEMA: &str = include_str!("../../content/schemas/contract.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -35,8 +41,21 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
     match cmd {
         ContentCommand::Validate { path } => {
             let content = load(&path)?;
-            let errors = validate_content(&content);
-            if errors.is_empty() {
+
+            // Project to JSON and validate against schema
+            let json_value =
+                serde_json::to_value(&content).map_err(|e| format!("serializing to JSON: {e}"))?;
+            let schema_errors = validate_schema(&content.asset_type, &json_value)?;
+
+            // Perform structural checks
+            let structural_errors = validate_content(&content);
+
+            // Combine errors: schema errors first, then structural
+            let mut all_errors = Vec::new();
+            all_errors.extend(schema_errors);
+            all_errors.extend(structural_errors.iter().map(|e| e.to_string()));
+
+            if all_errors.is_empty() {
                 println!(
                     "{}: valid — {:?} \"{}\" (id {}, seed {:#x})",
                     path.display(),
@@ -47,12 +66,12 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                 );
                 Ok(())
             } else {
-                for e in &errors {
+                for e in &all_errors {
                     eprintln!("  {e}");
                 }
                 Err(format!(
                     "{} validation error(s) in {}",
-                    errors.len(),
+                    all_errors.len(),
                     path.display()
                 ))
             }
@@ -79,6 +98,34 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
             Ok(())
         }
     }
+}
+
+/// Validate a JSON value against the schema for the given asset type.
+/// Returns a list of validation errors (empty if valid).
+fn validate_schema(
+    asset_type: &AssetType,
+    json_value: &serde_json::Value,
+) -> Result<Vec<String>, String> {
+    let schema_text = match asset_type {
+        AssetType::Hull => HULL_SCHEMA,
+        AssetType::Station => STATION_SCHEMA,
+        AssetType::Contract => CONTRACT_SCHEMA,
+    };
+
+    let schema = serde_json::from_str::<serde_json::Value>(schema_text)
+        .map_err(|e| format!("loading schema: {e}"))?;
+
+    let mut errors = Vec::new();
+
+    // Check if the value is valid against the schema
+    if !jsonschema::is_valid(&schema, json_value) {
+        // If not valid, get the detailed error
+        if let Err(err) = jsonschema::validate(&schema, json_value) {
+            errors.push(format!("schema validation: {}", err));
+        }
+    }
+
+    Ok(errors)
 }
 
 /// Read and deserialize a `.ron` content file into the shared envelope.
