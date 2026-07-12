@@ -3,6 +3,7 @@
 //! contract engine holding the helm and deliberating when rules run out.
 
 mod bridge;
+mod net;
 mod states;
 mod systems;
 
