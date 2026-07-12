@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Station Content File",
+  "description": "A station is a mesh with an interior layout of rooms and doors",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "asset_type", "seed", "universe", "priority", "payload"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for this station"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name for display in the UI"
+    },
+    "asset_type": {
+      "type": "string",
+      "enum": ["station"],
+      "description": "Must be 'station' for this schema"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Canonical seed (hash of content_override, system_id, object_id)"
+    },
+    "universe": {
+      "type": "string",
+      "description": "'all' or a universe tier name (classic, fair_play, spectrum, byok)"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["procedural", "curated", "event", "authoritative"],
+      "description": "Priority level for this content"
+    },
+    "expires_at": {
+      "type": "integer",
+      "description": "Optional expiration timestamp (only meaningful when priority is 'event')"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["station"],
+      "properties": {
+        "station": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exterior", "layout"],
+          "properties": {
+            "exterior": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["vertices", "indices"],
+              "properties": {
+                "vertices": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["x", "y"],
+                    "properties": {
+                      "x": {
+                        "type": "integer",
+                        "description": "X coordinate (fixed-point i64)"
+                      },
+                      "y": {
+                        "type": "integer",
+                        "description": "Y coordinate (fixed-point i64)"
+                      }
+                    }
+                  },
+                  "description": "Array of vertices for the exterior mesh"
+                },
+                "indices": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "description": "Triangle indices into the vertices array"
+                }
+              }
+            },
+            "layout": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["rooms", "doors"],
+              "properties": {
+                "rooms": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["kind", "x", "y", "width", "height"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["hangar", "corridor", "quarters", "bar", "market", "shipyard", "reactor", "bridge"],
+                        "description": "Type of room"
+                      },
+                      "x": {
+                        "type": "integer",
+                        "description": "X position in grid units"
+                      },
+                      "y": {
+                        "type": "integer",
+                        "description": "Y position in grid units"
+                      },
+                      "width": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Width in grid units"
+                      },
+                      "height": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Height in grid units"
+                      }
+                    }
+                  },
+                  "description": "Array of rooms"
+                },
+                "doors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["from", "to", "x", "y"],
+                    "properties": {
+                      "from": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Index of the source room"
+                      },
+                      "to": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Index of the destination room"
+                      },
+                      "x": {
+                        "type": "integer",
+                        "description": "X position in grid units"
+                      },
+                      "y": {
+                        "type": "integer",
+                        "description": "Y position in grid units"
+                      }
+                    }
+                  },
+                  "description": "Array of doors connecting rooms"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
