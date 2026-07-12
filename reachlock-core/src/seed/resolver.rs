@@ -5,21 +5,24 @@
 
 use super::types::{Biome, ObjectType, PlayerId, Seed, SystemId};
 
-const FNV_OFFSET: u64 = 0xCBF2_9CE4_8422_2325;
-const FNV_PRIME: u64 = 0x0000_0100_0000_01B3;
+pub(crate) const FNV_OFFSET: u64 = 0xCBF2_9CE4_8422_2325;
+pub(crate) const FNV_PRIME: u64 = 0x0000_0100_0000_01B3;
 
-fn fnv1a(state: u64, bytes: &[u8]) -> u64 {
+/// FNV-1a with a field separator, so `("ab","c")` never collides with
+/// `("a","bc")`. Shared with `content::seed` (spec §10) — same hashing
+/// primitives, different field sets, so DON'T change this function; it's
+/// part of the seed protocol (see module docs).
+pub(crate) fn fnv1a(state: u64, bytes: &[u8]) -> u64 {
     let mut h = state;
     for &b in bytes {
         h ^= b as u64;
         h = h.wrapping_mul(FNV_PRIME);
     }
-    // Field separator so ("ab","c") never collides with ("a","bc").
     h ^= 0x1F;
     h.wrapping_mul(FNV_PRIME)
 }
 
-fn finalize(mut z: u64) -> u64 {
+pub(crate) fn finalize(mut z: u64) -> u64 {
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
     z ^ (z >> 31)

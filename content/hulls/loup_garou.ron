@@ -1,0 +1,60 @@
+(
+    id: "loup_garou",
+    display_name: "Loup-Garou",
+    asset_type: hull,
+    seed: 5335717113362242,
+    universe: "all",
+    priority: authoritative,
+    payload: hull((
+        vertices: [
+            (
+                x: 0,
+                y: 0,
+            ),
+            (
+                x: 59382,
+                y: 0,
+            ),
+            (
+                x: 29185,
+                y: 50541,
+            ),
+            (
+                x: -20476,
+                y: 35471,
+            ),
+            (
+                x: -41977,
+                y: 0,
+            ),
+            (
+                x: -20481,
+                y: -35467,
+            ),
+            (
+                x: 29178,
+                y: -50546,
+            ),
+        ],
+        indices: [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5,
+            0,
+            5,
+            6,
+            0,
+            6,
+            1,
+        ],
+    )),
+)

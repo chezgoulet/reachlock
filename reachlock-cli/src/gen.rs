@@ -316,7 +316,7 @@ fn write(path: &std::path::Path, content: String) -> Result<(), String> {
     std::fs::write(path, content).map_err(|e| format!("writing {}: {e}", path.display()))
 }
 
-fn mesh_svg(mesh: &GeneratedMesh) -> String {
+pub(crate) fn mesh_svg(mesh: &GeneratedMesh) -> String {
     let mut min = (i64::MAX, i64::MAX);
     let mut max = (i64::MIN, i64::MIN);
     for v in &mesh.vertices {
@@ -343,7 +343,7 @@ fn mesh_svg(mesh: &GeneratedMesh) -> String {
     svg
 }
 
-fn layout_svg(layout: &GeneratedLayout) -> String {
+pub(crate) fn layout_svg(layout: &GeneratedLayout) -> String {
     let mut min = (i32::MAX, i32::MAX);
     let mut max = (i32::MIN, i32::MIN);
     for r in &layout.rooms {
@@ -460,7 +460,7 @@ fn system_svg(system: &reachlock_core::generator::system::GeneratedSystem) -> St
     svg
 }
 
-fn texture_ppm(tex: &reachlock_core::generator::GeneratedTexture) -> String {
+pub(crate) fn texture_ppm(tex: &reachlock_core::generator::GeneratedTexture) -> String {
     let mut ppm = format!("P3\n{} {}\n255\n", tex.width, tex.height);
     for px in tex.pixels.chunks_exact(4) {
         let _ = writeln!(ppm, "{} {} {}", px[0], px[1], px[2]);

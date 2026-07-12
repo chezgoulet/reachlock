@@ -37,3 +37,6 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
+
+# Local agent worktrees / session state
+.claude/

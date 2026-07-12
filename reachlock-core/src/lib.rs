@@ -5,6 +5,7 @@
 //! vocabulary. The client wraps this in Bevy; the server wraps it in Axum;
 //! neither adds gameplay logic of its own.
 
+pub mod content;
 pub mod contract;
 pub mod determinism;
 pub mod generator;
