@@ -4,7 +4,9 @@
 //! so it stays unit-testable without spinning up an `App`.
 
 pub mod mode;
+pub mod outbox;
 pub mod transport;
 
 pub use mode::{ConnectionState, NetMode};
-pub use transport::{TransportEvent, WsTransport};
+pub use outbox::NetOutbox;
+pub use transport::{handshake_url, TransportEvent, WsTransport};

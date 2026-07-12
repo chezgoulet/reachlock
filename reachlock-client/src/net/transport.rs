@@ -50,9 +50,7 @@ impl WsTransport {
                 ewebsock::WsEvent::Message(ewebsock::WsMessage::Text(text)) => {
                     match serde_json::from_str::<ServerMessage>(&text) {
                         Ok(msg) => TransportEvent::Message(msg),
-                        Err(e) => {
-                            TransportEvent::Unparseable(format!("unparseable frame: {e}"))
-                        }
+                        Err(e) => TransportEvent::Unparseable(format!("unparseable frame: {e}")),
                     }
                 }
                 ewebsock::WsEvent::Message(_) => {
@@ -65,6 +63,11 @@ impl WsTransport {
         events
     }
 
+    /// Explicit teardown. Not called yet — nothing in this sprint leaves
+    /// `Playing` once entered — but it's the entry point a future mode
+    /// switch (S06 mode-state-machine) hangs off, so it's kept as an
+    /// intentional, if currently unused, piece of the public API.
+    #[allow(dead_code)]
     pub fn close(&mut self) {
         self.sender.close();
     }
@@ -73,7 +76,11 @@ impl WsTransport {
 /// Builds the legacy `?player=&universe=` handshake URL (spec §8, S02
 /// non-goal: token auth ships in S03 — the server already accepts both, see
 /// `reachlock-server/src/ws/session.rs`).
-pub fn handshake_url(base: &str, player: &str, universe: reachlock_core::universe::UniverseTier) -> String {
+pub fn handshake_url(
+    base: &str,
+    player: &str,
+    universe: reachlock_core::universe::UniverseTier,
+) -> String {
     format!(
         "{base}?player={}&universe={}",
         percent_encode(player),
