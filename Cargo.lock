@@ -5225,12 +5225,15 @@ dependencies = [
 name = "reachlock-client"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "bevy",
  "bevy_prototype_lyon",
  "bevy_rapier2d",
  "ewebsock",
  "reachlock-core",
+ "reachlock-server",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

@@ -21,3 +21,12 @@ serde_json = "1"
 # systems only ever poll the channel. "tls" adds wss:// support natively;
 # on wasm32 the browser handles TLS regardless of this feature.
 ewebsock = { version = "0.8", default-features = false, features = ["tls"] }
+
+[dev-dependencies]
+# S02 integration test only: native, headless, no Bevy. tokio/axum here are
+# fine (dev-dependencies never ship in the binary and never touch wasm32 —
+# iron rule #5 is about `[dependencies]`); they boot the real server crate
+# in-process so the test drives our transport against real wire behavior.
+reachlock-server = { path = "../reachlock-server" }
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
