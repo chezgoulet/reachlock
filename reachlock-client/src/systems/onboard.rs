@@ -12,7 +12,7 @@ use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::ShipLog;
 use crate::systems::crew::{CrewFigure, CrewRoster, ORDER_ROOMS};
 use crate::systems::interaction::ActivePanel;
-use crate::systems::ship::ShipSystems;
+use crate::systems::ship::{ShipCommand, ShipSystems, POWER_BUDGET, POWER_MAX_NOTCH};
 
 /// Panel marker components (screen-fixed via `Node` absolute positioning).
 #[derive(Component, Default)]
@@ -25,6 +25,15 @@ pub struct NavPanel;
 pub struct LogPanel;
 #[derive(Component, Default)]
 pub struct OrderPanel;
+/// S09b flight-console panels (spec §22).
+#[derive(Component, Default)]
+pub struct GunnerPanel;
+#[derive(Component, Default)]
+pub struct ScannerPanel;
+#[derive(Component, Default)]
+pub struct MinerPanel;
+#[derive(Component, Default)]
+pub struct PowerPanel;
 
 /// Spawn the five on-board panel texts once (on entering `InGame`). They're
 /// empty until their `ActivePanel` opens; `onboard_panels` fills them.
@@ -85,6 +94,179 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
         TextColor(Color::srgb(0.95, 0.9, 0.8)),
         base(120.0, 8.0),
     ));
+    // S09b flight consoles, stacked on the right.
+    let flight = |top: f32| Node {
+        position_type: PositionType::Absolute,
+        top: Val::Px(top),
+        right: Val::Px(12.0),
+        ..default()
+    };
+    commands.spawn((
+        GunnerPanel,
+        Text::new(""),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.95, 0.7, 0.6)),
+        flight(120.0),
+    ));
+    commands.spawn((
+        ScannerPanel,
+        Text::new(""),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.6, 0.85, 0.95)),
+        flight(200.0),
+    ));
+    commands.spawn((
+        MinerPanel,
+        Text::new(""),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.7, 0.95, 0.8)),
+        flight(280.0),
+    ));
+    commands.spawn((
+        PowerPanel,
+        Text::new(""),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.95, 0.9, 0.6)),
+        flight(360.0),
+    ));
+}
+
+/// S09b: the gunner/scanner/miner/power consoles (spec §22). They don't fly the
+/// ship — they configure it, writing the [`ShipCommand`] bus that the flight
+/// systems read. A separate system from `onboard_panels` because a `ParamSet`
+/// caps at eight members and the original already holds five.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn onboard_ship_consoles(
+    keys: Res<ButtonInput<KeyCode>>,
+    panel: Res<ActivePanel>,
+    mut command: ResMut<ShipCommand>,
+    systems: Res<ShipSystems>,
+    mut log: ResMut<ShipLog>,
+    mut panels: ParamSet<(
+        Query<&mut Text, With<GunnerPanel>>,
+        Query<&mut Text, With<ScannerPanel>>,
+        Query<&mut Text, With<MinerPanel>>,
+        Query<&mut Text, With<PowerPanel>>,
+    )>,
+) {
+    if let Ok(mut t) = panels.p0().single_mut() {
+        match &*panel {
+            ActivePanel::Gunner => {
+                if keys.just_pressed(KeyCode::Enter) {
+                    command.weapons_armed = !command.weapons_armed;
+                    log.log(if command.weapons_armed {
+                        "Gunner: weapons ARMED"
+                    } else {
+                        "Gunner: weapons safe"
+                    });
+                }
+                let state = if command.weapons_armed {
+                    "ARMED"
+                } else {
+                    "SAFE"
+                };
+                **t = format!(
+                    "GUNNER\nweapons {state}\npower {}\nENTER: arm/safe\n(fly: F to fire)",
+                    command.power_weapons
+                );
+            }
+            _ => **t = String::new(),
+        }
+    }
+    if let Ok(mut t) = panels.p1().single_mut() {
+        match &*panel {
+            ActivePanel::Scanner => {
+                if keys.just_pressed(KeyCode::Enter) {
+                    command.scanner_boost = !command.scanner_boost;
+                    log.log(if command.scanner_boost {
+                        "Scanner: long-range sweep ON"
+                    } else {
+                        "Scanner: standard range"
+                    });
+                }
+                let mode = if command.scanner_boost { "LONG" } else { "STD" };
+                **t = format!(
+                    "SCANNER\nrange {mode}\npower {}\nENTER: toggle range\n(fly: T to pulse)",
+                    command.power_sensors
+                );
+            }
+            _ => **t = String::new(),
+        }
+    }
+    if let Ok(mut t) = panels.p2().single_mut() {
+        match &*panel {
+            ActivePanel::Miner => {
+                if keys.just_pressed(KeyCode::Enter) {
+                    command.mining_enabled = !command.mining_enabled;
+                    log.log(if command.mining_enabled {
+                        "Miner: rig ONLINE"
+                    } else {
+                        "Miner: rig stowed"
+                    });
+                }
+                let state = if command.mining_enabled {
+                    "ONLINE"
+                } else {
+                    "STOWED"
+                };
+                **t = format!(
+                    "MINER\nrig {state}\nore {}\nENTER: toggle\n(fly: hold G)",
+                    systems.ore
+                );
+            }
+            _ => **t = String::new(),
+        }
+    }
+    if let Ok(mut t) = panels.p3().single_mut() {
+        match &*panel {
+            ActivePanel::Power => {
+                // 1/2/3 bump a subsystem's notch; wraps to 0 past the cap or the
+                // shared budget. This is the spec §22 reference console.
+                let used: u8 =
+                    command.power_weapons + command.power_engines + command.power_sensors;
+                let bump = |cur: u8, add: bool| -> u8 {
+                    if !add {
+                        return cur;
+                    }
+                    let next = cur + 1;
+                    if next > POWER_MAX_NOTCH || used - cur + next > POWER_BUDGET {
+                        0
+                    } else {
+                        next
+                    }
+                };
+                if keys.just_pressed(KeyCode::Digit1) {
+                    command.power_weapons = bump(command.power_weapons, true);
+                }
+                if keys.just_pressed(KeyCode::Digit2) {
+                    command.power_engines = bump(command.power_engines, true);
+                }
+                if keys.just_pressed(KeyCode::Digit3) {
+                    command.power_sensors = bump(command.power_sensors, true);
+                }
+                let free = POWER_BUDGET as i32
+                    - (command.power_weapons + command.power_engines + command.power_sensors)
+                        as i32;
+                **t = format!(
+                    "POWER  (budget {POWER_BUDGET})\n1 WPN {}\n2 ENG {}\n3 SEN {}\nfree {free}",
+                    command.power_weapons, command.power_engines, command.power_sensors
+                );
+            }
+            _ => **t = String::new(),
+        }
+    }
 }
 
 /// Render the open console / order panel and handle its input (take helm,

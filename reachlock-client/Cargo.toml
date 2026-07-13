@@ -12,7 +12,7 @@ reachlock-core = { path = "../reachlock-core" }
 # WAV header for bevy_audio's decoder.
 bevy = { workspace = true, features = ["wav"] }
 bevy_prototype_lyon = { workspace = true }
-bevy_rapier2d = { workspace = true }
+bevy_rapier3d = { workspace = true }
 # Authoring format for content/ (spec §10) — same crate/version core uses;
 # wasm-safe. The native content_index loader parses .ron with it directly.
 ron = "0.12"
