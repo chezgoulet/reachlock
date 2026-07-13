@@ -99,14 +99,16 @@ pub fn onboard_panels(
     mut roster: ResMut<CrewRoster>,
     location: Res<CurrentLocation>,
     mut next: ResMut<NextState<GameMode>>,
-    mut helm: Query<&mut Text, With<HelmPanel>>,
-    mut eng: Query<&mut Text, With<EngPanel>>,
-    mut nav: Query<&mut Text, With<NavPanel>>,
-    mut logp: Query<&mut Text, With<LogPanel>>,
-    mut order: Query<&mut Text, With<OrderPanel>>,
+    mut panels: ParamSet<(
+        Query<&mut Text, With<HelmPanel>>,
+        Query<&mut Text, With<EngPanel>>,
+        Query<&mut Text, With<NavPanel>>,
+        Query<&mut Text, With<LogPanel>>,
+        Query<&mut Text, With<OrderPanel>>,
+    )>,
     crew_figs: Query<&CrewFigure>,
 ) {
-    if let Ok(mut t) = helm.single_mut() {
+    if let Ok(mut t) = panels.p0().single_mut() {
         match &*panel {
             ActivePanel::Helm => {
                 **t = "HELM\nTake the helm.\nPress ENTER to fly.".to_string();
@@ -118,7 +120,7 @@ pub fn onboard_panels(
             _ => **t = String::new(),
         }
     }
-    if let Ok(mut t) = eng.single_mut() {
+    if let Ok(mut t) = panels.p1().single_mut() {
         match &*panel {
             ActivePanel::Engineering => {
                 let pct = systems.fuel.0 * 100 / 1024;
@@ -131,7 +133,7 @@ pub fn onboard_panels(
             _ => **t = String::new(),
         }
     }
-    if let Ok(mut t) = nav.single_mut() {
+    if let Ok(mut t) = panels.p2().single_mut() {
         match &*panel {
             ActivePanel::Nav => {
                 **t = format!(
@@ -142,13 +144,13 @@ pub fn onboard_panels(
             _ => **t = String::new(),
         }
     }
-    if let Ok(mut t) = logp.single_mut() {
+    if let Ok(mut t) = panels.p3().single_mut() {
         match &*panel {
             ActivePanel::Log => **t = log.entries.join("\n"),
             _ => **t = String::new(),
         }
     }
-    if let Ok(mut t) = order.single_mut() {
+    if let Ok(mut t) = panels.p4().single_mut() {
         match &*panel {
             ActivePanel::Order(e) => {
                 let id = crew_figs.get(*e).ok().map(|f| f.0.clone());

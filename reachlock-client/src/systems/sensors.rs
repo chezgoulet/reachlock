@@ -4,6 +4,7 @@
 //! its identity. The system map (`M` key) overlays all known contacts.
 
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 use crate::states::{GameMode, ModeScope};
 use crate::systems::docking::Dockable;
@@ -126,14 +127,24 @@ pub fn sensor_blips(
 
 /// Reposition blip entities to follow their contact entity (contacts don't
 /// move in this sprint, but the design should support it).
+#[allow(clippy::type_complexity)]
 pub fn sensor_blip_follow(
-    contacts: Query<(&Transform,), With<Contact>>,
-    mut blips: Query<(&mut Transform, &Blip)>,
+    mut params: ParamSet<(
+        Query<(Entity, &Transform), With<Contact>>,
+        Query<(&mut Transform, &Blip)>,
+    )>,
 ) {
-    for (mut tx, blip) in &mut blips {
-        if let Ok((contact_tx,)) = contacts.get(blip.for_contact) {
-            tx.translation.x = contact_tx.translation.x;
-            tx.translation.y = contact_tx.translation.y;
+    // A `ParamSet` only permits one of its queries to be borrowed at a time,
+    // so we snapshot contact positions before iterating `blips` mutably.
+    let positions: HashMap<Entity, Vec2> = params
+        .p0()
+        .iter()
+        .map(|(e, t)| (e, t.translation.truncate()))
+        .collect();
+    for (mut tx, blip) in &mut params.p1() {
+        if let Some(p) = positions.get(&blip.for_contact) {
+            tx.translation.x = p.x;
+            tx.translation.y = p.y;
         }
     }
 }
