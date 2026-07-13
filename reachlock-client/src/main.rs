@@ -21,13 +21,24 @@ use systems::{
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
-fn in_spaceflight(mode: Res<State<GameMode>>) -> bool {
-    **mode == GameMode::SpaceFlight
+///
+/// Uses `Option<Res<…>>` like Bevy's own `in_state`: the `GameMode` sub-state
+/// resource only exists while `AppState::InGame` is active, so it is absent on
+/// the main menu. Returning `false` there (instead of demanding the resource)
+/// avoids a "resource does not exist" panic at startup.
+fn in_spaceflight(mode: Option<Res<State<GameMode>>>) -> bool {
+    match mode {
+        Some(mode) => **mode == GameMode::SpaceFlight,
+        None => false,
+    }
 }
 
 /// Run condition: the player is in a top-down interior (Landed or OnBoard).
-fn in_any_interior(mode: Res<State<GameMode>>) -> bool {
-    matches!(**mode, GameMode::Landed | GameMode::OnBoard)
+fn in_any_interior(mode: Option<Res<State<GameMode>>>) -> bool {
+    match mode {
+        Some(mode) => matches!(**mode, GameMode::Landed | GameMode::OnBoard),
+        None => false,
+    }
 }
 
 fn main() {
