@@ -114,6 +114,83 @@ pub fn generate_station(seed: u64, kind: StationKind, size: u32) -> GeneratedSta
     }
 }
 
+/// Ship interior layout from the hull seed (spec §14 Mode 2; S06 On-Board
+/// placeholder). Same spine-corridor connectivity guarantee as
+/// `generate_station`, but with ship-appropriate room kinds and a Hangar
+/// (airlock) entry plus a Bridge (cockpit) so the mode machine has an
+/// "airlock" tile and a "Take Helm" tile to bind transitions to.
+pub fn generate_hull_interior(seed: u64, _class: HullClass) -> GeneratedLayout {
+    // Distinct stream from the exterior hull so the inside isn't a copy.
+    let mut rng = SeededRng::new(seed ^ 0x5B1E_5EED);
+    const GRID: i32 = 8;
+    // 4..6 bud rooms; varies with the seed (different hulls ⇒ different
+    // seeds, so class-agnostic seeding is fine here).
+    let room_count = 4 + rng.next_below(3) as usize;
+
+    let mut rooms = Vec::with_capacity(room_count + 2);
+    let mut doors = Vec::new();
+
+    // Room 0: the hangar — every ship starts at its airlock.
+    rooms.push(Room {
+        kind: RoomKind::Hangar,
+        x: 0,
+        y: 0,
+        width: 6 * GRID,
+        height: 4 * GRID,
+    });
+
+    // Room 1: the spine corridor, long and thin, forward of the hangar.
+    let spine_len = (room_count as i32 + 1) * 4 * GRID;
+    rooms.push(Room {
+        kind: RoomKind::Corridor,
+        x: 0,
+        y: 4 * GRID,
+        width: spine_len,
+        height: 2 * GRID,
+    });
+    doors.push(Door {
+        from: 0,
+        to: 1,
+        x: 2 * GRID,
+        y: 4 * GRID,
+    });
+
+    // Bud rooms alternate above/below the spine. Bridge = cockpit (Take
+    // Helm), Reactor = engineering, Quarters, Shipyard reused as cargo hold,
+    // Bar reused as galley/lounge.
+    let pool: &[RoomKind] = &[
+        RoomKind::Bridge,
+        RoomKind::Reactor,
+        RoomKind::Quarters,
+        RoomKind::Shipyard,
+        RoomKind::Bar,
+    ];
+    for i in 0..room_count {
+        let kind = pool[i % pool.len()];
+        let w = (3 + rng.next_below(3) as i32) * GRID;
+        let h = (2 + rng.next_below(3) as i32) * GRID;
+        let along = (i as i32 + 1) * 4 * GRID;
+        let above = i % 2 == 0;
+        let y = if above { 6 * GRID } else { 4 * GRID - h };
+        rooms.push(Room {
+            kind,
+            x: along,
+            y,
+            width: w,
+            height: h,
+        });
+        let room_index = (rooms.len() - 1) as u32;
+        doors.push(Door {
+            from: 1,
+            to: room_index,
+            x: along + w / 2,
+            y: if above { 6 * GRID } else { 4 * GRID },
+        });
+    }
+
+    GeneratedLayout { rooms, doors }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +235,36 @@ mod tests {
         let n = station.layout.rooms.len() as u32;
         for door in &station.layout.doors {
             assert!(door.from < n && door.to < n);
+        }
+    }
+
+    #[test]
+    fn hull_interior_is_deterministic_and_has_helm_plus_airlock() {
+        let a = generate_hull_interior(9, HullClass::Corvette);
+        let b = generate_hull_interior(9, HullClass::Corvette);
+        assert_eq!(a, b);
+
+        // The mode machine needs a Bridge (Take Helm) and a Hangar (airlock).
+        let kinds: Vec<_> = a.rooms.iter().map(|r| r.kind).collect();
+        assert!(kinds.contains(&RoomKind::Bridge), "need a cockpit");
+        assert!(kinds.contains(&RoomKind::Hangar), "need an airlock");
+
+        // Connectivity: reachable from the hangar, doors reference valid rooms.
+        let n = a.rooms.len();
+        let mut reached = vec![false; n];
+        reached[0] = true;
+        for _ in 0..n {
+            for door in &a.doors {
+                let (f, t) = (door.from as usize, door.to as usize);
+                if reached[f] || reached[t] {
+                    reached[f] = true;
+                    reached[t] = true;
+                }
+            }
+        }
+        assert!(reached.iter().all(|&r| r), "unreachable room in interior");
+        for door in &a.doors {
+            assert!(door.from < n as u32 && door.to < n as u32);
         }
     }
 }

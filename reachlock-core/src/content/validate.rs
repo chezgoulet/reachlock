@@ -29,6 +29,11 @@ pub enum ValidationError {
         door_from: u32,
         door_to: u32,
     },
+    DanglingNpc {
+        npc_index: usize,
+        room_index: usize,
+        room_count: usize,
+    },
     UnknownUniverse {
         universe: String,
     },
@@ -54,6 +59,15 @@ impl std::fmt::Display for ValidationError {
                 f,
                 "door {door_from} -> {door_to} references a room outside the layout \
                  (only {room_count} room(s) defined)"
+            ),
+            ValidationError::DanglingNpc {
+                npc_index,
+                room_index,
+                room_count,
+            } => write!(
+                f,
+                "npc #{npc_index} ({room_index}) references room {room_index} outside the \
+                 layout (only {room_count} room(s) defined)"
             ),
             ValidationError::UnknownUniverse { universe } => write!(
                 f,
@@ -81,9 +95,23 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
 
     match &content.payload {
         ContentPayload::Hull(mesh) => errors.extend(check_mesh(&content.id, mesh)),
-        ContentPayload::Station { exterior, layout } => {
+        ContentPayload::Station {
+            exterior,
+            layout,
+            npc_spawns,
+            ..
+        } => {
             errors.extend(check_mesh(&content.id, exterior));
             errors.extend(check_doors(layout));
+            for (i, npc) in npc_spawns.iter().enumerate() {
+                if npc.room_index >= layout.rooms.len() {
+                    errors.push(ValidationError::DanglingNpc {
+                        npc_index: i,
+                        room_index: npc.room_index,
+                        room_count: layout.rooms.len(),
+                    });
+                }
+            }
         }
         ContentPayload::Contract(_) => {}
     }
@@ -253,6 +281,7 @@ mod tests {
                         y: 0,
                     }],
                 },
+                npc_spawns: vec![],
             },
         };
         let errors = validate_content(&station);

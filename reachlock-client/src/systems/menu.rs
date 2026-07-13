@@ -39,6 +39,6 @@ pub fn menu_input(
         for entity in &menu {
             commands.entity(entity).despawn();
         }
-        next.set(AppState::Playing);
+        next.set(AppState::InGame);
     }
 }

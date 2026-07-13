@@ -31,7 +31,7 @@ impl ShipLog {
         let line = line.into();
         info!("ship log: {line}");
         self.entries.push(line);
-        if self.entries.len() > 6 {
+        if self.entries.len() > 200 {
             self.entries.remove(0);
         }
     }

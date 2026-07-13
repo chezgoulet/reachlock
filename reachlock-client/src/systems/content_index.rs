@@ -15,6 +15,18 @@ pub struct ContentIndex {
     pub files: Vec<ContentFile>,
 }
 
+impl ContentIndex {
+    /// Find an authored station payload by its pinned seed (S07: the docked
+    /// station's `station_seed` is the authored file's `seed`). Returns the
+    /// station file if present, so `interior::enter_interior` can use its
+    /// authored layout + `npc_spawns` instead of regenerating.
+    pub fn find_station_by_seed(&self, seed: u64) -> Option<&ContentFile> {
+        self.files
+            .iter()
+            .find(|f| f.asset_type == reachlock_core::content::AssetType::Station && f.seed == seed)
+    }
+}
+
 /// Directory under `content/` that holds test fixtures, not real authored
 /// assets (spec §10 deliverable: "skip `content/_fixtures/`").
 #[cfg(not(target_arch = "wasm32"))]

@@ -21,6 +21,18 @@ pub enum AssetType {
     Contract,
 }
 
+/// A non-player character placed in a station interior. `room_index` points
+/// into the station's `GeneratedLayout::rooms` so the renderer/loader can
+/// drop the figure in the right room. `dialogue` is the authored line list
+/// the talk verb surfaces (S07; S13/S16 swap the *source*, not the panel).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NpcSpawn {
+    pub room_index: usize,
+    pub name: String,
+    #[serde(default)]
+    pub dialogue: Vec<String>,
+}
+
 /// The authored payload — the exact same plain-data structs the generators
 /// emit (spec §10: "the bridge doesn't know the difference"). One variant
 /// per `AssetType`; keep the two in sync.
@@ -31,6 +43,10 @@ pub enum ContentPayload {
     Station {
         exterior: GeneratedMesh,
         layout: GeneratedLayout,
+        /// Authored NPCs (S07). Default-empty so generated/legacy station
+        /// payloads still deserialize.
+        #[serde(default)]
+        npc_spawns: Vec<NpcSpawn>,
     },
     Contract(Contract),
 }
@@ -116,6 +132,56 @@ mod tests {
     fn ron_round_trip() {
         let file = hull_file();
         let text = ron::to_string(&file).unwrap();
+        let back: ContentFile = ron::from_str(&text).unwrap();
+        assert_eq!(file, back);
+    }
+
+    /// Station payload with NPCs — locks the serialized form so a silent
+    /// schema change (renaming `npc_spawns`, `room_index`, `dialogue`, …)
+    /// is caught. Iron rule #4: content schemas have tests that lock their
+    /// serialized form.
+    #[test]
+    fn station_with_npcs_serialized_form_is_locked() {
+        let file = ContentFile {
+            id: "sorrow_station".into(),
+            display_name: "Sorrow Station".into(),
+            asset_type: AssetType::Station,
+            seed: 4218130448322139,
+            universe: "all".into(),
+            priority: Priority::Curated,
+            expires_at: None,
+            payload: ContentPayload::Station {
+                exterior: GeneratedMesh {
+                    vertices: vec![FixedVec2 {
+                        x: Fixed(0),
+                        y: Fixed(0),
+                    }],
+                    indices: vec![],
+                },
+                layout: GeneratedLayout {
+                    rooms: vec![crate::generator::Room {
+                        kind: crate::generator::RoomKind::Bar,
+                        x: 0,
+                        y: 0,
+                        width: 32,
+                        height: 32,
+                    }],
+                    doors: vec![],
+                },
+                npc_spawns: vec![NpcSpawn {
+                    room_index: 0,
+                    name: "Mara".into(),
+                    dialogue: vec!["Hello, traveler.".into()],
+                }],
+            },
+        };
+        let text = ron::to_string(&file).unwrap();
+        assert!(
+            text.contains("npc_spawns"),
+            "serialized form must keep field name: {text}"
+        );
+        assert!(text.contains("room_index"));
+        // Defaulted field stays round-trippable with the same bytes.
         let back: ContentFile = ron::from_str(&text).unwrap();
         assert_eq!(file, back);
     }

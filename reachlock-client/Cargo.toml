@@ -16,6 +16,7 @@ bevy_rapier2d = { workspace = true }
 # Authoring format for content/ (spec §10) — same crate/version core uses;
 # wasm-safe. The native content_index loader parses .ron with it directly.
 ron = "0.12"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # S02: one WebSocket API for native + wasm32, no async runtime pulled in.
 # default-features = false keeps the native backend on a blocking OS thread

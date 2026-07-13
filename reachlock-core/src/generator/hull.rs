@@ -89,6 +89,78 @@ pub fn generate_hull_class(seed: u64, class: HullClass) -> GeneratedMesh {
     GeneratedMesh { vertices, indices }
 }
 
+/// Flight-handling parameters (spec §14 Mode 3; S09 freeze, iron-rule #2:
+/// fixed-point, no floats in the gameplay struct). Consumed by the client as
+/// `f32` at the bridge via [`HullHandling::f32`]. S17 (editor) and S19
+/// (combat) both read this struct — it is load-bearing.
+///
+/// Every field is fixed-point at 1/1024. `mass`/`thrust`/`turn_rate`/
+/// `drift_damping`/`boost_mult` are 1/1024; `fuel_burn` is integer units
+/// per second at cruise. `boost_mult == 1024` means 1.0x thrust.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HullHandling {
+    pub mass: i64,
+    pub thrust: i64,
+    pub turn_rate: i64,
+    pub drift_damping: i64,
+    pub boost_mult: i64,
+    pub fuel_burn: i64,
+}
+
+impl HullHandling {
+    /// Derive per `HullClass` with a small seed jitter so two ships of the
+    /// same class still handle a hair differently. Deterministic in
+    /// `(seed, class)` — no wall-clock, no manifest entry (it's a derived
+    /// table, not a generator output).
+    pub fn for_class(seed: u64, class: HullClass) -> Self {
+        let mut rng = SeededRng::new(seed ^ 0x4A5D_1234);
+        let mut j = |base: i64, spread: i64| {
+            base + (rng.next_below((spread as u64) * 2 + 1) as i64) - spread
+        };
+        let base = match class {
+            // (mass, thrust, turn_rate, drift_damping, boost_mult, fuel_burn)
+            HullClass::Shuttle => (700, 1500, 260, 760, 1500, 9),
+            HullClass::Freighter => (2600, 1300, 90, 540, 1280, 16),
+            HullClass::Corvette => (1400, 1700, 200, 700, 1408, 12),
+            HullClass::Station => (9_999, 0, 0, 0, 1024, 0),
+            HullClass::Rock => (500, 0, 0, 0, 1024, 0),
+        };
+        Self {
+            mass: j(base.0, 60),
+            thrust: j(base.1, 80),
+            turn_rate: j(base.2, 20),
+            drift_damping: j(base.3, 40),
+            boost_mult: j(base.4, 64),
+            fuel_burn: j(base.5, 3).max(1),
+        }
+    }
+
+    /// Fixed-point (1/1024) → f32 for the render/bridge layer only.
+    pub fn f32(v: i64) -> f32 {
+        v as f32 / 1024.0
+    }
+}
+
+#[cfg(test)]
+mod handling_tests {
+    use super::*;
+
+    #[test]
+    fn handling_is_class_distinct_and_seed_stable() {
+        let a = HullHandling::for_class(1, HullClass::Corvette);
+        let b = HullHandling::for_class(1, HullClass::Freighter);
+        assert_eq!(a, HullHandling::for_class(1, HullClass::Corvette));
+        assert_ne!(a.thrust, b.thrust);
+        assert!(b.mass > a.mass, "freighter is heavier");
+    }
+
+    #[test]
+    fn f32_conversion() {
+        assert_eq!(HullHandling::f32(1024), 1.0);
+        assert_eq!(HullHandling::f32(2048), 2.0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

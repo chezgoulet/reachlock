@@ -119,6 +119,17 @@ pub fn manifest() -> Manifest {
             checksum: h.finish(),
         });
 
+        // S06 — ship interior layout (the On-Board scene's one source of
+        // truth). Corvette is the player's default hull class.
+        entries.push(Entry {
+            generator: "hull_interior".into(),
+            seed,
+            checksum: hash_layout(&generator::station::generate_hull_interior(
+                seed,
+                generator::hull::HullClass::Corvette,
+            )),
+        });
+
         let planet = generator::generate_planet(seed, 100, Biome::Frontier);
         let mut h = Hasher::new();
         h.write_i64(hash_mesh(&planet.disc) as i64);
@@ -208,8 +219,8 @@ pub fn manifest() -> Manifest {
     }
 
     Manifest {
-        // v2: added S04 system + S05 item generators.
-        version: 2,
+        // v3: added S06 hull_interior (ship interior layout) generator.
+        version: 3,
         entries,
     }
 }
@@ -255,9 +266,16 @@ mod tests {
     fn diff_reports_divergence() {
         let a = manifest();
         let mut b = manifest();
-        b.entries[3].checksum ^= 1;
+        // Flip a stable generator (music sits at a fixed index regardless of
+        // generators added before it).
+        let music_idx = b
+            .entries
+            .iter()
+            .position(|e| e.generator == "music")
+            .expect("music entry present");
+        b.entries[music_idx].checksum ^= 1;
         let problems = diff(&a, &b);
         assert_eq!(problems.len(), 1);
-        assert!(problems[0].contains("music") || problems[0].contains("hull"));
+        assert!(problems[0].contains("music"));
     }
 }

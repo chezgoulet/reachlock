@@ -8,6 +8,7 @@
 pub mod content;
 pub mod contract;
 pub mod determinism;
+pub mod economy;
 pub mod generator;
 pub mod item;
 pub mod network;

@@ -1,0 +1,75 @@
+//! Mode scene management (spec §14): generic scene teardown + interior
+//! camera follow. The space camera (ship follow) lives in `systems/ship.rs`.
+//!
+//! Teardown lives in the *enter* systems (`enter_spaceflight`,
+//! `enter_interior`): when entering a scene different from the one already
+//! built, every `ModeScope` entity is despawned before the new scene is
+//! built. Pausing is a no-op round-trip because the enter system early-outs
+//! when `SceneRegistry` already holds the target mode — the underlying
+//! scene is never torn down.
+
+use bevy::prelude::*;
+
+use crate::states::ModeScope;
+
+/// Tear down the SpaceFlight scene when entering Hyperspace — the space
+/// entities (ModeScope) are not valid during transit and must not render or
+/// participate in physics (S09 gotcha: "Hyperspace must pause rapier or
+/// scope it out"). The wash overlay spawned by `jump::hyperspace_tick` is
+/// NOT tagged ModeScope so it survives this teardown.
+pub fn teardown_for_hyperspace(
+    mut commands: Commands,
+    mode_entities: Query<Entity, With<ModeScope>>,
+) {
+    for entity in &mode_entities {
+        commands.entity(entity).despawn();
+    }
+}
+
+/// Despawn leftover scene entities when leaving `InGame` entirely (the
+/// `GameMode` sub-state is dropped without firing its own `OnExit`).
+pub fn teardown_on_leave_game(
+    mut commands: Commands,
+    mode_entities: Query<Entity, With<ModeScope>>,
+) {
+    for entity in &mode_entities {
+        commands.entity(entity).despawn();
+    }
+}
+
+/// Follows the walking avatar for top-down interior modes (Landed/OnBoard).
+/// Mirrors `ship::camera_follow` but driven by `PlayerAvatar` instead of the
+/// flying ship.
+pub fn interior_camera_follow(
+    avatar: Query<&Transform, (With<PlayerAvatar>, Without<Camera2d>)>,
+    mut camera: Query<&mut Transform, With<Camera2d>>,
+) {
+    let (Ok(avatar), Ok(mut camera)) = (avatar.single(), camera.single_mut()) else {
+        return;
+    };
+    camera.translation.x = avatar.translation.x;
+    camera.translation.y = avatar.translation.y;
+}
+
+/// The walking player square used in Landed/On-Board modes. Distinct from the
+/// flying `PlayerShip` so the two scenes never collide.
+#[derive(Component)]
+pub struct PlayerAvatar;
+
+/// Convenience: is the avatar currently inside a room of the given kind?
+/// Used by docking/boarding to decide what `E` does at the player's feet.
+pub fn avatar_in_room(
+    avatar: &Transform,
+    layout: &reachlock_core::generator::GeneratedLayout,
+    kind: reachlock_core::generator::RoomKind,
+) -> bool {
+    let px = avatar.translation.x;
+    let py = avatar.translation.y;
+    layout.rooms.iter().any(|r| {
+        r.kind == kind
+            && px >= r.x as f32
+            && px <= (r.x + r.width) as f32
+            && py >= r.y as f32
+            && py <= (r.y + r.height) as f32
+    })
+}

@@ -1,12 +1,18 @@
-//! HUD: fuel gauge, ship's log, the deliberation overlay ("Boris is
-//! considering the situation…" — spec §6 deliberation UX), and (S02) the
-//! OFFLINE badge that appears whenever online mode has no live connection —
-//! the game keeps playing locally regardless (iron rule #3).
+//! HUD (spec §14 deliverable: "HUD adapts"): fuel gauge + ship's log in
+//! `SpaceFlight`; a location-name banner in `Landed`/`OnBoard`; the
+//! deliberation overlay ("Boris is considering the situation…" — spec §6
+//! deliberation UX); the `OFFLINE` badge that appears whenever online mode
+//! has no live connection (iron rule #3); and the pause overlay.
 
 use bevy::prelude::*;
 
 use crate::net::{ConnectionState, NetMode};
+use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
+use crate::systems::interaction::{ActivePanel, Npc};
+use crate::systems::inventory::PlayerInventory;
+use crate::systems::market::{market_panel_text, MarketState};
+use crate::systems::pause::PauseOverlay;
 use crate::systems::ship::ShipSystems;
 
 #[derive(Component)]
@@ -23,6 +29,19 @@ pub struct DeliberationOverlay;
 #[derive(Component)]
 pub struct OfflineBadge;
 
+/// Location-name banner in Landed/OnBoard (spec §14: "location name banner
+/// in Landed/OnBoard").
+#[derive(Component)]
+pub struct LocationBanner;
+
+/// Dialogue panel (S07): shows the talked-to NPC's name + authored lines.
+#[derive(Component)]
+pub struct DialoguePanel;
+
+/// Market panel (S07): buy/sell UI text rendered from `market_panel_text`.
+#[derive(Component)]
+pub struct MarketPanel;
+
 pub fn spawn_hud(mut commands: Commands) {
     commands.spawn((
         FuelReadout,
@@ -36,6 +55,21 @@ pub fn spawn_hud(mut commands: Commands) {
             position_type: PositionType::Absolute,
             top: Val::Px(8.0),
             left: Val::Px(8.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
+        LocationBanner,
+        Text::new(""),
+        TextFont {
+            font_size: 18.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.85, 0.9, 0.95)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(8.0),
+            left: Val::Percent(40.0),
             ..default()
         },
     ));
@@ -58,27 +92,13 @@ pub fn spawn_hud(mut commands: Commands) {
         DeliberationOverlay,
         Text::new(""),
         TextFont {
-            font_size: 20.0,
+            font_size: 16.0,
             ..default()
         },
         TextColor(Color::srgb(0.95, 0.85, 0.5)),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(60.0),
-            left: Val::Px(8.0),
-            ..default()
-        },
-    ));
-    commands.spawn((
-        Text::new("W/↑ thrust · A/D turn · X inject anomaly"),
-        TextFont {
-            font_size: 12.0,
-            ..default()
-        },
-        TextColor(Color::srgb(0.5, 0.55, 0.6)),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(30.0),
             left: Val::Px(8.0),
             ..default()
         },
@@ -98,57 +118,118 @@ pub fn spawn_hud(mut commands: Commands) {
             ..default()
         },
     ));
+    commands.spawn((
+        PauseOverlay,
+        Text::new(""),
+        TextFont {
+            font_size: 28.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.95, 0.95, 0.6)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Percent(45.0),
+            left: Val::Percent(40.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
+        Text::new("W/↑ thrust · Shift boost · Space brake · A/D turn · X anomaly · S scan · M map · E dock/board · L launch · B walk-ship · Esc pause"),
+        TextFont {
+            font_size: 12.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.5, 0.55, 0.6)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(30.0),
+            left: Val::Px(8.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
+        DialoguePanel,
+        Text::new(""),
+        TextFont {
+            font_size: 16.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.9, 0.9, 0.75)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(120.0),
+            left: Val::Px(8.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
+        MarketPanel,
+        Text::new(""),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.7, 0.95, 0.7)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(120.0),
+            left: Val::Px(360.0),
+            ..default()
+        },
+    ));
 }
 
-// Bevy query filters are inherently type-heavy, and the S02 badge adds a
-// fifth Res param on top of the pre-existing four; the standard allowance.
+// Bevy's `SystemParamFunction` impl is capped at a fixed arity, so the HUD
+// reader is split: `update_hud_status` covers the always-on status texts and
+// `update_hud_panels` covers the interaction panels. Splitting keeps each
+// system's param list under the cap.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub fn update_hud(
+pub fn update_hud_status(
+    mode: Res<State<GameMode>>,
+    location: Res<CurrentLocation>,
     systems: Res<ShipSystems>,
     log: Res<ShipLog>,
     deliberation: Res<DeliberationState>,
-    mode: Res<NetMode>,
+    net_mode: Res<NetMode>,
     conn: Res<ConnectionState>,
-    mut fuel: Query<
-        &mut Text,
-        (
-            With<FuelReadout>,
-            Without<LogReadout>,
-            Without<DeliberationOverlay>,
-            Without<OfflineBadge>,
-        ),
-    >,
-    mut log_text: Query<
-        &mut Text,
-        (
-            With<LogReadout>,
-            Without<FuelReadout>,
-            Without<DeliberationOverlay>,
-            Without<OfflineBadge>,
-        ),
-    >,
-    mut overlay: Query<
-        &mut Text,
-        (
-            With<DeliberationOverlay>,
-            Without<FuelReadout>,
-            Without<LogReadout>,
-            Without<OfflineBadge>,
-        ),
-    >,
-    mut badge: Query<
-        &mut Text,
-        (
-            With<OfflineBadge>,
-            Without<FuelReadout>,
-            Without<LogReadout>,
-            Without<DeliberationOverlay>,
-        ),
-    >,
+    mut fuel: Query<&mut Text, With<FuelReadout>>,
+    mut banner: Query<&mut Text, With<LocationBanner>>,
+    mut log_text: Query<&mut Text, With<LogReadout>>,
+    mut overlay: Query<&mut Text, With<DeliberationOverlay>>,
+    mut badge: Query<&mut Text, With<OfflineBadge>>,
+    mut pause: Query<&mut Text, With<PauseOverlay>>,
 ) {
     if let Ok(mut text) = fuel.single_mut() {
-        let pct = systems.fuel.0 * 100 / 1024;
-        **text = format!("FUEL {pct}%{}", if systems.thrusting { " ▲" } else { "" });
+        if *mode == GameMode::SpaceFlight {
+            let pct = systems.fuel.0 * 100 / 1024;
+            **text = format!("FUEL {pct}%{}", if systems.thrusting { " ▲" } else { "" });
+        } else {
+            **text = "—".to_string();
+        }
+    }
+    if let Ok(mut text) = banner.single_mut() {
+        **text = match **mode {
+            GameMode::SpaceFlight => format!("SPACE · system {:#x}", location.system_seed),
+            GameMode::Landed => {
+                if location.display_name.is_empty() {
+                    format!("LANDED · {}", location.station_id)
+                } else {
+                    format!("LANDED · {}", location.display_name)
+                }
+            }
+            GameMode::OnBoard => {
+                let where_ = if location.is_docked {
+                    "docked"
+                } else {
+                    "in transit"
+                };
+                format!("ON BOARD · your ship ({where_})")
+            }
+            GameMode::Docking => "DOCKING…".to_string(),
+            GameMode::Undocking => "UNDOCKING…".to_string(),
+            GameMode::Hyperspace => "HYPERSPACE…".to_string(),
+            GameMode::Paused => "PAUSED".to_string(),
+        };
     }
     if let Ok(mut text) = log_text.single_mut() {
         **text = log.entries.join("\n");
@@ -169,10 +250,56 @@ pub fn update_hud(
         // OFFLINE whenever the socket isn't actually Connected (still
         // connecting, or dropped and retrying): the game keeps playing
         // locally either way (iron rule #3).
-        **text = match (&*mode, &*conn) {
-            (crate::net::NetMode::Online { .. }, ConnectionState::Connected) => String::new(),
-            (crate::net::NetMode::Online { .. }, _) => "OFFLINE".to_string(),
-            (crate::net::NetMode::Offline, _) => String::new(),
+        **text = match (&*net_mode, &*conn) {
+            (NetMode::Online { .. }, ConnectionState::Connected) => String::new(),
+            (NetMode::Online { .. }, _) => "OFFLINE".to_string(),
+            (NetMode::Offline, _) => String::new(),
+        };
+    }
+    if let Ok(mut text) = pause.single_mut() {
+        **text = match **mode {
+            GameMode::Paused => "⏸ PAUSED\n\nEsc to resume".to_string(),
+            _ => String::new(),
+        };
+    }
+}
+
+/// Drives the interaction panels (dialogue / market) when an `ActivePanel` is
+/// open. Split out of `update_hud_status` to stay under the param-arity cap.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn update_hud_panels(
+    location: Res<CurrentLocation>,
+    panel: Res<ActivePanel>,
+    inventory: Res<PlayerInventory>,
+    market_state: Res<MarketState>,
+    npcs: Query<&Npc>,
+    mut dialogue: Query<&mut Text, With<DialoguePanel>>,
+    mut market: Query<&mut Text, With<MarketPanel>>,
+) {
+    if let Ok(mut text) = dialogue.single_mut() {
+        **text = match &*panel {
+            ActivePanel::Dialogue(e) => match npcs.get(*e) {
+                Ok(npc) => {
+                    let mut s = format!("{}:\n", npc.name);
+                    for line in &npc.dialogue {
+                        s.push_str("  ");
+                        s.push_str(line);
+                        s.push('\n');
+                    }
+                    if npc.dialogue.is_empty() {
+                        s.push_str("  *says nothing*");
+                    }
+                    s
+                }
+                Err(_) => String::new(),
+            },
+            _ => String::new(),
+        };
+    }
+    if let Ok(mut text) = market.single_mut() {
+        **text = match &*panel {
+            ActivePanel::Market => market_panel_text(&inventory, &location, &market_state),
+            _ => String::new(),
         };
     }
 }

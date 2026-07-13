@@ -5465,6 +5465,7 @@ dependencies = [
  "reachlock-core",
  "reachlock-server",
  "ron",
+ "serde",
  "serde_json",
  "tokio",
 ]

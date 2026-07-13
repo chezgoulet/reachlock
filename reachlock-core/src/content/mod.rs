@@ -22,7 +22,7 @@ pub mod resolve;
 pub mod seed;
 pub mod validate;
 
-pub use envelope::{AssetType, ContentFile, ContentPayload};
+pub use envelope::{AssetType, ContentFile, ContentPayload, NpcSpawn};
 pub use priority::Priority;
 pub use resolve::{resolve, Resolved, SeedParams};
 pub use seed::content_seed;
