@@ -388,7 +388,7 @@ pub fn mining_beam(
 /// Emit an expanding scanner ring when a pulse is requested (scanner console or
 /// the `T` key) and marks nearby contacts known via `KnownContacts`. The ring
 /// reach scales with sensor power and the console's long-range mode.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn scanner_pulse(
     time: Res<Time>,
     mut commands: Commands,
@@ -399,7 +399,13 @@ pub fn scanner_pulse(
     ship: Query<&Transform, With<PlayerShip>>,
     contacts: Query<(Entity, &Transform), With<crate::systems::sensors::Contact>>,
     mut known: ResMut<crate::systems::sensors::KnownContacts>,
-    mut pulses: Query<(Entity, &mut ScanPulse, &mut Transform), Without<PlayerShip>>,
+    mut pulses: Query<
+        (Entity, &mut ScanPulse, &mut Transform),
+        (
+            Without<PlayerShip>,
+            Without<crate::systems::sensors::Contact>,
+        ),
+    >,
 ) {
     // Grow / fade existing pulses.
     for (e, mut pulse, mut tx) in &mut pulses {
