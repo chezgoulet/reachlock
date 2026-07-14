@@ -437,6 +437,26 @@ fn spawn_consoles(
             "NAV",
             InteractKind::Nav,
         );
+        // S09b: gunner + scanner consoles on the bridge (spec §22). Staggered
+        // in +y so they don't overlap HELM/NAV.
+        console(
+            commands,
+            materials,
+            quad,
+            bridge.x - 12.0,
+            bridge.y + 14.0,
+            "GUNNER",
+            InteractKind::Gunner,
+        );
+        console(
+            commands,
+            materials,
+            quad,
+            bridge.x + 12.0,
+            bridge.y + 14.0,
+            "SCANNER",
+            InteractKind::Scanner,
+        );
     }
     if let Some(reactor) = room_center(layout, RoomKind::Reactor) {
         console(
@@ -447,6 +467,25 @@ fn spawn_consoles(
             reactor.y,
             "ENG",
             InteractKind::Engineering,
+        );
+        // S09b: power routing + mining rig consoles in the reactor.
+        console(
+            commands,
+            materials,
+            quad,
+            reactor.x - 14.0,
+            reactor.y + 14.0,
+            "POWER",
+            InteractKind::Power,
+        );
+        console(
+            commands,
+            materials,
+            quad,
+            reactor.x + 14.0,
+            reactor.y + 14.0,
+            "MINER",
+            InteractKind::Miner,
         );
     }
     if let Some(quarters) = room_center(layout, RoomKind::Quarters) {

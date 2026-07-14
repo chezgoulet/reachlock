@@ -30,6 +30,11 @@ pub enum InteractKind {
     Board,
     Launch,
     TakeHelm,
+    /// S09b consoles (spec §22): drive the ship's flight systems from OnBoard.
+    Gunner,
+    Scanner,
+    Miner,
+    Power,
     Unknown,
 }
 
@@ -70,6 +75,11 @@ pub enum ActivePanel {
     Log,
     Fuel,
     Order(Entity),
+    /// S09b console panels (spec §22).
+    Gunner,
+    Scanner,
+    Miner,
+    Power,
     Unknown,
 }
 
@@ -120,6 +130,10 @@ pub fn try_interact(
                     InteractKind::Nav => ActivePanel::Nav,
                     InteractKind::Log => ActivePanel::Log,
                     InteractKind::Fuel => ActivePanel::Fuel,
+                    InteractKind::Gunner => ActivePanel::Gunner,
+                    InteractKind::Scanner => ActivePanel::Scanner,
+                    InteractKind::Miner => ActivePanel::Miner,
+                    InteractKind::Power => ActivePanel::Power,
                     _ => ActivePanel::Unknown,
                 };
             }

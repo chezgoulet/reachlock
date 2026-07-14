@@ -51,15 +51,14 @@ pub fn try_dock(
         return;
     };
     for (st, dock) in &stations {
-        let d = ship
-            .translation
-            .truncate()
-            .distance(st.translation.truncate());
+        let d = ship.translation.distance(st.translation);
         if d <= DOCK_RADIUS {
             location.station_id = dock.station_id.clone();
             location.station_seed = dock.seed;
             location.station_kind = Some(dock.kind);
-            location.station_position = st.translation.truncate();
+            // Store the station's XZ plane position (used to place the ship on
+            // undock); y is always the flight plane (0).
+            location.station_position = Vec2::new(st.translation.x, st.translation.z);
             location.display_name = format!("Station {}", dock.station_id);
             location.is_docked = true;
             next.set(GameMode::Docking);

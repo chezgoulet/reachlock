@@ -60,12 +60,9 @@ pub fn try_gate_jump(
     let Ok(ship_pos) = ship.single() else {
         return;
     };
-    let near = gates.iter().any(|g| {
-        g.translation
-            .truncate()
-            .distance(ship_pos.translation.truncate())
-            <= GATE_REACH
-    });
+    let near = gates
+        .iter()
+        .any(|g| g.translation.distance(ship_pos.translation) <= GATE_REACH);
     if !near || !keys.just_pressed(KeyCode::Enter) {
         return;
     }

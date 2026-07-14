@@ -17,7 +17,10 @@ repository = "https://github.com/chezgoulet/reachlock"
 # (newest) targets bevy 0.18.1. The newest fully-coherent stack is
 # bevy 0.18 + rapier 0.34 + lyon 0.16. Upgrade to 0.19 when rapier 0.35 ships.
 bevy = "0.18.1"
-bevy_rapier2d = "0.34"
+# S09b: SpaceFlight is 3D (spec §14 Mode 3, Star Fox 64 6-DOF). rapier 0.34
+# targets bevy 0.18. Interiors use no physics, so rapier3d is the only physics
+# context; the former bevy_rapier2d dependency was dropped in S09b.
+bevy_rapier3d = "0.34"
 bevy_prototype_lyon = "0.16"
 
 # Dev-profile opt for dependencies keeps incremental client builds tolerable
