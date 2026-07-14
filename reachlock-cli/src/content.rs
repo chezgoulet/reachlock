@@ -8,6 +8,7 @@
 
 use clap::Subcommand;
 use reachlock_core::content::{validate_content, AssetType, ContentFile, ContentPayload};
+use reachlock_core::economy::GoodsCatalog;
 use std::path::{Path, PathBuf};
 
 use crate::gen;
@@ -26,6 +27,14 @@ pub enum ContentCommand {
         /// Path to a `.ron` content file.
         path: PathBuf,
     },
+    /// Validate the authored economy catalogue (`content/economy/goods.ron`):
+    /// every good has a positive base price and mass, contraband goods are
+    /// tagged `Contraband`, and the version is sane. Exit 0 if clean, 1
+    /// otherwise. (S10)
+    ValidateGoods {
+        /// Path to the `goods.ron` catalogue.
+        path: PathBuf,
+    },
     /// Render an authored content file to a dependency-free preview (SVG for
     /// hull/station geometry) so authors can eyeball it without the client.
     Preview {
@@ -39,6 +48,28 @@ pub enum ContentCommand {
 
 pub fn run(cmd: ContentCommand) -> Result<(), String> {
     match cmd {
+        ContentCommand::ValidateGoods { path } => {
+            let catalog = load_goods(&path)?;
+            let errors = catalog.validate();
+            if errors.is_empty() {
+                println!(
+                    "{}: valid goods catalogue — {} goods, version {}",
+                    path.display(),
+                    catalog.goods.len(),
+                    catalog.version
+                );
+                Ok(())
+            } else {
+                for e in &errors {
+                    eprintln!("  {e}");
+                }
+                Err(format!(
+                    "{} validation error(s) in {}",
+                    errors.len(),
+                    path.display()
+                ))
+            }
+        }
         ContentCommand::Validate { path } => {
             let content = load(&path)?;
 
@@ -130,6 +161,13 @@ fn validate_schema(
 
 /// Read and deserialize a `.ron` content file into the shared envelope.
 fn load(path: &Path) -> Result<ContentFile, String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    ron::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))
+}
+
+/// Read and deserialize a `goods.ron` economy catalogue.
+fn load_goods(path: &Path) -> Result<GoodsCatalog, String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
     ron::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))

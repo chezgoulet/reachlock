@@ -4,6 +4,7 @@
 //! deliberation UX); the `OFFLINE` badge that appears whenever online mode
 //! has no live connection (iron rule #3); and the pause overlay.
 
+use bevy::ecs::query::{Has, Or, With};
 use bevy::prelude::*;
 
 use crate::net::{ConnectionState, NetMode};
@@ -11,7 +12,7 @@ use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::interaction::{ActivePanel, Npc};
 use crate::systems::inventory::PlayerInventory;
-use crate::systems::market::{market_panel_text, MarketState};
+use crate::systems::market::{market_panel_text, Economy, MarketState};
 use crate::systems::pause::PauseOverlay;
 use crate::systems::ship::ShipSystems;
 
@@ -181,8 +182,10 @@ pub fn spawn_hud(mut commands: Commands) {
 
 // Bevy's `SystemParamFunction` impl is capped at a fixed arity, so the HUD
 // reader is split: `update_hud_status` covers the always-on status texts and
-// `update_hud_panels` covers the interaction panels. Splitting keeps each
-// system's param list under the cap.
+/// Status readouts (fuel, banner, log, deliberation, offline badge, pause).
+/// A single `&mut Text` query (dispatched by marker via `Has<_>`) keeps
+/// Bevy 0.18's query-ambiguity check (B0001) quiet — several separate
+/// `&mut Text` queries in one system would trip it.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn update_hud_status(
     mode: Res<State<GameMode>>,
@@ -192,114 +195,132 @@ pub fn update_hud_status(
     deliberation: Res<DeliberationState>,
     net_mode: Res<NetMode>,
     conn: Res<ConnectionState>,
-    mut fuel: Query<&mut Text, With<FuelReadout>>,
-    mut banner: Query<&mut Text, With<LocationBanner>>,
-    mut log_text: Query<&mut Text, With<LogReadout>>,
-    mut overlay: Query<&mut Text, With<DeliberationOverlay>>,
-    mut badge: Query<&mut Text, With<OfflineBadge>>,
-    mut pause: Query<&mut Text, With<PauseOverlay>>,
+    mut texts: Query<
+        (
+            &mut Text,
+            Has<FuelReadout>,
+            Has<LocationBanner>,
+            Has<LogReadout>,
+            Has<DeliberationOverlay>,
+            Has<OfflineBadge>,
+            Has<PauseOverlay>,
+        ),
+        Or<(
+            With<FuelReadout>,
+            With<LocationBanner>,
+            With<LogReadout>,
+            With<DeliberationOverlay>,
+            With<OfflineBadge>,
+            With<PauseOverlay>,
+        )>,
+    >,
 ) {
-    if let Ok(mut text) = fuel.single_mut() {
-        if *mode == GameMode::SpaceFlight {
-            let pct = systems.fuel.0 * 100 / 1024;
-            **text = format!("FUEL {pct}%{}", if systems.thrusting { " ▲" } else { "" });
-        } else {
-            **text = "—".to_string();
-        }
-    }
-    if let Ok(mut text) = banner.single_mut() {
-        **text = match **mode {
-            GameMode::SpaceFlight => format!("SPACE · system {:#x}", location.system_seed),
-            GameMode::Landed => {
-                if location.display_name.is_empty() {
-                    format!("LANDED · {}", location.station_id)
-                } else {
-                    format!("LANDED · {}", location.display_name)
+    for (mut text, is_fuel, is_banner, is_log, is_overlay, is_badge, is_pause) in &mut texts {
+        if is_fuel {
+            if *mode == GameMode::SpaceFlight {
+                let pct = systems.fuel.0 * 100 / 1024;
+                **text = format!("FUEL {pct}%{}", if systems.thrusting { " ▲" } else { "" });
+            } else {
+                **text = "—".to_string();
+            }
+        } else if is_banner {
+            **text = match **mode {
+                GameMode::SpaceFlight => format!("SPACE · system {:#x}", location.system_seed),
+                GameMode::Landed => {
+                    if location.display_name.is_empty() {
+                        format!("LANDED · {}", location.station_id)
+                    } else {
+                        format!("LANDED · {}", location.display_name)
+                    }
                 }
-            }
-            GameMode::OnBoard => {
-                let where_ = if location.is_docked {
-                    "docked"
-                } else {
-                    "in transit"
-                };
-                format!("ON BOARD · your ship ({where_})")
-            }
-            GameMode::Docking => "DOCKING…".to_string(),
-            GameMode::Undocking => "UNDOCKING…".to_string(),
-            GameMode::Hyperspace => "HYPERSPACE…".to_string(),
-            GameMode::Paused => "PAUSED".to_string(),
-        };
-    }
-    if let Ok(mut text) = log_text.single_mut() {
-        **text = log.entries.join("\n");
-    }
-    if let Ok(mut text) = overlay.single_mut() {
-        // S02: online deliberation stays invisible until `llm.deliberating`
-        // confirms the server is on it — see `Deliberation::overlay_visible`.
-        **text = match &deliberation.active {
-            Some(d) if d.overlay_visible => format!(
-                "⟳ {} is considering the situation…\n  \"{}. My rules don't cover this.\"",
-                d.crew_member, d.context_summary
-            ),
-            _ => String::new(),
-        };
-    }
-    if let Ok(mut text) = badge.single_mut() {
-        // Offline mode is the normal default — no badge. Online mode shows
-        // OFFLINE whenever the socket isn't actually Connected (still
-        // connecting, or dropped and retrying): the game keeps playing
-        // locally either way (iron rule #3).
-        **text = match (&*net_mode, &*conn) {
-            (NetMode::Online { .. }, ConnectionState::Connected) => String::new(),
-            (NetMode::Online { .. }, _) => "OFFLINE".to_string(),
-            (NetMode::Offline, _) => String::new(),
-        };
-    }
-    if let Ok(mut text) = pause.single_mut() {
-        **text = match **mode {
-            GameMode::Paused => "⏸ PAUSED\n\nEsc to resume".to_string(),
-            _ => String::new(),
-        };
+                GameMode::OnBoard => {
+                    let where_ = if location.is_docked {
+                        "docked"
+                    } else {
+                        "in transit"
+                    };
+                    format!("ON BOARD · your ship ({where_})")
+                }
+                GameMode::Docking => "DOCKING…".to_string(),
+                GameMode::Undocking => "UNDOCKING…".to_string(),
+                GameMode::Hyperspace => "HYPERSPACE…".to_string(),
+                GameMode::Paused => "PAUSED".to_string(),
+            };
+        } else if is_log {
+            **text = log.entries.join("\n");
+        } else if is_overlay {
+            // S02: online deliberation stays invisible until
+            // `llm.deliberating` confirms the server is on it — see
+            // `Deliberation::overlay_visible`.
+            **text = match &deliberation.active {
+                Some(d) if d.overlay_visible => format!(
+                    "⟳ {} is considering the situation…\n  \"{}. My rules don't cover this.\"",
+                    d.crew_member, d.context_summary
+                ),
+                _ => String::new(),
+            };
+        } else if is_badge {
+            // Offline mode is the normal default — no badge. Online mode
+            // shows OFFLINE whenever the socket isn't actually Connected
+            // (still connecting, or dropped and retrying): the game keeps
+            // playing locally either way (iron rule #3).
+            **text = match (&*net_mode, &*conn) {
+                (NetMode::Online { .. }, ConnectionState::Connected) => String::new(),
+                (NetMode::Online { .. }, _) => "OFFLINE".to_string(),
+                (NetMode::Offline, _) => String::new(),
+            };
+        } else if is_pause {
+            **text = match **mode {
+                GameMode::Paused => "⏸ PAUSED\n\nEsc to resume".to_string(),
+                _ => String::new(),
+            };
+        }
     }
 }
 
 /// Drives the interaction panels (dialogue / market) when an `ActivePanel` is
-/// open. Split out of `update_hud_status` to stay under the param-arity cap.
+/// open. Single `&mut Text` query (dispatched by marker), separate system from
+/// `update_hud_status` with its own disjoint markers.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn update_hud_panels(
     location: Res<CurrentLocation>,
     panel: Res<ActivePanel>,
     inventory: Res<PlayerInventory>,
     market_state: Res<MarketState>,
+    economy: Res<Economy>,
     npcs: Query<&Npc>,
-    mut dialogue: Query<&mut Text, With<DialoguePanel>>,
-    mut market: Query<&mut Text, With<MarketPanel>>,
+    mut texts: Query<
+        (&mut Text, Has<DialoguePanel>, Has<MarketPanel>),
+        Or<(With<DialoguePanel>, With<MarketPanel>)>,
+    >,
 ) {
-    if let Ok(mut text) = dialogue.single_mut() {
-        **text = match &*panel {
-            ActivePanel::Dialogue(e) => match npcs.get(*e) {
-                Ok(npc) => {
-                    let mut s = format!("{}:\n", npc.name);
-                    for line in &npc.dialogue {
-                        s.push_str("  ");
-                        s.push_str(line);
-                        s.push('\n');
+    for (mut text, is_dialogue, is_market) in &mut texts {
+        if is_dialogue {
+            **text = match &*panel {
+                ActivePanel::Dialogue(e) => match npcs.get(*e) {
+                    Ok(npc) => {
+                        let mut s = format!("{}:\n", npc.name);
+                        for line in &npc.dialogue {
+                            s.push_str("  ");
+                            s.push_str(line);
+                            s.push('\n');
+                        }
+                        if npc.dialogue.is_empty() {
+                            s.push_str("  *says nothing*");
+                        }
+                        s
                     }
-                    if npc.dialogue.is_empty() {
-                        s.push_str("  *says nothing*");
-                    }
-                    s
+                    Err(_) => String::new(),
+                },
+                _ => String::new(),
+            };
+        } else if is_market {
+            **text = match &*panel {
+                ActivePanel::Market => {
+                    market_panel_text(&inventory, &location, &market_state, &economy)
                 }
-                Err(_) => String::new(),
-            },
-            _ => String::new(),
-        };
-    }
-    if let Ok(mut text) = market.single_mut() {
-        **text = match &*panel {
-            ActivePanel::Market => market_panel_text(&inventory, &location, &market_state),
-            _ => String::new(),
-        };
+                _ => String::new(),
+            };
+        }
     }
 }

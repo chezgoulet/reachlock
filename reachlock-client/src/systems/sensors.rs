@@ -51,7 +51,9 @@ pub fn init_blip_assets(
 /// Each frame: for every `Contact` entity in the world, check distance from
 /// the player ship. If within sensor range, mark as known and ensure the
 /// real entity is visible. If beyond sensor range and not known, hide the
-/// real entity.
+/// real entity. (Blips are positioned at spawn by `sensor_blips`; keeping
+/// them pinned to moving contacts lives in a follow system that doesn't
+/// share this system's `&mut Transform` access.)
 pub fn sensor_visibility(
     ship: Query<&Transform, With<PlayerShip>>,
     contacts: Query<(Entity, &Transform), With<Contact>>,
@@ -87,18 +89,24 @@ pub fn sensor_visibility(
 }
 
 /// Manage blip entities: spawn a small dot at each unknown contact's
-/// position, despawn when the contact becomes known.
+/// position and despawn it once the contact becomes known. The blip's
+/// position is kept in sync by `sensor_visibility` (folded in there so only
+/// one system ever writes `&mut Transform, Blip` — see that fn for the
+/// B0001 rationale).
 pub fn sensor_blips(
     mut commands: Commands,
-    contacts: Query<(Entity, &Transform), With<Contact>>,
     known: Res<KnownContacts>,
-    blips: Query<(Entity, &Blip)>,
     assets: Option<Res<BlipAssets>>,
+    contacts: Query<(Entity, &Transform), With<Contact>>,
+    blips: Query<(Entity, &Blip)>,
 ) {
     let Some(assets) = assets else { return };
 
-    // Despawn blips for now-known contacts.
+    // Despawn blips for now-known contacts, and remember which contacts
+    // already have a blip so we don't double-spawn.
+    let mut seen: std::collections::HashSet<Entity> = std::collections::HashSet::new();
     for (blip_entity, blip) in &blips {
+        seen.insert(blip.for_contact);
         if known.known.contains(&blip.for_contact) {
             commands.entity(blip_entity).despawn();
         }
@@ -106,35 +114,18 @@ pub fn sensor_blips(
 
     // Spawn blips for unknown contacts that don't have one yet.
     for (contact_entity, transform) in &contacts {
-        if known.known.contains(&contact_entity) {
+        if known.known.contains(&contact_entity) || seen.contains(&contact_entity) {
             continue;
         }
-        let already = blips.iter().any(|(_, b)| b.for_contact == contact_entity);
-        if !already {
-            commands.spawn((
-                Mesh2d(assets.mesh.clone()),
-                MeshMaterial2d(assets.material.clone()),
-                Transform::from_xyz(transform.translation.x, transform.translation.y, 1.0),
-                Blip {
-                    for_contact: contact_entity,
-                },
-                ModeScope(GameMode::SpaceFlight),
-            ));
-        }
-    }
-}
-
-/// Reposition blip entities to follow their contact entity (contacts don't
-/// move in this sprint, but the design should support it).
-pub fn sensor_blip_follow(
-    contacts: Query<(&Transform,), With<Contact>>,
-    mut blips: Query<(&mut Transform, &Blip)>,
-) {
-    for (mut tx, blip) in &mut blips {
-        if let Ok((contact_tx,)) = contacts.get(blip.for_contact) {
-            tx.translation.x = contact_tx.translation.x;
-            tx.translation.y = contact_tx.translation.y;
-        }
+        commands.spawn((
+            Mesh2d(assets.mesh.clone()),
+            MeshMaterial2d(assets.material.clone()),
+            Transform::from_xyz(transform.translation.x, transform.translation.y, 1.0),
+            Blip {
+                for_contact: contact_entity,
+            },
+            ModeScope(GameMode::SpaceFlight),
+        ));
     }
 }
 

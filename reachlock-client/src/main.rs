@@ -21,13 +21,16 @@ use systems::{
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
-fn in_spaceflight(mode: Res<State<GameMode>>) -> bool {
-    **mode == GameMode::SpaceFlight
+fn in_spaceflight(mode: Option<Res<State<GameMode>>>) -> bool {
+    matches!(mode, Some(m) if **m == GameMode::SpaceFlight)
 }
 
 /// Run condition: the player is in a top-down interior (Landed or OnBoard).
-fn in_any_interior(mode: Res<State<GameMode>>) -> bool {
-    matches!(**mode, GameMode::Landed | GameMode::OnBoard)
+/// `Option` because `State<GameMode>` may not be present yet during early
+/// schedule evaluation (before the sub-state is initialized); treat its
+/// absence as "not interior" rather than panicking.
+fn in_any_interior(mode: Option<Res<State<GameMode>>>) -> bool {
+    matches!(mode, Some(m) if matches!(**m, GameMode::Landed | GameMode::OnBoard))
 }
 
 fn main() {
@@ -72,6 +75,9 @@ fn main() {
         .init_resource::<interaction::ActivePanel>()
         .init_resource::<inventory::SaveTimer>()
         .init_resource::<market::MarketState>()
+        // S10: live economy. Built at startup from the embedded goods
+        // catalogue; ticks forward each frame.
+        .add_systems(Startup, market::init_economy)
         // S09: live jump/transit bookkeeping + sensors.
         .init_resource::<jump::TransitState>()
         .init_resource::<sensors::MapOverlayState>()
@@ -131,7 +137,6 @@ fn main() {
             (
                 sensors::sensor_visibility,
                 sensors::sensor_blips,
-                sensors::sensor_blip_follow,
                 sensors::scan_contact,
                 sensors::system_map,
                 sensors::map_overlay_text,
@@ -185,6 +190,19 @@ fn main() {
                 hud::update_hud_panels,
             )
                 .run_if(in_state(AppState::InGame)),
+        )
+        // Onboard (interior) panels own their own `Text` components, in their
+        // own group (Bevy 0.18 caps `run_if` tuple arity and flags the
+        // ambiguity between two systems' `&mut Text` queries as a B0001 if
+        // they share a group). `in_any_interior` means it never runs
+        // concurrently with the HUD text systems above.
+        .add_systems(Update, onboard::onboard_panels.run_if(in_any_interior))
+        // S10: advance the live economy every frame (cheap; tiny per-tick
+        // move). Its own group so the all-mode tuple stays under Bevy's
+        // `run_if` arity cap.
+        .add_systems(
+            Update,
+            market::tick_economy.run_if(in_state(AppState::InGame)),
         )
         .run();
 }

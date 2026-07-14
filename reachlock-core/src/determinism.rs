@@ -216,11 +216,47 @@ pub fn manifest() -> Manifest {
                 biome: "frontier".into(),
             })),
         });
+        // S10 — economy engine. Hash the starter catalogue plus a seeded,
+        // ticked `EconomyState` so any drift in price/tick math is caught
+        // cross-platform (iron rule #3: new generator ⇒ golden entry).
+        let catalog = crate::economy::starter_catalog();
+        entries.push(Entry {
+            generator: "economy_catalog".into(),
+            seed,
+            checksum: hash_serde(&catalog),
+        });
+        let station_seeds = vec![
+            (
+                "hub-1".to_string(),
+                seed ^ 0x111,
+                crate::economy::StationKind::Hub,
+            ),
+            (
+                "ref-1".to_string(),
+                seed ^ 0x222,
+                crate::economy::StationKind::Refinery,
+            ),
+            (
+                "bm-1".to_string(),
+                seed ^ 0x333,
+                crate::economy::StationKind::BlackMarket,
+            ),
+        ];
+        let mut state = crate::economy::EconomyState::new(catalog, &station_seeds);
+        for step in 0..8 {
+            state.tick(seed.wrapping_add(step));
+        }
+        entries.push(Entry {
+            generator: "economy_state".into(),
+            seed,
+            checksum: hash_serde(&state),
+        });
     }
 
     Manifest {
         // v3: added S06 hull_interior (ship interior layout) generator.
-        version: 3,
+        // v4: added S10 economy engine golden entries.
+        version: 4,
         entries,
     }
 }
