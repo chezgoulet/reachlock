@@ -281,6 +281,7 @@ pub fn onboard_panels(
     mut roster: ResMut<CrewRoster>,
     location: Res<CurrentLocation>,
     mut next: ResMut<NextState<GameMode>>,
+    mut inv: ResMut<crate::systems::inventory::PlayerInventory>,
     mut panels: ParamSet<(
         Query<&mut Text, With<HelmPanel>>,
         Query<&mut Text, With<EngPanel>>,
@@ -306,10 +307,29 @@ pub fn onboard_panels(
         match &*panel {
             ActivePanel::Engineering => {
                 let pct = systems.fuel.0 * 100 / 1024;
-                **t = format!("ENGINEERING\nfuel {pct}%\nPress V to vent/refill (debug)");
+                let hull = systems.hull_hp.0 * 100 / 1024;
+                let docked = location.is_docked;
+                **t = if docked {
+                    format!(
+                        "ENGINEERING\nfuel {pct}%\nhull {hull}%\nPress V refill · R repair (10cr/hp)",
+                    )
+                } else {
+                    format!("ENGINEERING\nfuel {pct}%\nhull {hull}%  (dock to repair)")
+                };
                 if keys.just_pressed(KeyCode::KeyV) {
                     systems.fuel = Fixed(1024);
-                    log.log("Engineering: refilled fuel (debug)");
+                    log.log("Engineering: refilled fuel");
+                }
+                if keys.just_pressed(KeyCode::KeyR) && docked && systems.hull_hp.0 < 1024 {
+                    let missing = 1024 - systems.hull_hp.0;
+                    let cost = missing * 10;
+                    if inv.credits >= cost {
+                        inv.credits -= cost;
+                        systems.hull_hp = Fixed(1024);
+                        log.log(format!("Engineering: hull restored ({cost}cr)"));
+                    } else {
+                        log.log("Engineering: not enough credits to repair");
+                    }
                 }
             }
             _ => **t = String::new(),

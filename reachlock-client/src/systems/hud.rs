@@ -204,7 +204,12 @@ pub fn update_hud_status(
     if let Ok(mut text) = texts.p0().single_mut() {
         if *mode == GameMode::SpaceFlight {
             let pct = systems.fuel.0 * 100 / 1024;
-            **text = format!("FUEL {pct}%{}", if systems.thrusting { " ▲" } else { "" });
+            let hull = systems.hull_hp.0 * 100 / 1024;
+            let breach = if systems.dead { "  ⚠ BREACH" } else { "" };
+            **text = format!(
+                "FUEL {pct}%{}  HULL {hull}%{breach}",
+                if systems.thrusting { " ▲" } else { "" }
+            );
         } else {
             **text = "—".to_string();
         }

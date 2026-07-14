@@ -91,6 +91,8 @@ fn main() {
         // S09b: cross-mode command bus — OnBoard consoles (gunner/scanner/
         // miner/power) write it, the flight systems read it (spec §22).
         .init_resource::<ship::ShipCommand>()
+        // S09b-2: death/respawn beat after a hull breach.
+        .init_resource::<ship::RespawnTimer>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
@@ -160,6 +162,13 @@ fn main() {
                 ship::request_scan_from_key,
             )
                 .run_if(in_spaceflight),
+        )
+        .add_systems(Update, (ship::collisions,).run_if(in_spaceflight))
+        // S09b-2: revive the ship after a hull breach (runs in all InGame
+        // modes so the beat completes regardless of which scene is active).
+        .add_systems(
+            Update,
+            ship::respawn_ship.run_if(in_state(AppState::InGame)),
         )
         .add_systems(
             Update,

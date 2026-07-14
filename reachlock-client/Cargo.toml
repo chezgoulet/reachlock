@@ -11,6 +11,10 @@ reachlock-core = { path = "../reachlock-core" }
 # generate_music) — the generator emits raw PCM, the bridge wraps it in a
 # WAV header for bevy_audio's decoder.
 bevy = { workspace = true, features = ["wav"] }
+# Bevy 0.18 reworked events into the `message` module; `MessageReader` lives
+# in `bevy_ecs::message` and isn't re-exported by `bevy::prelude`. Pull the
+# crate directly (same version bevy bundles) so collision-event reads compile.
+bevy_ecs = "0.18.1"
 bevy_prototype_lyon = { workspace = true }
 bevy_rapier3d = { workspace = true }
 # Authoring format for content/ (spec §10) — same crate/version core uses;

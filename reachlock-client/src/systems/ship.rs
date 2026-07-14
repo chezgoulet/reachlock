@@ -14,7 +14,7 @@ use bevy_rapier3d::prelude::*;
 use reachlock_core::generator::hull::{HullClass, HullHandling};
 use reachlock_core::util::rng::Fixed;
 
-use crate::states::GameMode;
+use crate::states::{CurrentLocation, GameMode};
 
 /// Seed for the player ship's handling profile. Independent of the interior
 /// layout seed; both are "the ship you fly", S17 will unify them.
@@ -38,6 +38,42 @@ pub struct SpaceCamera;
 #[derive(Component)]
 pub struct Projectile {
     pub life: Timer,
+    /// Damage this bolt deals on impact (fixed-point units; shared by the
+    /// future S19 enemy projectiles — see `Damager`).
+    #[allow(dead_code)]
+    pub damage: i64,
+}
+
+/// A mineable rock. `ore` is the remaining integer units; when it hits zero
+/// the rock is spent (it despawns, leaving debris). This is the cargo source
+/// the S10 market will later buy.
+#[derive(Component)]
+pub struct Asteroid {
+    pub ore: i64,
+}
+
+/// Damageable health for any ship/hull in the flight scene. Generic on
+/// purpose — the player ship carries one now, and S19 enemy ships will carry
+/// the same component so the collision terminal below stays unchanged.
+#[derive(Component)]
+pub struct Hull {
+    pub hp: i64,
+    pub max: i64,
+}
+
+/// Marks a collider as dealing `damage` on contact (projectiles today; S19
+/// kinetic impacts reuse this). `source` is a tag for the future combat log.
+#[derive(Component)]
+pub struct Damager {
+    pub damage: i64,
+    pub source: DamageSource,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum DamageSource {
+    PlayerGun,
+    Ram,
 }
 
 /// The mining beam visual, re-aimed each frame while the beam is engaged.
@@ -62,8 +98,14 @@ pub struct ShipSystems {
     pub sensor_range: Fixed,
     /// Ore collected by the mining rig (integer units — cargo, contract state).
     pub ore: i64,
+    /// Hull integrity, fixed-point (1024 = pristine). Drained by impacts and
+    /// projectile hits; zero triggers the death/respawn loop.
+    pub hull_hp: Fixed,
     /// Real-time gun cooldown (render-layer flight feel, seconds).
     pub gun_cooldown: f32,
+    /// True while the hull is breached and the ship is in its death/respawning
+    /// beat. Suppresses flight control until `respawn_ship` rebuilds it.
+    pub dead: bool,
 }
 
 impl Default for ShipSystems {
@@ -74,7 +116,9 @@ impl Default for ShipSystems {
             unknown_signal: false,
             sensor_range: Fixed(400 * 1024),
             ore: 0,
+            hull_hp: Fixed(1024),
             gun_cooldown: 0.0,
+            dead: false,
         }
     }
 }
@@ -129,6 +173,16 @@ pub fn control(
     let Ok((transform, mut velocity, mut force)) = query.single_mut() else {
         return;
     };
+
+    // Breached hull: no flight control during the death/respawning beat. The
+    // `respawn_ship` system clears `dead` and restores control.
+    if systems.dead {
+        velocity.linear = Vec3::ZERO;
+        velocity.angular = Vec3::ZERO;
+        force.force = Vec3::ZERO;
+        force.torque = Vec3::ZERO;
+        return;
+    }
 
     let h = HullHandling::for_class(PLAYER_HULL_SEED, HullClass::Corvette);
     // Engine power routes into how hard the hull thrusts and turns.
@@ -270,6 +324,189 @@ pub fn manage_cameras(
     }
 }
 
+/// Query the collision terminal reads: every body's identity plus the
+/// optional combat components it may carry. Factored out so the tuple type
+/// doesn't trip clippy's `type_complexity` in `collisions`.
+type CollisionBodies<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        Option<&'static Damager>,
+        Option<&'static Hull>,
+        Option<&'static Asteroid>,
+        Option<&'static Velocity>,
+    ),
+>;
+
+/// Damage terminal — the single collision handler all flight combat routes
+/// through (spec §22 + S19-ready). One entity in a colliding pair carries a
+/// `Damager` (projectiles, kinetic impacts); the other carries `Hull` and/or
+/// `Asteroid` and takes the hit. Generic so enemy ships (S19) slot in by
+/// adding the same `Hull`/`Damager` components — no new query paths.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn collisions(
+    mut commands: Commands,
+    mut events: bevy_ecs::message::MessageReader<CollisionEvent>,
+    bodies: CollisionBodies<'_, '_>,
+    mut hulls: Query<&mut Hull>,
+    mut asteroids: Query<&mut Asteroid, Without<PlayerShip>>,
+    player: Query<Entity, With<PlayerShip>>,
+    mut ship_systems: ResMut<ShipSystems>,
+    mut log: ResMut<crate::systems::contract::ShipLog>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let player_id = player.single().ok();
+    let mut pending_damage: Vec<(Entity, i64)> = Vec::new();
+    let mut pending_ore: Vec<(Entity, i64)> = Vec::new();
+    for e in events.read() {
+        let (a, b) = match e {
+            CollisionEvent::Started(a, b, _) => (a, b),
+            CollisionEvent::Stopped(..) => continue,
+        };
+        // Re-read each side independently so both mutable borrows stay
+        // disjoint (a single `get_many_mut` over the whole tuple would
+        // borrow conflicting fields).
+        let (a_id, a_dmg, a_hull, a_ast, a_vel) = match bodies.get(*a) {
+            Ok(v) => (a, v.1, v.2, v.3, v.4),
+            Err(_) => continue,
+        };
+        let (b_id, b_dmg, b_hull, b_ast, b_vel) = match bodies.get(*b) {
+            Ok(v) => (b, v.1, v.2, v.3, v.4),
+            Err(_) => continue,
+        };
+
+        // Identify which side is the damage source and which is the target.
+        let ((_src_id, damager, src_vel), (tgt_id, tgt_hull, tgt_ast)) = match (a_dmg, b_dmg) {
+            (Some(d), None) => ((a_id, d, a_vel), (b_id, b_hull, b_ast)),
+            (None, Some(d)) => ((b_id, d, b_vel), (a_id, a_hull, a_ast)),
+            _ => continue, // no damager in this pair
+        };
+
+        // Gun bolt into an asteroid: queue ore drain (applied via a mutable
+        // query below — the immutable `bodies` borrow can't be re-borrowed
+        // mutably here).
+        if damager.source == DamageSource::PlayerGun {
+            if let Some(ast) = tgt_ast {
+                let drained = damager.damage.min(ast.ore);
+                pending_ore.push((*tgt_id, drained));
+                continue;
+            }
+        }
+
+        // Anything with a `Hull` takes the hit. Ramming scales with the
+        // striking body's speed so a gentle nudge isn't lethal. Queued and
+        // applied through a dedicated mutable query below.
+        if tgt_hull.is_some() {
+            let dmg_amount = match damager.source {
+                DamageSource::PlayerGun => damager.damage,
+                DamageSource::Ram => {
+                    let speed = src_vel.map(|v| v.linear.length()).unwrap_or(0.0);
+                    (speed * 3.0) as i64
+                }
+            };
+            pending_damage.push((*tgt_id, dmg_amount));
+        }
+    }
+
+    // Apply asteroid ore drains.
+    for (e, drained) in pending_ore {
+        if let Ok(mut ast) = asteroids.get_mut(e) {
+            ast.ore -= drained;
+            ship_systems.ore += drained;
+            if ast.ore <= 0 {
+                commands.entity(e).despawn();
+                spawn_debris(&mut commands, &mut meshes, &mut materials);
+            }
+        }
+    }
+
+    // Apply hull damage through a fresh mutable query, and report player-hull
+    // changes to `ShipSystems` for the HUD / death loop.
+    for (tgt_id, dmg_amount) in pending_damage {
+        if let Ok(mut hull) = hulls.get_mut(tgt_id) {
+            let before = hull.hp;
+            hull.hp = ((hull.hp - dmg_amount).max(0)).min(hull.max);
+            if hull.hp < before && Some(&tgt_id) == player_id.as_ref() {
+                ship_systems.hull_hp = Fixed(hull.hp);
+                if hull.hp <= 0 && !ship_systems.dead {
+                    ship_systems.dead = true;
+                    log.log("HULL BREACH — emergency revive in progress…");
+                }
+            }
+        }
+    }
+}
+
+/// Small visual puff when a rock is fully mined out.
+fn spawn_debris(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+) {
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(2.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgba(0.8, 0.6, 0.4, 0.6),
+            emissive: LinearRgba::rgb(1.0, 0.6, 0.3),
+            alpha_mode: AlphaMode::Blend,
+            ..default()
+        })),
+        Transform::default(),
+        crate::states::ModeScope(GameMode::SpaceFlight),
+    ));
+}
+
+/// Tracks the death/respawn beat so the ship re-enters the world at the last
+/// docked station (or the origin) after a hull breach.
+#[derive(Resource, Default)]
+pub struct RespawnTimer(pub Option<Timer>);
+
+/// Death/respawn loop (spec §14 Mode 3 survival). When the hull is breached
+/// (`ShipSystems::dead`), start a short beat; when it elapses, rebuild the ship
+/// at the last docked station (or the origin) and clear the breach.
+#[allow(clippy::too_many_arguments)]
+pub fn respawn_ship(
+    time: Res<Time>,
+    location: Res<CurrentLocation>,
+    mut systems: ResMut<ShipSystems>,
+    mut timer: ResMut<RespawnTimer>,
+    mut ship: Query<(&mut Transform, &mut Velocity), With<PlayerShip>>,
+    mut log: ResMut<crate::systems::contract::ShipLog>,
+) {
+    if !systems.dead {
+        return;
+    }
+    let t = timer
+        .0
+        .get_or_insert_with(|| Timer::from_seconds(3.0, TimerMode::Once));
+    if !t.tick(time.delta()).is_finished() {
+        return;
+    }
+    // Revive at the last docked station if we know one, else the origin.
+    let spawn = if location.station_position == Vec2::ZERO {
+        Vec3::ZERO
+    } else {
+        Vec3::new(
+            location.station_position.x,
+            0.0,
+            location.station_position.y,
+        )
+    };
+    if let Ok((mut tx, mut vel)) = ship.single_mut() {
+        tx.translation = spawn;
+        tx.rotation = Quat::IDENTITY;
+        vel.linear = Vec3::ZERO;
+        vel.angular = Vec3::ZERO;
+    }
+    systems.hull_hp = Fixed(1024);
+    systems.fuel = Fixed(1024);
+    systems.dead = false;
+    timer.0 = None;
+    log.log("Hull rebuilt — back in the black.");
+}
+
 /// Fire the guns on `F` — but only if the gunner armed them and the power
 /// console routed power to weapons. Cooldown (rate of fire) scales with weapon
 /// power. Bolts are emissive spheres launched along the hull's forward axis.
@@ -314,9 +551,11 @@ pub fn fire_weapons(
             angular: Vec3::ZERO,
         },
         Collider::ball(0.6),
+        ActiveEvents::COLLISION_EVENTS,
         Sensor,
         Projectile {
             life: Timer::from_seconds(2.0, TimerMode::Once),
+            damage: 60,
         },
         crate::states::ModeScope(GameMode::SpaceFlight),
     ));
@@ -348,7 +587,9 @@ pub fn mining_beam(
     mut materials: ResMut<Assets<StandardMaterial>>,
     ship: Query<&Transform, With<PlayerShip>>,
     beams: Query<Entity, With<MiningBeam>>,
+    mut asteroids: Query<(Entity, &Transform, &mut Asteroid), Without<PlayerShip>>,
     mut inv: ResMut<crate::systems::inventory::PlayerInventory>,
+    location: Res<crate::states::CurrentLocation>,
 ) {
     let active = keys.pressed(KeyCode::KeyG) && command.mining_enabled;
     // Rebuild the beam each frame so it tracks the hull.
@@ -377,11 +618,34 @@ pub fn mining_beam(
         MiningBeam,
         crate::states::ModeScope(GameMode::SpaceFlight),
     ));
-    // Accrue ore at a steady tick while mining (integer cargo).
-    let gained = (time.delta_secs() * 10.0) as i64;
-    if gained > 0 {
-        systems.ore += gained;
-        inv.credits += gained; // ore sells 1:1 for the slice
+    // Drain ore from the nearest asteroid within beam reach into the cargo
+    // hold (a real `GoodId` the S10 market will later sell). Honors hold
+    // capacity and despawns spent rocks.
+    const BEAM_REACH: f32 = 45.0;
+    let ore_good = reachlock_core::economy::GoodId("raw_ferric_ore".into());
+    for (e, t, mut ast) in &mut asteroids {
+        if t.translation.distance(ship.translation) > BEAM_REACH {
+            continue;
+        }
+        let rate = (time.delta_secs() * 12.0) as i64;
+        let room = inv.capacity.saturating_sub(inv.cargo_units()) as i64;
+        let take = rate.min(ast.ore).min(room);
+        if take <= 0 {
+            break;
+        }
+        ast.ore -= take;
+        systems.ore += take;
+        *inv.cargo.entry(ore_good.clone()).or_insert(0) += take as u32;
+        if ast.ore <= 0 {
+            commands.entity(e).despawn();
+        }
+        break; // one rock per frame is enough
+    }
+    // Mineable-only systems still auto-repair while docked (spec §22: the
+    // power console's hull trickle). Kept light; the engineering console does
+    // the real repair.
+    if location.is_docked && systems.hull_hp.0 < 1024 {
+        systems.hull_hp = Fixed((systems.hull_hp.0 + 4).min(1024));
     }
 }
 

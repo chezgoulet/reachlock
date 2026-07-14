@@ -216,11 +216,16 @@ fn spawn_player_ship(
         RigidBody::Dynamic,
         GravityScale(0.0),
         Collider::ball(collider_radius),
+        ActiveEvents::COLLISION_EVENTS,
         Velocity::default(),
         ExternalForce::default(),
         Damping {
             linear_damping: 0.3,
             angular_damping: 5.0,
+        },
+        crate::systems::ship::Hull {
+            hp: 1024,
+            max: 1024,
         },
     ));
     if let Some(path) = SHIP_GLTF {
@@ -322,7 +327,15 @@ fn spawn_asteroid_field(
             Transform::from_translation(plane(position, y)),
             RigidBody::Fixed,
             Collider::ball(radius),
+            ActiveEvents::COLLISION_EVENTS,
             Contact,
+            crate::systems::ship::Asteroid {
+                ore: (radius as i64 * 20).clamp(40, 400),
+            },
+            crate::systems::ship::Hull {
+                hp: (radius as i64 * 20).clamp(40, 400),
+                max: (radius as i64 * 20).clamp(40, 400),
+            },
             ModeScope(GameMode::SpaceFlight),
         ));
     }

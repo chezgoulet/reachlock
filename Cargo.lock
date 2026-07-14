@@ -5471,6 +5471,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "bevy",
+ "bevy_ecs",
  "bevy_prototype_lyon",
  "bevy_rapier3d",
  "ewebsock",
