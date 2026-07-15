@@ -6,6 +6,7 @@
 
 use bevy::prelude::*;
 
+use reachlock_core::sim::SimEvent;
 use reachlock_core::util::rng::Fixed;
 
 use crate::states::{CurrentLocation, GameMode};
@@ -13,6 +14,7 @@ use crate::systems::contract::ShipLog;
 use crate::systems::crew::{CrewFigure, CrewRoster, ORDER_ROOMS};
 use crate::systems::interaction::ActivePanel;
 use crate::systems::ship::{ShipCommand, ShipSystems, POWER_BUDGET, POWER_MAX_NOTCH};
+use crate::systems::ticker::UniverseTicker;
 
 /// Panel marker components (screen-fixed via `Node` absolute positioning).
 #[derive(Component, Default)]
@@ -34,6 +36,9 @@ pub struct ScannerPanel;
 pub struct MinerPanel;
 #[derive(Component, Default)]
 pub struct PowerPanel;
+/// S12: Galactic News feed panel.
+#[derive(Component, Default)]
+pub struct NewsPanel;
 
 /// Spawn the five on-board panel texts once (on entering `InGame`). They're
 /// empty until their `ActivePanel` opens; `onboard_panels` fills them.
@@ -140,6 +145,22 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
         },
         TextColor(Color::srgb(0.95, 0.9, 0.6)),
         flight(360.0),
+    ));
+    // S12: galactic news feed, accessible from any interactable.
+    commands.spawn((
+        NewsPanel,
+        Text::new(""),
+        TextFont {
+            font_size: 13.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.6, 0.95, 0.85)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(120.0),
+            left: Val::Px(8.0),
+            ..default()
+        },
     ));
 }
 
@@ -290,6 +311,7 @@ pub fn onboard_panels(
         Query<&mut Text, With<OrderPanel>>,
     )>,
     crew_figs: Query<&CrewFigure>,
+    ticker_state: Res<UniverseTicker>,
 ) {
     if let Ok(mut t) = panels.p0().single_mut() {
         match &*panel {
@@ -338,10 +360,41 @@ pub fn onboard_panels(
     if let Ok(mut t) = panels.p2().single_mut() {
         match &*panel {
             ActivePanel::Nav => {
-                **t = format!(
-                    "NAV\nsystem {:#x}\nmap: press M in flight",
-                    location.system_seed
-                );
+                let mut news_lines = vec![format!(
+                    "NAV · system {:#x}\ntick {}\n\n── GALACTIC NEWS ──",
+                    location.system_seed, ticker_state.state.tick_no,
+                )];
+                for ev in ticker_state.state.event_log.iter().rev().take(10) {
+                    let line = match ev {
+                        SimEvent::EconomyTick { tick_no } => {
+                            format!("  tick {tick_no}: market update")
+                        }
+                        SimEvent::DiplomaticShift {
+                            faction,
+                            other,
+                            change,
+                        } => {
+                            format!(
+                                "  tick {}: diplomatic shift {faction} → {other} ({change})",
+                                ticker_state.state.tick_no
+                            )
+                        }
+                        SimEvent::ContentRelease { content_id, .. } => {
+                            format!(
+                                "  tick {}: {content_id} released",
+                                ticker_state.state.tick_no
+                            )
+                        }
+                        SimEvent::ChapterFired { chapter_id } => {
+                            format!(
+                                "  tick {}: chapter '{chapter_id}'",
+                                ticker_state.state.tick_no
+                            )
+                        }
+                    };
+                    news_lines.push(line);
+                }
+                **t = news_lines.join("\n");
             }
             _ => **t = String::new(),
         }
