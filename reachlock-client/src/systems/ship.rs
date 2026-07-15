@@ -277,7 +277,7 @@ pub fn camera_follow(
     let (Ok(ship), Ok(mut camera)) = (ship.single(), camera.single_mut()) else {
         return;
     };
-    let back = ship.rotation * Vec3::new(0.0, 6.0, 22.0);
+    let back = ship.rotation * Vec3::new(0.0, 15.0, 80.0);
     let target = ship.translation + back;
     let t = (time.delta_secs() * 6.0).clamp(0.0, 1.0);
     camera.translation = camera.translation.lerp(target, t);
@@ -313,23 +313,9 @@ pub fn manage_cameras(
 ) {
     let in_space = *mode == GameMode::SpaceFlight;
     if let Ok(mut cam) = space_cam.single_mut() {
-        info!(
-            "manage_cameras space active={}, clear_color={:?}",
-            in_space, cam.clear_color
-        );
         cam.is_active = in_space;
     }
     if let Ok(mut cam) = ui_cam.single_mut() {
-        info!(
-            "manage_cameras ui in_space={}, old_clear={:?}, new_clear={:?}",
-            in_space,
-            cam.clear_color,
-            if in_space {
-                ClearColorConfig::None
-            } else {
-                ClearColorConfig::Custom(Color::srgb(0.02, 0.02, 0.05))
-            }
-        );
         cam.clear_color = if in_space {
             ClearColorConfig::None
         } else {
