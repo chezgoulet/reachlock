@@ -146,7 +146,7 @@ pub struct ShipCommand {
 impl Default for ShipCommand {
     fn default() -> Self {
         ShipCommand {
-            weapons_armed: true,
+            weapons_armed: false,
             mining_enabled: false,
             scanner_boost: false,
             power_weapons: 1,
@@ -339,6 +339,14 @@ type CollisionBodies<'w, 's> = Query<
     ),
 >;
 
+/// Pure hull-damage clamp (spec §14 Mode 3 survival). Subtracts `damage` from
+/// `hp` and clamps the result into `[0, max]`. Kept free of any Bevy type so it
+/// is unit-testable without a runtime (see the `tests` module at the foot of
+/// this file). Mirrors the inline math that previously lived in `collisions`.
+pub fn apply_hull_damage(hp: i64, damage: i64, max: i64) -> i64 {
+    ((hp - damage).max(0)).min(max)
+}
+
 /// Damage terminal — the single collision handler all flight combat routes
 /// through (spec §22 + S19-ready). One entity in a colliding pair carries a
 /// `Damager` (projectiles, kinetic impacts); the other carries `Hull` and/or
@@ -431,7 +439,7 @@ pub fn collisions(
     for (tgt_id, dmg_amount) in pending_damage {
         if let Ok(mut hull) = queries.p1().get_mut(tgt_id) {
             let before = hull.hp;
-            hull.hp = ((hull.hp - dmg_amount).max(0)).min(hull.max);
+            hull.hp = apply_hull_damage(hull.hp, dmg_amount, hull.max);
             if hull.hp < before && Some(&tgt_id) == player_id.as_ref() {
                 ship_systems.hull_hp = Fixed(hull.hp);
                 if hull.hp <= 0 && !ship_systems.dead {
@@ -711,5 +719,39 @@ pub fn scanner_pulse(
         if t.translation.distance(ship.translation) <= range {
             known.known.insert(e);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_hull_damage;
+
+    #[test]
+    fn small_hit_keeps_hp_above_zero() {
+        // 100 hp, 30 damage -> 70 (no clamping beyond the subtraction).
+        assert_eq!(apply_hull_damage(100, 30, 100), 70);
+    }
+
+    #[test]
+    fn overkill_hit_clamps_to_zero() {
+        // 10 hp, 999 damage -> 0, never negative.
+        assert_eq!(apply_hull_damage(10, 999, 100), 0);
+        assert!(apply_hull_damage(5, 6, 100) >= 0);
+    }
+
+    #[test]
+    fn damage_respects_max_clamp() {
+        // A malformed/overflowing current hp is clamped down to max, not allowed
+        // to exceed it (defensive: hp coming in already at/above max).
+        assert_eq!(apply_hull_damage(100, -50, 100), 100);
+        assert_eq!(apply_hull_damage(250, 0, 100), 100);
+    }
+
+    #[test]
+    fn exact_boundary_hits() {
+        // Exactly lethal.
+        assert_eq!(apply_hull_damage(40, 40, 100), 0);
+        // Exactly survives.
+        assert_eq!(apply_hull_damage(40, 39, 100), 1);
     }
 }
