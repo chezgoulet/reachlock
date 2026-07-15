@@ -553,25 +553,35 @@ pub fn sync_ship_visibility(
     };
 }
 
+/// Ortho zoom for the walking interiors: <1 magnifies. At 0.35 a 48-unit
+/// room spans a good third of the screen — Zelda framing, not a wall map.
+const INTERIOR_ZOOM: f32 = 0.35;
+
 /// Activate the 3D chase-cam in SpaceFlight and the 2D camera everywhere else.
 /// In space the 2D camera keeps rendering the HUD on top (its clear is turned
-/// off so it overlays the flight view); in interiors it clears and draws the
-/// top-down scene.
+/// off so it overlays the flight view) at 1:1 scale for the sensor overlay;
+/// in interiors it clears, zooms in to walking scale, and draws the top-down
+/// scene.
+#[allow(clippy::type_complexity)]
 pub fn manage_cameras(
     mode: Res<State<GameMode>>,
     mut space_cam: Query<&mut Camera, (With<SpaceCamera>, Without<Camera2d>)>,
-    mut ui_cam: Query<&mut Camera, (With<Camera2d>, Without<SpaceCamera>)>,
+    mut ui_cam: Query<(&mut Camera, &mut Projection), (With<Camera2d>, Without<SpaceCamera>)>,
 ) {
     let in_space = *mode == GameMode::SpaceFlight;
+    let in_interior = matches!(**mode, GameMode::Landed | GameMode::OnBoard);
     if let Ok(mut cam) = space_cam.single_mut() {
         cam.is_active = in_space;
     }
-    if let Ok(mut cam) = ui_cam.single_mut() {
+    if let Ok((mut cam, mut projection)) = ui_cam.single_mut() {
         cam.clear_color = if in_space {
             ClearColorConfig::None
         } else {
             ClearColorConfig::Custom(Color::srgb(0.02, 0.02, 0.05))
         };
+        if let Projection::Orthographic(o) = &mut *projection {
+            o.scale = if in_interior { INTERIOR_ZOOM } else { 1.0 };
+        }
     }
 }
 

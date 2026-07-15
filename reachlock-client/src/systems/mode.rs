@@ -37,18 +37,32 @@ pub fn teardown_on_leave_game(
     }
 }
 
-/// Follows the walking avatar for top-down interior modes (Landed/OnBoard).
-/// Mirrors `ship::camera_follow` but driven by `PlayerAvatar` instead of the
-/// flying ship.
+/// Follows the walking avatar for top-down interior modes (Landed/OnBoard):
+/// eased follow with a small lookahead toward the walk direction, so moving
+/// reveals where you're going instead of pinning you to dead center (the
+/// same trick the space chase-cam plays). Zoom lives in
+/// `ship::manage_cameras`, which owns the 2D camera's per-mode projection.
+#[allow(clippy::type_complexity)]
 pub fn interior_camera_follow(
-    avatar: Query<&Transform, (With<PlayerAvatar>, Without<Camera2d>)>,
+    time: Res<Time>,
+    avatar: Query<
+        (&Transform, &crate::systems::interior::AvatarMotion),
+        (With<PlayerAvatar>, Without<Camera2d>),
+    >,
     mut camera: Query<&mut Transform, With<Camera2d>>,
 ) {
-    let (Ok(avatar), Ok(mut camera)) = (avatar.single(), camera.single_mut()) else {
+    let (Ok((avatar, motion)), Ok(mut camera)) = (avatar.single(), camera.single_mut()) else {
         return;
     };
-    camera.translation.x = avatar.translation.x;
-    camera.translation.y = avatar.translation.y;
+    let lookahead = if motion.moving {
+        motion.facing * 26.0
+    } else {
+        Vec2::ZERO
+    };
+    let target = avatar.translation.truncate() + lookahead;
+    let k = 1.0 - (-6.0 * time.delta_secs()).exp();
+    camera.translation.x += (target.x - camera.translation.x) * k;
+    camera.translation.y += (target.y - camera.translation.y) * k;
 }
 
 /// The walking player square used in Landed/On-Board modes. Distinct from the

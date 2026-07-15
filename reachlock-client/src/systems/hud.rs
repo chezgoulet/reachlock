@@ -10,7 +10,7 @@ use crate::net::{ConnectionState, NetMode};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::factions::FactionState;
-use crate::systems::interaction::{ActivePanel, Npc};
+use crate::systems::interaction::{ActivePanel, InteractionPrompt, Npc};
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::market::{market_panel_text, Economy, MarketState};
 use crate::systems::pause::PauseOverlay;
@@ -47,6 +47,12 @@ pub struct MarketPanel;
 /// flight bindings and the interior bindings never show at the wrong time.
 #[derive(Component)]
 pub struct HelpText;
+
+/// The "[E] Mara" interaction prompt, bottom-center. Until this element
+/// existed the prompt was computed every frame and shown nowhere — the whole
+/// interaction system was invisible to the player.
+#[derive(Component)]
+pub struct PromptText;
 
 const HELP_FLIGHT: &str =
     "W/S pitch · A/D yaw · Q/E roll (double-tap: barrel roll) · Space thrust · \
@@ -162,6 +168,21 @@ pub fn spawn_hud(mut commands: Commands) {
         },
     ));
     commands.spawn((
+        PromptText,
+        Text::new(""),
+        TextFont {
+            font_size: 18.0,
+            ..default()
+        },
+        TextColor(Color::srgb(1.0, 0.95, 0.6)),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Percent(18.0),
+            left: Val::Percent(46.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
         DialoguePanel,
         Text::new(""),
         TextFont {
@@ -203,6 +224,7 @@ pub fn update_hud_status(
     location: Res<CurrentLocation>,
     systems: Res<ShipSystems>,
     feel: Res<FlightFeel>,
+    prompt: Res<InteractionPrompt>,
     log: Res<ShipLog>,
     deliberation: Res<DeliberationState>,
     net_mode: Res<NetMode>,
@@ -215,6 +237,7 @@ pub fn update_hud_status(
         Query<&mut Text, With<OfflineBadge>>,
         Query<&mut Text, With<PauseOverlay>>,
         Query<&mut Text, With<HelpText>>,
+        Query<&mut Text, With<PromptText>>,
     )>,
 ) {
     if let Ok(mut text) = texts.p0().single_mut() {
@@ -295,6 +318,9 @@ pub fn update_hud_status(
         if **text != help {
             **text = help.to_string();
         }
+    }
+    if let Ok(mut text) = texts.p7().single_mut() {
+        **text = prompt.text.clone().unwrap_or_default();
     }
 }
 

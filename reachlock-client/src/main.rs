@@ -222,6 +222,17 @@ fn main() {
             )
                 .run_if(in_any_interior),
         )
+        // Interior feel layer: avatar bob + facing, NPC wandering, and the
+        // interaction highlight ring.
+        .add_systems(
+            Update,
+            (
+                interior::animate_avatar,
+                interior::wander_npcs,
+                interior::highlight_interactable,
+            )
+                .run_if(in_any_interior),
+        )
         // --- All InGame modes (contracts keep evaluating everywhere) ---
         // Split into two `add_systems` groups: Bevy's tuple arity for
         // `run_if` is capped, so 8 systems go in two 4-tuples sharing
