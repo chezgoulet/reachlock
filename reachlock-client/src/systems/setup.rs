@@ -77,6 +77,7 @@ pub fn enter_spaceflight(
     ship: Query<Entity, With<PlayerShip>>,
     mode_entities: Query<Entity, With<ModeScope>>,
 ) {
+    info!("enter_spaceflight called, scene={:?}", registry.scene);
     if registry.scene == Some(GameMode::SpaceFlight) {
         return; // came back from pause; scene already present
     }

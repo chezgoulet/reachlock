@@ -313,9 +313,23 @@ pub fn manage_cameras(
 ) {
     let in_space = *mode == GameMode::SpaceFlight;
     if let Ok(mut cam) = space_cam.single_mut() {
+        info!(
+            "manage_cameras space active={}, clear_color={:?}",
+            in_space, cam.clear_color
+        );
         cam.is_active = in_space;
     }
     if let Ok(mut cam) = ui_cam.single_mut() {
+        info!(
+            "manage_cameras ui in_space={}, old_clear={:?}, new_clear={:?}",
+            in_space,
+            cam.clear_color,
+            if in_space {
+                ClearColorConfig::None
+            } else {
+                ClearColorConfig::Custom(Color::srgb(0.02, 0.02, 0.05))
+            }
+        );
         cam.clear_color = if in_space {
             ClearColorConfig::None
         } else {
