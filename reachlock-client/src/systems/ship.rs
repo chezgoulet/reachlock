@@ -277,7 +277,7 @@ pub fn camera_follow(
     let (Ok(ship), Ok(mut camera)) = (ship.single(), camera.single_mut()) else {
         return;
     };
-    let back = ship.rotation * Vec3::new(0.0, 15.0, 80.0);
+    let back = ship.rotation * Vec3::new(0.0, 20.0, 200.0);
     let target = ship.translation + back;
     let t = (time.delta_secs() * 6.0).clamp(0.0, 1.0);
     camera.translation = camera.translation.lerp(target, t);
