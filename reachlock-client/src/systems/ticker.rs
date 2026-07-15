@@ -23,6 +23,9 @@ pub struct UniverseTicker {
     pub state: UniverseState,
     accumulator: f64,
     pub storylines: Vec<reachlock_core::faction::Storyline>,
+    /// When true, the local ticker is paused and universe state is driven by
+    /// server events instead. Set by the network system on connect/disconnect.
+    pub online_mode: bool,
 }
 
 impl UniverseTicker {
@@ -34,14 +37,16 @@ impl UniverseTicker {
             state,
             accumulator: 0.0,
             storylines,
+            online_mode: false,
         }
     }
 
     /// Called once per frame. `dt` is the delta time of the current frame
-    /// (0.0 when paused). Returns the ticks that actually advanced (for
-    /// broadcasting to event subscribers).
+    /// (0.0 when paused). Skips everything when `online_mode` is true.
+    /// Returns the ticks that actually advanced (for broadcasting to event
+    /// subscribers).
     pub fn tick_frame(&mut self, dt: f64, seed: u64) -> Vec<Vec<SimEvent>> {
-        if dt <= 0.0 {
+        if self.online_mode || dt <= 0.0 {
             return Vec::new();
         }
         self.accumulator += dt;

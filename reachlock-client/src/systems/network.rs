@@ -23,6 +23,7 @@ use crate::net::{handshake_url, ConnectionState, NetMode, NetOutbox, TransportEv
 use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog};
 use crate::systems::setup::SYSTEM_SEED;
 use crate::systems::ship::ShipSystems;
+use crate::systems::ticker::UniverseTicker;
 
 /// Owns the live socket, if any. `None` whenever offline, still connecting
 /// via backoff, or between "dropped" and "reconnected".
@@ -127,6 +128,7 @@ pub fn poll_network(
     mut deliberation: ResMut<DeliberationState>,
     mut ship: ResMut<ShipSystems>,
     mut runtime: ResMut<ContractRuntime>,
+    mut ticker: Option<ResMut<UniverseTicker>>,
 ) {
     let NetMode::Online { universe, .. } = &*mode else {
         return;
@@ -153,6 +155,10 @@ pub fn poll_network(
                     system_id,
                     seed: Seed::new(SYSTEM_SEED),
                 });
+                // Pause the local universe ticker — server is authoritative.
+                if let Some(ref mut ticker) = ticker {
+                    ticker.online_mode = true;
+                }
             }
             TransportEvent::Message(ServerMessage::SeedCanonical {
                 system_id,
@@ -230,8 +236,18 @@ pub fn poll_network(
             TransportEvent::Message(ServerMessage::PlayerEntered { .. }) => {
                 // S23 (presence/chat) territory — nothing to show yet.
             }
-            TransportEvent::Message(ServerMessage::UniverseEvent { .. }) => {
-                // S12 (universe tick) territory — nothing to show yet.
+            TransportEvent::Message(ServerMessage::UniverseEvent { event }) => {
+                // Online mode: server events drive the universe view.
+                // Deserialize the SimEvent and push it onto the local
+                // event log for the Galactic News screen.
+                if let Ok(sim) = serde_json::from_value::<reachlock_core::sim::SimEvent>(event) {
+                    if let Some(ticker) = ticker.as_mut() {
+                        ticker.state.event_log.push(sim);
+                        if ticker.state.event_log.len() > 128 {
+                            ticker.state.event_log.remove(0);
+                        }
+                    }
+                }
             }
             TransportEvent::Message(ServerMessage::Error { message }) => {
                 log.log(format!("Server error: {message}"));
@@ -244,12 +260,18 @@ pub fn poll_network(
                 backoff.schedule_next();
                 log.log(format!("Connection error: {e}. Flying offline; retrying…"));
                 lost_connection = true;
+                if let Some(ref mut ticker) = ticker {
+                    ticker.online_mode = false;
+                }
             }
             TransportEvent::Closed => {
                 *conn = ConnectionState::Errored;
                 backoff.schedule_next();
                 log.log("Connection closed. Flying offline; retrying…");
                 lost_connection = true;
+                if let Some(ref mut ticker) = ticker {
+                    ticker.online_mode = false;
+                }
             }
         }
     }
