@@ -43,6 +43,18 @@ pub struct DialoguePanel;
 #[derive(Component)]
 pub struct MarketPanel;
 
+/// Key-binding help line. Swapped per mode by `update_hud_status` so the
+/// flight bindings and the interior bindings never show at the wrong time.
+#[derive(Component)]
+pub struct HelpText;
+
+const HELP_FLIGHT: &str =
+    "W/S pitch · A/D yaw · Q/E roll (double-tap: barrel roll) · Space thrust · \
+     Shift boost · Ctrl brake · F fire · G mine · T scan · M map · Enter dock/jump · J self-jump · \
+     X anomaly · Esc pause";
+const HELP_INTERIOR: &str =
+    "WASD walk · E interact/board · L launch · B walk ship · F refuel (docked) · Esc pause";
+
 pub fn spawn_hud(mut commands: Commands) {
     commands.spawn((
         FuelReadout,
@@ -135,7 +147,8 @@ pub fn spawn_hud(mut commands: Commands) {
         },
     ));
     commands.spawn((
-        Text::new("W/↑ thrust · Shift boost · Space brake · A/D turn · X anomaly · S scan · M map · E dock/board · L launch · B walk-ship · Esc pause"),
+        HelpText,
+        Text::new(HELP_FLIGHT),
         TextFont {
             font_size: 12.0,
             ..default()
@@ -200,6 +213,7 @@ pub fn update_hud_status(
         Query<&mut Text, With<DeliberationOverlay>>,
         Query<&mut Text, With<OfflineBadge>>,
         Query<&mut Text, With<PauseOverlay>>,
+        Query<&mut Text, With<HelpText>>,
     )>,
 ) {
     if let Ok(mut text) = texts.p0().single_mut() {
@@ -269,6 +283,16 @@ pub fn update_hud_status(
             GameMode::Paused => "⏸ PAUSED\n\nEsc to resume".to_string(),
             _ => String::new(),
         };
+    }
+    if let Ok(mut text) = texts.p6().single_mut() {
+        let help = match **mode {
+            GameMode::SpaceFlight => HELP_FLIGHT,
+            GameMode::Landed | GameMode::OnBoard => HELP_INTERIOR,
+            _ => "", // transition beats/pause: no bindings to advertise
+        };
+        if **text != help {
+            **text = help.to_string();
+        }
     }
 }
 

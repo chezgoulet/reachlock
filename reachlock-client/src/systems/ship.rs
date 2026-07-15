@@ -80,6 +80,15 @@ pub enum DamageSource {
 #[derive(Component)]
 pub struct MiningBeam;
 
+/// The engine exhaust cone, a child of the ship hull. `base_z` is the local Z
+/// of the hull's rear face; `length` the cone's unscaled height. The flame is
+/// anchored at the rear face and stretches backward with thrust.
+#[derive(Component)]
+pub struct EngineExhaust {
+    pub base_z: f32,
+    pub length: f32,
+}
+
 /// The expanding scanner-pulse ring, shrinking-in-opacity as it grows.
 #[derive(Component)]
 pub struct ScanPulse {
@@ -157,19 +166,114 @@ impl Default for ShipCommand {
     }
 }
 
-/// 6-DOF control: roll (Q/E), pitch (W/S), yaw (A/D), thrust (Space), boost
-/// (Shift), brake (Ctrl). Rotation is set directly on the angular velocity for
-/// crisp arcade handling; thrust is a force along the hull's forward axis. Fuel
-/// burns while thrusting. Engine power (set at the power console) scales thrust
-/// and turn rate.
-#[allow(clippy::type_complexity)]
+// --- Star Fox feel layer (spec §14 Mode 3: "cinematic feel") -----------------
+// Everything below is render-layer state: floats are fine here, none of it is
+// contract-visible gameplay state.
+
+/// How fast a control axis ramps toward the held input, per second.
+const AXIS_ATTACK: f32 = 9.0;
+/// How fast a released axis settles back to neutral, per second.
+const AXIS_RELEASE: f32 = 7.0;
+/// Hull lean (radians) in a full-rate yaw turn — the SF64 bank-into-turn.
+const MAX_BANK: f32 = 0.85;
+/// Proportional gain driving roll toward the bank target.
+const BANK_GAIN: f32 = 5.0;
+/// How strongly velocity re-aligns to the nose, per second. High = the ship
+/// goes where it points (arcade); low = Newtonian drift.
+const GRIP: f32 = 2.2;
+/// Double-tap window for triggering a barrel roll, seconds.
+const BARREL_WINDOW: f32 = 0.28;
+/// Spin rate during a barrel roll (rad/s) — a full roll in ~½ s.
+const BARREL_RATE: f32 = 12.5;
+/// Chase-cam lens: resting field of view, radians.
+const BASE_FOV: f32 = 0.9;
+
+/// Per-frame flight feel state: smoothed control axes, the active barrel
+/// roll, and the camera's boost/brake/shake blends. Pure presentation — it
+/// never feeds back into contract state.
+#[derive(Resource)]
+pub struct FlightFeel {
+    /// Smoothed input axes in [-1, 1].
+    pub pitch: f32,
+    pub yaw: f32,
+    pub roll: f32,
+    /// Signed radians remaining in an active barrel roll (sign = direction);
+    /// zero when not rolling.
+    pub barrel: f32,
+    /// Seconds since the last Q / E press, for double-tap detection.
+    tap_left: f32,
+    tap_right: f32,
+    /// Smoothed 0..1 blends the camera and exhaust read.
+    pub boost_blend: f32,
+    pub brake_blend: f32,
+    /// Camera shake energy; fed by hull hits, decays exponentially.
+    pub shake: f32,
+    /// The camera's smoothed up vector — chases the hull's lean slowly, and
+    /// holds still during a barrel roll so the world doesn't spin.
+    pub cam_up: Vec3,
+    /// Alternating muzzle side for the twin-laser fire pattern.
+    muzzle_left: bool,
+}
+
+impl Default for FlightFeel {
+    fn default() -> Self {
+        FlightFeel {
+            pitch: 0.0,
+            yaw: 0.0,
+            roll: 0.0,
+            barrel: 0.0,
+            tap_left: f32::MAX,
+            tap_right: f32::MAX,
+            boost_blend: 0.0,
+            brake_blend: 0.0,
+            shake: 0.0,
+            cam_up: Vec3::Y,
+            muzzle_left: false,
+        }
+    }
+}
+
+/// Frame-rate-independent exponential approach of `current` toward `target`.
+pub fn approach(current: f32, target: f32, rate: f32, dt: f32) -> f32 {
+    current + (target - current) * (1.0 - (-rate * dt).exp())
+}
+
+/// Wrap an angle into `[-π, π]`.
+pub fn wrap_angle(a: f32) -> f32 {
+    (a + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI
+}
+
+/// Bank of `rotation` about its own forward axis relative to the world
+/// horizon: 0 = wings level, positive = leaning left (right wing up), which
+/// is also the direction a positive local-Z roll rate moves it.
+pub fn bank_angle(rotation: Quat) -> f32 {
+    let right = rotation * Vec3::X;
+    let up = rotation * Vec3::Y;
+    right.dot(Vec3::Y).atan2(up.dot(Vec3::Y))
+}
+
+/// Star Fox flight control (spec §14 Mode 3, §22): pitch (W/S), yaw (A/D),
+/// roll (Q/E, double-tap for a barrel roll), thrust (Space), boost (Shift),
+/// brake (Ctrl). Inputs are smoothed so turns ramp in and out; yaw leans the
+/// hull into the turn and hands-off re-levels the horizon; velocity re-aligns
+/// to the nose so the ship goes where it points. Fuel burns while thrusting.
+/// Engine power (set at the power console) scales thrust and turn rate.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn control(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     mut systems: ResMut<ShipSystems>,
     command: Res<ShipCommand>,
+    mut feel: ResMut<FlightFeel>,
+    mut log: ResMut<crate::systems::contract::ShipLog>,
     mut query: Query<(&Transform, &mut Velocity, &mut ExternalForce), With<PlayerShip>>,
 ) {
+    let dt = time.delta_secs();
+    // Double-tap timers advance even when the ship is missing so stale taps
+    // age out. Saturating: the default is f32::MAX ("never tapped").
+    feel.tap_left = (feel.tap_left + dt).min(f32::MAX);
+    feel.tap_right = (feel.tap_right + dt).min(f32::MAX);
+
     let Ok((transform, mut velocity, mut force)) = query.single_mut() else {
         return;
     };
@@ -181,6 +285,10 @@ pub fn control(
         velocity.angular = Vec3::ZERO;
         force.force = Vec3::ZERO;
         force.torque = Vec3::ZERO;
+        feel.pitch = 0.0;
+        feel.yaw = 0.0;
+        feel.roll = 0.0;
+        feel.barrel = 0.0;
         return;
     }
 
@@ -193,40 +301,97 @@ pub fn control(
     let boost = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     let brake = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
     systems.thrusting = thrust_key && has_fuel;
+    feel.boost_blend = approach(
+        feel.boost_blend,
+        if systems.thrusting && boost { 1.0 } else { 0.0 },
+        6.0,
+        dt,
+    );
+    feel.brake_blend = approach(feel.brake_blend, if brake { 1.0 } else { 0.0 }, 6.0, dt);
 
     force.force = Vec3::ZERO;
     force.torque = Vec3::ZERO;
 
-    // --- rotation (crisp, direct angular velocity about local axes) ---
-    let turn = HullHandling::f32(h.turn_rate).clamp(0.0, 40.0) * 0.08 * engine_mult;
-    let mut pitch = 0.0;
-    let mut yaw = 0.0;
-    let mut roll = 0.0;
+    // --- raw input axes ---
+    let mut raw_pitch = 0.0;
+    let mut raw_yaw = 0.0;
+    let mut raw_roll = 0.0;
     if keys.pressed(KeyCode::KeyW) {
-        pitch -= 1.0;
+        raw_pitch -= 1.0;
     }
     if keys.pressed(KeyCode::KeyS) {
-        pitch += 1.0;
+        raw_pitch += 1.0;
     }
     if keys.pressed(KeyCode::KeyA) {
-        yaw += 1.0;
+        raw_yaw += 1.0;
     }
     if keys.pressed(KeyCode::KeyD) {
-        yaw -= 1.0;
+        raw_yaw -= 1.0;
     }
     if keys.pressed(KeyCode::KeyQ) {
-        roll += 1.0;
+        raw_roll += 1.0;
     }
     if keys.pressed(KeyCode::KeyE) {
-        roll -= 1.0;
+        raw_roll -= 1.0;
     }
-    let local = Vec3::new(pitch, yaw, roll);
-    if local != Vec3::ZERO {
-        // Local pitch=X, yaw=Y, roll=Z → world angular velocity.
-        velocity.angular = transform.rotation * (local.normalize() * turn);
+
+    // Double-tap Q/E: barrel roll. One full 360° spin; steering stays live.
+    if keys.just_pressed(KeyCode::KeyQ) {
+        if feel.tap_left <= BARREL_WINDOW && feel.barrel == 0.0 {
+            feel.barrel = std::f32::consts::TAU;
+            log.log("Barrel roll!");
+        }
+        feel.tap_left = 0.0;
+    }
+    if keys.just_pressed(KeyCode::KeyE) {
+        if feel.tap_right <= BARREL_WINDOW && feel.barrel == 0.0 {
+            feel.barrel = -std::f32::consts::TAU;
+            log.log("Barrel roll!");
+        }
+        feel.tap_right = 0.0;
+    }
+
+    // --- smoothed axes: ramp toward held input, settle when released ---
+    let rate = |raw: f32| {
+        if raw != 0.0 {
+            AXIS_ATTACK
+        } else {
+            AXIS_RELEASE
+        }
+    };
+    feel.pitch = approach(feel.pitch, raw_pitch, rate(raw_pitch), dt);
+    feel.yaw = approach(feel.yaw, raw_yaw, rate(raw_yaw), dt);
+    feel.roll = approach(feel.roll, raw_roll, rate(raw_roll), dt);
+
+    // --- rotation (direct angular velocity about local axes) ---
+    let turn = HullHandling::f32(h.turn_rate).clamp(0.0, 40.0) * 0.08 * engine_mult;
+    let roll_rate = if feel.barrel != 0.0 {
+        // Barrel roll owns the roll axis: constant spin until the full turn
+        // is spent.
+        let spin = feel.barrel.signum() * BARREL_RATE;
+        let step = BARREL_RATE * dt;
+        if feel.barrel.abs() <= step {
+            feel.barrel = 0.0;
+        } else {
+            feel.barrel -= feel.barrel.signum() * step;
+        }
+        spin
+    } else if raw_roll != 0.0 {
+        feel.roll * turn * 1.4
     } else {
-        velocity.angular = Vec3::ZERO;
-    }
+        // Auto-bank: lean into the yaw turn; hands-off re-levels the horizon.
+        // Fades out when the nose points near straight up/down, where the
+        // horizon reference is degenerate.
+        let level = 1.0 - transform.forward().y.abs();
+        let err = wrap_angle(feel.yaw * MAX_BANK - bank_angle(transform.rotation));
+        (err * BANK_GAIN * level).clamp(-turn * 2.0, turn * 2.0)
+    };
+    let local = Vec3::new(feel.pitch * turn, feel.yaw * turn, roll_rate);
+    velocity.angular = if local.length_squared() > 1e-6 {
+        transform.rotation * local
+    } else {
+        Vec3::ZERO
+    };
 
     // --- translation ---
     let forward = transform.forward().as_vec3();
@@ -251,6 +416,16 @@ pub fn control(
             let used = (dt * (h.fuel_burn / 2).max(1)) / 1000;
             systems.fuel = Fixed((systems.fuel.0 - used.max(1)).max(0));
         }
+    } else {
+        // Arcade grip: velocity re-aligns toward the nose, so the ship flies
+        // where it points. Newtonian drift survives only as a brief slide out
+        // of hard turns (Star Fox, not Kerbal). Braking releases the grip so
+        // retro-thrust still kills momentum in place.
+        let speed = velocity.linear.length();
+        if speed > 0.1 {
+            let t = 1.0 - (-GRIP * dt).exp();
+            velocity.linear = velocity.linear.lerp(forward * speed, t);
+        }
     }
 
     // X injects the anomaly: something the player's rules don't cover.
@@ -269,22 +444,57 @@ pub fn request_scan_from_key(keys: Res<ButtonInput<KeyCode>>, mut command: ResMu
 
 /// Chase-cam: trail the ship from behind and above, easing toward the target
 /// pose each frame so hard turns read as a swing, not a snap (Star Fox feel).
+/// Boost pulls the camera back and widens the lens; brake tucks it in; turns
+/// slide the ship across the frame; hull hits shake the view; and the camera's
+/// up vector holds still during a barrel roll so the ship spins, not the world.
 pub fn camera_follow(
     time: Res<Time>,
+    mut feel: ResMut<FlightFeel>,
     ship: Query<&Transform, (With<PlayerShip>, Without<SpaceCamera>)>,
-    mut camera: Query<&mut Transform, With<SpaceCamera>>,
+    mut camera: Query<(&mut Transform, &mut Projection), With<SpaceCamera>>,
 ) {
-    let (Ok(ship), Ok(mut camera)) = (ship.single(), camera.single_mut()) else {
+    let (Ok(ship), Ok((mut camera, mut projection))) = (ship.single(), camera.single_mut()) else {
         return;
     };
-    let back = ship.rotation * Vec3::new(0.0, 20.0, 200.0);
+    let dt = time.delta_secs();
+
+    // Boost stretches the leash; brake reels it in. Turning offsets the
+    // camera opposite the turn so the ship slides into the frame edge (SF64).
+    let dist = 200.0 + 70.0 * feel.boost_blend - 45.0 * feel.brake_blend;
+    let height = 20.0 + 8.0 * feel.brake_blend - 6.0 * feel.boost_blend;
+    let lateral = feel.yaw * 22.0;
+    let vertical = -feel.pitch * 10.0;
+    let back = ship.rotation * Vec3::new(lateral, height + vertical, dist);
     let target = ship.translation + back;
-    let t = (time.delta_secs() * 6.0).clamp(0.0, 1.0);
+    let t = (dt * 6.0).clamp(0.0, 1.0);
     camera.translation = camera.translation.lerp(target, t);
+
+    // The camera's up chases the hull's lean slowly — and not at all during a
+    // barrel roll, so the world holds still while the ship spins.
+    if feel.barrel == 0.0 {
+        let ship_up = ship.rotation * Vec3::Y;
+        let ut = 1.0 - (-3.0 * dt).exp();
+        feel.cam_up = feel.cam_up.lerp(ship_up, ut).normalize_or(Vec3::Y);
+    }
     let look = ship.translation + ship.forward().as_vec3() * 30.0;
-    let desired =
-        Transform::from_translation(camera.translation).looking_at(look, ship.rotation * Vec3::Y);
+    let desired = Transform::from_translation(camera.translation).looking_at(look, feel.cam_up);
     camera.rotation = camera.rotation.slerp(desired.rotation, t);
+
+    // Hit shake: decaying screen-space jitter fed by `collisions`.
+    if feel.shake > 0.001 {
+        let e = time.elapsed_secs();
+        let jitter =
+            camera.rotation * (Vec3::new((e * 47.0).sin(), (e * 53.0).cos(), 0.0) * feel.shake);
+        camera.translation += jitter;
+        feel.shake *= (-7.0 * dt).exp();
+    } else {
+        feel.shake = 0.0;
+    }
+
+    // FOV kick: boost widens the lens, brake narrows it.
+    if let Projection::Perspective(p) = &mut *projection {
+        p.fov = BASE_FOV + 0.30 * feel.boost_blend - 0.12 * feel.brake_blend;
+    }
 }
 
 /// The flying ship is only meaningful in `SpaceFlight`; hide it in interiors.
@@ -363,6 +573,7 @@ pub fn collisions(
     )>,
     player: Query<Entity, With<PlayerShip>>,
     mut ship_systems: ResMut<ShipSystems>,
+    mut feel: ResMut<FlightFeel>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -442,6 +653,8 @@ pub fn collisions(
             hull.hp = apply_hull_damage(hull.hp, dmg_amount, hull.max);
             if hull.hp < before && Some(&tgt_id) == player_id.as_ref() {
                 ship_systems.hull_hp = Fixed(hull.hp);
+                // Kick the chase-cam: harder hits shake more.
+                feel.shake = (feel.shake + dmg_amount as f32 * 0.02).clamp(0.3, 2.5);
                 if hull.hp <= 0 && !ship_systems.dead {
                     ship_systems.dead = true;
                     log.log("HULL BREACH — emergency revive in progress…");
@@ -519,9 +732,11 @@ pub fn respawn_ship(
     log.log("Hull rebuilt — back in the black.");
 }
 
-/// Fire the guns on `F` — but only if the gunner armed them and the power
-/// console routed power to weapons. Cooldown (rate of fire) scales with weapon
-/// power. Bolts are emissive spheres launched along the hull's forward axis.
+/// Fire the guns while `F` is held (hold-to-autofire, gated by the cooldown) —
+/// but only if the gunner armed them and the power console routed power to
+/// weapons. Cooldown (rate of fire) scales with weapon power. Bolts are
+/// emissive spheres launched along the hull's forward axis, alternating
+/// muzzle sides like twin lasers.
 #[allow(clippy::too_many_arguments)]
 pub fn fire_weapons(
     time: Res<Time>,
@@ -529,18 +744,22 @@ pub fn fire_weapons(
     mut commands: Commands,
     mut systems: ResMut<ShipSystems>,
     command: Res<ShipCommand>,
+    mut feel: ResMut<FlightFeel>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     ship: Query<&Transform, With<PlayerShip>>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
 ) {
     systems.gun_cooldown = (systems.gun_cooldown - time.delta_secs()).max(0.0);
-    if !keys.just_pressed(KeyCode::KeyF) {
+    if !keys.pressed(KeyCode::KeyF) {
         return;
     }
     let Ok(ship) = ship.single() else { return };
     if !command.weapons_armed || command.power_weapons == 0 {
-        log.log("Weapons offline — arm at the gunner console and route power.");
+        // Only nag on the initial press, not every held frame.
+        if keys.just_pressed(KeyCode::KeyF) {
+            log.log("Weapons offline — arm at the gunner console and route power.");
+        }
         return;
     }
     if systems.gun_cooldown > 0.0 {
@@ -548,7 +767,10 @@ pub fn fire_weapons(
     }
     systems.gun_cooldown = 0.6 / (command.power_weapons as f32);
     let forward = ship.forward().as_vec3();
-    let muzzle = ship.translation + forward * 6.0;
+    // Twin lasers: alternate the muzzle side each shot.
+    feel.muzzle_left = !feel.muzzle_left;
+    let side = ship.right().as_vec3() * if feel.muzzle_left { -3.0 } else { 3.0 };
+    let muzzle = ship.translation + forward * 6.0 + side;
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(0.6))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -571,6 +793,30 @@ pub fn fire_weapons(
         },
         crate::states::ModeScope(GameMode::SpaceFlight),
     ));
+}
+
+/// Engine exhaust: the flame cone behind the hull stretches with thrust,
+/// doubles down on boost, flickers a little, and vanishes when coasting.
+pub fn engine_glow(
+    time: Res<Time>,
+    feel: Res<FlightFeel>,
+    systems: Res<ShipSystems>,
+    mut flames: Query<(&mut Transform, &mut Visibility, &EngineExhaust)>,
+) {
+    for (mut tx, mut vis, flame) in &mut flames {
+        if !systems.thrusting || systems.dead {
+            *vis = Visibility::Hidden;
+            continue;
+        }
+        // Inherited (not Visible) so a hidden ship still hides its flame.
+        *vis = Visibility::Inherited;
+        let flicker = (time.elapsed_secs() * 31.0).sin() * 0.08;
+        let len = 0.55 + 0.95 * feel.boost_blend + flicker;
+        let width = 1.0 + 0.35 * feel.boost_blend;
+        tx.scale = Vec3::new(width, len, width);
+        // Keep the wide end welded to the rear face as the cone stretches.
+        tx.translation.z = flame.base_z + flame.length * len * 0.5;
+    }
 }
 
 /// Advance bolts and expire them.
@@ -724,7 +970,89 @@ pub fn scanner_pulse(
 
 #[cfg(test)]
 mod tests {
-    use super::apply_hull_damage;
+    use super::{apply_hull_damage, approach, bank_angle, wrap_angle, BANK_GAIN, MAX_BANK};
+    use bevy::math::{Quat, Vec3};
+
+    #[test]
+    fn approach_converges_and_is_framerate_stable() {
+        // One 100ms step lands (nearly) where ten 10ms steps land.
+        let coarse = approach(0.0, 1.0, 8.0, 0.1);
+        let mut fine = 0.0;
+        for _ in 0..10 {
+            fine = approach(fine, 1.0, 8.0, 0.01);
+        }
+        assert!((coarse - fine).abs() < 1e-4, "{coarse} vs {fine}");
+        // It never overshoots the target.
+        assert!(approach(0.0, 1.0, 1000.0, 1.0) <= 1.0);
+    }
+
+    #[test]
+    fn wrap_angle_stays_in_pi_range() {
+        use std::f32::consts::{PI, TAU};
+        assert!((wrap_angle(TAU + 0.1) - 0.1).abs() < 1e-5);
+        assert!((wrap_angle(-TAU - 0.1) + 0.1).abs() < 1e-5);
+        assert!(wrap_angle(PI + 0.2) < 0.0); // wraps past π to the negative side
+    }
+
+    #[test]
+    fn bank_angle_reads_roll_about_forward() {
+        // Level flight: no bank.
+        assert!(bank_angle(Quat::IDENTITY).abs() < 1e-5);
+        // A positive roll about the ship's own -Z-forward frame (local +Z)
+        // reads back as the same positive bank.
+        for a in [-1.2_f32, -0.4, 0.3, 1.0] {
+            let q = Quat::from_rotation_z(a);
+            assert!((bank_angle(q) - a).abs() < 1e-4, "bank {a}");
+        }
+        // Bank is measured about the hull's forward axis regardless of yaw.
+        let yawed = Quat::from_rotation_y(0.8) * Quat::from_rotation_z(0.5);
+        assert!((bank_angle(yawed) - 0.5).abs() < 1e-4);
+    }
+
+    #[test]
+    fn auto_bank_converges_to_lean_into_turn() {
+        // Simulate the control loop's bank branch: full left yaw, no manual
+        // roll. The hull must settle leaning left (positive bank) at MAX_BANK.
+        let yaw_axis = 1.0_f32; // holding A (turn left)
+        let mut rotation = Quat::IDENTITY;
+        let dt = 1.0 / 60.0;
+        for _ in 0..240 {
+            let err = wrap_angle(yaw_axis * MAX_BANK - bank_angle(rotation));
+            let roll_rate = (err * BANK_GAIN).clamp(-6.0, 6.0);
+            // Integrate angular velocity about the hull's local Z, as
+            // `control` does via `transform.rotation * local`.
+            rotation = (rotation * Quat::from_rotation_z(roll_rate * dt)).normalize();
+        }
+        let settled = bank_angle(rotation);
+        assert!(
+            (settled - MAX_BANK).abs() < 0.02,
+            "expected lean {MAX_BANK}, got {settled}"
+        );
+        // And hands-off re-levels: err now targets zero bank.
+        for _ in 0..240 {
+            let err = wrap_angle(0.0 - bank_angle(rotation));
+            let roll_rate = (err * BANK_GAIN).clamp(-6.0, 6.0);
+            rotation = (rotation * Quat::from_rotation_z(roll_rate * dt)).normalize();
+        }
+        assert!(bank_angle(rotation).abs() < 0.02);
+    }
+
+    #[test]
+    fn grip_realigns_velocity_to_nose_without_gaining_speed() {
+        // The grip lerp from `control`: velocity eases toward forward*speed.
+        let forward = Vec3::NEG_Z;
+        let mut velocity = Vec3::X * 100.0; // sliding sideways at 100
+        let dt = 1.0 / 60.0;
+        let t = 1.0 - (-super::GRIP * dt).exp();
+        for _ in 0..600 {
+            let speed = velocity.length();
+            velocity = velocity.lerp(forward * speed, t);
+        }
+        // After ten simulated seconds the ship flies where it points…
+        assert!(velocity.normalize().dot(forward) > 0.999);
+        // …and grip never manufactured speed.
+        assert!(velocity.length() <= 100.0 + 1e-3);
+    }
 
     #[test]
     fn small_hit_keeps_hp_above_zero() {

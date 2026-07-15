@@ -44,7 +44,10 @@ pub fn try_dock(
     mut location: ResMut<CurrentLocation>,
     mut beat: ResMut<TransitionBeat>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyE) {
+    // Enter is the flight "commit transit" key (dock here, gate jump in
+    // jump.rs). E can't be used: it's the roll-right axis in flight, and a
+    // roll near a station must not slam the ship into a dock.
+    if !keys.just_pressed(KeyCode::Enter) {
         return;
     }
     let Ok(ship) = ship.single() else {

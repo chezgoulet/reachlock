@@ -237,6 +237,36 @@ fn spawn_player_ship(
             MeshMaterial3d(materials.add(bridge::standard_material_from_palette(palette.primary))),
         ));
     }
+
+    // Engine exhaust: an emissive cone welded to the rear face, stretched by
+    // `ship::engine_glow` with thrust/boost. Child of the hull so it inherits
+    // the ship's pose and visibility.
+    let flame_len = collider_radius * 1.2;
+    let base_z = depth * 0.5;
+    ship.with_children(|parent| {
+        parent.spawn((
+            Mesh3d(meshes.add(Cone {
+                radius: collider_radius * 0.28,
+                height: flame_len,
+            })),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgba(1.0, 0.6, 0.2, 0.85),
+                emissive: LinearRgba::rgb(5.0, 2.2, 0.5),
+                alpha_mode: AlphaMode::Blend,
+                unlit: true,
+                ..default()
+            })),
+            // Cone tip points +Y by default; rotate it to point +Z (astern).
+            Transform::from_xyz(0.0, 0.0, base_z)
+                .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
+                .with_scale(Vec3::new(1.0, 0.01, 1.0)),
+            crate::systems::ship::EngineExhaust {
+                base_z,
+                length: flame_len,
+            },
+            Visibility::Hidden,
+        ));
+    });
 }
 
 fn spawn_station(
