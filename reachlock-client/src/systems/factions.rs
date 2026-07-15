@@ -4,11 +4,9 @@
 
 use bevy::prelude::*;
 
-use reachlock_core::faction::{
-    load_faction_catalog, tick_factions as core_tick, FactionState as CoreFactionState,
-};
+use reachlock_core::faction::FactionState as CoreFactionState;
 
-/// The live faction simulation, ticked every frame from the canon catalog.
+/// The live faction simulation, ticked by the UniverseTicker (S12).
 /// Offline-safe: the embedded RON is always available.
 #[derive(Resource)]
 pub struct FactionState(pub CoreFactionState);
@@ -24,25 +22,6 @@ pub struct ReputationPanel;
 /// Marker on the faction banner text entity (tinted by controlling faction).
 #[derive(Component)]
 pub struct FactionBanner;
-
-/// Initialise the faction state from the embedded canon catalog.
-pub fn init_faction_state(mut commands: Commands) {
-    let catalog = load_faction_catalog();
-    let state = CoreFactionState::new(catalog);
-    commands.insert_resource(FactionState(state));
-    commands.insert_resource(ReputationPanelVisible(false));
-}
-
-/// Tick the faction engine each frame (deterministic from the same state).
-/// Uses frame elapsed as seed so replays are reproducible.
-pub fn tick_faction_system(time: Res<Time>, mut state: ResMut<FactionState>) {
-    let seed = (time.elapsed_secs_f64() as u64).wrapping_mul(0x9E3779B1);
-    let (new_state, _events) = core_tick(state.0.clone());
-    state.0 = new_state;
-    // Events (DiplomaticShift, ContentRelease, MissionUnlock) would be
-    // broadcast here by a future sprint; S11 only produces them.
-    let _ = seed; // consumed by future broadcast system
-}
 
 /// Toggle the reputation panel on P key press.
 pub fn reputation_panel_toggle(

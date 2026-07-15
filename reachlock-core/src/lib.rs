@@ -14,5 +14,6 @@ pub mod generator;
 pub mod item;
 pub mod network;
 pub mod seed;
+pub mod sim;
 pub mod universe;
 pub mod util;

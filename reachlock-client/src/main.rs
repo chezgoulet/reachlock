@@ -17,7 +17,7 @@ use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     content_index, contract, crew, docking, factions, hud, interaction, interior, inventory, jump,
-    market, menu, mode, network, onboard, pause, sensors, setup, ship,
+    market, menu, mode, network, onboard, pause, sensors, setup, ship, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -103,7 +103,7 @@ fn main() {
                 menu::spawn_menu,
                 sensors::init_blip_assets,
                 market::init_economy,
-                factions::init_faction_state,
+                ticker::init_ticker,
             ),
         )
         .add_systems(
@@ -201,7 +201,6 @@ fn main() {
                 mode::interior_camera_follow,
                 docking::try_interior_transitions,
                 interaction::try_interact,
-                market::tick_economy,
                 market::market_system,
                 crew::crew_shift_system,
                 onboard::onboard_panels,
@@ -221,7 +220,7 @@ fn main() {
                 contract::tick_deliberation,
                 network::poll_network,
                 network::reconnect_backoff,
-                factions::tick_faction_system,
+                ticker::tick_universe,
                 factions::reputation_panel_toggle,
             )
                 .run_if(in_state(AppState::InGame)),

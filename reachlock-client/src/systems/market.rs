@@ -20,9 +20,8 @@ use crate::systems::interaction::ActivePanel;
 use crate::systems::inventory::{save_player, PlayerInventory};
 
 /// The live economy, held as a resource. Seeded once at boot from the
-/// embedded goods catalogue; ticks forward as the player plays (see
-/// `tick_economy`). The market reads the book for whatever station the
-/// player is docked at.
+/// embedded goods catalogue; the universe ticker advances it. The market
+/// reads the book for whatever station the player is docked at.
 #[derive(Resource)]
 pub struct Economy(pub EconomyState);
 
@@ -62,15 +61,6 @@ pub fn init_economy(mut commands: Commands) {
 pub struct MarketState {
     pub sel: usize,
     pub qty: u32,
-}
-
-/// Advance every station's book a step. Cheap; called each frame (the move
-/// is tiny per tick). Deterministic given the same frame count.
-pub fn tick_economy(mut economy: ResMut<Economy>, frame: Res<Time>) {
-    // Use a frame counter so ticks are reproducible from a fixed seed if we
-    // ever need to. `elapsed` is monotonic; fold it into a u64 seed.
-    let seed = (frame.elapsed_secs_f64() as u64).wrapping_mul(0x9E3779B1);
-    economy.0.tick(seed);
 }
 
 /// Derive the price table for the player's current station from the live
@@ -140,7 +130,7 @@ pub fn market_system(
             if let Some(station) = economy.0.stations.get_mut(&loc.station_id) {
                 station.record_trade(&good, state.qty as i64);
             }
-            save_player(&inv, &loc);
+            save_player(&inv, &loc, None);
         }
     }
     if keys.just_pressed(KeyCode::KeyN) {
@@ -156,7 +146,7 @@ pub fn market_system(
             if let Some(station) = economy.0.stations.get_mut(&loc.station_id) {
                 station.record_trade(&good, -(state.qty as i64));
             }
-            save_player(&inv, &loc);
+            save_player(&inv, &loc, None);
         }
     }
 }

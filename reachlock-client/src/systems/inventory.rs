@@ -12,8 +12,10 @@ use serde::{Deserialize, Serialize};
 
 use reachlock_core::economy::GoodId;
 use reachlock_core::generator::station::StationKind;
+use reachlock_core::sim::UniverseState;
 
 use crate::states::CurrentLocation;
+use crate::systems::ticker::UniverseTicker;
 
 /// The player's wallet + hold. `capacity` is cargo slots (not weight); S10
 /// may reinterpret it. `GoodId` is a string newtype (economy module).
@@ -54,13 +56,15 @@ pub struct SaveFile {
     pub inventory: PlayerInventory,
     #[serde(default)]
     pub location: Option<LocationSnapshot>,
+    #[serde(default)]
+    pub universe: Option<UniverseState>,
 }
 
 const SAVE_PATH: &str = "save/player.ron";
 
 /// Write the player's state to disk. Best-effort: a failed write is logged,
 /// never fatal (offline-first — the game must run with no FS).
-pub fn save_player(inv: &PlayerInventory, loc: &CurrentLocation) {
+pub fn save_player(inv: &PlayerInventory, loc: &CurrentLocation, universe: Option<&UniverseState>) {
     let snapshot = LocationSnapshot {
         system_seed: loc.system_seed,
         station_id: loc.station_id.clone(),
@@ -73,6 +77,7 @@ pub fn save_player(inv: &PlayerInventory, loc: &CurrentLocation) {
     let file = SaveFile {
         inventory: inv.clone(),
         location: Some(snapshot),
+        universe: universe.cloned(),
     };
     match ron::to_string(&file) {
         Ok(text) => {
@@ -118,20 +123,38 @@ pub fn autosave_system(
     inv: Res<PlayerInventory>,
     loc: Res<CurrentLocation>,
     mut timer: ResMut<SaveTimer>,
+    ticker: Option<Res<UniverseTicker>>,
 ) {
     timer.0 += time.delta_secs();
     if timer.0 >= INTERVAL {
         timer.0 = 0.0;
-        save_player(&inv, &loc);
+        save_player(&inv, &loc, ticker.as_ref().map(|t| &t.state));
     }
 }
 
 /// Startup: restore inventory + location from a prior local save, if any.
+/// Also restores the universe state and runs catch-up for elapsed ticks.
 /// Wired in `main.rs` `Startup`; offine-safe (a missing/corrupt save is a
 /// fresh start, never a crash).
-pub fn load_save(mut inv: ResMut<PlayerInventory>, mut loc: ResMut<CurrentLocation>) {
+pub fn load_save(
+    mut inv: ResMut<PlayerInventory>,
+    mut loc: ResMut<CurrentLocation>,
+    mut ticker: Option<ResMut<UniverseTicker>>,
+) {
     if let Some((i, l)) = load_player() {
         *inv = i;
         *loc = l;
+    }
+    // Restore universe from save (if present) and catch up.
+    if let Some(ref mut ticker) = ticker {
+        if let Ok(text) = std::fs::read_to_string(SAVE_PATH) {
+            if let Ok(file) = ron::from_str::<SaveFile>(&text) {
+                if let Some(saved) = file.universe {
+                    ticker.state = saved;
+                    let seed = 0x5EED_0001u64; // canonical catch-up seed
+                    let _events = ticker.catch_up(seed);
+                }
+            }
+        }
     }
 }

@@ -18,3 +18,4 @@ pub mod sensors;
 pub mod setup;
 pub mod ship;
 pub mod starfield;
+pub mod ticker;
