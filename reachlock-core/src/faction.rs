@@ -923,6 +923,12 @@ mod tests {
     }
 
     #[test]
+    fn embedded_ron_loads() {
+        let _catalog = load_faction_catalog();
+        let _stories = load_storylines();
+    }
+
+    #[test]
     fn reputation_transitions_clamp() {
         let r = Reputation::default();
         let r = apply_event(r, &ReputationEvent::DeliveredContract { amount: 100 });

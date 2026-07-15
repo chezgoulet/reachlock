@@ -4,19 +4,19 @@
         chapters: [
             (
                 id: "the_veil_escalation",
-                trigger: tick_after(5),
+                trigger: Some(tick_after(5)),
                 narration: "The Compact detects a stealth buoy network in the Veil Nebula. Local garrisons go on alert.",
                 events: [],
             ),
             (
                 id: "first_contact",
-                trigger: chapter_complete("the_veil_escalation"),
+                trigger: Some(chapter_complete("the_veil_escalation")),
                 narration: "A Compact long-range patrol makes first contact with a Remnant salvage fleet. Tensions rise.",
                 events: [],
             ),
             (
                 id: "trust_earned",
-                trigger: player_reputation(faction: ("compact"), trust: 50),
+                trigger: Some(player_reputation(faction: ("compact"), trust: 50)),
                 narration: "The Compact acknowledges your contributions. Trade routes open for preferred partners.",
                 events: [],
             ),
