@@ -60,7 +60,7 @@ mod tests {
 
         // Different (seed, n) may differ — that's fine, just check it's bool.
         let c = anomaly_rolls(99, 1);
-        assert!(c == false || c == true);
+        let _ = c;
     }
 
     /// malfunction_roll produces the same 0..=3 result for stable input.

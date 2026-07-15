@@ -2,6 +2,7 @@ pub mod content_index;
 pub mod contract;
 pub mod crew;
 pub mod docking;
+pub mod factions;
 pub mod hud;
 pub mod interaction;
 pub mod interior;

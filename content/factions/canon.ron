@@ -1,0 +1,45 @@
+(
+    version: 1,
+    factions: [
+        (
+            id: ("compact"),
+            name: "Compact",
+            color: (30, 144, 255, 255),
+            doctrine: diplomatic,
+            tariff_policy: regulated(foreign_mult: 1229, own_mult: 871),
+            produces: [manufactured],
+        ),
+        (
+            id: ("isc"),
+            name: "Interstellar Commerce Syndicate",
+            color: (46, 204, 113, 255),
+            doctrine: economic,
+            tariff_policy: flat(mult: 1075),
+            produces: [],
+        ),
+        (
+            id: ("corp"),
+            name: "Corp Charter",
+            color: (231, 76, 60, 255),
+            doctrine: expansionist,
+            tariff_policy: dynamic,
+            produces: [],
+        ),
+        (
+            id: ("reach"),
+            name: "The Reach",
+            color: (155, 89, 182, 255),
+            doctrine: military,
+            tariff_policy: none,
+            produces: [],
+        ),
+        (
+            id: ("remnant"),
+            name: "Earth's Remnant",
+            color: (243, 156, 18, 255),
+            doctrine: economic,
+            tariff_policy: flat(mult: 1024),
+            produces: [],
+        ),
+    ],
+)

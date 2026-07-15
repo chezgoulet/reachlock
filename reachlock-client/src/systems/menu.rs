@@ -21,6 +21,7 @@ pub fn spawn_menu(mut commands: Commands) {
         Camera {
             order: 0,
             is_active: false,
+            clear_color: ClearColorConfig::Custom(Color::srgb(0.0, 0.0, 0.02)),
             ..default()
         },
         SpaceCamera,

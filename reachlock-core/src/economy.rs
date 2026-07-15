@@ -158,12 +158,22 @@ pub struct StationEconomy {
     /// Last-trade pressure accumulator per good: +buy / -sell, decays each
     /// tick. Drives short-term moves independent of the base pull.
     pub pressure: BTreeMap<GoodId, i64>,
+    /// Controlling faction id, if any. Wired by the client at boot from the
+    /// station-to-faction mapping; empty means no tariff modifiers apply.
+    #[serde(default)]
+    pub station_faction: Option<String>,
 }
 
 impl StationEconomy {
     /// Seeded initial state from a catalogue. `seed` makes each station's
-    /// starting prices + storage differ deterministically.
-    pub fn new(catalog: &GoodsCatalog, seed: u64, kind: StationKind) -> Self {
+    /// starting prices + storage differ deterministically. `faction_id` is the
+    /// controlling faction (empty means no tariff modifiers apply).
+    pub fn new(
+        catalog: &GoodsCatalog,
+        seed: u64,
+        kind: StationKind,
+        faction_id: Option<String>,
+    ) -> Self {
         let mut rng = SeededRng::new(seed ^ 0xEC010);
         let mut prices = BTreeMap::new();
         let mut storage = BTreeMap::new();
@@ -184,6 +194,7 @@ impl StationEconomy {
             prices,
             storage,
             pressure,
+            station_faction: faction_id,
         }
     }
 
@@ -291,10 +302,19 @@ pub struct EconomyState {
 impl EconomyState {
     /// Build a fresh economy: each station seeded from the catalogue with a
     /// distinct seed so their opening books differ but reproduce exactly.
-    pub fn new(catalog: GoodsCatalog, station_seeds: &[(String, u64, StationKind)]) -> Self {
+    /// Each seed tuple is `(id, seed, kind, station_faction)`.
+    pub fn new(
+        catalog: GoodsCatalog,
+        station_seeds: &[(String, u64, StationKind, Option<String>)],
+    ) -> Self {
         let stations = station_seeds
             .iter()
-            .map(|(id, seed, kind)| (id.clone(), StationEconomy::new(&catalog, *seed, *kind)))
+            .map(|(id, seed, kind, faction)| {
+                (
+                    id.clone(),
+                    StationEconomy::new(&catalog, *seed, *kind, faction.clone()),
+                )
+            })
             .collect();
         Self { catalog, stations }
     }
@@ -544,17 +564,17 @@ mod tests {
     #[test]
     fn station_seeded_deterministic() {
         let cat = starter_catalog();
-        let a = StationEconomy::new(&cat, 12345, StationKind::Hub);
-        let b = StationEconomy::new(&cat, 12345, StationKind::Hub);
+        let a = StationEconomy::new(&cat, 12345, StationKind::Hub, None);
+        let b = StationEconomy::new(&cat, 12345, StationKind::Hub, None);
         assert_eq!(a, b, "same seed => same opening book");
-        let c = StationEconomy::new(&cat, 99999, StationKind::Hub);
+        let c = StationEconomy::new(&cat, 99999, StationKind::Hub, None);
         assert_ne!(a, c, "different seed => different book");
     }
 
     #[test]
     fn station_prices_start_near_base() {
         let cat = starter_catalog();
-        let e = StationEconomy::new(&cat, 7, StationKind::Refinery);
+        let e = StationEconomy::new(&cat, 7, StationKind::Refinery, None);
         for (id, good) in &cat.goods {
             let p = e.mid(id);
             let delta = (good.base_price * 10 / 100).max(1);
@@ -573,8 +593,8 @@ mod tests {
     #[test]
     fn tick_is_stable_and_bounded() {
         let cat = starter_catalog();
-        let mut a = StationEconomy::new(&cat, 42, StationKind::Hub);
-        let mut b = StationEconomy::new(&cat, 42, StationKind::Hub);
+        let mut a = StationEconomy::new(&cat, 42, StationKind::Hub, None);
+        let mut b = StationEconomy::new(&cat, 42, StationKind::Hub, None);
         for step in 0..50 {
             a.tick(&cat, step);
             b.tick(&cat, step);
@@ -589,7 +609,7 @@ mod tests {
     #[test]
     fn trade_pressure_moves_then_decay() {
         let cat = starter_catalog();
-        let mut e = StationEconomy::new(&cat, 1, StationKind::Hub);
+        let mut e = StationEconomy::new(&cat, 1, StationKind::Hub, None);
         let id = GoodId("water".into());
         let before = e.mid(&id);
         // Player sells a lot -> pressure negative -> mid should drop after
@@ -611,8 +631,8 @@ mod tests {
     fn economy_state_multistation_deterministic() {
         let cat = starter_catalog();
         let seeds = vec![
-            ("hub-1".into(), 11u64, StationKind::Hub),
-            ("ref-1".into(), 22u64, StationKind::Refinery),
+            ("hub-1".into(), 11u64, StationKind::Hub, None),
+            ("ref-1".into(), 22u64, StationKind::Refinery, None),
         ];
         let a = EconomyState::new(cat.clone(), &seeds);
         let b = EconomyState::new(cat.clone(), &seeds);

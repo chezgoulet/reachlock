@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use crate::net::{ConnectionState, NetMode};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
+use crate::systems::factions::FactionState;
 use crate::systems::interaction::{ActivePanel, Npc};
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::market::{market_panel_text, Economy, MarketState};
@@ -280,6 +281,7 @@ pub fn update_hud_panels(
     inventory: Res<PlayerInventory>,
     market_state: Res<MarketState>,
     economy: Res<Economy>,
+    faction_state: Res<FactionState>,
     npcs: Query<&Npc>,
     mut texts: ParamSet<(
         Query<&mut Text, With<DialoguePanel>>,
@@ -308,9 +310,13 @@ pub fn update_hud_panels(
     }
     if let Ok(mut text) = texts.p1().single_mut() {
         **text = match &*panel {
-            ActivePanel::Market => {
-                market_panel_text(&inventory, &location, &market_state, &economy)
-            }
+            ActivePanel::Market => market_panel_text(
+                &inventory,
+                &location,
+                &market_state,
+                &economy,
+                &faction_state,
+            ),
             _ => String::new(),
         };
     }

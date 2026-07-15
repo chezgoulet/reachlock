@@ -16,8 +16,8 @@ use bevy_rapier3d::prelude::*;
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
-    content_index, contract, crew, docking, hud, interaction, interior, inventory, jump, market,
-    menu, mode, network, onboard, pause, sensors, setup, ship,
+    content_index, contract, crew, docking, factions, hud, interaction, interior, inventory, jump,
+    market, menu, mode, network, onboard, pause, sensors, setup, ship,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -103,6 +103,7 @@ fn main() {
                 menu::spawn_menu,
                 sensors::init_blip_assets,
                 market::init_economy,
+                factions::init_faction_state,
             ),
         )
         .add_systems(
@@ -117,6 +118,8 @@ fn main() {
                 hud::spawn_hud,
                 onboard::spawn_onboard_panels,
                 network::connect_on_enter_playing,
+                factions::spawn_reputation_panel,
+                factions::spawn_faction_banner,
             ),
         )
         .add_systems(OnExit(AppState::InGame), mode::teardown_on_leave_game)
@@ -218,6 +221,8 @@ fn main() {
                 contract::tick_deliberation,
                 network::poll_network,
                 network::reconnect_backoff,
+                factions::tick_faction_system,
+                factions::reputation_panel_toggle,
             )
                 .run_if(in_state(AppState::InGame)),
         )
@@ -229,6 +234,8 @@ fn main() {
                 pause::toggle_pause,
                 hud::update_hud_status,
                 hud::update_hud_panels,
+                factions::render_reputation_panel,
+                factions::render_faction_banner,
             )
                 .run_if(in_state(AppState::InGame)),
         )
