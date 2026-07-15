@@ -11,23 +11,34 @@ mod systems;
 
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
-use bevy_rapier2d::prelude::*;
+use bevy_rapier3d::prelude::*;
 
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     content_index, contract, crew, docking, hud, interaction, interior, inventory, jump, market,
-    menu, mode, network, onboard, pause, sensors, setup, ship, starfield,
+    menu, mode, network, onboard, pause, sensors, setup, ship,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
-fn in_spaceflight(mode: Res<State<GameMode>>) -> bool {
-    **mode == GameMode::SpaceFlight
+///
+/// Uses `Option<Res<…>>` like Bevy's own `in_state`: the `GameMode` sub-state
+/// resource only exists while `AppState::InGame` is active, so it is absent on
+/// the main menu. Returning `false` there (instead of demanding the resource)
+/// avoids a "resource does not exist" panic at startup.
+fn in_spaceflight(mode: Option<Res<State<GameMode>>>) -> bool {
+    match mode {
+        Some(mode) => **mode == GameMode::SpaceFlight,
+        None => false,
+    }
 }
 
 /// Run condition: the player is in a top-down interior (Landed or OnBoard).
-fn in_any_interior(mode: Res<State<GameMode>>) -> bool {
-    matches!(**mode, GameMode::Landed | GameMode::OnBoard)
+fn in_any_interior(mode: Option<Res<State<GameMode>>>) -> bool {
+    match mode {
+        Some(mode) => matches!(**mode, GameMode::Landed | GameMode::OnBoard),
+        None => false,
+    }
 }
 
 fn main() {
@@ -40,7 +51,9 @@ fn main() {
             ..default()
         }))
         .add_plugins(ShapePlugin)
-        .add_plugins(RapierPhysicsPlugin::<()>::pixels_per_meter(100.0))
+        // S09b: SpaceFlight is 3D (spec §14 Mode 3). Interiors don't use
+        // physics, so rapier3d is the only physics context now.
+        .add_plugins(RapierPhysicsPlugin::<()>::default())
         .init_state::<AppState>()
         .add_sub_state::<GameMode>()
         .init_resource::<contract::ShipLog>()
@@ -75,6 +88,11 @@ fn main() {
         // S09: live jump/transit bookkeeping + sensors.
         .init_resource::<jump::TransitState>()
         .init_resource::<sensors::MapOverlayState>()
+        // S09b: cross-mode command bus — OnBoard consoles (gunner/scanner/
+        // miner/power) write it, the flight systems read it (spec §22).
+        .init_resource::<ship::ShipCommand>()
+        // S09b-2: death/respawn beat after a hull breach.
+        .init_resource::<ship::RespawnTimer>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
@@ -84,6 +102,7 @@ fn main() {
                 inventory::load_save,
                 menu::spawn_menu,
                 sensors::init_blip_assets,
+                market::init_economy,
             ),
         )
         .add_systems(
@@ -101,6 +120,13 @@ fn main() {
             ),
         )
         .add_systems(OnExit(AppState::InGame), mode::teardown_on_leave_game)
+        // S09b: activate the 3D chase-cam in SpaceFlight, the 2D camera
+        // everywhere else. Runs every InGame frame so mode switches (and the
+        // Docking/Undocking/Hyperspace beats) always land on the right view.
+        .add_systems(
+            Update,
+            ship::manage_cameras.run_if(in_state(AppState::InGame)),
+        )
         // --- SpaceFlight scene ---
         // No OnExit teardown: the *enter* systems tear down whatever was
         // there when a different scene is requested, which keeps the
@@ -119,12 +145,31 @@ fn main() {
                 ship::control,
                 ship::camera_follow,
                 ship::sync_ship_visibility,
-                starfield::parallax,
                 docking::try_dock,
                 jump::try_gate_jump,
                 jump::self_jump,
             )
                 .run_if(in_spaceflight),
+        )
+        // S09b: weapons/scanner/mining driven by the OnBoard consoles via the
+        // ShipCommand bus, rendered in the 3D flight scene.
+        .add_systems(
+            Update,
+            (
+                ship::fire_weapons,
+                ship::step_projectiles,
+                ship::mining_beam,
+                ship::scanner_pulse,
+                ship::request_scan_from_key,
+            )
+                .run_if(in_spaceflight),
+        )
+        .add_systems(Update, (ship::collisions,).run_if(in_spaceflight))
+        // S09b-2: revive the ship after a hull breach (runs in all InGame
+        // modes so the beat completes regardless of which scene is active).
+        .add_systems(
+            Update,
+            ship::respawn_ship.run_if(in_state(AppState::InGame)),
         )
         .add_systems(
             Update,
@@ -132,7 +177,6 @@ fn main() {
                 sensors::sensor_visibility,
                 sensors::sensor_blips,
                 sensors::sensor_blip_follow,
-                sensors::scan_contact,
                 sensors::system_map,
                 sensors::map_overlay_text,
             )
@@ -154,9 +198,11 @@ fn main() {
                 mode::interior_camera_follow,
                 docking::try_interior_transitions,
                 interaction::try_interact,
+                market::tick_economy,
                 market::market_system,
                 crew::crew_shift_system,
                 onboard::onboard_panels,
+                onboard::onboard_ship_consoles,
                 jump::fuel_dock,
             )
                 .run_if(in_any_interior),

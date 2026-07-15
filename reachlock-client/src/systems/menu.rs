@@ -1,15 +1,39 @@
 //! Main menu: title card, Enter to launch. The seed IS the game — show it.
 
 use bevy::prelude::*;
+use bevy::ui::IsDefaultUiCamera;
 
 use crate::states::AppState;
 use crate::systems::setup::SYSTEM_SEED;
+use crate::systems::ship::SpaceCamera;
 
 #[derive(Component)]
 pub struct MenuUi;
 
 pub fn spawn_menu(mut commands: Commands) {
-    commands.spawn(Camera2d);
+    // Two persistent cameras (spec §14): a 3D chase-cam for SpaceFlight and a
+    // 2D camera for interiors + all UI. `manage_cameras` (ship.rs) toggles
+    // which is active per GameMode. The 2D camera is the default UI target so
+    // bevy_ui never has to guess between the two, and renders after the 3D
+    // camera (order 1) so the HUD overlays the flight view.
+    commands.spawn((
+        Camera3d::default(),
+        Camera {
+            order: 0,
+            is_active: false,
+            ..default()
+        },
+        SpaceCamera,
+        Transform::from_xyz(0.0, 60.0, 160.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+    commands.spawn((
+        Camera2d,
+        Camera {
+            order: 1,
+            ..default()
+        },
+        IsDefaultUiCamera,
+    ));
     commands.spawn((
         MenuUi,
         Text::new(format!(

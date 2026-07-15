@@ -1,9 +1,11 @@
-//! Sensor visibility, blip rendering, and scanning (S09). Runs in
-//! `SpaceFlight`: contacts beyond `ShipSystems.sensor_range` are hidden and
-//! replaced by a small blip dot; holding `S` near an unknown contact resolves
-//! its identity. The system map (`M` key) overlays all known contacts.
+//! Sensor visibility, blip rendering, and the system map (S09, 3D in S09b).
+//! Runs in `SpaceFlight`: contacts beyond `ShipSystems.sensor_range` are hidden
+//! and replaced by a small 3D blip; the scanner console (or the `T` pulse)
+//! resolves identities (see `ship::scanner_pulse`). The system map (`M`)
+//! overlays all known contacts as HUD text.
 
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 use crate::states::{GameMode, ModeScope};
 use crate::systems::docking::Dockable;
@@ -15,15 +17,14 @@ use crate::systems::ship::{PlayerShip, ShipSystems};
 #[derive(Component)]
 pub struct Contact;
 
-/// Tracks which contacts have been resolved by sensors or scanning. Used by
-/// the sensor visibility / blip / map systems (S09).
+/// Tracks which contacts have been resolved by sensors or scanning.
 #[derive(Resource, Default)]
 pub struct KnownContacts {
     pub known: std::collections::HashSet<Entity>,
 }
 
 /// Marker for a blip entity — a placeholder rendered at a contact's world
-/// position when it has not yet been resolved by sensors or scanning.
+/// position while it has not yet been resolved.
 #[derive(Component)]
 pub struct Blip {
     pub for_contact: Entity,
@@ -33,25 +34,29 @@ pub struct Blip {
 #[derive(Resource)]
 pub struct BlipAssets {
     pub mesh: Handle<Mesh>,
-    pub material: Handle<ColorMaterial>,
+    pub material: Handle<StandardMaterial>,
 }
 
 /// Spawn the blip assets once (on app init).
 pub fn init_blip_assets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.insert_resource(BlipAssets {
-        mesh: meshes.add(Circle::new(3.0)),
-        material: materials.add(Color::srgb(0.3, 0.5, 0.7)),
+        mesh: meshes.add(Sphere::new(4.0)),
+        material: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.3, 0.5, 0.7),
+            emissive: LinearRgba::rgb(0.2, 0.5, 1.0),
+            unlit: true,
+            ..default()
+        }),
     });
 }
 
-/// Each frame: for every `Contact` entity in the world, check distance from
-/// the player ship. If within sensor range, mark as known and ensure the
-/// real entity is visible. If beyond sensor range and not known, hide the
-/// real entity.
+/// Each frame: for every `Contact`, check distance from the player ship. Within
+/// sensor range → mark known and show the real entity; beyond and unknown →
+/// hide the real entity (the blip stands in for it).
 pub fn sensor_visibility(
     ship: Query<&Transform, With<PlayerShip>>,
     contacts: Query<(Entity, &Transform), With<Contact>>,
@@ -65,17 +70,11 @@ pub fn sensor_visibility(
     let sensor_range_f32 = systems.sensor_range.0 as f32 / 1024.0;
 
     for (entity, transform) in &contacts {
-        let dist = transform
-            .translation
-            .truncate()
-            .distance(ship_pos.translation.truncate());
+        let dist = transform.translation.distance(ship_pos.translation);
         let is_known = known.known.contains(&entity);
-
         if dist <= sensor_range_f32 && !is_known {
             known.known.insert(entity);
         }
-
-        // Toggle the contact entity's visibility.
         if let Ok(mut v) = vis.get_mut(entity) {
             *v = if dist <= sensor_range_f32 || known.known.contains(&entity) {
                 Visibility::Visible
@@ -86,8 +85,8 @@ pub fn sensor_visibility(
     }
 }
 
-/// Manage blip entities: spawn a small dot at each unknown contact's
-/// position, despawn when the contact becomes known.
+/// Manage blip entities: spawn a small 3D dot at each unknown contact, despawn
+/// when the contact becomes known.
 pub fn sensor_blips(
     mut commands: Commands,
     contacts: Query<(Entity, &Transform), With<Contact>>,
@@ -97,14 +96,11 @@ pub fn sensor_blips(
 ) {
     let Some(assets) = assets else { return };
 
-    // Despawn blips for now-known contacts.
     for (blip_entity, blip) in &blips {
         if known.known.contains(&blip.for_contact) {
             commands.entity(blip_entity).despawn();
         }
     }
-
-    // Spawn blips for unknown contacts that don't have one yet.
     for (contact_entity, transform) in &contacts {
         if known.known.contains(&contact_entity) {
             continue;
@@ -112,9 +108,9 @@ pub fn sensor_blips(
         let already = blips.iter().any(|(_, b)| b.for_contact == contact_entity);
         if !already {
             commands.spawn((
-                Mesh2d(assets.mesh.clone()),
-                MeshMaterial2d(assets.material.clone()),
-                Transform::from_xyz(transform.translation.x, transform.translation.y, 1.0),
+                Mesh3d(assets.mesh.clone()),
+                MeshMaterial3d(assets.material.clone()),
+                Transform::from_translation(transform.translation),
                 Blip {
                     for_contact: contact_entity,
                 },
@@ -124,21 +120,27 @@ pub fn sensor_blips(
     }
 }
 
-/// Reposition blip entities to follow their contact entity (contacts don't
-/// move in this sprint, but the design should support it).
+/// Reposition blips to follow their contact entity.
+#[allow(clippy::type_complexity)]
 pub fn sensor_blip_follow(
-    contacts: Query<(&Transform,), With<Contact>>,
-    mut blips: Query<(&mut Transform, &Blip)>,
+    mut params: ParamSet<(
+        Query<(Entity, &Transform), With<Contact>>,
+        Query<(&mut Transform, &Blip)>,
+    )>,
 ) {
-    for (mut tx, blip) in &mut blips {
-        if let Ok((contact_tx,)) = contacts.get(blip.for_contact) {
-            tx.translation.x = contact_tx.translation.x;
-            tx.translation.y = contact_tx.translation.y;
+    let positions: HashMap<Entity, Vec3> = params
+        .p0()
+        .iter()
+        .map(|(e, t)| (e, t.translation))
+        .collect();
+    for (mut tx, blip) in &mut params.p1() {
+        if let Some(p) = positions.get(&blip.for_contact) {
+            tx.translation = *p;
         }
     }
 }
 
-/// Tracks whether the system-map overlay (`M` key in SpaceFlight) is open.
+/// Tracks whether the system-map overlay (`M`) is open.
 #[derive(Resource, Default)]
 pub struct MapOverlayState {
     pub open: bool,
@@ -166,8 +168,7 @@ fn contact_kind_name(
     }
 }
 
-/// Toggle the system-map overlay on `M` press. Spawns / despawns a
-/// semi-transparent panel listing all contacts (known vs unknown).
+/// Toggle the system-map overlay on `M`.
 pub fn system_map(
     keys: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<MapOverlayState>,
@@ -186,10 +187,6 @@ pub fn system_map(
             .spawn((
                 Node {
                     position_type: PositionType::Absolute,
-                    left: Val::Auto,
-                    top: Val::Auto,
-                    right: Val::Auto,
-                    bottom: Val::Auto,
                     width: Val::Px(500.0),
                     height: Val::Px(400.0),
                     align_self: AlignSelf::Center,
@@ -211,7 +208,8 @@ pub fn system_map(
     }
 }
 
-/// Update the map overlay text each frame while open.
+/// Update the map overlay text each frame while open. Bearing is measured on
+/// the XZ flight plane.
 pub fn map_overlay_text(
     state: Res<MapOverlayState>,
     known: Res<KnownContacts>,
@@ -235,59 +233,19 @@ pub fn map_overlay_text(
     let mut s = format!("SYSTEM MAP  {known_count}/{total} known\n\n");
     for (entity, transform) in &contacts {
         let kind = contact_kind_name(entity, &dockables, &gates);
-        let dist = transform
-            .translation
-            .truncate()
-            .distance(ship_pos.translation.truncate()) as i64;
+        let dist = transform.translation.distance(ship_pos.translation) as i64;
         let known_mark = if known.known.contains(&entity) {
             " "
         } else {
             "?"
         };
-        let bearing = ((transform.translation.y - ship_pos.translation.y)
-            .atan2(transform.translation.x - ship_pos.translation.x)
-            .to_degrees()
-            + 90.0)
-            .rem_euclid(360.0);
+        let bearing = ((transform.translation.x - ship_pos.translation.x)
+            .atan2(-(transform.translation.z - ship_pos.translation.z))
+            .to_degrees())
+        .rem_euclid(360.0);
         s.push_str(&format!(
             "  {known_mark} {kind:12} @ {dist:>6}m  {bearing:>3.0}°\n",
         ));
     }
     **t = s;
-}
-
-/// Hold `S` inside `SCAN_RANGE` of an unknown contact to resolve its
-/// identity. Scan range is half the sensor range (configured per
-/// `ShipSystems`).
-const SCAN_RANGE_FRACTION: f32 = 0.5;
-
-pub fn scan_contact(
-    keys: Res<ButtonInput<KeyCode>>,
-    ship: Query<&Transform, With<PlayerShip>>,
-    contacts: Query<(Entity, &Transform), With<Contact>>,
-    mut known: ResMut<KnownContacts>,
-    systems: Res<ShipSystems>,
-    mut log: ResMut<crate::systems::contract::ShipLog>,
-) {
-    if !keys.pressed(KeyCode::KeyS) {
-        return;
-    }
-    let Ok(ship_pos) = ship.single() else {
-        return;
-    };
-    let scan_range = (systems.sensor_range.0 as f32 / 1024.0) * SCAN_RANGE_FRACTION;
-
-    for (entity, transform) in &contacts {
-        if known.known.contains(&entity) {
-            continue;
-        }
-        let dist = transform
-            .translation
-            .truncate()
-            .distance(ship_pos.translation.truncate());
-        if dist <= scan_range {
-            known.known.insert(entity);
-            log.log(format!("Scanned contact at {:.0}m", dist));
-        }
-    }
 }

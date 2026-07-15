@@ -1,19 +1,22 @@
 //! World initialization (spec §5, §14 Mode 3; spec §10 Override System):
 //! one seed produces a whole `GeneratedSystem` — star, orbits, asteroid
-//! fields, station slots, one gate, a starfield — and this module renders
-//! all of it as the `SpaceFlight` scene. The player's hull is resolved
-//! through the content pipeline first: an authored override (spec §10)
-//! renders in place of the generated corvette when one applies.
+//! fields, station slots, one gate, a starfield — and this module renders all
+//! of it as the 3D `SpaceFlight` scene ("Star Fox 64" view, spec §14 Mode 3).
+//! The generator's 2D layout is laid out on the XZ plane (y up); flight is
+//! full 6-DOF around it.
 //!
-//! The flying `PlayerShip` is intentionally NOT tagged `ModeScope`: it
-//! persists across mode switches (Landed/OnBoard/Paused) so its transform —
-//! and therefore position — survives the full loop. Every other scene entity
-//! is `ModeScope(GameMode::SpaceFlight)` and is torn down on mode exit by
-//! `systems/mode::teardown_mode`.
+//! The player's hull is resolved through the content pipeline first: an
+//! authored override (spec §10) renders in place of the generated corvette
+//! when one applies, and an authored GLTF (`SHIP_GLTF`) renders in place of
+//! the procedural extrusion when present — the bridge treats all three the
+//! same at the call site.
+//!
+//! The flying `PlayerShip` is intentionally NOT tagged `ModeScope`: it persists
+//! across mode switches so its transform survives the full loop. Every other
+//! scene entity is `ModeScope(GameMode::SpaceFlight)` and torn down on exit.
 
 use bevy::prelude::*;
-use bevy_prototype_lyon::prelude::*;
-use bevy_rapier2d::prelude::*;
+use bevy_rapier3d::prelude::*;
 use reachlock_core::content::{resolve, ContentPayload, Resolved, SeedParams};
 use reachlock_core::generator::hull::HullClass;
 use reachlock_core::generator::system::{
@@ -38,25 +41,36 @@ pub const SYSTEM_SEED: u64 = 0x5EED_0001;
 pub const SYSTEM_BIOME: Biome = Biome::Frontier;
 
 /// Object id the authored Loup-Garou hull (`content/hulls/loup_garou.ron`)
-/// overrides (spec §10 acceptance demo: "the authored Loup-Garou hull
-/// replaces the generated corvette").
+/// overrides (spec §10 acceptance demo).
 const PLAYER_HULL_ID: &str = "loup_garou";
+
+/// Authored flight model. When an artist drops a `.glb` under the client's
+/// `assets/` and names it here, the ship renders as that GLTF scene instead of
+/// the procedural extrusion (spec §14: "full GLTF ship"). `None` keeps the
+/// offline-first procedural fallback so the game always shows a ship.
+pub const SHIP_GLTF: Option<&str> = None;
 
 /// Marks the system gate, so `systems/jump.rs` can test jump proximity.
 #[derive(Component)]
 pub struct Gate;
 
-/// Builds (or rebuilds) the `SpaceFlight` scene. Skips entirely when
-/// re-entering a mode we never tore down (the pause round-trip). The
-/// `PlayerShip` and ambient audio are spawned only once — they persist
-/// across the whole session.
+/// Map a generator plane position (fixed-point XY) onto the flight world's XZ
+/// plane at height `y`.
+fn plane(pos: FixedVec2, y: f32) -> Vec3 {
+    Vec3::new(pos.x.to_f32(), y, pos.y.to_f32())
+}
+
+/// Builds (or rebuilds) the 3D `SpaceFlight` scene. Skips when re-entering a
+/// mode we never tore down (the pause round-trip). The `PlayerShip`, lights and
+/// ambient audio are spawned only once — they persist across the session.
 #[allow(clippy::too_many_arguments)]
 pub fn enter_spaceflight(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut audio_sources: ResMut<Assets<AudioSource>>,
+    asset_server: Res<AssetServer>,
     content_index: Res<ContentIndex>,
     location: ResMut<CurrentLocation>,
     mut registry: ResMut<SceneRegistry>,
@@ -67,18 +81,28 @@ pub fn enter_spaceflight(
         return; // came back from pause; scene already present
     }
 
-    // Tearing down the previous scene (Landed/OnBoard) before building space.
     for entity in &mode_entities {
         commands.entity(entity).despawn();
     }
 
-    // S09 (S02 integrator carry-over): the world is rebuilt from the
-    // *current* system seed, not a hardcoded constant. Jumping sets
-    // `location.system_seed` to the destination so re-entering SpaceFlight
-    // regenerates into the new system.
     let seed = location.system_seed;
     let palette = generate_palette(seed);
     let system = generate_system(seed, SYSTEM_BIOME, Fidelity::Full);
+
+    // 3D lighting: a keylight plus soft ambient so hulls read without textures.
+    commands.insert_resource(GlobalAmbientLight {
+        color: bridge::color_from_palette(palette.accent),
+        brightness: 220.0,
+        ..default()
+    });
+    commands.spawn((
+        DirectionalLight {
+            illuminance: 6_000.0,
+            ..default()
+        },
+        Transform::from_xyz(400.0, 800.0, 300.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ModeScope(GameMode::SpaceFlight),
+    ));
 
     starfield::spawn(
         &mut commands,
@@ -87,14 +111,17 @@ pub fn enter_spaceflight(
         system.starfield_seed,
     );
 
-    spawn_player_ship(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        &palette,
-        &content_index,
-        seed,
-    );
+    if ship.is_empty() {
+        spawn_player_ship(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &asset_server,
+            &palette,
+            &content_index,
+            seed,
+        );
+    }
 
     for (index, slot) in system.station_slots.iter().enumerate() {
         spawn_station(
@@ -107,7 +134,13 @@ pub fn enter_spaceflight(
         );
     }
     for orbit in &system.orbits {
-        spawn_planet(&mut commands, &mut images, orbit);
+        spawn_planet(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut images,
+            orbit,
+        );
     }
     for (index, field) in system.asteroid_fields.iter().enumerate() {
         spawn_asteroid_field(
@@ -120,10 +153,14 @@ pub fn enter_spaceflight(
             field,
         );
     }
-    spawn_gate_marker(&mut commands, &palette, system.gate_position);
+    spawn_gate_marker(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &palette,
+        system.gate_position,
+    );
 
-    // System ambience from the music generator. Spawned once (the ship
-    // query is empty only on the very first entry).
     if ship.is_empty() {
         let music = generator::generate_music(seed, generator::Mood::Calm, 8);
         commands.spawn(AudioPlayer(
@@ -136,24 +173,21 @@ pub fn enter_spaceflight(
     registry.scene = Some(GameMode::SpaceFlight);
 }
 
-/// The player's ship: an authored hull if the content pipeline resolves
-/// one for `PLAYER_HULL_ID`, otherwise the generated corvette (spec §10,
-/// "the bridge cannot tell the difference" — this is the one place that
-/// makes the choice; `bridge::mesh_from_generated` treats both identically).
+/// The player's ship. Priority: authored GLTF (`SHIP_GLTF`) → authored hull
+/// mesh (content override) → generated corvette, extruded to a 3D solid.
 /// NOT tagged `ModeScope`: the ship persists across the mode loop.
+#[allow(clippy::too_many_arguments)]
 fn spawn_player_ship(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<ColorMaterial>,
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
     palette: &Palette,
     content_index: &ContentIndex,
     seed: u64,
 ) {
     let params = SeedParams {
         object_id: PLAYER_HULL_ID.into(),
-        // Offline client, no server-negotiated tier yet — Classic is the
-        // rules-only, no-inference default (mirrors reachlock-server's
-        // `auth::default_universe`).
         universe: UniverseTier::Classic,
         now: 0,
     };
@@ -174,26 +208,41 @@ fn spawn_player_ship(
     };
 
     let collider_radius = bounding_radius(&hull);
-    commands.spawn((
+    let depth = (collider_radius * 0.4).max(2.0);
+    let mut ship = commands.spawn((
         PlayerShip,
-        Mesh2d(meshes.add(bridge::mesh_from_generated(&hull))),
-        MeshMaterial2d(materials.add(bridge::color_from_palette(palette.primary))),
-        Transform::from_xyz(0.0, 0.0, 1.0),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        Visibility::default(),
         RigidBody::Dynamic,
+        GravityScale(0.0),
         Collider::ball(collider_radius),
+        ActiveEvents::COLLISION_EVENTS,
         Velocity::default(),
         ExternalForce::default(),
         Damping {
-            linear_damping: 0.6,
-            angular_damping: 4.0,
+            linear_damping: 0.3,
+            angular_damping: 5.0,
+        },
+        crate::systems::ship::Hull {
+            hp: 1024,
+            max: 1024,
         },
     ));
+    if let Some(path) = SHIP_GLTF {
+        let scene = asset_server.load(GltfAssetLabel::Scene(0).from_asset(path));
+        ship.insert(SceneRoot(scene));
+    } else {
+        ship.insert((
+            Mesh3d(meshes.add(bridge::mesh3d_from_generated(&hull, depth))),
+            MeshMaterial3d(materials.add(bridge::standard_material_from_palette(palette.primary))),
+        ));
+    }
 }
 
 fn spawn_station(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<ColorMaterial>,
+    materials: &mut Assets<StandardMaterial>,
     palette: &Palette,
     slot: &StationSlot,
     index: usize,
@@ -201,9 +250,12 @@ fn spawn_station(
     let station = generator::generate_station(slot.seed, slot.kind, 2);
     let radius = bounding_radius(&station.exterior);
     commands.spawn((
-        Mesh2d(meshes.add(bridge::mesh_from_generated(&station.exterior))),
-        MeshMaterial2d(materials.add(bridge::color_from_palette(palette.structure))),
-        Transform::from_xyz(slot.position.x.to_f32(), slot.position.y.to_f32(), 0.0),
+        Mesh3d(meshes.add(bridge::mesh3d_from_generated(
+            &station.exterior,
+            radius * 0.5,
+        ))),
+        MeshMaterial3d(materials.add(bridge::standard_material_from_palette(palette.structure))),
+        Transform::from_translation(plane(slot.position, 0.0)),
         RigidBody::Fixed,
         Collider::ball(radius),
         Dockable {
@@ -216,35 +268,36 @@ fn spawn_station(
     ));
 }
 
-fn spawn_planet(commands: &mut Commands, images: &mut Assets<Image>, orbit: &Orbit) {
+fn spawn_planet(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    images: &mut Assets<Image>,
+    orbit: &Orbit,
+) {
     let planet = generator::generate_planet(orbit.seed, orbit.planet_radius, orbit.biome);
+    let r = orbit.planet_radius as f32;
     commands.spawn((
-        Sprite {
-            image: images.add(bridge::image_from_generated(&planet.surface)),
-            custom_size: Some(Vec2::splat(orbit.planet_radius as f32 * 2.0)),
+        Mesh3d(meshes.add(Sphere::new(r))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color_texture: Some(images.add(bridge::image_from_generated(&planet.surface))),
+            perceptual_roughness: 0.9,
             ..default()
-        },
-        Transform::from_xyz(orbit.position.x.to_f32(), orbit.position.y.to_f32(), -1.0),
+        })),
+        Transform::from_translation(plane(orbit.position, 0.0)),
         Contact,
         ModeScope(GameMode::SpaceFlight),
     ));
 }
 
-/// Derives a stable per-field seed from the world seed and the field's
-/// index in `GeneratedSystem::asteroid_fields`. `AsteroidField` itself
-/// carries no seed (it's a frozen S04 field list) — deriving it here keeps
-/// rock placement deterministic without touching core.
 fn asteroid_field_seed(system_seed: u64, index: usize) -> u64 {
     system_seed ^ 0xA57E_A01D_0000_0000 ^ (index as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
 }
 
-/// Scatters `field.density` `HullClass::Rock` hulls inside `field.radius`
-/// of `field.center` (spec §5 deliverable: "asteroid clusters (reuse the
-/// hull generator's `HullClass::Rock` ... `density` = rock count)").
 fn spawn_asteroid_field(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<ColorMaterial>,
+    materials: &mut Assets<StandardMaterial>,
     palette: &Palette,
     system_seed: u64,
     index: usize,
@@ -262,43 +315,58 @@ fn spawn_asteroid_field(
             x: Fixed(field.center.x.0 + offset.x.0),
             y: Fixed(field.center.y.0 + offset.y.0),
         };
+        // Scatter rocks a little off the plane so the field reads as a volume.
+        let y = (rng.next_below(120) as f32) - 60.0;
 
         let radius = bounding_radius(&mesh);
         commands.spawn((
-            Mesh2d(meshes.add(bridge::mesh_from_generated(&mesh))),
-            MeshMaterial2d(materials.add(bridge::color_from_palette(palette.structure))),
-            Transform::from_xyz(position.x.to_f32(), position.y.to_f32(), 0.0),
+            Mesh3d(meshes.add(bridge::mesh3d_from_generated(&mesh, radius * 0.8))),
+            MeshMaterial3d(
+                materials.add(bridge::standard_material_from_palette(palette.structure)),
+            ),
+            Transform::from_translation(plane(position, y)),
             RigidBody::Fixed,
             Collider::ball(radius),
+            ActiveEvents::COLLISION_EVENTS,
             Contact,
+            crate::systems::ship::Asteroid {
+                ore: (radius as i64 * 20).clamp(40, 400),
+            },
+            crate::systems::ship::Hull {
+                hp: (radius as i64 * 20).clamp(40, 400),
+                max: (radius as i64 * 20).clamp(40, 400),
+            },
             ModeScope(GameMode::SpaceFlight),
         ));
     }
 }
 
-/// A lyon-drawn ring marking the gate — keeps `ShapePlugin` sharing the
-/// scene with mesh rendering, now anchored to the one landmark every
-/// system guarantees (spec §5: "exactly one gate").
-fn spawn_gate_marker(commands: &mut Commands, palette: &Palette, position: FixedVec2) {
-    let ring = shapes::RegularPolygon {
-        sides: 32,
-        feature: shapes::RegularPolygonFeature::Radius(160.0),
-        ..default()
-    };
+/// A glowing torus marking the gate — the one landmark every system guarantees
+/// (spec §5: "exactly one gate").
+fn spawn_gate_marker(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    palette: &Palette,
+    position: FixedVec2,
+) {
     commands.spawn((
-        ShapeBuilder::with(&ring)
-            .stroke((bridge::color_from_palette(palette.accent), 2.0))
-            .build(),
-        Transform::from_xyz(position.x.to_f32(), position.y.to_f32(), 0.5),
+        Mesh3d(meshes.add(Torus::new(150.0, 165.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: bridge::color_from_palette(palette.accent),
+            emissive: {
+                let c = bridge::color_from_palette(palette.accent).to_linear();
+                LinearRgba::rgb(c.red * 2.0, c.green * 2.0, c.blue * 2.0)
+            },
+            ..default()
+        })),
+        Transform::from_translation(plane(position, 0.0)),
         Contact,
         ModeScope(GameMode::SpaceFlight),
         Gate,
     ));
 }
 
-/// Same polar construction as `generator::system`'s private helper — kept
-/// local since that one isn't part of the public contract, and this is a
-/// render-side placement detail (rock scatter), not a gameplay one.
 fn polar_offset(radius: i64, turn: u16) -> FixedVec2 {
     let r = Fixed::from_int(radius);
     FixedVec2 {
@@ -308,8 +376,7 @@ fn polar_offset(radius: i64, turn: u16) -> FixedVec2 {
 }
 
 /// Rough render-only collision radius: the farthest vertex from the mesh's
-/// local origin. `to_f32` is fine here — colliders are render/physics
-/// geometry, not gameplay state.
+/// local origin. `to_f32` is fine here — colliders are render/physics geometry.
 fn bounding_radius(mesh: &GeneratedMesh) -> f32 {
     mesh.vertices
         .iter()

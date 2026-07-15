@@ -11,8 +11,12 @@ reachlock-core = { path = "../reachlock-core" }
 # generate_music) — the generator emits raw PCM, the bridge wraps it in a
 # WAV header for bevy_audio's decoder.
 bevy = { workspace = true, features = ["wav"] }
+# Bevy 0.18 reworked events into the `message` module; `MessageReader` lives
+# in `bevy_ecs::message` and isn't re-exported by `bevy::prelude`. Pull the
+# crate directly (same version bevy bundles) so collision-event reads compile.
+bevy_ecs = "0.18.1"
 bevy_prototype_lyon = { workspace = true }
-bevy_rapier2d = { workspace = true }
+bevy_rapier3d = { workspace = true }
 # Authoring format for content/ (spec §10) — same crate/version core uses;
 # wasm-safe. The native content_index loader parses .ron with it directly.
 ron = "0.12"
@@ -25,6 +29,14 @@ serde_json = "1"
 # systems only ever poll the channel. "tls" adds wss:// support natively;
 # on wasm32 the browser handles TLS regardless of this feature.
 ewebsock = { version = "0.8", default-features = false, features = ["tls"] }
+
+[features]
+# `debug-names` forwards to Bevy's `debug` feature, which makes bevy_ecs carry
+# real component/system names in errors like B0001 (query conflicts) instead of
+# "<Enable the debug feature to see the name>". Off by default to keep normal
+# native/WASM builds lean; enable it while diagnosing schedule/query panics via
+# `make run-debug` (or `cargo run -p reachlock-client --features debug-names`).
+debug-names = ["bevy/debug"]
 
 [dev-dependencies]
 # S02 integration test only: native, headless, no Bevy. tokio/axum here are

@@ -1,7 +1,7 @@
 # ReachLock v2 — developer entry points.
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: test check fmt clippy run server wasm determinism clean
+.PHONY: test check fmt clippy run run-debug server wasm determinism clean
 
 test:
 	cargo test --workspace
@@ -18,6 +18,11 @@ clippy:
 # Launch the game (native).
 run:
 	cargo run -p reachlock-client
+
+# Launch with Bevy's `debug` feature so ECS errors (e.g. B0001 query
+# conflicts) print real component/system names instead of a placeholder.
+run-debug:
+	cargo run -p reachlock-client --features debug-names
 
 # Launch the ledger server on 127.0.0.1:40711.
 server:

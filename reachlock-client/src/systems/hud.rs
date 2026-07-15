@@ -11,7 +11,7 @@ use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::interaction::{ActivePanel, Npc};
 use crate::systems::inventory::PlayerInventory;
-use crate::systems::market::{market_panel_text, MarketState};
+use crate::systems::market::{market_panel_text, Economy, MarketState};
 use crate::systems::pause::PauseOverlay;
 use crate::systems::ship::ShipSystems;
 
@@ -192,22 +192,29 @@ pub fn update_hud_status(
     deliberation: Res<DeliberationState>,
     net_mode: Res<NetMode>,
     conn: Res<ConnectionState>,
-    mut fuel: Query<&mut Text, With<FuelReadout>>,
-    mut banner: Query<&mut Text, With<LocationBanner>>,
-    mut log_text: Query<&mut Text, With<LogReadout>>,
-    mut overlay: Query<&mut Text, With<DeliberationOverlay>>,
-    mut badge: Query<&mut Text, With<OfflineBadge>>,
-    mut pause: Query<&mut Text, With<PauseOverlay>>,
+    mut texts: ParamSet<(
+        Query<&mut Text, With<FuelReadout>>,
+        Query<&mut Text, With<LocationBanner>>,
+        Query<&mut Text, With<LogReadout>>,
+        Query<&mut Text, With<DeliberationOverlay>>,
+        Query<&mut Text, With<OfflineBadge>>,
+        Query<&mut Text, With<PauseOverlay>>,
+    )>,
 ) {
-    if let Ok(mut text) = fuel.single_mut() {
+    if let Ok(mut text) = texts.p0().single_mut() {
         if *mode == GameMode::SpaceFlight {
             let pct = systems.fuel.0 * 100 / 1024;
-            **text = format!("FUEL {pct}%{}", if systems.thrusting { " ▲" } else { "" });
+            let hull = systems.hull_hp.0 * 100 / 1024;
+            let breach = if systems.dead { "  ⚠ BREACH" } else { "" };
+            **text = format!(
+                "FUEL {pct}%{}  HULL {hull}%{breach}",
+                if systems.thrusting { " ▲" } else { "" }
+            );
         } else {
             **text = "—".to_string();
         }
     }
-    if let Ok(mut text) = banner.single_mut() {
+    if let Ok(mut text) = texts.p1().single_mut() {
         **text = match **mode {
             GameMode::SpaceFlight => format!("SPACE · system {:#x}", location.system_seed),
             GameMode::Landed => {
@@ -231,10 +238,10 @@ pub fn update_hud_status(
             GameMode::Paused => "PAUSED".to_string(),
         };
     }
-    if let Ok(mut text) = log_text.single_mut() {
+    if let Ok(mut text) = texts.p2().single_mut() {
         **text = log.entries.join("\n");
     }
-    if let Ok(mut text) = overlay.single_mut() {
+    if let Ok(mut text) = texts.p3().single_mut() {
         // S02: online deliberation stays invisible until `llm.deliberating`
         // confirms the server is on it — see `Deliberation::overlay_visible`.
         **text = match &deliberation.active {
@@ -245,7 +252,7 @@ pub fn update_hud_status(
             _ => String::new(),
         };
     }
-    if let Ok(mut text) = badge.single_mut() {
+    if let Ok(mut text) = texts.p4().single_mut() {
         // Offline mode is the normal default — no badge. Online mode shows
         // OFFLINE whenever the socket isn't actually Connected (still
         // connecting, or dropped and retrying): the game keeps playing
@@ -256,7 +263,7 @@ pub fn update_hud_status(
             (NetMode::Offline, _) => String::new(),
         };
     }
-    if let Ok(mut text) = pause.single_mut() {
+    if let Ok(mut text) = texts.p5().single_mut() {
         **text = match **mode {
             GameMode::Paused => "⏸ PAUSED\n\nEsc to resume".to_string(),
             _ => String::new(),
@@ -272,11 +279,14 @@ pub fn update_hud_panels(
     panel: Res<ActivePanel>,
     inventory: Res<PlayerInventory>,
     market_state: Res<MarketState>,
+    economy: Res<Economy>,
     npcs: Query<&Npc>,
-    mut dialogue: Query<&mut Text, With<DialoguePanel>>,
-    mut market: Query<&mut Text, With<MarketPanel>>,
+    mut texts: ParamSet<(
+        Query<&mut Text, With<DialoguePanel>>,
+        Query<&mut Text, With<MarketPanel>>,
+    )>,
 ) {
-    if let Ok(mut text) = dialogue.single_mut() {
+    if let Ok(mut text) = texts.p0().single_mut() {
         **text = match &*panel {
             ActivePanel::Dialogue(e) => match npcs.get(*e) {
                 Ok(npc) => {
@@ -296,9 +306,11 @@ pub fn update_hud_panels(
             _ => String::new(),
         };
     }
-    if let Ok(mut text) = market.single_mut() {
+    if let Ok(mut text) = texts.p1().single_mut() {
         **text = match &*panel {
-            ActivePanel::Market => market_panel_text(&inventory, &location, &market_state),
+            ActivePanel::Market => {
+                market_panel_text(&inventory, &location, &market_state, &economy)
+            }
             _ => String::new(),
         };
     }
