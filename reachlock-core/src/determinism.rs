@@ -230,16 +230,19 @@ pub fn manifest() -> Manifest {
                 "hub-1".to_string(),
                 seed ^ 0x111,
                 crate::economy::StationKind::Hub,
+                None,
             ),
             (
                 "ref-1".to_string(),
                 seed ^ 0x222,
                 crate::economy::StationKind::Refinery,
+                None,
             ),
             (
                 "bm-1".to_string(),
                 seed ^ 0x333,
                 crate::economy::StationKind::BlackMarket,
+                None,
             ),
         ];
         let mut state = crate::economy::EconomyState::new(catalog, &station_seeds);
@@ -251,12 +254,127 @@ pub fn manifest() -> Manifest {
             seed,
             checksum: hash_serde(&state),
         });
+
+        // S11 — faction engine. Hash a canonical catalog ticked forward (drift
+        // + diplomacy) and a representative tariff quote so any change to the
+        // faction/tariff math is caught cross-platform (iron rule #3).
+        let catalog = crate::faction::FactionCatalog {
+            version: 1,
+            factions: vec![
+                crate::faction::Faction {
+                    id: crate::faction::FactionId("compact".into()),
+                    name: "Compact".into(),
+                    territory: vec![],
+                    resources: crate::faction::FactionResources {
+                        stock: std::collections::BTreeMap::new(),
+                    },
+                    relationships: {
+                        let mut m = std::collections::BTreeMap::new();
+                        m.insert(
+                            crate::faction::FactionId("isc".into()),
+                            crate::faction::DiplomaticStanding {
+                                affinity: 100,
+                                status_snapshot: crate::faction::RelationStatus::Allied,
+                                treaty: None,
+                                war_goal: None,
+                            },
+                        );
+                        m
+                    },
+                    goals: vec![],
+                    internal_divisions: vec![],
+                    doctrine: crate::faction::Doctrine::Diplomatic,
+                    tariff_policy: crate::faction::TariffPolicy::Regulated {
+                        foreign_mult: 1229,
+                        own_mult: 871,
+                    },
+                    produces: vec![],
+                    color: [0x88, 0x88, 0x88, 0xFF],
+                },
+                crate::faction::Faction {
+                    id: crate::faction::FactionId("isc".into()),
+                    name: "ISC".into(),
+                    territory: vec![],
+                    resources: crate::faction::FactionResources {
+                        stock: std::collections::BTreeMap::new(),
+                    },
+                    relationships: std::collections::BTreeMap::new(),
+                    goals: vec![],
+                    internal_divisions: vec![],
+                    doctrine: crate::faction::Doctrine::Economic,
+                    tariff_policy: crate::faction::TariffPolicy::Flat { mult: 1075 },
+                    produces: vec![],
+                    color: [0x88, 0x88, 0x88, 0xFF],
+                },
+            ],
+        };
+        let mut fstate = crate::faction::FactionState::new(catalog);
+        for _ in 0..8 {
+            fstate = crate::faction::tick_factions(fstate).0;
+        }
+        entries.push(Entry {
+            generator: "faction_state".into(),
+            seed,
+            checksum: hash_serde(&fstate),
+        });
+        let tariff = crate::faction::tariff(
+            &fstate.catalog.factions[0],
+            crate::economy::GoodCategory::Consumable,
+            50 * crate::economy::TARIFF_ONE,
+            1024,
+        );
+        entries.push(Entry {
+            generator: "faction_tariff".into(),
+            seed,
+            checksum: tariff as u64,
+        });
+        // evaluate_storylines golden: hash the fired chapter IDs for a
+        // canonical storyline (Compact arc) at a fixed tick.
+        let canonical_stories = vec![crate::faction::Storyline {
+            faction: crate::faction::FactionId("compact".into()),
+            chapters: vec![
+                crate::faction::Chapter {
+                    id: "arc1".into(),
+                    trigger: Some(crate::faction::ChapterTrigger::TickAfter(2)),
+                    narration: "The Compact mobilizes.".into(),
+                    events: vec![],
+                },
+                crate::faction::Chapter {
+                    id: "arc2".into(),
+                    trigger: Some(crate::faction::ChapterTrigger::ChapterComplete(
+                        "arc1".into(),
+                    )),
+                    narration: "First contact established.".into(),
+                    events: vec![],
+                },
+                crate::faction::Chapter {
+                    id: "arc3".into(),
+                    trigger: Some(crate::faction::ChapterTrigger::PlayerReputation {
+                        faction: crate::faction::FactionId("compact".into()),
+                        trust: 50 * crate::faction::REP_ONE,
+                    }),
+                    narration: "Trust earned.".into(),
+                    events: vec![],
+                },
+            ],
+        }];
+        let fired = crate::faction::evaluate_storylines(&fstate, &canonical_stories);
+        let mut h = crate::determinism::Hasher::new();
+        for s in &fired {
+            h.write(s.as_bytes());
+        }
+        entries.push(Entry {
+            generator: "faction_storylines".into(),
+            seed,
+            checksum: h.finish(),
+        });
     }
 
     Manifest {
         // v3: added S06 hull_interior (ship interior layout) generator.
         // v4: added S10 economy engine golden entries.
-        version: 4,
+        // v5: added S11 faction engine golden entries.
+        version: 5,
         entries,
     }
 }

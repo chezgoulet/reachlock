@@ -9,6 +9,7 @@
 use clap::Subcommand;
 use reachlock_core::content::{validate_content, AssetType, ContentFile, ContentPayload};
 use reachlock_core::economy::GoodsCatalog;
+use reachlock_core::faction::{load_faction_catalog, validate_storylines, FactionCatalog};
 use std::path::{Path, PathBuf};
 
 use crate::gen;
@@ -34,6 +35,21 @@ pub enum ContentCommand {
     ValidateGoods {
         /// Path to the `goods.ron` catalogue.
         path: PathBuf,
+    },
+    /// Validate the authored faction catalogue (`content/factions/canon.ron`):
+    /// unique IDs, symmetric relationships, valid tariff params, territory
+    /// control ≤ 100%. (S11)
+    ValidateFactions {
+        /// Path to the `factions.ron` catalogue (default: embedded canon).
+        #[arg(default_value = "")]
+        path: std::path::PathBuf,
+    },
+    /// Validate the authored storylines (`content/storylines/*.ron`):
+    /// unique chapter IDs, `ChapterComplete` refs exist, `PlayerReputation`
+    /// factions exist in the canon catalog. (S11)
+    ValidateStorylines {
+        /// Path to the storylines `.ron` file.
+        path: std::path::PathBuf,
     },
     /// Render an authored content file to a dependency-free preview (SVG for
     /// hull/station geometry) so authors can eyeball it without the client.
@@ -103,6 +119,55 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                 Err(format!(
                     "{} validation error(s) in {}",
                     all_errors.len(),
+                    path.display()
+                ))
+            }
+        }
+        ContentCommand::ValidateFactions { path } => {
+            let embedded = path.as_os_str().is_empty();
+            let catalog: FactionCatalog = if embedded {
+                load_faction_catalog()
+            } else {
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("reading {}: {e}", path.display()))?;
+                ron::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))?
+            };
+            let errors = catalog.validate();
+            if errors.is_empty() {
+                println!(
+                    "{}: valid faction catalogue — {} factions, version {}",
+                    if embedded {
+                        "canon.ron (embedded)".to_string()
+                    } else {
+                        path.display().to_string()
+                    },
+                    catalog.factions.len(),
+                    catalog.version
+                );
+                Ok(())
+            } else {
+                for e in &errors {
+                    eprintln!("  {e}");
+                }
+                Err(format!("{} validation error(s)", errors.len()))
+            }
+        }
+        ContentCommand::ValidateStorylines { path } => {
+            let text = std::fs::read_to_string(&path)
+                .map_err(|e| format!("reading {}: {e}", path.display()))?;
+            let stories: Vec<reachlock_core::faction::Storyline> =
+                ron::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))?;
+            let errors = validate_storylines(&stories);
+            if errors.is_empty() {
+                println!("{}: valid — {} storyline(s)", path.display(), stories.len(),);
+                Ok(())
+            } else {
+                for e in &errors {
+                    eprintln!("  {e}");
+                }
+                Err(format!(
+                    "{} validation error(s) in {}",
+                    errors.len(),
                     path.display()
                 ))
             }

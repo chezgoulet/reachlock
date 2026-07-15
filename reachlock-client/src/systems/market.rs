@@ -12,8 +12,10 @@ use reachlock_core::economy::{
     apply_buy, apply_sell, can_buy, can_sell, load_goods_catalog, EconomyState, GoodId, PriceTable,
     TARIFF_ONE,
 };
+use reachlock_core::faction::tariff as faction_tariff;
 
 use crate::states::CurrentLocation;
+use crate::systems::factions::FactionState;
 use crate::systems::interaction::ActivePanel;
 use crate::systems::inventory::{save_player, PlayerInventory};
 
@@ -35,16 +37,19 @@ pub fn init_economy(mut commands: Commands) {
             "home".to_string(),
             0x5EA17,
             reachlock_core::economy::StationKind::Hub,
+            None,
         ),
         (
             "refinery-prime".to_string(),
             0xABCDEF,
             reachlock_core::economy::StationKind::Refinery,
+            None,
         ),
         (
             "outpost-7".to_string(),
             0x13579B,
             reachlock_core::economy::StationKind::Outpost,
+            None,
         ),
     ];
     let state = EconomyState::new(catalog, &station_seeds);
@@ -90,6 +95,7 @@ pub fn market_system(
     panel: Res<ActivePanel>,
     mut state: ResMut<MarketState>,
     mut economy: ResMut<Economy>,
+    faction_state: Res<FactionState>,
 ) {
     if *panel != ActivePanel::Market {
         return;
@@ -120,10 +126,10 @@ pub fn market_system(
 
     let good = table.keys().nth(state.sel).cloned().unwrap();
 
-    // Live quotes (mid ± spread, × tariff). Tariff is 1.0 until faction
-    // standing lands in S11.
-    let buy_quote = economy.0.stations[&loc.station_id].buy_price(&good, TARIFF_ONE);
-    let sell_quote = economy.0.stations[&loc.station_id].sell_price(&good, TARIFF_ONE);
+    // Compute tariff based on station faction and player reputation.
+    let tariff_num = compute_tariff(&loc, &economy, &faction_state, &good);
+    let buy_quote = economy.0.stations[&loc.station_id].buy_price(&good, tariff_num);
+    let sell_quote = economy.0.stations[&loc.station_id].sell_price(&good, tariff_num);
 
     if keys.just_pressed(KeyCode::KeyB) {
         let held = inv.cargo.get(&good).copied().unwrap_or(0);
@@ -155,12 +161,51 @@ pub fn market_system(
     }
 }
 
+/// Compute the tariff multiplier for a given station/good, factoring in the
+/// controlling faction's tariff policy and the player's reputation trust.
+/// Falls back to `TARIFF_ONE` (1.0) when no faction data is available.
+fn compute_tariff(
+    loc: &CurrentLocation,
+    economy: &Economy,
+    faction_state: &FactionState,
+    good: &GoodId,
+) -> i64 {
+    let r#try = || -> Option<i64> {
+        let faction_id = economy
+            .0
+            .stations
+            .get(&loc.station_id)?
+            .station_faction
+            .as_ref()?;
+        let faction = faction_state
+            .0
+            .catalog
+            .factions
+            .iter()
+            .find(|f| f.id.0 == *faction_id)?;
+        let trust = faction_state.0.rep(&faction.id).trust;
+        let category = economy.0.catalog.goods.get(good)?.category;
+        let demand = economy
+            .0
+            .stations
+            .get(&loc.station_id)?
+            .pressure
+            .get(good)
+            .copied()
+            .map(|p| p.unsigned_abs() as i64)
+            .unwrap_or(1024);
+        Some(faction_tariff(faction, category, trust, demand))
+    };
+    r#try().unwrap_or(TARIFF_ONE)
+}
+
 /// Render the market panel text (called by `hud::update_hud`).
 pub fn market_panel_text(
     inv: &PlayerInventory,
     loc: &CurrentLocation,
     state: &MarketState,
     economy: &Economy,
+    faction_state: &FactionState,
 ) -> String {
     let table = market_table(economy, &loc.station_id);
     let goods: Vec<&GoodId> = table.keys().collect();
@@ -168,6 +213,14 @@ pub fn market_panel_text(
         return "MARKET (no goods)".to_string();
     }
     let sel = state.sel.min(goods.len() - 1);
+    // Compute a representative tariff for the first good so the display is
+    // coherent (all goods on the same station share the same faction tariff).
+    let tariff_num = compute_tariff(
+        loc,
+        economy,
+        faction_state,
+        goods.get(sel).unwrap_or(&&GoodId("".into())),
+    );
     let mut lines = vec![
         "── MARKET ──  W/S select · A/D qty · B buy · N sell".to_string(),
         format!(
@@ -179,8 +232,8 @@ pub fn market_panel_text(
     ];
     for (i, g) in goods.iter().enumerate() {
         let held = inv.cargo.get(*g).copied().unwrap_or(0);
-        let buy = economy.0.stations[&loc.station_id].buy_price(g, TARIFF_ONE);
-        let sell = economy.0.stations[&loc.station_id].sell_price(g, TARIFF_ONE);
+        let buy = economy.0.stations[&loc.station_id].buy_price(g, tariff_num);
+        let sell = economy.0.stations[&loc.station_id].sell_price(g, tariff_num);
         let marker = if i == sel { "> " } else { "  " };
         lines.push(format!(
             "{}{:>8}  buy {}  sell {}  have {}",

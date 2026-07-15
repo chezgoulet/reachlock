@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Storyline Content File",
+  "description": "A faction storyline with chapters and triggers",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "storylines"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "storylines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["faction", "chapters"],
+        "properties": {
+          "faction": { "type": "string" },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "narration"],
+              "properties": {
+                "id": { "type": "string" },
+                "trigger": { "$ref": "#/definitions/ChapterTrigger" },
+                "narration": { "type": "string" },
+                "events": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "ChapterTrigger": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["tick_after"], "properties": { "tick_after": { "type": "integer" } } },
+        { "type": "object", "additionalProperties": false, "required": ["chapter_complete"], "properties": { "chapter_complete": { "type": "string" } } },
+        { "type": "object", "additionalProperties": false, "required": ["player_reputation"], "properties": { "player_reputation": { "type": "object", "required": ["faction", "trust"], "properties": { "faction": { "type": "string" }, "trust": { "type": "integer" } } } } },
+        { "type": "object", "additionalProperties": false, "required": ["all"], "properties": { "all": { "type": "array", "items": { "$ref": "#/definitions/ChapterTrigger" } } } },
+        { "type": "object", "additionalProperties": false, "required": ["any"], "properties": { "any": { "type": "array", "items": { "$ref": "#/definitions/ChapterTrigger" } } } }
+      ]
+    }
+  }
+}
