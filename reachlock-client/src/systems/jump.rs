@@ -25,7 +25,10 @@ use crate::systems::ship::{PlayerShip, ShipSystems};
 /// Seconds the hyperspace transit lasts.
 pub const TRANSIT_SECS: f32 = 4.0;
 /// How close (world units) the ship must be to a gate to jump.
-pub const GATE_REACH: f32 = 70.0;
+// The gate torus is ~165 units in radius; reach must cover a ship anywhere
+// inside or brushing the ring (the old 70 required threading the exact
+// center at speed).
+pub const GATE_REACH: f32 = 190.0;
 /// Credits per 1/1024 of fuel when refueling at a dock.
 pub const FUEL_PRICE_PER_UNIT: i64 = 1;
 

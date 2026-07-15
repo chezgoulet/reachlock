@@ -14,7 +14,7 @@ use crate::systems::interaction::{ActivePanel, Npc};
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::market::{market_panel_text, Economy, MarketState};
 use crate::systems::pause::PauseOverlay;
-use crate::systems::ship::ShipSystems;
+use crate::systems::ship::{FlightFeel, ShipSystems};
 
 #[derive(Component)]
 pub struct FuelReadout;
@@ -202,6 +202,7 @@ pub fn update_hud_status(
     mode: Res<State<GameMode>>,
     location: Res<CurrentLocation>,
     systems: Res<ShipSystems>,
+    feel: Res<FlightFeel>,
     log: Res<ShipLog>,
     deliberation: Res<DeliberationState>,
     net_mode: Res<NetMode>,
@@ -221,8 +222,9 @@ pub fn update_hud_status(
             let pct = systems.fuel.0 * 100 / 1024;
             let hull = systems.hull_hp.0 * 100 / 1024;
             let breach = if systems.dead { "  ⚠ BREACH" } else { "" };
+            let spd = feel.speed.round() as i64;
             **text = format!(
-                "FUEL {pct}%{}  HULL {hull}%{breach}",
+                "SPD {spd}  FUEL {pct}%{}  HULL {hull}%{breach}",
                 if systems.thrusting { " ▲" } else { "" }
             );
         } else {

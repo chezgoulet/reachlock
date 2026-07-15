@@ -110,6 +110,12 @@ pub fn enter_spaceflight(
         &mut materials,
         system.starfield_seed,
     );
+    starfield::spawn_dust(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        system.starfield_seed,
+    );
 
     if ship.is_empty() {
         spawn_player_ship(
@@ -220,7 +226,10 @@ fn spawn_player_ship(
         Velocity::default(),
         ExternalForce::default(),
         Damping {
-            linear_damping: 0.3,
+            // Zero linear damping: `ship::control` sets the velocity
+            // directly each frame (arcade model) — rapier damping would
+            // silently tax the speed cap it computes.
+            linear_damping: 0.0,
             angular_damping: 5.0,
         },
         crate::systems::ship::Hull {
@@ -229,20 +238,35 @@ fn spawn_player_ship(
         },
     ));
     if let Some(path) = SHIP_GLTF {
+        // Authored models are assumed exported nose-forward (-Z), wings in
+        // the XZ plane.
         let scene = asset_server.load(GltfAssetLabel::Scene(0).from_asset(path));
         ship.insert(SceneRoot(scene));
     } else {
-        ship.insert((
-            Mesh3d(meshes.add(bridge::mesh3d_from_generated(&hull, depth))),
-            MeshMaterial3d(materials.add(bridge::standard_material_from_palette(palette.primary))),
-        ));
+        // The generated hull is a flat 2D silhouette (v1 was top-down).
+        // Extruded raw it flies face-first like a billboard, so mount it on
+        // a rotated child: silhouette laid into the XZ plane (wings spread,
+        // thin vertically) with its +X symmetry axis as the nose (-Z) — an
+        // Arwing-style shape under the chase-cam.
+        let mesh = meshes.add(bridge::mesh3d_from_generated(&hull, depth));
+        let material = materials.add(bridge::standard_material_from_palette(palette.primary));
+        ship.with_children(|parent| {
+            parent.spawn((
+                Mesh3d(mesh),
+                MeshMaterial3d(material),
+                Transform::from_rotation(
+                    Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)
+                        * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+                ),
+            ));
+        });
     }
 
-    // Engine exhaust: an emissive cone welded to the rear face, stretched by
-    // `ship::engine_glow` with thrust/boost. Child of the hull so it inherits
-    // the ship's pose and visibility.
+    // Engine exhaust: an emissive cone welded to the hull's tail, stretched
+    // by `ship::engine_glow` with thrust/boost. Child of the hull so it
+    // inherits the ship's pose and visibility.
     let flame_len = collider_radius * 1.2;
-    let base_z = depth * 0.5;
+    let base_z = collider_radius * 0.85;
     ship.with_children(|parent| {
         parent.spawn((
             Mesh3d(meshes.add(Cone {

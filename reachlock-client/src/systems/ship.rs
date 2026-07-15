@@ -186,7 +186,21 @@ const BARREL_WINDOW: f32 = 0.28;
 /// Spin rate during a barrel roll (rad/s) — a full roll in ~½ s.
 const BARREL_RATE: f32 = 12.5;
 /// Chase-cam lens: resting field of view, radians.
-const BASE_FOV: f32 = 0.9;
+const BASE_FOV: f32 = 0.95;
+/// Turn rate scale: hull `turn_rate` (fixed-point, corvette ≈ 0.195) →
+/// rad/s. At 10.0 a corvette turns ~2 rad/s — a full circle in ~3 s.
+const TURN_SCALE: f32 = 10.0;
+/// Cruise speed scale: hull `thrust` (fixed-point, corvette ≈ 1.66) →
+/// world units/s. At 85 a corvette cruises ~140 u/s against a system laid
+/// out on a ~2500-unit radius — stations are seconds apart, not minutes.
+const CRUISE_SCALE: f32 = 85.0;
+/// Coasting speed decay per second (space keeps most of your momentum).
+const IDLE_DECAY: f32 = 0.25;
+/// Retro-thrust decay per second while braking.
+const BRAKE_DECAY: f32 = 3.0;
+/// Mining beam reach from ship center, world units. Must clear the hull's
+/// own ~50-unit collider — the old 45 couldn't touch a rock without ramming.
+const BEAM_REACH: f32 = 150.0;
 
 /// Per-frame flight feel state: smoothed control axes, the active barrel
 /// roll, and the camera's boost/brake/shake blends. Pure presentation — it
@@ -208,6 +222,9 @@ pub struct FlightFeel {
     pub brake_blend: f32,
     /// Camera shake energy; fed by hull hits, decays exponentially.
     pub shake: f32,
+    /// Current flight speed (u/s), published by `control` for the camera,
+    /// dust streaks, and exhaust.
+    pub speed: f32,
     /// The camera's smoothed up vector — chases the hull's lean slowly, and
     /// holds still during a barrel roll so the world doesn't spin.
     pub cam_up: Vec3,
@@ -227,6 +244,7 @@ impl Default for FlightFeel {
             boost_blend: 0.0,
             brake_blend: 0.0,
             shake: 0.0,
+            speed: 0.0,
             cam_up: Vec3::Y,
             muzzle_left: false,
         }
@@ -364,7 +382,7 @@ pub fn control(
     feel.roll = approach(feel.roll, raw_roll, rate(raw_roll), dt);
 
     // --- rotation (direct angular velocity about local axes) ---
-    let turn = HullHandling::f32(h.turn_rate).clamp(0.0, 40.0) * 0.08 * engine_mult;
+    let turn = HullHandling::f32(h.turn_rate).clamp(0.0, 4.0) * TURN_SCALE * engine_mult;
     let roll_rate = if feel.barrel != 0.0 {
         // Barrel roll owns the roll axis: constant spin until the full turn
         // is spent.
@@ -393,40 +411,57 @@ pub fn control(
         Vec3::ZERO
     };
 
-    // --- translation ---
+    // --- translation: direct-velocity arcade model ---
+    // The hull's rapier mass is deliberately irrelevant: SF64 ships obey the
+    // stick, not F=ma. (The old force-based thrust fought a ball collider
+    // whose default-density mass was ~500k — acceleration was microscopic
+    // and the ship never visibly moved.) `thrust` sets the speed cap,
+    // `boost_mult` multiplies it, and the grip keeps the vector on the nose.
     let forward = transform.forward().as_vec3();
+    let cruise = HullHandling::f32(h.thrust) * CRUISE_SCALE * engine_mult;
+    let bm = HullHandling::f32(h.boost_mult);
+    let mut speed = velocity.linear.length();
     if systems.thrusting {
-        let mut mag = HullHandling::f32(h.thrust) * engine_mult;
+        let cap = if boost { cruise * bm * bm } else { cruise };
+        speed = approach(speed, cap, if boost { 1.8 } else { 1.2 }, dt);
         let mut burn = h.fuel_burn;
         if boost {
-            let bm = HullHandling::f32(h.boost_mult);
-            mag *= bm;
             burn = ((burn as f32) * bm) as i64;
         }
-        force.force = forward * mag;
-        let dt = time.delta().as_millis() as i64;
-        let used = (dt * burn).max(1000) / 1000;
+        let dtms = time.delta().as_millis() as i64;
+        let used = (dtms * burn).max(1000) / 1000;
         systems.fuel = Fixed((systems.fuel.0 - used.max(1)).max(0));
-    }
-    if brake {
-        // Bleed velocity toward zero (retro-thrust); coasting otherwise.
-        velocity.linear *= 0.92;
+    } else if brake {
+        // Retro-thrust: kill momentum fast, snapping to a full stop at the
+        // end so docking/mining line-ups don't fight residual creep.
+        speed *= (-BRAKE_DECAY * dt).exp();
+        if speed < 2.0 {
+            speed = 0.0;
+        }
         if has_fuel {
-            let dt = time.delta().as_millis() as i64;
-            let used = (dt * (h.fuel_burn / 2).max(1)) / 1000;
+            let dtms = time.delta().as_millis() as i64;
+            let used = (dtms * (h.fuel_burn / 2).max(1)) / 1000;
             systems.fuel = Fixed((systems.fuel.0 - used.max(1)).max(0));
         }
     } else {
-        // Arcade grip: velocity re-aligns toward the nose, so the ship flies
-        // where it points. Newtonian drift survives only as a brief slide out
-        // of hard turns (Star Fox, not Kerbal). Braking releases the grip so
-        // retro-thrust still kills momentum in place.
-        let speed = velocity.linear.length();
-        if speed > 0.1 {
-            let t = 1.0 - (-GRIP * dt).exp();
-            velocity.linear = velocity.linear.lerp(forward * speed, t);
-        }
+        // Coasting: space keeps most of the speed, shedding it slowly.
+        speed *= (-IDLE_DECAY * dt).exp();
     }
+    // Arcade grip: the velocity vector re-aligns toward the nose, so the
+    // ship flies where it points. Newtonian drift survives only as a brief
+    // slide out of hard turns (Star Fox, not Kerbal).
+    let dir = if speed > 0.5 {
+        let t = 1.0 - (-GRIP * dt).exp();
+        velocity
+            .linear
+            .normalize_or(forward)
+            .lerp(forward, t)
+            .normalize_or(forward)
+    } else {
+        forward
+    };
+    velocity.linear = dir * speed;
+    feel.speed = speed;
 
     // X injects the anomaly: something the player's rules don't cover.
     if keys.just_pressed(KeyCode::KeyX) {
@@ -458,12 +493,14 @@ pub fn camera_follow(
     };
     let dt = time.delta_secs();
 
-    // Boost stretches the leash; brake reels it in. Turning offsets the
+    // Frame the hull small and low (corvettes run ~50 units of radius —
+    // any closer and the ship fills the screen and hides the world). Speed
+    // and boost stretch the leash; brake reels it in. Turning offsets the
     // camera opposite the turn so the ship slides into the frame edge (SF64).
-    let dist = 200.0 + 70.0 * feel.boost_blend - 45.0 * feel.brake_blend;
-    let height = 20.0 + 8.0 * feel.brake_blend - 6.0 * feel.boost_blend;
-    let lateral = feel.yaw * 22.0;
-    let vertical = -feel.pitch * 10.0;
+    let dist = 260.0 + feel.speed * 0.25 + 60.0 * feel.boost_blend - 55.0 * feel.brake_blend;
+    let height = 55.0 + 10.0 * feel.brake_blend - 8.0 * feel.boost_blend;
+    let lateral = feel.yaw * 30.0;
+    let vertical = -feel.pitch * 14.0;
     let back = ship.rotation * Vec3::new(lateral, height + vertical, dist);
     let target = ship.translation + back;
     let t = (dt * 6.0).clamp(0.0, 1.0);
@@ -476,7 +513,9 @@ pub fn camera_follow(
         let ut = 1.0 - (-3.0 * dt).exp();
         feel.cam_up = feel.cam_up.lerp(ship_up, ut).normalize_or(Vec3::Y);
     }
-    let look = ship.translation + ship.forward().as_vec3() * 30.0;
+    // Look well past the nose so the hull sits low in frame and the sky —
+    // where the flying happens — owns the screen.
+    let look = ship.translation + ship.forward().as_vec3() * 160.0;
     let desired = Transform::from_translation(camera.translation).looking_at(look, feel.cam_up);
     camera.rotation = camera.rotation.slerp(desired.rotation, t);
 
@@ -491,9 +530,11 @@ pub fn camera_follow(
         feel.shake = 0.0;
     }
 
-    // FOV kick: boost widens the lens, brake narrows it.
+    // FOV kick: raw speed widens the lens continuously, boost adds a punch
+    // on top, brake narrows it.
     if let Projection::Perspective(p) = &mut *projection {
-        p.fov = BASE_FOV + 0.30 * feel.boost_blend - 0.12 * feel.brake_blend;
+        p.fov = BASE_FOV + 0.18 * (feel.speed / 280.0).min(1.0) + 0.15 * feel.boost_blend
+            - 0.12 * feel.brake_blend;
     }
 }
 
@@ -624,8 +665,10 @@ pub fn collisions(
             let dmg_amount = match damager.source {
                 DamageSource::PlayerGun => damager.damage,
                 DamageSource::Ram => {
+                    // Tuned to the arcade speed range: a cruise-speed ram
+                    // (~140 u/s) costs ~16% hull, a boost ram ~30%.
                     let speed = src_vel.map(|v| v.linear.length()).unwrap_or(0.0);
-                    (speed * 3.0) as i64
+                    (speed * 1.2) as i64
                 }
             };
             pending_damage.push((*tgt_id, dmg_amount));
@@ -747,14 +790,16 @@ pub fn fire_weapons(
     mut feel: ResMut<FlightFeel>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    ship: Query<&Transform, With<PlayerShip>>,
+    ship: Query<(&Transform, &Collider), With<PlayerShip>>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
 ) {
     systems.gun_cooldown = (systems.gun_cooldown - time.delta_secs()).max(0.0);
     if !keys.pressed(KeyCode::KeyF) {
         return;
     }
-    let Ok(ship) = ship.single() else { return };
+    let Ok((ship, collider)) = ship.single() else {
+        return;
+    };
     if !command.weapons_armed || command.power_weapons == 0 {
         // Only nag on the initial press, not every held frame.
         if keys.just_pressed(KeyCode::KeyF) {
@@ -767,10 +812,15 @@ pub fn fire_weapons(
     }
     systems.gun_cooldown = 0.6 / (command.power_weapons as f32);
     let forward = ship.forward().as_vec3();
-    // Twin lasers: alternate the muzzle side each shot.
+    // Muzzle sits past the ship's own collider — a corvette hull runs ~50
+    // units of radius, and a bolt born inside it collides with (and damages)
+    // the ship that fired it.
+    let hull_r = collider.as_ball().map(|b| b.radius()).unwrap_or(50.0);
+    // Twin lasers: alternate wingtip muzzles each shot.
     feel.muzzle_left = !feel.muzzle_left;
-    let side = ship.right().as_vec3() * if feel.muzzle_left { -3.0 } else { 3.0 };
-    let muzzle = ship.translation + forward * 6.0 + side;
+    let wing = hull_r * 0.45;
+    let side = ship.right().as_vec3() * if feel.muzzle_left { -wing } else { wing };
+    let muzzle = ship.translation + forward * (hull_r + 8.0) + side;
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(0.6))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -781,7 +831,9 @@ pub fn fire_weapons(
         Transform::from_translation(muzzle),
         RigidBody::KinematicVelocityBased,
         Velocity {
-            linear: forward * 220.0,
+            // Comfortably faster than a boosting ship (~270 u/s) so the
+            // player can never outrun their own bolts.
+            linear: forward * 520.0,
             angular: Vec3::ZERO,
         },
         Collider::ball(0.6),
@@ -859,9 +911,12 @@ pub fn mining_beam(
     }
     let Ok(ship) = ship.single() else { return };
     let forward = ship.forward().as_vec3();
-    let mid = ship.translation + forward * 20.0;
+    // Beam runs from the nose out to BEAM_REACH (the old 36-unit beam at
+    // +20 sat entirely inside a ~50-unit corvette hull).
+    let nose = 60.0;
+    let mid = ship.translation + forward * (nose + (BEAM_REACH - nose) * 0.5);
     commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(0.3, 36.0))),
+        Mesh3d(meshes.add(Cylinder::new(1.2, BEAM_REACH - nose))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgba(0.4, 1.0, 0.8, 0.6),
             emissive: LinearRgba::rgb(0.3, 2.0, 1.2),
@@ -879,7 +934,6 @@ pub fn mining_beam(
     // Drain ore from the nearest asteroid within beam reach into the cargo
     // hold (a real `GoodId` the S10 market will later sell). Honors hold
     // capacity and despawns spent rocks.
-    const BEAM_REACH: f32 = 45.0;
     let ore_good = reachlock_core::economy::GoodId("raw_ferric_ore".into());
     for (e, t, mut ast) in &mut asteroids {
         if t.translation.distance(ship.translation) > BEAM_REACH {

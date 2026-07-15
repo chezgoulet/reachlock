@@ -169,6 +169,7 @@ fn main() {
                 ship::scanner_pulse,
                 ship::request_scan_from_key,
                 ship::engine_glow,
+                systems::starfield::dust_parallax,
             )
                 .run_if(in_spaceflight),
         )

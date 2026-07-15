@@ -15,8 +15,10 @@ use crate::systems::interior::CurrentInterior;
 use crate::systems::mode::{avatar_in_room, PlayerAvatar};
 use crate::systems::ship::PlayerShip;
 
-/// Radius (world units) within which `E` docks with a station.
-const DOCK_RADIUS: f32 = 160.0;
+/// Radius (world units) within which Enter docks with a station. Stations
+/// run up to ~160 units of collider radius themselves, so anything smaller
+/// forces a hull-scraping approach.
+const DOCK_RADIUS: f32 = 320.0;
 /// Duration of the Docking/Undocking camera-ease beats.
 const TRANSITION_SECS: f32 = 0.5;
 
