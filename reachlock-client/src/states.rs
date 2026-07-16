@@ -103,4 +103,11 @@ pub struct CurrentLocation {
 #[derive(Resource, Default, Clone, Debug)]
 pub struct SceneRegistry {
     pub scene: Option<GameMode>,
+    /// S09d: the SpaceFlight scene is still spawned (and rapier still
+    /// simulating it) underneath an OnBoard interior — the crew is walking
+    /// the ship mid-flight. Set by `enter_spaceflight`, kept by
+    /// `enter_interior` when boarding in flight, cleared by any teardown
+    /// that despawns the space entities (landing, docked boarding,
+    /// hyperspace, leaving the game).
+    pub space_alive: bool,
 }

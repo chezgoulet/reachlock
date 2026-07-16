@@ -469,10 +469,18 @@ pub fn control(
     }
 }
 
-/// Requests a scanner pulse from the flight key `T`. Split from `control` so
-/// the mutable `ShipCommand` borrow doesn't collide with the read in `control`.
-pub fn request_scan_from_key(keys: Res<ButtonInput<KeyCode>>, mut command: ResMut<ShipCommand>) {
-    if keys.just_pressed(KeyCode::KeyT) {
+/// Requests a scanner pulse from `T` — at the helm, or through the live
+/// scanner console (S09d). Split from `control` so the mutable `ShipCommand`
+/// borrow doesn't collide with the read in `control`.
+pub fn request_scan_from_key(
+    keys: Res<ButtonInput<KeyCode>>,
+    mode: Res<State<GameMode>>,
+    view: Res<crate::systems::onboard::ActiveStationView>,
+    mut command: ResMut<ShipCommand>,
+) {
+    let at_a_scanner = *mode == GameMode::SpaceFlight
+        || view.0 == Some(crate::systems::onboard::StationView::Scanner);
+    if at_a_scanner && keys.just_pressed(KeyCode::KeyT) {
         command.scan_pulse = true;
     }
 }
@@ -538,15 +546,17 @@ pub fn camera_follow(
     }
 }
 
-/// The flying ship is only meaningful in `SpaceFlight`; hide it in interiors.
+/// The flying ship renders in `SpaceFlight` and through an open station view
+/// (the gunner watches past their own hull); hide it in plain interiors.
 pub fn sync_ship_visibility(
     mode: Res<State<GameMode>>,
+    view: Res<crate::systems::onboard::ActiveStationView>,
     mut ship: Query<&mut Visibility, With<PlayerShip>>,
 ) {
     let Ok(mut visibility) = ship.single_mut() else {
         return;
     };
-    *visibility = if *mode == GameMode::SpaceFlight {
+    *visibility = if *mode == GameMode::SpaceFlight || view.0.is_some() {
         Visibility::Visible
     } else {
         Visibility::Hidden
@@ -558,19 +568,22 @@ pub fn sync_ship_visibility(
 /// showing ~30×17 tiles on a 1080p window (Stardew framing).
 const INTERIOR_ZOOM: f32 = 0.25;
 
-/// Activate the 3D chase-cam in SpaceFlight and the 2D camera everywhere else.
-/// In space the 2D camera keeps rendering the HUD on top (its clear is turned
-/// off so it overlays the flight view) at 1:1 scale for the sensor overlay;
-/// in interiors it clears, zooms in to walking scale, and draws the top-down
-/// scene.
+/// Activate the 3D chase-cam in SpaceFlight — and through an open station
+/// view (S09d): the gunner/scanner/miner console shows the live flight scene
+/// while the interior sprites are masked. In space (or a view) the 2D camera
+/// keeps rendering the HUD on top (its clear is turned off so it overlays the
+/// flight view) at 1:1 scale for the sensor overlay; in plain interiors it
+/// clears, zooms in to walking scale, and draws the top-down scene.
 #[allow(clippy::type_complexity)]
 pub fn manage_cameras(
     mode: Res<State<GameMode>>,
+    view: Res<crate::systems::onboard::ActiveStationView>,
     mut space_cam: Query<&mut Camera, (With<SpaceCamera>, Without<Camera2d>)>,
     mut ui_cam: Query<(&mut Camera, &mut Projection), (With<Camera2d>, Without<SpaceCamera>)>,
 ) {
-    let in_space = *mode == GameMode::SpaceFlight;
-    let in_interior = matches!(**mode, GameMode::Landed | GameMode::OnBoard);
+    let view_open = view.0.is_some();
+    let in_space = *mode == GameMode::SpaceFlight || view_open;
+    let in_interior = matches!(**mode, GameMode::Landed | GameMode::OnBoard) && !view_open;
     if let Ok(mut cam) = space_cam.single_mut() {
         cam.is_active = in_space;
     }
@@ -795,6 +808,8 @@ pub fn respawn_ship(
 pub fn fire_weapons(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    mode: Res<State<GameMode>>,
+    view: Res<crate::systems::onboard::ActiveStationView>,
     mut commands: Commands,
     mut systems: ResMut<ShipSystems>,
     command: Res<ShipCommand>,
@@ -805,7 +820,11 @@ pub fn fire_weapons(
     mut log: ResMut<crate::systems::contract::ShipLog>,
 ) {
     systems.gun_cooldown = (systems.gun_cooldown - time.delta_secs()).max(0.0);
-    if !keys.pressed(KeyCode::KeyF) {
+    // The trigger belongs to whoever is at a gun: the pilot in flight, or
+    // the crew at the live gunner console (S09d station views).
+    let at_a_trigger = *mode == GameMode::SpaceFlight
+        || view.0 == Some(crate::systems::onboard::StationView::Gunner);
+    if !at_a_trigger || !keys.pressed(KeyCode::KeyF) {
         return;
     }
     let Ok((ship, collider)) = ship.single() else {
@@ -901,6 +920,8 @@ pub fn step_projectiles(
 pub fn mining_beam(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    mode: Res<State<GameMode>>,
+    view: Res<crate::systems::onboard::ActiveStationView>,
     mut commands: Commands,
     command: Res<ShipCommand>,
     mut systems: ResMut<ShipSystems>,
@@ -912,7 +933,10 @@ pub fn mining_beam(
     mut inv: ResMut<crate::systems::inventory::PlayerInventory>,
     location: Res<crate::states::CurrentLocation>,
 ) {
-    let active = keys.pressed(KeyCode::KeyG) && command.mining_enabled;
+    // The beam runs from the helm or the live miner console (S09d).
+    let at_the_rig = *mode == GameMode::SpaceFlight
+        || view.0 == Some(crate::systems::onboard::StationView::Miner);
+    let active = at_the_rig && keys.pressed(KeyCode::KeyG) && command.mining_enabled;
     // Rebuild the beam each frame so it tracks the hull.
     for e in &beams {
         commands.entity(e).despawn();

@@ -75,10 +75,13 @@ fn place(
 }
 
 /// Reposition both reticles each frame along the hull's forward axis. Runs in
-/// every InGame mode so leaving SpaceFlight (or dying) hides them.
+/// every InGame mode so leaving SpaceFlight (or dying) hides them. The live
+/// gunner console (S09d station view) gets the same reticle — it marks the
+/// guns' axis for whoever holds the trigger.
 #[allow(clippy::type_complexity)]
 pub fn update_reticle(
     mode: Res<State<GameMode>>,
+    view: Res<crate::systems::onboard::ActiveStationView>,
     systems: Option<Res<ShipSystems>>,
     ship: Query<&Transform, With<PlayerShip>>,
     camera: Query<(&Camera, &GlobalTransform), With<SpaceCamera>>,
@@ -87,7 +90,9 @@ pub fn update_reticle(
         Query<(&mut Node, &mut Visibility), With<ReticleFar>>,
     )>,
 ) {
-    let flying = *mode == GameMode::SpaceFlight && systems.is_some_and(|s| !s.dead);
+    let at_a_gun = *mode == GameMode::SpaceFlight
+        || view.0 == Some(crate::systems::onboard::StationView::Gunner);
+    let flying = at_a_gun && systems.is_some_and(|s| !s.dead);
     let aim = match (ship.single(), camera.single()) {
         (Ok(ship), Ok((camera, camera_tx))) if flying && camera.is_active => {
             let forward = ship.forward().as_vec3();
