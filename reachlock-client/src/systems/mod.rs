@@ -18,5 +18,6 @@ pub mod reticle;
 pub mod sensors;
 pub mod setup;
 pub mod ship;
+pub mod soul;
 pub mod starfield;
 pub mod ticker;

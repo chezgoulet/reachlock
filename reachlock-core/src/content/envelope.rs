@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::contract::types::Contract;
 use crate::generator::{GeneratedLayout, GeneratedMesh};
+use crate::soul::types::SoulFile;
 use crate::universe::tier::UniverseTier;
 
 use super::priority::Priority;
@@ -19,6 +20,8 @@ pub enum AssetType {
     Hull,
     Station,
     Contract,
+    /// S13: an NPC soul (spec §15) — the pipeline's fourth content type.
+    Soul,
 }
 
 /// A non-player character placed in a station interior. `room_index` points
@@ -49,6 +52,11 @@ pub enum ContentPayload {
         npc_spawns: Vec<NpcSpawn>,
     },
     Contract(Contract),
+    /// S13: who an NPC is (spec §15). Souls are data; the contract engine
+    /// decides how they act, S16 decides what they say. Boxed: a soul is an
+    /// order of magnitude bigger than the other variants, and serde treats
+    /// the box as transparent.
+    Soul(Box<SoulFile>),
 }
 
 /// The content envelope (spec §10, "Freeze first" list: id, display_name,

@@ -51,6 +51,7 @@ pub fn market_system(
     panel: Res<ActivePanel>,
     mut state: ResMut<MarketState>,
     mut ticker: ResMut<UniverseTicker>,
+    souls: Res<crate::systems::soul::SoulRegistry>,
 ) {
     if *panel != ActivePanel::Market {
         return;
@@ -95,7 +96,7 @@ pub fn market_system(
             if let Some(station) = ticker.state.economy.stations.get_mut(&loc.station_id) {
                 station.record_trade(&good, state.qty as i64);
             }
-            save_player(&inv, &loc, Some(&ticker.state));
+            save_player(&inv, &loc, Some(&ticker.state), &souls.states);
         }
     }
     if keys.just_pressed(KeyCode::KeyN) {
@@ -111,7 +112,7 @@ pub fn market_system(
             if let Some(station) = ticker.state.economy.stations.get_mut(&loc.station_id) {
                 station.record_trade(&good, -(state.qty as i64));
             }
-            save_player(&inv, &loc, Some(&ticker.state));
+            save_player(&inv, &loc, Some(&ticker.state), &souls.states);
         }
     }
 }

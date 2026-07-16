@@ -15,5 +15,6 @@ pub mod item;
 pub mod network;
 pub mod seed;
 pub mod sim;
+pub mod soul;
 pub mod universe;
 pub mod util;

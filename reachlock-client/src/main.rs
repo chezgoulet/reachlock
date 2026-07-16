@@ -18,7 +18,7 @@ use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     content_index, contract, crew, docking, factions, hud, interaction, interior, inventory, jump,
-    market, menu, mode, network, onboard, pause, reticle, sensors, setup, ship, ticker,
+    market, menu, mode, network, onboard, pause, reticle, sensors, setup, ship, soul, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -120,13 +120,22 @@ fn main() {
         .init_resource::<ship::FlightFeel>()
         // S09d: which console is showing the live flight scene this frame.
         .init_resource::<onboard::ActiveStationView>()
+        // S13: authored souls + live soul state (filled by init_souls,
+        // restored over by load_save).
+        .init_resource::<soul::SoulRegistry>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
             Startup,
             (
-                content_index::load_content_index,
-                inventory::load_save,
+                // Chained: souls come from the content index, and the save
+                // restores live soul/universe state over the fresh defaults.
+                (
+                    content_index::load_content_index,
+                    soul::init_souls,
+                    inventory::load_save,
+                )
+                    .chain(),
                 menu::spawn_menu,
                 sensors::init_blip_assets,
             ),
@@ -283,6 +292,10 @@ fn main() {
                 network::reconnect_backoff,
                 ticker::tick_universe,
                 factions::reputation_panel_toggle,
+                // S13: the world writes to the crew's souls (ship damage →
+                // mood shifts, logged). Runs everywhere InGame — the hull
+                // doesn't care which deck you're standing on.
+                soul::soul_ship_damage_events,
             )
                 .run_if(in_state(AppState::InGame)),
         )

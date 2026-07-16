@@ -62,6 +62,10 @@ pub struct SaveFile {
     /// on platforms without a wall clock (wasm) — catch-up just skips.
     #[serde(default)]
     pub saved_at_epoch_secs: Option<u64>,
+    /// S13: live soul states (moods, memories, relationships, unlocked
+    /// secrets) keyed by soul id. Authored soul files stay immutable.
+    #[serde(default)]
+    pub souls: BTreeMap<String, reachlock_core::soul::SoulState>,
 }
 
 const SAVE_PATH: &str = "save/player.ron";
@@ -84,7 +88,12 @@ fn epoch_secs() -> Option<u64> {
 
 /// Write the player's state to disk. Best-effort: a failed write is logged,
 /// never fatal (offline-first — the game must run with no FS).
-pub fn save_player(inv: &PlayerInventory, loc: &CurrentLocation, universe: Option<&UniverseState>) {
+pub fn save_player(
+    inv: &PlayerInventory,
+    loc: &CurrentLocation,
+    universe: Option<&UniverseState>,
+    souls: &BTreeMap<String, reachlock_core::soul::SoulState>,
+) {
     let snapshot = LocationSnapshot {
         system_seed: loc.system_seed,
         station_id: loc.station_id.clone(),
@@ -99,6 +108,7 @@ pub fn save_player(inv: &PlayerInventory, loc: &CurrentLocation, universe: Optio
         location: Some(snapshot),
         universe: universe.cloned(),
         saved_at_epoch_secs: epoch_secs(),
+        souls: souls.clone(),
     };
     match ron::to_string(&file) {
         Ok(text) => {
@@ -145,11 +155,12 @@ pub fn autosave_system(
     loc: Res<CurrentLocation>,
     mut timer: ResMut<SaveTimer>,
     ticker: Option<Res<UniverseTicker>>,
+    souls: Res<crate::systems::soul::SoulRegistry>,
 ) {
     timer.0 += time.delta_secs();
     if timer.0 >= INTERVAL {
         timer.0 = 0.0;
-        save_player(&inv, &loc, ticker.as_ref().map(|t| &t.state));
+        save_player(&inv, &loc, ticker.as_ref().map(|t| &t.state), &souls.states);
     }
 }
 
@@ -162,14 +173,15 @@ pub fn load_save(
     mut inv: ResMut<PlayerInventory>,
     mut loc: ResMut<CurrentLocation>,
     mut ticker: ResMut<UniverseTicker>,
+    mut souls: ResMut<crate::systems::soul::SoulRegistry>,
 ) {
     if let Some((i, l)) = load_player() {
         *inv = i;
         *loc = l;
     }
-    // Restore universe from save (if present) and catch up elapsed ticks.
     if let Ok(text) = std::fs::read_to_string(SAVE_PATH) {
         if let Ok(file) = ron::from_str::<SaveFile>(&text) {
+            // Restore universe from save (if present), catch up elapsed ticks.
             if let Some(saved) = file.universe {
                 ticker.state = saved;
                 if let (Some(then), Some(now)) = (file.saved_at_epoch_secs, epoch_secs()) {
@@ -177,6 +189,11 @@ pub fn load_save(
                         now.saturating_sub(then) / crate::systems::ticker::TICK_SECS;
                     let _events = ticker.catch_up(elapsed_ticks);
                 }
+            }
+            // Restore live soul states over the fresh ones init_souls built
+            // (runs chained before this system). Authored files stay put.
+            for (id, state) in file.souls {
+                souls.states.insert(id, state);
             }
         }
     }

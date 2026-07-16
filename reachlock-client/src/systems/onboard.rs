@@ -462,6 +462,7 @@ pub fn onboard_panels(
     )>,
     crew_figs: Query<&CrewFigure>,
     ticker_state: Res<UniverseTicker>,
+    souls: Res<crate::systems::soul::SoulRegistry>,
 ) {
     if let Ok(mut t) = panels.p0().single_mut() {
         match &*panel {
@@ -567,7 +568,13 @@ pub fn onboard_panels(
                     **t = String::new();
                     return;
                 };
-                let mut s = format!("ORDER {}:\n", m.name);
+                // S13: the inspect block — public bio, visible mood, standing
+                // with the player. Secrets stay hidden until unlocked.
+                let mut s = match crate::systems::soul::inspect_text(&souls, &id) {
+                    Some(inspect) => format!("{inspect}\n\n"),
+                    None => String::new(),
+                };
+                s.push_str(&format!("ORDER {}:\n", m.name));
                 for (i, room) in ORDER_ROOMS.iter().enumerate() {
                     let cur = m.order == Some(*room);
                     s.push_str(&format!(

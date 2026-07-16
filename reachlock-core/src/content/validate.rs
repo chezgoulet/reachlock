@@ -37,6 +37,18 @@ pub enum ValidationError {
     UnknownUniverse {
         universe: String,
     },
+    /// S13: a soul's fixed-point value sits outside its documented range
+    /// (intensity/familiarity/weight 0..=1024, trust -1024..=1024).
+    SoulValueOutOfRange {
+        field: String,
+        value: i64,
+    },
+    /// S13: a soul file whose envelope id and payload id disagree — the
+    /// crew roster and save state key souls by id, so this must be one id.
+    SoulIdMismatch {
+        envelope_id: String,
+        soul_id: String,
+    },
 }
 
 impl std::fmt::Display for ValidationError {
@@ -72,6 +84,17 @@ impl std::fmt::Display for ValidationError {
             ValidationError::UnknownUniverse { universe } => write!(
                 f,
                 "unknown universe {universe:?} (expected \"all\" or a universe tier name)"
+            ),
+            ValidationError::SoulValueOutOfRange { field, value } => write!(
+                f,
+                "soul field {field} = {value} outside its fixed-point range"
+            ),
+            ValidationError::SoulIdMismatch {
+                envelope_id,
+                soul_id,
+            } => write!(
+                f,
+                "envelope id {envelope_id:?} != soul id {soul_id:?} (souls are keyed by one id)"
             ),
         }
     }
@@ -114,6 +137,45 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
             }
         }
         ContentPayload::Contract(_) => {}
+        ContentPayload::Soul(soul) => {
+            if soul.id != content.id {
+                errors.push(ValidationError::SoulIdMismatch {
+                    envelope_id: content.id.clone(),
+                    soul_id: soul.id.clone(),
+                });
+            }
+            let mut range = |field: &str, value: i64, lo: i64| {
+                if value < lo || value > 1024 {
+                    errors.push(ValidationError::SoulValueOutOfRange {
+                        field: field.to_string(),
+                        value,
+                    });
+                }
+            };
+            range(
+                "emotional_state.intensity",
+                soul.emotional_state.intensity,
+                0,
+            );
+            for t in &soul.emotional_state.triggers {
+                range("trigger.intensity", t.intensity, 0);
+            }
+            for m in &soul.memory_tree {
+                range("memory.emotional_weight", m.emotional_weight, 0);
+            }
+            for r in &soul.relationship_graph {
+                range(
+                    &format!("relationship.{}.trust", r.target_id),
+                    r.trust,
+                    -1024,
+                );
+                range(
+                    &format!("relationship.{}.familiarity", r.target_id),
+                    r.familiarity,
+                    0,
+                );
+            }
+        }
     }
 
     errors

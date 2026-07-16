@@ -1,0 +1,96 @@
+// Doss — administrator of Sorrow Station (docs/LORE.md §VII). The station
+// NPC that proves the soul format generalizes beyond the crew. All values
+// fixed-point (1024 = 1.0).
+(
+    id: "doss",
+    display_name: "Doss",
+    asset_type: soul,
+    seed: 2813674957159621,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "doss",
+        name: "Doss",
+        species: human,
+        portrait_id: "portraits/doss",
+        identity: (
+            origin: "Former corporate charter captain",
+            faction_affiliation: "Sorrow Station (independent, ISC-adjacent)",
+            role: "Station administrator",
+            public_bio: "Doss runs the station the registry calls Meridian Outpost Fourteen, a name nobody uses. Keeps the docks moving, the ore flowing, and the questions few. Maintains what might charitably be called a pragmatic relationship with legal ambiguity.",
+        ),
+        personality: (
+            traits: ["Pragmatic", "Unhurried", "Connected"],
+            values: ["StationSolvency", "Discretion", "NoViolenceOnTheDock"],
+            speaking_style: blunt,
+            quirks: [
+                "Has never once said 'Meridian Outpost Fourteen' aloud",
+                "Settles disputes by making both parties feel the docking fees before the argument",
+                "Knows every tab at the Interval, including Tib's. Especially Tib's.",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 256,
+            triggers: [
+                (
+                    condition: compare(field: "event.violence_on_station", op: eq, value: 1),
+                    mood: suspicious,
+                    intensity: 819,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "event.compact_inspection", op: eq, value: 1),
+                    mood: tense,
+                    intensity: 640,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "station.trade_volume", op: gt, value: 512),
+                    mood: grateful,
+                    intensity: 384,
+                    priority: 2,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-three-ships",
+                event_type: "loss",
+                player_involved: false,
+                emotional_weight: 819,
+                timestamp: 0,
+                summary: "The docking master who named this place lost three ships to the gas giant's storm system. Doss keeps the name. Some things named in grief should stay named.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "player", trust: 205, familiarity: 307, history: []),
+        ],
+        goals: [
+            (id: "station_stays_open", priority: constant, description: "Sorrow Station survives every administration, inspection, and market crash. That is the whole job."),
+            (id: "keep_the_compact_bored", priority: constant, description: "Nothing on this station is ever interesting enough to warrant a second Compact visit."),
+        ],
+        breaking_points: [
+            (
+                id: "dock_violence_repeated",
+                trigger: all([
+                    compare(field: "event.violence_on_station", op: eq, value: 1),
+                    compare(field: "trust.player", op: lt, value: 0),
+                ]),
+                reaction: withdraw,
+            ),
+        ],
+        contracts: [],
+        backstory: "A charter captaincy teaches two things: how to read a manifest, and how to read the person handing it to you. Doss retired the first skill on arrival. The second one runs the station.",
+        secrets: [
+            (
+                id: "memorial_blind_eye",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 700),
+                    compare(field: "event.asked_about_memorial", op: eq, value: 1),
+                ]),
+                content: "The second memorial — the small one, for Quebec City — appeared one day without authorization. Doss never ordered it removed. Some things are not worth the conversation, and some things are worth not having it.",
+            ),
+        ],
+    )),
+)
