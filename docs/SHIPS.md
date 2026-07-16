@@ -199,8 +199,22 @@ half-broken.
 - [ ] Power allocation as a real constraint (engineering station budget
   feeding system effectiveness).
 - [ ] Damage → compartment fires → spread/fight/vent loop.
-- [ ] The jump loop: nav programming, jump clock, cryo entry, synthetic
-  crew/automation running the crossing, revival.
+- [x] The jump loop, first slice (S09e): `J` at the NAV console programs +
+  arms a self-generated jump (destination derived from the seed protocol);
+  a 30s window opens; every human crew member is auto-ordered to cryo and
+  the player must physically reach a pod (`E` climbs in). Window opens
+  with the player awake → the vascular/psych ruin is the death/respawn
+  beat; a human crew member awake → a formative trauma soul event and a
+  trust drop. Sleepers cross with **Prudence running the ship** (the
+  dispatch routes the crossing to her; she considers it, per S15), the
+  transit anomaly deliberates in her name, and revival wakes everyone in
+  the cryo chamber — the walk back to the cockpit is part of arrival.
+  Gate transits stay awake at the helm (lore: stable windows). The awake
+  emergency self-jump (`J` in flight) still exists and now costs flesh.
+  *Still to come:* wake conditions on the plan (fuel/hostile triggers),
+  automation modules as the no-synthetic-crew fallback, cross-deck crew
+  routing to pods (crew on the inactive deck still freeze), pod capacity
+  as a hard constraint for passengers/prisoners.
 - [ ] Automation modules occupying hull slots; slot/customization economy.
 - [ ] LLM-driven crew operating stations (souls, S13) — including being
   trusted with the jump.

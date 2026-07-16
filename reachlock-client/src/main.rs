@@ -17,9 +17,9 @@ use bevy_rapier3d::prelude::*;
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
-    content_index, contract, crew, dialogue, docking, factions, hud, interaction, interior,
-    inventory, jump, market, menu, mode, network, onboard, pause, reticle, sensors, setup, ship,
-    soul, ticker,
+    content_index, contract, crew, cryojump, dialogue, docking, factions, hud, interaction,
+    interior, inventory, jump, market, menu, mode, network, onboard, pause, reticle, sensors,
+    setup, ship, soul, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -126,6 +126,8 @@ fn main() {
         .init_resource::<soul::SoulRegistry>()
         // S16: the one live conversation (soul-backed dialogue panel).
         .init_resource::<dialogue::DialogueSession>()
+        // S09e: the jump-cryo loop's plan/clock (SHIPS.md §3).
+        .init_resource::<cryojump::JumpPlan>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
@@ -301,6 +303,10 @@ fn main() {
                 // mood shifts, logged). Runs everywhere InGame — the hull
                 // doesn't care which deck you're standing on.
                 soul::soul_ship_damage_events,
+                // S09e: the jump clock runs wherever you are — that's the
+                // point. The pod doesn't care which console you're at.
+                cryojump::jump_clock,
+                cryojump::pod_stasis,
             )
                 .run_if(in_state(AppState::InGame)),
         )
