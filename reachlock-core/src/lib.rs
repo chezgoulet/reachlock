@@ -8,6 +8,7 @@
 pub mod agency;
 pub mod content;
 pub mod contract;
+pub mod crisis;
 pub mod determinism;
 pub mod dialogue;
 pub mod economy;

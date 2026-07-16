@@ -40,6 +40,8 @@ pub enum InteractKind {
     /// A cryo pod (SHIPS.md §3): with a jump armed, climbing in beats the
     /// clock. Without one, the pod stays open.
     CryoPod,
+    /// A compartment fire (SHIPS.md §4): E is one extinguisher action.
+    FightFire,
     /// S09b consoles (spec §22): drive the ship's flight systems from OnBoard.
     Gunner,
     Scanner,
@@ -135,6 +137,8 @@ pub fn try_interact(
     dialogue: Res<crate::systems::dialogue::DialogueSession>,
     mut plan: ResMut<crate::systems::cryojump::JumpPlan>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
+    mut fires: ResMut<crate::systems::crisis::ShipFires>,
+    fire_refs: Query<&crate::systems::crisis::FireRef>,
 ) {
     // S16: free-input typing owns the keyboard (E would re-interact).
     if dialogue.typing() {
@@ -207,6 +211,9 @@ pub fn try_interact(
                     }
                     InteractKind::TakeHelm => {
                         next.set(GameMode::SpaceFlight);
+                    }
+                    InteractKind::FightFire => {
+                        crate::systems::crisis::fight_fire_at(e, &fire_refs, &mut fires, &mut log);
                     }
                     InteractKind::CryoPod => {
                         // SHIPS.md §3 step 2: reaching the pod before the
