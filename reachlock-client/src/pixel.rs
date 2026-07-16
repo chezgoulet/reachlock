@@ -22,9 +22,8 @@ pub const TILE: f32 = 16.0;
 
 type Rgba = [u8; 4];
 
-/// A pixel buffer being painted. y = 0 is the TOP row (painter convention);
-/// `into_image` keeps that orientation via a vertical flip into bevy's
-/// bottom-up sprite space.
+/// A pixel buffer being painted. y = 0 is the TOP row — the same layout
+/// `Image::new` expects, so `into_image` copies rows straight through.
 pub struct Px {
     w: usize,
     h: usize,
@@ -117,15 +116,18 @@ impl Px {
         out
     }
 
-    pub fn into_image(self) -> Image {
+    /// Raw RGBA bytes, top row first — exactly the layout `Image::new`
+    /// expects (flipping here is what made every sprite stand on its head).
+    fn bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.w * self.h * 4);
-        // Flip vertically: painter rows are top-down, sprites sample
-        // bottom-up.
-        for y in (0..self.h).rev() {
-            for x in 0..self.w {
-                bytes.extend_from_slice(&self.data[y * self.w + x]);
-            }
+        for p in &self.data {
+            bytes.extend_from_slice(p);
         }
+        bytes
+    }
+
+    pub fn into_image(self) -> Image {
+        let bytes = self.bytes();
         let mut image = Image::new(
             Extent3d {
                 width: self.w as u32,
@@ -254,17 +256,50 @@ pub fn threshold_sprite(base: Color, accent: Color) -> Image {
 
 // --- characters ----------------------------------------------------------
 
-/// The palette a figure is painted with.
+/// What kind of being a figure is. Changes how the painter renders it —
+/// androids get alloy skin, lit eyes, and a faceplate seam; a robot (BOR-IS)
+/// is a boxy chassis with a sensor visor, unmistakably not a person in a suit
+/// (docs/LORE.md §V).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BodyKind {
+    Human,
+    Android,
+    Robot,
+}
+
+/// Hair silhouette — the main variety layer for station crowds. Crew get
+/// theirs from the lore via [`crew_look`].
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Hair {
+    Short,
+    Buzz,
+    Long,
+    Locs,
+    Bun,
+    /// Sleek swept-back crest (Prudence).
+    Crest,
+    Bald,
+}
+
+/// The palette and build a figure is painted with. On androids `hair` doubles
+/// as the eye-glow color; on a robot `shirt` is the hull, `pants` the joints,
+/// and `hair` the sensor visor.
 #[derive(Clone, Copy)]
 pub struct Look {
     pub skin: Color,
     pub hair: Color,
     pub shirt: Color,
     pub pants: Color,
+    /// Worn open over the shirt — the spacer-jacket layer.
+    pub jacket: Option<Color>,
+    pub hair_style: Hair,
+    pub body: BodyKind,
 }
 
 impl Look {
-    /// Seeded civilian look: varied skin/hair, seeded shirt.
+    /// Seeded civilian look: varied skin/hair/build, seeded shirt, sometimes
+    /// a jacket — and roughly one in ten port civilians is an android (the
+    /// personhood question is a live one at every Compact-adjacent port).
     pub fn seeded(seed: u64) -> Look {
         let mut n = Noise(seed);
         let skins = [
@@ -280,16 +315,147 @@ impl Look {
             Color::srgb(0.45, 0.45, 0.50),
             Color::srgb(0.55, 0.25, 0.15),
         ];
+        let glows = [
+            Color::srgb(0.30, 0.85, 0.80),
+            Color::srgb(0.95, 0.65, 0.20),
+            Color::srgb(0.85, 0.30, 0.60),
+        ];
+        let styles = [
+            Hair::Short,
+            Hair::Short,
+            Hair::Buzz,
+            Hair::Long,
+            Hair::Locs,
+            Hair::Bun,
+        ];
+        let android = n.below(10) == 0;
+        let jacket = if n.below(3) == 0 {
+            Some(Color::srgb(
+                0.20 + n.below(35) as f32 / 100.0,
+                0.20 + n.below(35) as f32 / 100.0,
+                0.20 + n.below(35) as f32 / 100.0,
+            ))
+        } else {
+            None
+        };
         Look {
-            skin: skins[n.below(skins.len() as u64) as usize],
-            hair: hairs[n.below(hairs.len() as u64) as usize],
+            skin: if android {
+                Color::srgb(0.62, 0.66, 0.72)
+            } else {
+                skins[n.below(skins.len() as u64) as usize]
+            },
+            hair: if android {
+                glows[n.below(glows.len() as u64) as usize]
+            } else {
+                hairs[n.below(hairs.len() as u64) as usize]
+            },
             shirt: Color::srgb(
                 0.25 + n.below(60) as f32 / 100.0,
                 0.25 + n.below(60) as f32 / 100.0,
                 0.25 + n.below(60) as f32 / 100.0,
             ),
             pants: Color::srgb(0.22, 0.22, 0.30),
+            jacket,
+            hair_style: if android && n.below(2) == 0 {
+                Hair::Bald
+            } else {
+                styles[n.below(styles.len() as u64) as usize]
+            },
+            body: if android {
+                BodyKind::Android
+            } else {
+                BodyKind::Human
+            },
         }
+    }
+}
+
+/// Canonical looks for the Loup-Garou's crew, keyed by roster id
+/// (docs/LORE.md §V). Unknown ids fall back to a seeded civilian look so a
+/// modded roster still paints.
+pub fn crew_look(id: &str) -> Look {
+    let human = |skin, hair, shirt, pants, jacket, hair_style| Look {
+        skin,
+        hair,
+        shirt,
+        pants,
+        jacket,
+        hair_style,
+        body: BodyKind::Human,
+    };
+    match id {
+        // Tib: Québécois captain — dark hair, worn brown flight jacket.
+        "tib" => human(
+            Color::srgb(0.82, 0.62, 0.45),
+            Color::srgb(0.16, 0.12, 0.10),
+            Color::srgb(0.45, 0.44, 0.42),
+            Color::srgb(0.25, 0.22, 0.18),
+            Some(Color::srgb(0.42, 0.28, 0.16)),
+            Hair::Short,
+        ),
+        // Tove: engineer — ash-blond buzz, orange drive-deck coveralls.
+        "tove" => human(
+            Color::srgb(0.93, 0.78, 0.66),
+            Color::srgb(0.72, 0.66, 0.50),
+            Color::srgb(0.75, 0.42, 0.16),
+            Color::srgb(0.55, 0.32, 0.14),
+            None,
+            Hair::Buzz,
+        ),
+        // Doc Keene: trauma surgeon — teal scrubs under a white coat.
+        "keene" => human(
+            Color::srgb(0.42, 0.28, 0.20),
+            Color::srgb(0.10, 0.08, 0.08),
+            Color::srgb(0.20, 0.55, 0.52),
+            Color::srgb(0.16, 0.30, 0.30),
+            Some(Color::srgb(0.88, 0.88, 0.90)),
+            Hair::Bun,
+        ),
+        // Bardo: linguist — locs, warm gold shirt, deep red jacket.
+        "bardo" => human(
+            Color::srgb(0.55, 0.38, 0.26),
+            Color::srgb(0.12, 0.10, 0.09),
+            Color::srgb(0.80, 0.60, 0.20),
+            Color::srgb(0.35, 0.25, 0.30),
+            Some(Color::srgb(0.48, 0.18, 0.20)),
+            Hair::Locs,
+        ),
+        // Prudence: femme android — pearl alloy, magenta crest and eyes,
+        // navy flight suit.
+        "prudence" => Look {
+            skin: Color::srgb(0.80, 0.82, 0.88),
+            hair: Color::srgb(0.85, 0.30, 0.60),
+            shirt: Color::srgb(0.18, 0.24, 0.42),
+            pants: Color::srgb(0.12, 0.16, 0.30),
+            jacket: None,
+            hair_style: Hair::Crest,
+            body: BodyKind::Android,
+        },
+        // Risc: angular android — gunmetal alloy, amber eyes, utility rig.
+        "risc" => Look {
+            skin: Color::srgb(0.45, 0.48, 0.52),
+            hair: Color::srgb(0.95, 0.65, 0.20),
+            shirt: Color::srgb(0.30, 0.33, 0.24),
+            pants: Color::srgb(0.20, 0.22, 0.18),
+            jacket: None,
+            hair_style: Hair::Bald,
+            body: BodyKind::Android,
+        },
+        // BOR-IS: EVA robot — grey hull, dark joints, amber sensor visor.
+        "boris" => Look {
+            skin: Color::srgb(0.55, 0.56, 0.58),
+            hair: Color::srgb(0.95, 0.62, 0.18),
+            shirt: Color::srgb(0.55, 0.56, 0.58),
+            pants: Color::srgb(0.28, 0.30, 0.33),
+            jacket: None,
+            hair_style: Hair::Bald,
+            body: BodyKind::Robot,
+        },
+        other => Look::seeded(
+            other
+                .bytes()
+                .fold(0u64, |a, b| a.wrapping_mul(31) + b as u64),
+        ),
     }
 }
 
@@ -313,9 +479,112 @@ pub fn character_frames(images: &mut Assets<Image>, look: Look) -> [[Handle<Imag
     ]
 }
 
-/// 16×26 character in SNES-JRPG proportions: oversized head, tunic torso,
-/// short legs. `frame` 1 is mid-stride.
+/// Per-style hair over the skull base. `dir` picks the visible silhouette:
+/// facing down shows the cap and framing, up shows the back, left the sweep.
+fn paint_hair(px: &mut Px, dir: usize, style: Hair, hair: Rgba) {
+    match style {
+        Hair::Bald => {}
+        Hair::Buzz => {
+            px.rect(3, 1, 10, 3, hair);
+            if dir == DIR_UP {
+                px.rect(3, 3, 10, 4, hair);
+            }
+            if dir == DIR_LEFT {
+                px.rect(9, 3, 4, 3, hair);
+            }
+        }
+        Hair::Short => {
+            px.rect(3, 1, 10, 4, hair);
+            px.rect(2, 3, 12, 2, hair);
+            match dir {
+                DIR_UP => px.rect(3, 5, 10, 5, hair),
+                DIR_DOWN => {
+                    px.rect(3, 5, 1, 3, hair); // sideburns
+                    px.rect(12, 5, 1, 3, hair);
+                }
+                _ => px.rect(9, 4, 4, 5, hair), // falls to the back
+            }
+        }
+        Hair::Long => {
+            px.rect(3, 1, 10, 4, hair);
+            px.rect(2, 3, 12, 2, hair);
+            match dir {
+                DIR_UP => {
+                    px.rect(3, 5, 10, 5, hair);
+                    px.rect(4, 10, 8, 4, hair); // down past the shoulders
+                }
+                DIR_DOWN => {
+                    px.rect(2, 5, 2, 7, hair); // framing falls
+                    px.rect(12, 5, 2, 7, hair);
+                }
+                _ => {
+                    px.rect(9, 4, 4, 6, hair);
+                    px.rect(10, 10, 3, 4, hair);
+                }
+            }
+        }
+        Hair::Locs => {
+            px.rect(3, 1, 10, 4, hair);
+            match dir {
+                DIR_UP => {
+                    px.rect(3, 5, 10, 4, hair);
+                    for x in [3, 5, 8, 10, 12] {
+                        px.rect(x, 9, 1, 3, hair); // strands
+                    }
+                }
+                DIR_DOWN => {
+                    px.rect(2, 4, 1, 5, hair);
+                    px.rect(13, 4, 1, 5, hair);
+                    px.rect(3, 4, 1, 3, hair);
+                    px.rect(12, 4, 1, 3, hair);
+                }
+                _ => {
+                    px.rect(9, 4, 4, 4, hair);
+                    for x in [10, 12] {
+                        px.rect(x, 8, 1, 4, hair);
+                    }
+                }
+            }
+        }
+        Hair::Bun => {
+            px.rect(3, 1, 10, 4, hair);
+            px.rect(2, 3, 12, 2, hair);
+            match dir {
+                DIR_UP => {
+                    px.rect(3, 5, 10, 4, hair);
+                    px.rect(6, 0, 4, 3, hair); // the bun
+                }
+                DIR_DOWN => {
+                    px.rect(3, 5, 1, 2, hair);
+                    px.rect(12, 5, 1, 2, hair);
+                }
+                _ => {
+                    px.rect(9, 4, 4, 4, hair);
+                    px.rect(11, 0, 4, 4, hair); // bun at the back
+                }
+            }
+        }
+        Hair::Crest => {
+            px.rect(4, 0, 8, 3, hair);
+            px.rect(3, 2, 10, 2, hair);
+            match dir {
+                DIR_UP => px.rect(4, 4, 8, 5, hair),
+                DIR_DOWN => {}
+                _ => {
+                    px.rect(8, 2, 6, 3, hair); // swept back
+                    px.rect(11, 5, 3, 3, hair);
+                }
+            }
+        }
+    }
+}
+
+/// 16×26 character in SNES-JRPG proportions: oversized head, layered torso,
+/// short legs. `frame` 1 is mid-stride. Robots take their own painter.
 fn paint_character(dir: usize, frame: usize, look: Look) -> Px {
+    if look.body == BodyKind::Robot {
+        return paint_robot(dir, frame, look);
+    }
     if dir == DIR_RIGHT {
         return paint_character(DIR_LEFT, frame, look).mirrored();
     }
@@ -324,52 +593,62 @@ fn paint_character(dir: usize, frame: usize, look: Look) -> Px {
     let shirt = rgba(look.shirt);
     let pants = rgba(look.pants);
     let boots = shade(pants, 0.6);
+    let android = look.body == BodyKind::Android;
+    // Android eyes glow their signature color; human eyes are dark.
+    let eye = if android { shade(hair, 1.2) } else { OUTLINE };
     let mut px = Px::new(16, 26);
 
-    // Head (rows 0..10): hair cap over a face — or the back of the head.
-    px.rect(3, 1, 10, 5, hair);
-    px.rect(2, 3, 12, 3, hair);
+    // Head (rows 0..10): skull base in skin, face by direction, hair on top.
+    px.rect(3, 1, 10, 9, skin);
+    px.rect(2, 3, 12, 5, skin);
     match dir {
-        DIR_UP => {
-            px.rect(3, 5, 10, 5, hair); // back of head: all hair
-        }
+        DIR_UP => {}
         DIR_DOWN => {
-            px.rect(4, 5, 8, 5, skin);
-            px.rect(3, 5, 1, 3, hair); // sideburns
-            px.rect(12, 5, 1, 3, hair);
-            px.set(5, 7, OUTLINE); // eyes
-            px.set(6, 7, OUTLINE);
-            px.set(9, 7, OUTLINE);
-            px.set(10, 7, OUTLINE);
+            px.set(5, 7, eye);
+            px.set(6, 7, eye);
+            px.set(9, 7, eye);
+            px.set(10, 7, eye);
+            if android {
+                px.rect(8, 5, 1, 4, shade(skin, 0.8)); // faceplate seam
+            }
         }
         _ => {
             // Left profile.
-            px.rect(4, 5, 7, 5, skin);
-            px.rect(9, 5, 4, 5, hair); // hair falls to the back
-            px.set(5, 7, OUTLINE); // one eye
+            px.set(5, 7, eye);
             px.set(4, 8, shade(skin, 0.85)); // nose hint
         }
     }
+    paint_hair(&mut px, dir, look.hair_style, hair);
 
-    // Torso (rows 10..19): tunic with arms.
+    // Torso (rows 10..19): shirt, optionally under an open jacket; arms in
+    // the outermost layer.
     let sway = if frame == 1 { 1 } else { 0 };
+    let sleeve = look.jacket.map(rgba).unwrap_or(shirt);
     match dir {
         DIR_LEFT => {
-            px.rect(4, 10, 8, 9, shirt);
+            px.rect(4, 10, 8, 9, sleeve);
+            if look.jacket.is_some() {
+                px.rect(4, 11, 1, 7, shirt); // shirt at the open front edge
+            }
             // Leading arm swings with the stride.
-            px.rect(6 - sway * 2, 12, 2, 6, shirt);
+            px.rect(6 - sway * 2, 12, 2, 6, sleeve);
             px.rect(6 - sway * 2, 17, 2, 2, skin); // hand
         }
         _ => {
             px.rect(3, 10, 10, 9, shirt);
+            if let Some(j) = look.jacket.map(rgba) {
+                px.rect(3, 10, 3, 9, j); // open jacket panels
+                px.rect(10, 10, 3, 9, j);
+                px.rect(3, 10, 10, 1, shade(j, 1.15)); // collar
+            }
             // Arms at the sides; the stride frame swings them apart.
-            px.rect(2, 11 + sway, 1, 6, shirt);
-            px.rect(13, 12 - sway, 1, 6, shirt);
+            px.rect(2, 11 + sway, 1, 6, sleeve);
+            px.rect(13, 12 - sway, 1, 6, sleeve);
             px.rect(2, 17 + sway, 1, 2, skin); // hands
             px.rect(13, 18 - sway, 1, 2, skin);
         }
     }
-    px.rect(3, 18, 10, 1, shade(shirt, 0.6)); // belt
+    px.rect(3, 18, 10, 1, shade(pants, 0.8)); // belt
 
     // Legs (rows 19..26).
     match dir {
@@ -390,6 +669,95 @@ fn paint_character(dir: usize, frame: usize, look: Look) -> Px {
             px.rect(4, 24 - lift, 3, 2, boots);
             px.rect(9, 19 + lift, 3, 5 - lift, pants);
             px.rect(9, 24, 3, 2, boots);
+        }
+    }
+
+    px.outline();
+    px
+}
+
+/// 16×26 EVA robot (BOR-IS): boxy sensor head, plated chassis, piston limbs.
+/// Clearly mechanical — not a person in a suit. `look.shirt` is the hull,
+/// `look.pants` the joints, `look.hair` the visor glow. Facing down, the
+/// small pale mark on the inside of his left forearm is visible; no one has
+/// asked about it yet.
+fn paint_robot(dir: usize, frame: usize, look: Look) -> Px {
+    if dir == DIR_RIGHT {
+        return paint_robot(DIR_LEFT, frame, look).mirrored();
+    }
+    let hull = rgba(look.shirt);
+    let joint = rgba(look.pants);
+    let visor = rgba(look.hair);
+    let mut px = Px::new(16, 26);
+
+    // Head (rows 0..9): a sensor block, not a face.
+    px.rect(4, 1, 8, 7, hull);
+    px.rect(4, 1, 8, 1, shade(hull, 1.25));
+    match dir {
+        DIR_DOWN => {
+            px.rect(5, 3, 6, 2, visor);
+            px.set(10, 3, shade(visor, 1.3)); // tracking glint
+        }
+        DIR_UP => {
+            px.rect(5, 3, 6, 3, shade(hull, 0.7)); // vent panel
+            px.rect(6, 4, 4, 1, shade(hull, 0.5));
+        }
+        _ => px.rect(4, 3, 4, 2, visor),
+    }
+    px.set(12, 0, shade(visor, 1.2)); // antenna nub
+    px.rect(6, 8, 4, 1, joint); // neck
+
+    // Torso (rows 9..19): plated chassis, shoulder blocks, chest plate.
+    px.rect(3, 9, 10, 10, hull);
+    px.rect(2, 9, 2, 4, shade(hull, 0.85));
+    px.rect(12, 9, 2, 4, shade(hull, 0.85));
+    if dir == DIR_UP {
+        px.rect(5, 10, 6, 6, shade(hull, 0.7)); // power pack
+    } else {
+        px.rect(5, 11, 6, 4, shade(hull, 1.15));
+        px.set(5, 11, joint); // bolts
+        px.set(10, 11, joint);
+    }
+    px.rect(3, 16, 10, 1, joint); // waist seam
+
+    // Piston arms with clamp hands; the stride frame swings them.
+    let sway = if frame == 1 { 1 } else { 0 };
+    match dir {
+        DIR_LEFT => {
+            px.rect(5 - sway * 2, 11, 2, 7, joint);
+            px.rect(5 - sway * 2, 16, 2, 2, shade(hull, 0.9));
+        }
+        _ => {
+            px.rect(1, 10 + sway, 2, 7, joint);
+            px.rect(13, 11 - sway, 2, 7, joint);
+            px.rect(1, 16 + sway, 2, 2, shade(hull, 0.9));
+            px.rect(13, 17 - sway, 2, 2, shade(hull, 0.9));
+            if dir == DIR_DOWN {
+                // The mark: his left forearm is the viewer's right.
+                px.set(13, 15 - sway, [235, 225, 180, 255]);
+            }
+        }
+    }
+
+    // Legs (rows 19..26): hydraulic, flat-footed.
+    match dir {
+        DIR_LEFT => {
+            if frame == 0 {
+                px.rect(5, 19, 5, 5, joint);
+                px.rect(4, 24, 7, 2, shade(hull, 0.8));
+            } else {
+                px.rect(3, 19, 4, 5, joint);
+                px.rect(2, 24, 5, 2, shade(hull, 0.8));
+                px.rect(9, 19, 4, 4, joint);
+                px.rect(9, 23, 5, 2, shade(hull, 0.8));
+            }
+        }
+        _ => {
+            let lift = if frame == 1 { 1 } else { 0 };
+            px.rect(3, 19, 4, 5 - lift, joint);
+            px.rect(3, 24 - lift, 4, 2, shade(hull, 0.8));
+            px.rect(9, 19 + lift, 4, 5 - lift, joint);
+            px.rect(9, 24, 4, 2, shade(hull, 0.8));
         }
     }
 
@@ -580,6 +948,97 @@ pub fn viewport_sprite(seed: u64) -> Image {
     px.into_image()
 }
 
+/// 40×56 parked ship, top-down, nose up — the Loup-Garou on the dock pad.
+/// A working tool with weapons bolted on: grey hull, glass canopy, accent
+/// stripe across the wings, twin drives aft, and a darker patch where the
+/// old registry was scrubbed.
+pub fn ship_sprite(accent: Color) -> Image {
+    let hull = rgba(Color::srgb(0.36, 0.38, 0.44));
+    let a = rgba(accent);
+    let glass = rgba(Color::srgb(0.30, 0.50, 0.70));
+    let mut px = Px::new(40, 56);
+    // Nose taper (rows 0..12).
+    for y in 0..12 {
+        let half = 3 + y * 7 / 12;
+        px.rect(20 - half, y, half * 2, 1, hull);
+    }
+    // Fuselage.
+    px.rect(10, 12, 20, 30, hull);
+    px.rect(12, 12, 2, 30, shade(hull, 1.15)); // spine highlight
+                                               // Canopy.
+    px.rect(16, 8, 8, 7, glass);
+    px.rect(17, 9, 2, 3, shade(glass, 1.4)); // glint
+                                             // Delta wings (rows 28..42), widening to the canvas edge.
+    for y in 28..42 {
+        let reach = 4 + (y - 28) * 6 / 13;
+        px.rect(10 - reach, y, reach, 1, shade(hull, 0.9));
+        px.rect(30, y, reach, 1, shade(hull, 0.9));
+    }
+    // Accent stripe across wings and fuselage.
+    px.rect(2, 36, 36, 3, shade(a, 0.9));
+    // Scrubbed registry patch.
+    px.rect(13, 20, 7, 5, shade(hull, 0.72));
+    // Engine block + nozzles.
+    px.rect(8, 42, 24, 10, shade(hull, 0.8));
+    for x in [10, 23] {
+        px.rect(x, 52, 7, 3, shade(hull, 0.6));
+        px.rect(x + 2, 53, 3, 2, [255, 200, 120, 255]); // idle burn
+    }
+    // Forward mass driver hint.
+    px.rect(19, 0, 2, 4, shade(hull, 0.6));
+    px.outline();
+    px.into_image()
+}
+
+/// 26×30 airlock hatch: framed door, porthole to the void, hazard sill.
+pub fn hatch_sprite(accent: Color) -> Image {
+    let frame = rgba(Color::srgb(0.30, 0.32, 0.38));
+    let door = shade(frame, 1.35);
+    let a = rgba(accent);
+    let mut px = Px::new(26, 30);
+    px.rect(0, 0, 26, 30, frame);
+    px.rect(2, 2, 22, 24, door);
+    // Porthole.
+    for y in 0..30 {
+        for x in 0..26 {
+            let dx = x as f32 - 12.5;
+            let dy = y as f32 - 9.5;
+            let d = (dx * dx + dy * dy).sqrt();
+            if d < 4.5 {
+                px.set(x, y, [10, 14, 34, 255]);
+            } else if d < 6.0 {
+                px.set(x, y, shade(frame, 0.7));
+            }
+        }
+    }
+    px.set(11, 8, [220, 220, 240, 255]); // one star through the glass
+    px.rect(8, 19, 10, 2, shade(frame, 0.6)); // handle bar
+                                              // Hazard sill.
+    for x in (0..26).step_by(6) {
+        px.rect(x, 26, 3, 3, a);
+        px.rect(x + 3, 26, 3, 3, OUTLINE);
+    }
+    px.outline();
+    px.into_image()
+}
+
+/// 18×24 pilot seat, seen from behind: headrest, harness straps, armrests.
+pub fn seat_sprite(accent: Color) -> Image {
+    let pad = rgba(Color::srgb(0.34, 0.28, 0.28));
+    let a = rgba(accent);
+    let mut px = Px::new(18, 24);
+    px.rect(5, 0, 8, 3, shade(pad, 1.2)); // headrest
+    px.rect(3, 3, 12, 13, pad); // seat back
+    px.rect(5, 4, 2, 11, shade(a, 0.8)); // harness straps
+    px.rect(11, 4, 2, 11, shade(a, 0.8));
+    px.rect(1, 9, 2, 8, shade(pad, 0.75)); // armrests
+    px.rect(15, 9, 2, 8, shade(pad, 0.75));
+    px.rect(2, 16, 14, 6, shade(pad, 0.9)); // seat pan
+    px.rect(2, 21, 14, 1, shade(pad, 0.6));
+    px.outline();
+    px.into_image()
+}
+
 /// 36×36 interaction ring (hollow circle, drawn over the highlight target).
 pub fn ring_sprite() -> Image {
     let mut px = Px::new(36, 36);
@@ -639,6 +1098,44 @@ mod tests {
         assert_eq!(a.data, b.data);
         let c = paint_character(DIR_DOWN, 0, Look::seeded(2));
         assert_ne!(a.data, c.data);
+    }
+
+    #[test]
+    fn image_bytes_keep_top_row_first() {
+        // Regression: a vertical flip here rendered every figure head-down.
+        let mut px = Px::new(2, 2);
+        px.set(0, 0, [255, 0, 0, 255]); // top-left
+        let bytes = px.bytes();
+        assert_eq!(&bytes[0..4], &[255, 0, 0, 255]);
+        assert!(bytes[4..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn crew_looks_paint_and_differ() {
+        let ids = ["tib", "tove", "keene", "bardo", "prudence", "risc", "boris"];
+        let mut sprites = Vec::new();
+        for id in ids {
+            let px = paint_character(DIR_DOWN, 0, crew_look(id));
+            assert_eq!((px.w, px.h), (16, 26), "{id}");
+            assert!(filled(&px) > 100, "{id} barely painted");
+            sprites.push(px.data);
+        }
+        for i in 0..sprites.len() {
+            for j in i + 1..sprites.len() {
+                assert_ne!(sprites[i], sprites[j], "{} == {}", ids[i], ids[j]);
+            }
+        }
+    }
+
+    #[test]
+    fn robot_walks_and_mirrors_like_everyone_else() {
+        let look = crew_look("boris");
+        let idle = paint_character(DIR_DOWN, 0, look);
+        let stride = paint_character(DIR_DOWN, 1, look);
+        assert_ne!(idle.data, stride.data);
+        let left = paint_character(DIR_LEFT, 0, look);
+        let right = paint_character(DIR_RIGHT, 0, look);
+        assert_eq!(left.mirrored().data, right.data);
     }
 
     #[test]

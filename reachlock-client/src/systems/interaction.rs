@@ -12,6 +12,7 @@
 
 use bevy::prelude::*;
 
+use crate::states::{CurrentLocation, GameMode};
 use crate::systems::mode::PlayerAvatar;
 
 /// What kind of thing you can interact with. Pure data — no behaviour. The
@@ -27,7 +28,10 @@ pub enum InteractKind {
     Nav,
     Log,
     Fuel,
+    /// Mode transitions, discoverable in the world: the parked ship boards,
+    /// the airlock hatch disembarks, the pilot seat takes the helm.
     Board,
+    Disembark,
     Launch,
     TakeHelm,
     /// S09b consoles (spec §22): drive the ship's flight systems from OnBoard.
@@ -94,14 +98,19 @@ const REACH: f32 = 40.0;
 
 /// Detect the nearest `Interactable` in reach of the avatar, show its prompt,
 /// and on `E` open the matching panel (router inline — Bevy 0.18 has no
-/// `EventReader`). Runs only in interior modes (wired in `main.rs` under
-/// `in_any_interior`).
+/// `EventReader`). Mode-transition kinds (Board / Disembark / TakeHelm) set
+/// the next `GameMode` instead of opening a panel, so moving between the
+/// station, the ship, and the helm is a visible thing you walk up to and
+/// use — not a hidden keybind. Runs only in interior modes (wired in
+/// `main.rs` under `in_any_interior`).
 pub fn try_interact(
     keys: Res<ButtonInput<KeyCode>>,
     avatar: Query<&Transform, With<PlayerAvatar>>,
     interactables: Query<(Entity, &Transform, &Interactable)>,
     mut prompt: ResMut<InteractionPrompt>,
     mut panel: ResMut<ActivePanel>,
+    mut location: ResMut<CurrentLocation>,
+    mut next: ResMut<NextState<GameMode>>,
 ) {
     let Ok(av) = avatar.single() else {
         prompt.text = None;
@@ -130,21 +139,39 @@ pub fn try_interact(
             prompt.text = Some(format!("[E] {label}"));
             prompt.target = Some(pos);
             if keys.just_pressed(KeyCode::KeyE) && *panel == ActivePanel::None {
-                *panel = match kind {
-                    InteractKind::Talk => ActivePanel::Dialogue(e),
-                    InteractKind::Shop => ActivePanel::Market,
-                    InteractKind::Crew => ActivePanel::Order(e),
-                    InteractKind::Helm | InteractKind::TakeHelm => ActivePanel::Helm,
-                    InteractKind::Engineering => ActivePanel::Engineering,
-                    InteractKind::Nav => ActivePanel::Nav,
-                    InteractKind::Log => ActivePanel::Log,
-                    InteractKind::Fuel => ActivePanel::Fuel,
-                    InteractKind::Gunner => ActivePanel::Gunner,
-                    InteractKind::Scanner => ActivePanel::Scanner,
-                    InteractKind::Miner => ActivePanel::Miner,
-                    InteractKind::Power => ActivePanel::Power,
-                    _ => ActivePanel::Unknown,
-                };
+                match kind {
+                    // Mode transitions — no panel, the world changes.
+                    InteractKind::Board => {
+                        location.is_docked = true;
+                        next.set(GameMode::OnBoard);
+                    }
+                    InteractKind::Disembark => {
+                        // Only meaningful hard-docked at a station.
+                        if location.is_docked {
+                            next.set(GameMode::Landed);
+                        }
+                    }
+                    InteractKind::TakeHelm => {
+                        next.set(GameMode::SpaceFlight);
+                    }
+                    kind => {
+                        *panel = match kind {
+                            InteractKind::Talk => ActivePanel::Dialogue(e),
+                            InteractKind::Shop => ActivePanel::Market,
+                            InteractKind::Crew => ActivePanel::Order(e),
+                            InteractKind::Helm => ActivePanel::Helm,
+                            InteractKind::Engineering => ActivePanel::Engineering,
+                            InteractKind::Nav => ActivePanel::Nav,
+                            InteractKind::Log => ActivePanel::Log,
+                            InteractKind::Fuel => ActivePanel::Fuel,
+                            InteractKind::Gunner => ActivePanel::Gunner,
+                            InteractKind::Scanner => ActivePanel::Scanner,
+                            InteractKind::Miner => ActivePanel::Miner,
+                            InteractKind::Power => ActivePanel::Power,
+                            _ => ActivePanel::Unknown,
+                        };
+                    }
+                }
             }
         }
         None => {

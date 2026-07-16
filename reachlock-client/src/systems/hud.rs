@@ -58,8 +58,8 @@ const HELP_FLIGHT: &str =
     "W/S pitch · A/D yaw · Q/E roll (double-tap: barrel roll) · Space thrust · \
      Shift boost · Ctrl brake · F fire · G mine · T scan · M map · Enter dock/jump · J self-jump · \
      X anomaly · Esc pause";
-const HELP_INTERIOR: &str =
-    "WASD walk · E interact/board · L launch · B walk ship · F refuel (docked) · Esc pause";
+const HELP_INTERIOR: &str = "WASD walk · E interact (board at the ship, disembark at the airlock, \
+     fly from the pilot seat) · L launch · F refuel (docked) · Esc pause";
 
 pub fn spawn_hud(mut commands: Commands) {
     commands.spawn((

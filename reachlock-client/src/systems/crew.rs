@@ -3,7 +3,7 @@
 //! `current_room` and an optional `order` the player can issue. The
 //! `CrewRoster` resource persists in the save; the on-board sprites are
 //! rebuilt each time you board (S06 `ModeScope` pattern). Ids are stable
-//! strings ("boris", "tib", …) so S13 can attach personalities by id.
+//! strings ("boris", "tove", …) so S13 can attach personalities by id.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -42,36 +42,31 @@ pub struct CrewRoster {
 }
 
 impl CrewRoster {
-    /// The canonical starting crew: Boris the engineer, Tib the pilot,
-    /// Ves the navigator. Stable ids so later sprints can find them.
+    /// The canonical starting crew: the Loup-Garou's complement minus Tib,
+    /// who is the player avatar (docs/LORE.md §V). Stable ids so S13 can
+    /// attach souls, and so `pixel::crew_look` finds each member's look.
+    /// Duty rooms map lore spaces onto the generated hull: Reactor =
+    /// engineering (Tove), Bridge = cockpit (Prudence, Risc at ops),
+    /// Quarters = med bay side (Doc Keene), Bar = galley (Bardo plays
+    /// there), Hangar = EVA prep (Boris).
     #[allow(dead_code)]
     pub fn default_crew() -> Self {
+        let member = |id: &str, name: &str, role, duty_room| CrewMember {
+            id: id.into(),
+            name: name.into(),
+            role,
+            duty_room,
+            current_room: duty_room,
+            order: None,
+        };
         Self {
             members: vec![
-                CrewMember {
-                    id: "boris".into(),
-                    name: "Boris".into(),
-                    role: CrewRole::Engineer,
-                    duty_room: RoomKind::Reactor,
-                    current_room: RoomKind::Reactor,
-                    order: None,
-                },
-                CrewMember {
-                    id: "tib".into(),
-                    name: "Tib".into(),
-                    role: CrewRole::Pilot,
-                    duty_room: RoomKind::Bridge,
-                    current_room: RoomKind::Bridge,
-                    order: None,
-                },
-                CrewMember {
-                    id: "ves".into(),
-                    name: "Ves".into(),
-                    role: CrewRole::Navigator,
-                    duty_room: RoomKind::Bridge,
-                    current_room: RoomKind::Bridge,
-                    order: None,
-                },
+                member("tove", "Tove", CrewRole::Engineer, RoomKind::Reactor),
+                member("prudence", "Prudence", CrewRole::Pilot, RoomKind::Bridge),
+                member("risc", "Risc", CrewRole::Gunner, RoomKind::Bridge),
+                member("keene", "Doc Keene", CrewRole::Medic, RoomKind::Quarters),
+                member("bardo", "Bardo", CrewRole::Navigator, RoomKind::Bar),
+                member("boris", "Boris", CrewRole::Engineer, RoomKind::Hangar),
             ],
         }
     }

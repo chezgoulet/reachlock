@@ -424,20 +424,15 @@ pub fn enter_interior(
         ModeScope(mode),
     ));
 
-    // The avatar: green-tunic'd, gold-haired — the hero sprite.
-    let avatar_look = Look {
-        skin: Color::srgb(0.94, 0.78, 0.62),
-        hair: Color::srgb(0.83, 0.66, 0.28),
-        shirt: Color::srgb(0.22, 0.55, 0.3),
-        pants: Color::srgb(0.25, 0.22, 0.18),
-    };
+    // The avatar: Tib, captain of the Loup-Garou (docs/LORE.md §V) — dark
+    // hair, worn brown flight jacket.
     spawn_figure(
         &mut commands,
         &mut images,
         mode,
         start,
         "",
-        avatar_look,
+        pixel::crew_look("tib"),
         &shadow_tex,
         (PlayerAvatar,),
     );
@@ -530,10 +525,62 @@ fn spawn_props(
                 room.y as f32 + room.height as f32 - WALL - 10.0,
                 0.4,
             );
+            if mode == GameMode::OnBoard {
+                // The pilot seat: walk up, E, and you're flying her.
+                let y = room.y as f32 + room.height as f32 - WALL - 34.0;
+                commands.spawn((
+                    Sprite {
+                        image: images.add(pixel::seat_sprite(accent)),
+                        ..default()
+                    },
+                    Transform::from_xyz(c.x, y, ysort(y - 10.0)),
+                    ModeScope(mode),
+                    Interactable {
+                        label: "Pilot seat — take the helm".to_string(),
+                        kind: InteractKind::TakeHelm,
+                    },
+                ));
+            }
         }
         RoomKind::Hangar => {
             let pad = images.add(pixel::pad_sprite(accent));
             decal(commands, pad, mode, c.x, c.y, 0.12);
+            match mode {
+                // Landed: the Loup-Garou sits on the pad. Boarding is a
+                // thing you see and walk to, not a hidden keybind.
+                GameMode::Landed => {
+                    commands.spawn((
+                        Sprite {
+                            image: images.add(pixel::ship_sprite(accent)),
+                            ..default()
+                        },
+                        Transform::from_xyz(c.x, c.y, ysort(c.y - 26.0)),
+                        ModeScope(mode),
+                        Interactable {
+                            label: "Loup-Garou — board".to_string(),
+                            kind: InteractKind::Board,
+                        },
+                    ));
+                }
+                // On board, the same room is the airlock: the hatch is the
+                // way back out onto the dock.
+                GameMode::OnBoard => {
+                    let y = room.y as f32 + WALL + 20.0;
+                    commands.spawn((
+                        Sprite {
+                            image: images.add(pixel::hatch_sprite(accent)),
+                            ..default()
+                        },
+                        Transform::from_xyz(c.x, y, ysort(y - 13.0)),
+                        ModeScope(mode),
+                        Interactable {
+                            label: "Airlock — disembark".to_string(),
+                            kind: InteractKind::Disembark,
+                        },
+                    ));
+                }
+                _ => {}
+            }
         }
         RoomKind::Corridor => {}
     }
@@ -898,17 +945,17 @@ fn spawn_crew(
     shadow: &Handle<Image>,
 ) {
     for m in &roster.members {
-        let Some(center) = room_center(layout, m.current_room) else {
+        // Duty room first; small hulls don't always generate every room
+        // kind, so fall back through quarters → corridor rather than
+        // silently dropping a crew member.
+        let Some(center) = room_center(layout, m.current_room)
+            .or_else(|| room_center(layout, RoomKind::Quarters))
+            .or_else(|| room_center(layout, RoomKind::Corridor))
+        else {
             continue;
         };
-        // Ship uniform over seeded skin/hair (stable per crew id).
-        let id_seed =
-            m.id.bytes()
-                .fold(0u64, |a, b| a.wrapping_mul(31) + b as u64);
-        let look = Look {
-            shirt: Color::srgb(0.25, 0.38, 0.62),
-            ..Look::seeded(id_seed)
-        };
+        // Canonical lore looks (Tove's coveralls, the androids, BOR-IS).
+        let look = pixel::crew_look(&m.id);
         spawn_figure(
             commands,
             images,

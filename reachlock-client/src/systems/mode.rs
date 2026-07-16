@@ -71,21 +71,3 @@ pub fn interior_camera_follow(
 /// flying `PlayerShip` so the two scenes never collide.
 #[derive(Component)]
 pub struct PlayerAvatar;
-
-/// Convenience: is the avatar currently inside a room of the given kind?
-/// Used by docking/boarding to decide what `E` does at the player's feet.
-pub fn avatar_in_room(
-    avatar: &Transform,
-    layout: &reachlock_core::generator::GeneratedLayout,
-    kind: reachlock_core::generator::RoomKind,
-) -> bool {
-    let px = avatar.translation.x;
-    let py = avatar.translation.y;
-    layout.rooms.iter().any(|r| {
-        r.kind == kind
-            && px >= r.x as f32
-            && px <= (r.x + r.width) as f32
-            && py >= r.y as f32
-            && py <= (r.y + r.height) as f32
-    })
-}
