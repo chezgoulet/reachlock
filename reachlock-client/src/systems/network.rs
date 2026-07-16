@@ -129,6 +129,7 @@ pub fn poll_network(
     mut ship: ResMut<ShipSystems>,
     mut runtime: ResMut<ContractRuntime>,
     mut ticker: Option<ResMut<UniverseTicker>>,
+    souls: Res<crate::systems::soul::SoulRegistry>,
 ) {
     let NetMode::Online { universe, .. } = &*mode else {
         return;
@@ -208,6 +209,14 @@ pub fn poll_network(
                     .as_ref()
                     .is_some_and(|d| d.call_id.as_deref() == Some(call_id.as_str()));
                 if matches_active {
+                    // S15: the deliberating crew member's trust shifts the
+                    // outcome odds (S13 bridge); unknown souls read as 0.
+                    let trust = deliberation
+                        .active
+                        .as_ref()
+                        .and_then(|d| souls.states.get(&d.crew_member.to_lowercase()))
+                        .and_then(|s| s.relationship("player").map(|r| r.trust))
+                        .unwrap_or(0);
                     contract::resolve_response(
                         &mut deliberation,
                         &mut ship,
@@ -216,6 +225,8 @@ pub fn poll_network(
                         &mut outbox,
                         &action,
                         &reasoning,
+                        *universe,
+                        trust,
                     );
                 }
             }
@@ -225,11 +236,14 @@ pub fn poll_network(
                     .as_ref()
                     .is_some_and(|d| d.call_id.as_deref() == Some(call_id.as_str()));
                 if matches_active {
-                    contract::resolve_timeout(
+                    // S15: failure categories read distinctly in the log
+                    // (a timeout and a collapse are different stories).
+                    contract::resolve_failed(
                         &mut deliberation,
                         &mut ship,
                         &mut log,
-                        &format!("server: {reason}"),
+                        &runtime,
+                        &reason,
                     );
                 }
             }
