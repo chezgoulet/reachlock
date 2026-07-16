@@ -16,6 +16,8 @@ use crate::config::Config;
 use crate::services::auth::{
     DevLoginRequest, DevLoginResponse, MemorySessionStore, SessionInfo, SessionStore,
 };
+use crate::services::byok::ByokRegistration;
+use crate::services::llm_proxy::LlmService;
 use crate::services::seed::{MemorySeedStore, SeedStore};
 use crate::services::verify::VerifyService;
 
@@ -23,6 +25,8 @@ pub struct AppState {
     pub seeds: Box<dyn SeedStore>,
     pub sessions: Box<dyn SessionStore>,
     pub verify: VerifyService,
+    /// S14: LLM providers + rate limiting + BYOK + latency telemetry.
+    pub llm: LlmService,
     /// Universe-wide fanout: tick events, presence. Every session forwards
     /// what it receives from here to its own socket.
     pub events: broadcast::Sender<ServerMessage>,
@@ -42,6 +46,7 @@ impl AppState {
             seeds: Box::new(MemorySeedStore::default()),
             sessions: Box::new(MemorySessionStore::default()),
             verify: VerifyService::default(),
+            llm: LlmService::from_env(),
             events,
             auth_required: config.auth_required,
             connected: AtomicUsize::new(0),
@@ -65,8 +70,41 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/auth/dev", post(auth_dev))
+        .route("/byok", post(byok_register))
+        .route("/metrics", get(metrics))
         .route("/ws", any(handler::upgrade))
         .with_state(state)
+}
+
+/// `GET /metrics` — deliberation latency histogram, Prometheus text format.
+async fn metrics(State(state): State<Arc<AppState>>) -> String {
+    state.llm.metrics.render()
+}
+
+/// `POST /byok` — register the caller's own provider endpoint + API key
+/// (Byok tier, spec §7). Authenticated by the same bearer token the WS
+/// handshake uses. The key is encrypted at rest and never logged.
+async fn byok_register(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Json(reg): Json<ByokRegistration>,
+) -> (axum::http::StatusCode, &'static str) {
+    use axum::http::StatusCode;
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    let Some(info) = token.and_then(|t| state.sessions.resolve(t)) else {
+        return (StatusCode::UNAUTHORIZED, "invalid or missing bearer token");
+    };
+    match state.llm.byok.register(&info.player_id, &reg) {
+        Ok(()) => (StatusCode::NO_CONTENT, ""),
+        Err(crate::services::byok::ByokError::NotConfigured) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "BYOK disabled: server has no REACHLOCK_BYOK_KEY",
+        ),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "key storage failed"),
+    }
 }
 
 /// `POST /auth/dev { username, universe? }` — dev-only token issuance
