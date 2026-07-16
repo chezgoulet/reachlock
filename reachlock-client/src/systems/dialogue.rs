@@ -360,10 +360,12 @@ fn submit_utterance(
         outbox.push(reachlock_core::network::ClientMessage::LlmCall {
             call_id: call_id.clone(),
             contract_id: format!("dialogue:{}", active.soul_id),
-            context: serde_json::json!({
-                "voice": voice_prompt(file, &state),
-                "dialogue": context,
-            }),
+            context: serde_json::json!({ "dialogue": context }),
+            // S16B wire revision: the soul's voice is the TRUE system
+            // prompt now, not a payload hint the wrapper buries.
+            system_prompt: Some(voice_prompt(file, &state)),
+            timeout_ms: None,
+            max_tokens: None,
         });
         active.call_id = Some(call_id);
         active.thinking = true;

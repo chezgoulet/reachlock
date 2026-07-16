@@ -255,7 +255,7 @@ pub fn onboard_ship_consoles(
     mut command: ResMut<ShipCommand>,
     systems: Res<ShipSystems>,
     feel: Res<crate::systems::ship::FlightFeel>,
-    fires: Res<crate::systems::crisis::ShipFires>,
+    mut fires: ResMut<crate::systems::crisis::ShipFires>,
     mut log: ResMut<ShipLog>,
     mut panels: ParamSet<(
         Query<&mut Text, With<GunnerPanel>>,
@@ -264,9 +264,41 @@ pub fn onboard_ship_consoles(
         Query<&mut Text, With<PowerPanel>>,
     )>,
 ) {
+    // S16B repair-at-the-system: at a console whose system is damaged, `R`
+    // works one repair action (SHIPS.md §4: repaired AT the system).
+    let repair_line = |fires: &mut crate::systems::crisis::ShipFires,
+                       log: &mut ShipLog,
+                       pressed: bool,
+                       room: reachlock_core::generator::RoomKind|
+     -> String {
+        use reachlock_core::crisis::SystemState;
+        let state = fires.systems.state(room);
+        if state == SystemState::Nominal {
+            return String::new();
+        }
+        if pressed {
+            match fires.systems.repair(room) {
+                Some(SystemState::Nominal) => {
+                    log.log(format!("{room:?} system restored."));
+                    return String::new();
+                }
+                Some(_) => log.log(format!("{room:?} repair in progress…")),
+                None => {}
+            }
+        }
+        format!("\nSYSTEM {state:?} — R to repair")
+    };
+    let r_pressed = keys.just_pressed(KeyCode::KeyR);
+
     if let Ok(mut t) = panels.p0().single_mut() {
         match &*panel {
             ActivePanel::Gunner => {
+                let repair = repair_line(
+                    &mut fires,
+                    &mut log,
+                    r_pressed,
+                    reachlock_core::generator::RoomKind::Bridge,
+                );
                 if keys.just_pressed(KeyCode::Enter) {
                     command.weapons_armed = !command.weapons_armed;
                     log.log(if command.weapons_armed {
@@ -294,6 +326,7 @@ pub fn onboard_ship_consoles(
                         command.power_weapons
                     )
                 };
+                t.push_str(&repair);
             }
             _ => **t = String::new(),
         }
@@ -301,6 +334,12 @@ pub fn onboard_ship_consoles(
     if let Ok(mut t) = panels.p1().single_mut() {
         match &*panel {
             ActivePanel::Scanner => {
+                let repair = repair_line(
+                    &mut fires,
+                    &mut log,
+                    r_pressed,
+                    reachlock_core::generator::RoomKind::Scanner,
+                );
                 if keys.just_pressed(KeyCode::Enter) {
                     command.scanner_boost = !command.scanner_boost;
                     log.log(if command.scanner_boost {
@@ -322,6 +361,7 @@ pub fn onboard_ship_consoles(
                         command.power_sensors
                     )
                 };
+                t.push_str(&repair);
             }
             _ => **t = String::new(),
         }
@@ -490,6 +530,7 @@ pub fn onboard_panels(
     mut plan: ResMut<crate::systems::cryojump::JumpPlan>,
     transit: Res<crate::systems::jump::TransitState>,
     mut fires: ResMut<crate::systems::crisis::ShipFires>,
+    mut feed: ResMut<crate::systems::comms::CommFeed>,
 ) {
     if let Ok(mut t) = panels.p0().single_mut() {
         match &*panel {
@@ -525,13 +566,38 @@ pub fn onboard_panels(
                         }
                     )
                 };
+                // S16B: engineering's own system (the reactor) is repaired
+                // HERE, at the system — and it outranks the docked hull
+                // repair on the same key while it's down.
+                let reactor = fires
+                    .systems
+                    .state(reachlock_core::generator::RoomKind::Reactor);
+                let reactor_down = reactor != reachlock_core::crisis::SystemState::Nominal;
+                let sys_line = if reactor_down {
+                    format!("\nREACTOR SYSTEM {reactor:?} — R to repair")
+                } else {
+                    String::new()
+                };
                 **t = if docked {
                     format!(
-                        "ENGINEERING\nfuel {pct}%\nhull {hull}%\nPress V refill · R repair (10cr/hp){fire_line}",
+                        "ENGINEERING\nfuel {pct}%\nhull {hull}%\nPress V refill · R repair (10cr/hp){fire_line}{sys_line}",
                     )
                 } else {
-                    format!("ENGINEERING\nfuel {pct}%\nhull {hull}%  (dock to repair){fire_line}")
+                    format!(
+                        "ENGINEERING\nfuel {pct}%\nhull {hull}%  (dock to repair){fire_line}{sys_line}"
+                    )
                 };
+                if keys.just_pressed(KeyCode::KeyR) && reactor_down {
+                    match fires
+                        .systems
+                        .repair(reachlock_core::generator::RoomKind::Reactor)
+                    {
+                        Some(reachlock_core::crisis::SystemState::Nominal) => {
+                            log.log("Reactor systems restored — full power available.")
+                        }
+                        _ => log.log("Reactor repair in progress…"),
+                    }
+                }
                 if keys.just_pressed(KeyCode::KeyX) {
                     let vented: Vec<usize> = fires
                         .state
@@ -552,7 +618,11 @@ pub fn onboard_panels(
                     systems.fuel = Fixed(1024);
                     log.log("Engineering: refilled fuel");
                 }
-                if keys.just_pressed(KeyCode::KeyR) && docked && systems.hull_hp.0 < 1024 {
+                if keys.just_pressed(KeyCode::KeyR)
+                    && !reactor_down
+                    && docked
+                    && systems.hull_hp.0 < 1024
+                {
                     let missing = 1024 - systems.hull_hp.0;
                     let cost = missing * 10;
                     if inv.credits >= cost {
@@ -580,6 +650,7 @@ pub fn onboard_panels(
                         location.system_seed,
                         &mut roster,
                         &mut log,
+                        &mut feed,
                     );
                 }
                 let jump_line = match &plan.armed {
@@ -663,13 +734,13 @@ pub fn onboard_panels(
                 s.push_str(&format!("ORDER {}:\n", m.name));
                 for (i, room) in ORDER_ROOMS.iter().enumerate() {
                     let cur = m.order == Some(*room);
+                    let key = (i + 1) % 10; // 1-9 then 0, matching the digits
                     s.push_str(&format!(
-                        "  {}. {room:?}{}\n",
-                        i + 1,
+                        "  {key}. {room:?}{}\n",
                         if cur { " *" } else { "" }
                     ));
                 }
-                s.push_str("press 1-5 to set · 0 to clear · T talk");
+                s.push_str("press 1-9,0 to set · C to clear · T talk");
                 **t = s;
                 // S16: talking is the other half of the crew surface — T
                 // hands this figure to the dialogue session (soul-backed).
@@ -678,17 +749,24 @@ pub fn onboard_panels(
                     *panel = ActivePanel::Dialogue(target);
                     return;
                 }
-                // Number keys 1-5 set the order (matching `ORDER_ROOMS`);
-                // 0 clears it.
-                let pressed = (1..=ORDER_ROOMS.len()).position(|n| {
-                    keys.just_pressed(match n {
-                        1 => KeyCode::Digit1,
-                        2 => KeyCode::Digit2,
-                        3 => KeyCode::Digit3,
-                        4 => KeyCode::Digit4,
-                        _ => KeyCode::Digit5,
-                    })
-                });
+                // Digit keys 1-9 then 0 map onto `ORDER_ROOMS` (S16B: the
+                // whole ship is orderable); C clears the standing order.
+                const DIGITS: [KeyCode; 10] = [
+                    KeyCode::Digit1,
+                    KeyCode::Digit2,
+                    KeyCode::Digit3,
+                    KeyCode::Digit4,
+                    KeyCode::Digit5,
+                    KeyCode::Digit6,
+                    KeyCode::Digit7,
+                    KeyCode::Digit8,
+                    KeyCode::Digit9,
+                    KeyCode::Digit0,
+                ];
+                let pressed = DIGITS
+                    .iter()
+                    .take(ORDER_ROOMS.len())
+                    .position(|k| keys.just_pressed(*k));
                 if let Some(i) = pressed {
                     let room = ORDER_ROOMS[i];
                     if let Some(mm) = roster.by_id_mut(&id) {
@@ -697,7 +775,7 @@ pub fn onboard_panels(
                     }
                     *panel = ActivePanel::None;
                 }
-                if keys.just_pressed(KeyCode::Digit0) {
+                if keys.just_pressed(KeyCode::KeyC) {
                     if let Some(mm) = roster.by_id_mut(&id) {
                         mm.order = None;
                         log.log(format!("You cleared {}'s order", mm.name));

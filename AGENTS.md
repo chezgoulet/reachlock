@@ -57,6 +57,7 @@ cargo test                     # all tests
 cargo clippy -- -D warnings    # CI gate
 cargo run -p reachlock-client  # fly the red polygon
 make check                     # fmt + clippy + test + WASM
+git config core.hooksPath .githooks   # opt-in: run `make check` on every commit
 ```
 
 ## First Sprint to Reference

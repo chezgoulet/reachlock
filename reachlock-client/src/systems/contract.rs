@@ -76,6 +76,10 @@ pub struct ContractRuntime {
     /// Monotonic counter feeding `chain.sign_next` — `verify_chain` only
     /// requires strict monotonicity, not wall-clock ticks.
     next_tick: u64,
+    /// S16B (S15 completion): rolling count of recent evaluations the rules
+    /// did NOT cover. More uncovered edges = worse deliberation odds
+    /// (`agency::contract_quality_modifier`) — write tighter rules.
+    recent_uncovered: u8,
 }
 
 impl Default for ContractRuntime {
@@ -86,6 +90,7 @@ impl Default for ContractRuntime {
             last_action: None,
             chain: SignatureChain::default(),
             next_tick: 0,
+            recent_uncovered: 0,
         }
     }
 }
@@ -198,6 +203,7 @@ pub fn evaluate_contracts(
                 }
                 runtime.last_action = Some(kind);
             }
+            runtime.recent_uncovered = runtime.recent_uncovered.saturating_sub(1);
             // S02: every fired contract action is signed and submitted in
             // online mode, whether or not it's a fresh log line.
             if mode.is_online() {
@@ -209,14 +215,21 @@ pub fn evaluate_contracts(
             fallback,
         } => {
             runtime.last_action = None;
+            runtime.recent_uncovered = (runtime.recent_uncovered + 1).min(8);
             if mode.is_online() && matches!(*conn, ConnectionState::Connected) {
                 let tick = runtime.next_tick();
                 let call_id = format!("{}-{tick}", runtime.contract.id);
                 log.log("Boris: my rules don't cover this. Radioing it in…");
+                // S16B wire revision: the contract's own LLM budget rides
+                // the call; the server clamps by its cap.
+                let llm = runtime.contract.llm_authority.as_ref();
                 outbox.push(ClientMessage::LlmCall {
                     call_id: call_id.clone(),
                     contract_id: runtime.contract.id.clone(),
                     context: serde_json::json!({ "unknown_signal": 1 }),
+                    system_prompt: llm.map(|c| c.system_prompt.clone()),
+                    timeout_ms: llm.map(|c| c.timeout_ms),
+                    max_tokens: llm.map(|c| c.max_tokens),
                 });
                 deliberation.active = Some(Deliberation {
                     crew_member: "Boris".into(),
@@ -298,6 +311,7 @@ pub fn resolve_response(
     log: &mut ShipLog,
     runtime: &mut ContractRuntime,
     outbox: &mut NetOutbox,
+    feed: &mut crate::systems::comms::CommFeed,
     action_kind: &str,
     reasoning: &str,
     tier: reachlock_core::universe::UniverseTier,
@@ -324,6 +338,9 @@ pub fn resolve_response(
         &[
             agency::model_modifier(tier),
             agency::crew_modifier(trust),
+            // S16B: contract quality is live — recent uncovered evaluations
+            // worsen the odds (the "write tighter rules" lever).
+            agency::contract_quality_modifier(runtime.recent_uncovered as u32),
             // Equipment pipe: stat keys read as zero until S05 items equip.
             agency::equipment_modifier(0, 0),
         ],
@@ -351,6 +368,8 @@ pub fn resolve_response(
     for entry in trace.iter().skip(1) {
         log.log(entry.render(&active.crew_member));
     }
+    // S16B: the crew says it out loud too (HUD comm line / speech bubble).
+    feed.say(active.crew_member.clone(), resolved.reasoning.clone());
     let fired = resolved
         .action
         .clone()
@@ -377,6 +396,7 @@ pub fn resolve_failed(
     systems: &mut ShipSystems,
     log: &mut ShipLog,
     runtime: &ContractRuntime,
+    feed: &mut crate::systems::comms::CommFeed,
     reason: &str,
 ) {
     use reachlock_core::agency;
@@ -389,7 +409,7 @@ pub fn resolve_failed(
         "bad_response" => agency::ProviderVerdict::Collapsed,
         _ => agency::ProviderVerdict::TimedOut,
     };
-    let (_, trace) = agency::deliberate(
+    let (resolved, trace) = agency::deliberate(
         &agency::DeliberationParams {
             contract_id: &runtime.contract.id,
             tick: runtime.next_tick,
@@ -404,4 +424,5 @@ pub fn resolve_failed(
     for entry in trace.iter().skip(1) {
         log.log(entry.render(&active.crew_member));
     }
+    feed.say(active.crew_member.clone(), resolved.reasoning.clone());
 }

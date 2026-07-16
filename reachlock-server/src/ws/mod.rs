@@ -17,6 +17,7 @@ use crate::services::auth::{
     DevLoginRequest, DevLoginResponse, MemorySessionStore, SessionInfo, SessionStore,
 };
 use crate::services::byok::ByokRegistration;
+use crate::services::contracts::{ContractStore, MemoryContractStore};
 use crate::services::llm_proxy::LlmService;
 use crate::services::seed::{MemorySeedStore, SeedStore};
 use crate::services::verify::VerifyService;
@@ -25,6 +26,9 @@ pub struct AppState {
     pub seeds: Box<dyn SeedStore>,
     pub sessions: Box<dyn SessionStore>,
     pub verify: VerifyService,
+    /// S16B: server-side contract backup (`contract.sync` persists here —
+    /// memory by default, Postgres via the pg module).
+    pub contracts: Box<dyn ContractStore>,
     /// S14: LLM providers + rate limiting + BYOK + latency telemetry.
     pub llm: LlmService,
     /// Universe-wide fanout: tick events, presence. Every session forwards
@@ -46,6 +50,7 @@ impl AppState {
             seeds: Box::new(MemorySeedStore::default()),
             sessions: Box::new(MemorySessionStore::default()),
             verify: VerifyService::default(),
+            contracts: Box::new(MemoryContractStore::default()),
             llm: LlmService::from_env(),
             events,
             auth_required: config.auth_required,

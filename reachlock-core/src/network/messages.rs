@@ -33,6 +33,19 @@ pub enum ClientMessage {
         call_id: String,
         contract_id: String,
         context: Value,
+        /// S16B protocol revision (additive; absent = previous behavior):
+        /// the caller's system prompt — dialogue sends the soul's voice
+        /// prompt so the model speaks in character as the TRUE system
+        /// message, not a payload hint.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        system_prompt: Option<String>,
+        /// Contract `LlmConfig` budget: per-call timeout, clamped by the
+        /// server cap. Absent = server default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timeout_ms: Option<u32>,
+        /// Contract `LlmConfig` budget: max tokens. Absent = server default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_tokens: Option<u32>,
     },
     #[serde(rename = "player.position")]
     PlayerPosition {
@@ -114,6 +127,41 @@ mod tests {
         };
         let s = serde_json::to_string(&server).unwrap();
         assert_eq!(serde_json::from_str::<ServerMessage>(&s).unwrap(), server);
+    }
+
+    /// S16B protocol revision: `llm.call` gained optional `system_prompt`,
+    /// `timeout_ms`, `max_tokens`. Old-shape messages must still parse
+    /// (absent = None), and absent fields must not serialize — this test IS
+    /// the revision record (iron rule #4).
+    #[test]
+    fn llm_call_revision_is_backward_compatible() {
+        let old_shape =
+            r#"{"type":"llm.call","call_id":"c1","contract_id":"cryo-pilot","context":{}}"#;
+        let parsed: ClientMessage = serde_json::from_str(old_shape).unwrap();
+        let ClientMessage::LlmCall {
+            system_prompt,
+            timeout_ms,
+            max_tokens,
+            ..
+        } = &parsed
+        else {
+            panic!("parsed as the wrong variant");
+        };
+        assert!(system_prompt.is_none() && timeout_ms.is_none() && max_tokens.is_none());
+        // Absent options round-trip invisibly (old servers stay compatible).
+        let json = serde_json::to_string(&parsed).unwrap();
+        assert!(!json.contains("system_prompt"));
+        // Present options survive the round trip.
+        let full = ClientMessage::LlmCall {
+            call_id: "c2".into(),
+            contract_id: "dialogue:boris".into(),
+            context: serde_json::json!({}),
+            system_prompt: Some("You are Boris.".into()),
+            timeout_ms: Some(4000),
+            max_tokens: Some(128),
+        };
+        let s = serde_json::to_string(&full).unwrap();
+        assert_eq!(serde_json::from_str::<ClientMessage>(&s).unwrap(), full);
     }
 
     #[test]

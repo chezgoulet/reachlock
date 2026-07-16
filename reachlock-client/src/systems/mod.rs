@@ -1,3 +1,4 @@
+pub mod comms;
 pub mod content_index;
 pub mod contract;
 pub mod crew;

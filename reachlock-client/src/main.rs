@@ -17,9 +17,9 @@ use bevy_rapier3d::prelude::*;
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
-    content_index, contract, crew, crisis, cryojump, dialogue, docking, factions, hud, interaction,
-    interior, inventory, jump, market, menu, mode, network, onboard, pause, reticle, sensors,
-    setup, ship, soul, ticker,
+    comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions, hud,
+    interaction, interior, inventory, jump, market, menu, mode, network, onboard, pause, reticle,
+    sensors, setup, ship, soul, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -130,6 +130,8 @@ fn main() {
         .init_resource::<cryojump::JumpPlan>()
         // S09f: compartment fires + the crisis clock (SHIPS.md §4).
         .init_resource::<crisis::ShipFires>()
+        // S16B: crew comm traffic (HUD lines + speech bubbles).
+        .init_resource::<comms::CommFeed>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
@@ -159,6 +161,7 @@ fn main() {
                 hud::spawn_hud,
                 reticle::spawn_reticle,
                 onboard::spawn_onboard_panels,
+                comms::spawn_comm_hud,
                 network::connect_on_enter_playing,
                 factions::spawn_reputation_panel,
                 factions::spawn_faction_banner,
@@ -264,6 +267,7 @@ fn main() {
             Update,
             (
                 interior::walk_avatar,
+                interior::sync_crew_deck_presence,
                 mode::interior_camera_follow,
                 docking::try_interior_transitions,
                 interaction::try_interact,
@@ -309,6 +313,9 @@ fn main() {
                 // point. The pod doesn't care which console you're at.
                 cryojump::jump_clock,
                 cryojump::pod_stasis,
+                // S16B: comm lines age on the HUD; bubbles follow speakers.
+                comms::tick_comms,
+                comms::comm_bubbles,
             )
                 .run_if(in_state(AppState::InGame)),
         )

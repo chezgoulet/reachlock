@@ -160,6 +160,94 @@ pub fn crisis_roll(seed: u64, tick_no: u64, room: u64, salt: u64) -> u64 {
     finalize(h)
 }
 
+// ─────────────────── per-system damage (S16B) ───────────────────
+
+/// Damage state of one ship system (SHIPS.md §4): "damaged systems operate
+/// below capacity or not at all until repaired *at the system*."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SystemState {
+    Nominal,
+    Damaged,
+    Disabled,
+}
+
+impl SystemState {
+    /// Fixed-point effectiveness multiplier (1024 = full capacity).
+    pub fn factor(self) -> i64 {
+        match self {
+            SystemState::Nominal => 1024,
+            SystemState::Damaged => 614,  // ~60%
+            SystemState::Disabled => 205, // ~20% — limping, not dead ships
+        }
+    }
+}
+
+/// Repair actions to clear a damaged system; disabled costs more.
+pub const REPAIRS_DAMAGED: u8 = 2;
+pub const REPAIRS_DISABLED: u8 = 4;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemDamageEntry {
+    pub room: RoomKind,
+    pub level: SystemState,
+    pub repairs_left: u8,
+}
+
+/// The ship's damaged systems, keyed by the room whose station owns them.
+/// Fed by fire events; cleared by repair actions at the system's console.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemDamage {
+    pub entries: Vec<SystemDamageEntry>,
+}
+
+impl SystemDamage {
+    pub fn state(&self, room: RoomKind) -> SystemState {
+        self.entries
+            .iter()
+            .find(|e| e.room == room)
+            .map(|e| e.level)
+            .unwrap_or(SystemState::Nominal)
+    }
+
+    /// Record damage. Only ever escalates (Damaged never downgrades a
+    /// Disabled system); escalation resets the repair bill.
+    pub fn mark(&mut self, room: RoomKind, level: SystemState) {
+        let repairs = match level {
+            SystemState::Nominal => return,
+            SystemState::Damaged => REPAIRS_DAMAGED,
+            SystemState::Disabled => REPAIRS_DISABLED,
+        };
+        match self.entries.iter_mut().find(|e| e.room == room) {
+            Some(entry) => {
+                if level == SystemState::Disabled && entry.level == SystemState::Damaged {
+                    entry.level = SystemState::Disabled;
+                    entry.repairs_left = repairs;
+                }
+            }
+            None => self.entries.push(SystemDamageEntry {
+                room,
+                level,
+                repairs_left: repairs,
+            }),
+        }
+    }
+
+    /// One repair action at the system. Returns the state after the action
+    /// (`Nominal` when the last action clears it), or `None` if there was
+    /// nothing to repair.
+    pub fn repair(&mut self, room: RoomKind) -> Option<SystemState> {
+        let index = self.entries.iter().position(|e| e.room == room)?;
+        self.entries[index].repairs_left = self.entries[index].repairs_left.saturating_sub(1);
+        if self.entries[index].repairs_left == 0 {
+            self.entries.remove(index);
+            Some(SystemState::Nominal)
+        } else {
+            Some(self.entries[index].level)
+        }
+    }
+}
+
 /// SHIPS.md §4 power triage: a fire in engineering cuts the reactor's
 /// distributable budget. `base_budget` is the power console's normal total.
 pub fn effective_power_budget(
@@ -281,6 +369,38 @@ mod tests {
             fires.vent(1, 2).is_none(),
             "venting an empty room is a no-op"
         );
+    }
+
+    #[test]
+    fn system_damage_escalates_and_repairs_at_the_system() {
+        let mut damage = SystemDamage::default();
+        assert_eq!(damage.state(RoomKind::Scanner), SystemState::Nominal);
+        assert_eq!(damage.repair(RoomKind::Scanner), None, "nothing to fix");
+
+        damage.mark(RoomKind::Scanner, SystemState::Damaged);
+        assert_eq!(damage.state(RoomKind::Scanner), SystemState::Damaged);
+        // Escalation resets the bill; de-escalation never happens.
+        damage.mark(RoomKind::Scanner, SystemState::Disabled);
+        assert_eq!(damage.state(RoomKind::Scanner), SystemState::Disabled);
+        damage.mark(RoomKind::Scanner, SystemState::Damaged);
+        assert_eq!(
+            damage.state(RoomKind::Scanner),
+            SystemState::Disabled,
+            "damage never downgrades"
+        );
+        // Disabled costs REPAIRS_DISABLED actions to clear.
+        for _ in 0..REPAIRS_DISABLED - 1 {
+            assert_eq!(
+                damage.repair(RoomKind::Scanner),
+                Some(SystemState::Disabled)
+            );
+        }
+        assert_eq!(damage.repair(RoomKind::Scanner), Some(SystemState::Nominal));
+        assert_eq!(damage.state(RoomKind::Scanner), SystemState::Nominal);
+
+        // Effectiveness factors order sensibly.
+        assert!(SystemState::Nominal.factor() > SystemState::Damaged.factor());
+        assert!(SystemState::Damaged.factor() > SystemState::Disabled.factor());
     }
 
     #[test]

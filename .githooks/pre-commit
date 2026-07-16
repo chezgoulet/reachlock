@@ -1,0 +1,16 @@
+#!/bin/sh
+#
+# Pre-commit hook: run the full v2 gate (fmt, clippy -D warnings, all
+# tests, WASM build) — the iron rule is "make check before every commit;
+# never push red", so the hook makes the rule mechanical.
+#
+# Opt in with:
+#   git config core.hooksPath .githooks
+#
+# Ported from PR #74's architecture-guard hook (v1); v2's equivalent
+# guard is the whole check gate.
+
+set -e
+
+echo "=== make check (pre-commit gate) ==="
+make check

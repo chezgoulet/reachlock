@@ -163,6 +163,9 @@ async fn llm_call_deliberates_then_responds_by_tier() {
             call_id: "call-1".into(),
             contract_id: "cryo-pilot".into(),
             context: serde_json::json!({"unknown_signal": 1}),
+            system_prompt: None,
+            timeout_ms: None,
+            max_tokens: None,
         },
     )
     .await;
@@ -194,6 +197,9 @@ async fn llm_call_deliberates_then_responds_by_tier() {
             call_id: "call-2".into(),
             contract_id: "cryo-pilot".into(),
             context: serde_json::json!({}),
+            system_prompt: None,
+            timeout_ms: None,
+            max_tokens: None,
         },
     )
     .await;

@@ -20,25 +20,54 @@ use crate::systems::ticker::UniverseTicker;
 
 /// Every authored soul plus its live state. Files are immutable content;
 /// states persist in the save (`inventory::SaveFile::souls`).
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct SoulRegistry {
     pub files: BTreeMap<String, SoulFile>,
     pub states: BTreeMap<String, SoulState>,
+    /// The authored mutation arcs (embedded content), scanned after every
+    /// applied event — S16B closes the S13 gap where these never ran.
+    pub mutations: Vec<reachlock_core::soul::SoulMutation>,
+}
+
+impl Default for SoulRegistry {
+    fn default() -> Self {
+        SoulRegistry {
+            files: BTreeMap::new(),
+            states: BTreeMap::new(),
+            mutations: reachlock_core::soul::load_soul_mutations(),
+        }
+    }
 }
 
 impl SoulRegistry {
-    /// Apply one event to one soul, returning the outputs (empty when the
-    /// soul isn't loaded — offline-safe, never a panic).
+    /// Apply one event to one soul, then scan that soul's authored mutation
+    /// arcs with the event's fields in context (fired-once — the narrative
+    /// intersects the procedural world here, spec §15). Returns the outputs
+    /// plus a log line per fired mutation. Empty when the soul isn't loaded
+    /// — offline-safe, never a panic.
     pub fn apply(&mut self, soul_id: &str, event: &SoulEvent) -> Vec<SoulOutput> {
         let Some(file) = self.files.get(soul_id) else {
             return Vec::new();
         };
-        let state = self
+        let current = self
             .states
-            .entry(soul_id.to_string())
-            .or_insert_with(|| SoulState::from_file(file));
-        let (next, outputs) = apply_event(file, state, event);
-        *state = next;
+            .get(soul_id)
+            .cloned()
+            .unwrap_or_else(|| SoulState::from_file(file));
+        let (mut next, outputs) = apply_event(file, &current, event);
+
+        // Mutation scan: the event's fields (plus its `event.<type>` flag)
+        // are the extra context the authored triggers gate on.
+        let mut extra = event.fields.clone();
+        extra.insert(format!("event.{}", event.event_type), 1);
+        for mutation in self.mutations.iter().filter(|m| m.soul_id == soul_id) {
+            let (mutated, fired) = reachlock_core::soul::apply_mutation(&next, mutation, &extra);
+            if fired {
+                info!("soul mutation fired: {} on {soul_id}", mutation.id);
+                next = mutated;
+            }
+        }
+        self.states.insert(soul_id.to_string(), next);
         outputs
     }
 }
@@ -229,6 +258,40 @@ mod tests {
     fn inspect_is_none_for_unknown_souls() {
         let registry = SoulRegistry::default();
         assert!(inspect_text(&registry, "nobody").is_none());
+    }
+
+    #[test]
+    fn authored_mutation_arcs_fire_through_apply() {
+        // S16B: the boris_the_mark_earned arc (loup_garou_souls.ron) fires
+        // when trust is earned during a crisis — through the same apply()
+        // every game event uses, fired once.
+        let mut registry = registry_with(minimal_soul("boris"));
+        let trust_event = |t: u64| SoulEvent {
+            event_type: "player_showed_trust_during_crisis".into(),
+            player_involved: true,
+            emotional_weight: 800,
+            timestamp: t,
+            summary: "Held the line together.".into(),
+            fields: BTreeMap::new(),
+            relationship_deltas: vec![("player".into(), 400, 100)],
+        };
+        // First event raises trust past the 819 gate AND carries the flag —
+        // the mutation fires in the same apply.
+        registry.apply("boris", &trust_event(1));
+        let state = &registry.states["boris"];
+        assert!(
+            state.fired_mutations.contains("boris_the_mark_earned"),
+            "the authored arc fired"
+        );
+        assert!(state.unlocked_secrets.contains("the_mark"));
+        assert!(state.traits.contains(&"Devoted".to_string()));
+        // Fired-once: a second crisis doesn't re-run it.
+        let before = state.clone();
+        registry.apply("boris", &trust_event(2));
+        assert_eq!(
+            registry.states["boris"].fired_mutations,
+            before.fired_mutations
+        );
     }
 
     #[test]
