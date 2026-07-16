@@ -214,7 +214,6 @@ fn spawn_player_ship(
     };
 
     let collider_radius = bounding_radius(&hull);
-    let depth = (collider_radius * 0.4).max(2.0);
     let mut ship = commands.spawn((
         PlayerShip,
         Transform::from_xyz(0.0, 0.0, 0.0),
@@ -243,53 +242,208 @@ fn spawn_player_ship(
         let scene = asset_server.load(GltfAssetLabel::Scene(0).from_asset(path));
         ship.insert(SceneRoot(scene));
     } else {
-        // The generated hull is a flat 2D silhouette (v1 was top-down).
-        // Extruded raw it flies face-first like a billboard, so mount it on
-        // a rotated child: silhouette laid into the XZ plane (wings spread,
-        // thin vertically) with its +X symmetry axis as the nose (-Z) — an
-        // Arwing-style shape under the chase-cam.
-        let mesh = meshes.add(bridge::mesh3d_from_generated(&hull, depth));
-        let material = materials.add(bridge::standard_material_from_palette(palette.primary));
-        ship.with_children(|parent| {
-            parent.spawn((
-                Mesh3d(mesh),
-                MeshMaterial3d(material),
-                Transform::from_rotation(
-                    Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)
-                        * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
-                ),
-            ));
-        });
+        // The Loup-Garou (docs/LORE.md §IV): a Class-J working corvette
+        // composed from primitives — fuselage + nose cone, glass canopy,
+        // swept delta wings with accent stripes and tip fins, twin engine
+        // nacelles, and the chin-mounted mass driver. Everything scales off
+        // the physics radius so the model matches the collider, and the
+        // palette keeps the seed identity (hull tinted primary, trim in
+        // accent). Nose = -Z under the chase-cam.
+        spawn_loup_garou_model(&mut ship, meshes, materials, palette, collider_radius);
     }
 
-    // Engine exhaust: an emissive cone welded to the hull's tail, stretched
-    // by `ship::engine_glow` with thrust/boost. Child of the hull so it
-    // inherits the ship's pose and visibility.
-    let flame_len = collider_radius * 1.2;
-    let base_z = collider_radius * 0.85;
+    // Engine exhaust: emissive cones welded to the two nacelle nozzles,
+    // stretched by `ship::engine_glow` with thrust/boost. Children of the
+    // hull so they inherit the ship's pose and visibility.
+    let flame_len = collider_radius * 1.0;
+    let base_z = collider_radius * 0.93;
     ship.with_children(|parent| {
-        parent.spawn((
-            Mesh3d(meshes.add(Cone {
-                radius: collider_radius * 0.28,
-                height: flame_len,
-            })),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgba(1.0, 0.6, 0.2, 0.85),
-                emissive: LinearRgba::rgb(5.0, 2.2, 0.5),
-                alpha_mode: AlphaMode::Blend,
-                unlit: true,
-                ..default()
-            })),
-            // Cone tip points +Y by default; rotate it to point +Z (astern).
-            Transform::from_xyz(0.0, 0.0, base_z)
+        for side in [-1.0f32, 1.0] {
+            parent.spawn((
+                Mesh3d(meshes.add(Cone {
+                    radius: collider_radius * 0.16,
+                    height: flame_len,
+                })),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: Color::srgba(1.0, 0.6, 0.2, 0.85),
+                    emissive: LinearRgba::rgb(5.0, 2.2, 0.5),
+                    alpha_mode: AlphaMode::Blend,
+                    unlit: true,
+                    ..default()
+                })),
+                // Cone tip points +Y by default; rotate it to point +Z
+                // (astern).
+                Transform::from_xyz(
+                    side * collider_radius * 0.34,
+                    -0.03 * collider_radius,
+                    base_z,
+                )
                 .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
                 .with_scale(Vec3::new(1.0, 0.01, 1.0)),
-            crate::systems::ship::EngineExhaust {
-                base_z,
-                length: flame_len,
-            },
-            Visibility::Hidden,
-        ));
+                crate::systems::ship::EngineExhaust {
+                    base_z,
+                    length: flame_len,
+                },
+                Visibility::Hidden,
+            ));
+        }
+    });
+}
+
+/// Blend `a` toward `b` by `t` in srgb — palette tinting for hull materials.
+fn blend(a: Color, b: Color, t: f32) -> Color {
+    let a = a.to_srgba();
+    let b = b.to_srgba();
+    Color::srgb(
+        a.red + (b.red - a.red) * t,
+        a.green + (b.green - a.green) * t,
+        a.blue + (b.blue - a.blue) * t,
+    )
+}
+
+/// Compose the Loup-Garou's flight model as children of the ship root.
+/// `r` is the collider radius; every dimension hangs off it.
+fn spawn_loup_garou_model(
+    ship: &mut EntityCommands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    palette: &Palette,
+    r: f32,
+) {
+    let primary = bridge::color_from_palette(palette.primary);
+    let accent = bridge::color_from_palette(palette.accent);
+    let accent_srgba = accent.to_srgba();
+
+    let hull = materials.add(StandardMaterial {
+        base_color: blend(Color::srgb(0.42, 0.45, 0.52), primary, 0.30),
+        metallic: 0.75,
+        perceptual_roughness: 0.38,
+        ..default()
+    });
+    let trim = materials.add(StandardMaterial {
+        base_color: blend(Color::srgb(0.19, 0.20, 0.24), primary, 0.15),
+        metallic: 0.85,
+        perceptual_roughness: 0.45,
+        ..default()
+    });
+    let stripe = materials.add(StandardMaterial {
+        base_color: accent,
+        metallic: 0.40,
+        perceptual_roughness: 0.50,
+        emissive: LinearRgba::rgb(
+            accent_srgba.red * 0.35,
+            accent_srgba.green * 0.35,
+            accent_srgba.blue * 0.35,
+        ),
+        ..default()
+    });
+    let canopy = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.08, 0.16, 0.24),
+        metallic: 0.20,
+        perceptual_roughness: 0.05,
+        emissive: LinearRgba::rgb(0.12, 0.42, 0.60),
+        ..default()
+    });
+    let burn = materials.add(StandardMaterial {
+        base_color: Color::srgb(1.0, 0.65, 0.25),
+        emissive: LinearRgba::rgb(1.6, 0.7, 0.15),
+        unlit: true,
+        ..default()
+    });
+
+    // Cylinders extrude along +Y; lay them along the hull axis (Z).
+    let along_z = Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
+    // Cone tips point +Y; aim the nose cone forward (-Z).
+    let tip_forward = Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
+    // Delta wings sweep their outboard edge aft.
+    let sweep = 0.30f32;
+
+    ship.with_children(|parent| {
+        let mut part = |mesh: Mesh, mat: &Handle<StandardMaterial>, tx: Transform| {
+            parent.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(mat.clone()), tx));
+        };
+
+        // Fuselage: main hull box, tapering nose cone, raised dorsal spine.
+        part(
+            Cuboid::new(0.46 * r, 0.28 * r, 1.2 * r).into(),
+            &hull,
+            Transform::from_xyz(0.0, 0.0, -0.15 * r),
+        );
+        part(
+            Cone {
+                radius: 0.20 * r,
+                height: 0.55 * r,
+            }
+            .into(),
+            &hull,
+            Transform::from_xyz(0.0, 0.0, -r).with_rotation(tip_forward),
+        );
+        part(
+            Cuboid::new(0.16 * r, 0.10 * r, 0.9 * r).into(),
+            &trim,
+            Transform::from_xyz(0.0, 0.16 * r, 0.1 * r),
+        );
+
+        // Canopy: smoked glass over the cockpit, lit faintly from inside.
+        part(
+            Sphere::new(0.15 * r).into(),
+            &canopy,
+            Transform::from_xyz(0.0, 0.17 * r, -0.35 * r).with_scale(Vec3::new(0.9, 0.55, 1.6)),
+        );
+
+        // Forward-mounted rotary mass driver, under the chin.
+        part(
+            Cylinder::new(0.045 * r, 0.8 * r).into(),
+            &trim,
+            Transform::from_xyz(0.0, -0.10 * r, -0.9 * r).with_rotation(along_z),
+        );
+
+        // Aft engine block bridging the nacelles.
+        part(
+            Cuboid::new(0.62 * r, 0.30 * r, 0.5 * r).into(),
+            &trim,
+            Transform::from_xyz(0.0, 0.0, 0.55 * r),
+        );
+
+        for side in [-1.0f32, 1.0] {
+            let wing_rot = Quat::from_rotation_y(-side * sweep);
+            // Delta wing with an accent stripe along its chord and a
+            // vertical tip fin.
+            part(
+                Cuboid::new(0.95 * r, 0.05 * r, 0.45 * r).into(),
+                &hull,
+                Transform::from_xyz(side * 0.65 * r, -0.02 * r, 0.35 * r).with_rotation(wing_rot),
+            );
+            part(
+                Cuboid::new(0.92 * r, 0.055 * r, 0.09 * r).into(),
+                &stripe,
+                Transform::from_xyz(side * 0.66 * r, -0.02 * r, 0.47 * r).with_rotation(wing_rot),
+            );
+            part(
+                Cuboid::new(0.05 * r, 0.30 * r, 0.35 * r).into(),
+                &stripe,
+                Transform::from_xyz(side * 1.05 * r, 0.10 * r, 0.52 * r),
+            );
+            // Engine nacelle with an always-lit nozzle disc (the idle burn
+            // the exhaust cones grow out of under thrust).
+            part(
+                Cylinder::new(0.13 * r, 0.75 * r).into(),
+                &trim,
+                Transform::from_xyz(side * 0.34 * r, -0.03 * r, 0.55 * r).with_rotation(along_z),
+            );
+            part(
+                Cylinder::new(0.10 * r, 0.03 * r).into(),
+                &burn,
+                Transform::from_xyz(side * 0.34 * r, -0.03 * r, 0.93 * r).with_rotation(along_z),
+            );
+        }
+
+        // Comms whip on the dorsal spine.
+        part(
+            Cylinder::new(0.012 * r, 0.35 * r).into(),
+            &trim,
+            Transform::from_xyz(0.08 * r, 0.32 * r, 0.15 * r),
+        );
     });
 }
 
