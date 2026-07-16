@@ -14,6 +14,7 @@ pub mod mode;
 pub mod network;
 pub mod onboard;
 pub mod pause;
+pub mod reticle;
 pub mod sensors;
 pub mod setup;
 pub mod ship;

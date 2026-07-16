@@ -12,6 +12,7 @@
 
 use bevy::prelude::*;
 
+use crate::states::{CurrentLocation, GameMode};
 use crate::systems::mode::PlayerAvatar;
 
 /// What kind of thing you can interact with. Pure data — no behaviour. The
@@ -27,9 +28,15 @@ pub enum InteractKind {
     Nav,
     Log,
     Fuel,
+    /// Mode transitions, discoverable in the world: the parked ship boards,
+    /// the airlock hatch disembarks, the pilot seat takes the helm.
     Board,
+    Disembark,
     Launch,
     TakeHelm,
+    /// Climb between the ship's decks (rebuilds the interior scene on the
+    /// other deck, keeping position).
+    Ladder,
     /// S09b consoles (spec §22): drive the ship's flight systems from OnBoard.
     Gunner,
     Scanner,
@@ -55,10 +62,19 @@ pub struct Npc {
     pub dialogue: Vec<String>,
 }
 
-/// The prompt string currently shown above the avatar (`Some("E: talk to
-/// Mara")`), or `None` when not next to anything.
+/// The interaction the avatar is currently in reach of: the prompt string
+/// (`"E: Mara"`), and the target's world position for the highlight ring.
+/// Rendered by `hud::update_hud_status` (text) and
+/// `interior::highlight_interactable` (ring).
 #[derive(Resource, Default)]
-pub struct InteractionPrompt(pub Option<String>);
+pub struct InteractionPrompt {
+    pub text: Option<String>,
+    pub target: Option<Vec2>,
+    /// Where the currently open panel was opened from. Walking away from
+    /// this point closes the panel (`LEAVE_RANGE`), so a conversation
+    /// doesn't stay locked after you've left it.
+    pub anchor: Option<Vec2>,
+}
 
 /// Which interaction panel (if any) is currently open. Set by `try_interact`
 /// on `E`; cleared by `pause::toggle_pause` (Esc). Drives the HUD.
@@ -85,61 +101,127 @@ pub enum ActivePanel {
     Unknown,
 }
 
-/// How close (world units) the avatar must be to an `Interactable` to use it.
-const REACH: f32 = 26.0;
+/// How close (world px) the avatar must be to an `Interactable` to use it —
+/// about 2.5 tiles at the pixel-art scale.
+const REACH: f32 = 40.0;
+
+/// How far (world px) the avatar can drift from the spot an interaction was
+/// opened at before the panel closes on its own — wider than `REACH` so a
+/// small shuffle doesn't drop a conversation, but walking off breaks the
+/// focus without needing Esc.
+const LEAVE_RANGE: f32 = 64.0;
 
 /// Detect the nearest `Interactable` in reach of the avatar, show its prompt,
 /// and on `E` open the matching panel (router inline — Bevy 0.18 has no
-/// `EventReader`). Runs only in interior modes (wired in `main.rs` under
-/// `in_any_interior`).
+/// `EventReader`). Mode-transition kinds (Board / Disembark / TakeHelm) set
+/// the next `GameMode` instead of opening a panel, so moving between the
+/// station, the ship, and the helm is a visible thing you walk up to and
+/// use — not a hidden keybind. Runs only in interior modes (wired in
+/// `main.rs` under `in_any_interior`).
+#[allow(clippy::too_many_arguments)]
 pub fn try_interact(
     keys: Res<ButtonInput<KeyCode>>,
     avatar: Query<&Transform, With<PlayerAvatar>>,
     interactables: Query<(Entity, &Transform, &Interactable)>,
     mut prompt: ResMut<InteractionPrompt>,
     mut panel: ResMut<ActivePanel>,
+    mut location: ResMut<CurrentLocation>,
+    mut next: ResMut<NextState<GameMode>>,
+    mut deck: ResMut<crate::systems::interior::ActiveDeck>,
+    mut registry: ResMut<crate::states::SceneRegistry>,
 ) {
     let Ok(av) = avatar.single() else {
-        prompt.0 = None;
+        prompt.text = None;
+        prompt.target = None;
         return;
     };
     let av_pos = av.translation.truncate();
 
-    let mut nearest: Option<(f32, Entity, String, InteractKind)> = None;
+    // A panel keeps focus only while you stay near what opened it. Walking
+    // away breaks the conversation (Esc still works too), so interactions
+    // never stay locked behind a panel you've left behind.
+    if *panel != ActivePanel::None {
+        match prompt.anchor {
+            Some(anchor) if av_pos.distance(anchor) > LEAVE_RANGE => {
+                *panel = ActivePanel::None;
+                prompt.anchor = None;
+            }
+            _ => {}
+        }
+    } else {
+        prompt.anchor = None;
+    }
+
+    let mut nearest: Option<(f32, Entity, String, InteractKind, Vec2)> = None;
     for (e, t, inter) in &interactables {
-        let d = t.translation.truncate().distance(av_pos);
+        let pos = t.translation.truncate();
+        let d = pos.distance(av_pos);
         if d <= REACH {
             let better = match &nearest {
                 None => true,
                 Some(n) => d < n.0,
             };
             if better {
-                nearest = Some((d, e, inter.label.clone(), inter.kind));
+                nearest = Some((d, e, inter.label.clone(), inter.kind, pos));
             }
         }
     }
 
     match nearest {
-        Some((_, e, label, kind)) => {
-            prompt.0 = Some(format!("E: {label}"));
+        Some((_, e, label, kind, pos)) => {
+            prompt.text = Some(format!("[E] {label}"));
+            prompt.target = Some(pos);
             if keys.just_pressed(KeyCode::KeyE) && *panel == ActivePanel::None {
-                *panel = match kind {
-                    InteractKind::Talk => ActivePanel::Dialogue(e),
-                    InteractKind::Shop => ActivePanel::Market,
-                    InteractKind::Crew => ActivePanel::Order(e),
-                    InteractKind::Helm | InteractKind::TakeHelm => ActivePanel::Helm,
-                    InteractKind::Engineering => ActivePanel::Engineering,
-                    InteractKind::Nav => ActivePanel::Nav,
-                    InteractKind::Log => ActivePanel::Log,
-                    InteractKind::Fuel => ActivePanel::Fuel,
-                    InteractKind::Gunner => ActivePanel::Gunner,
-                    InteractKind::Scanner => ActivePanel::Scanner,
-                    InteractKind::Miner => ActivePanel::Miner,
-                    InteractKind::Power => ActivePanel::Power,
-                    _ => ActivePanel::Unknown,
-                };
+                match kind {
+                    // Mode transitions — no panel, the world changes.
+                    InteractKind::Board => {
+                        location.is_docked = true;
+                        // Boarding always puts you on the airlock deck.
+                        deck.index = 0;
+                        deck.spawn = None;
+                        next.set(GameMode::OnBoard);
+                    }
+                    InteractKind::Ladder => {
+                        // Climb: flip decks, come out beside the ladder.
+                        // Clearing the registry makes `enter_interior`
+                        // rebuild the scene on the new deck next frame.
+                        deck.index = 1 - deck.index.min(1);
+                        deck.spawn = Some(pos + Vec2::new(0.0, -24.0));
+                        registry.scene = None;
+                    }
+                    InteractKind::Disembark => {
+                        // Only meaningful hard-docked at a station.
+                        if location.is_docked {
+                            next.set(GameMode::Landed);
+                        }
+                    }
+                    InteractKind::TakeHelm => {
+                        next.set(GameMode::SpaceFlight);
+                    }
+                    kind => {
+                        prompt.anchor = Some(pos);
+                        *panel = match kind {
+                            InteractKind::Talk => ActivePanel::Dialogue(e),
+                            InteractKind::Shop => ActivePanel::Market,
+                            InteractKind::Crew => ActivePanel::Order(e),
+                            InteractKind::Helm => ActivePanel::Helm,
+                            InteractKind::Engineering => ActivePanel::Engineering,
+                            InteractKind::Nav => ActivePanel::Nav,
+                            InteractKind::Log => ActivePanel::Log,
+                            InteractKind::Fuel => ActivePanel::Fuel,
+                            InteractKind::Gunner => ActivePanel::Gunner,
+                            InteractKind::Scanner => ActivePanel::Scanner,
+                            InteractKind::Miner => ActivePanel::Miner,
+                            InteractKind::Power => ActivePanel::Power,
+                            _ => ActivePanel::Unknown,
+                        };
+                    }
+                }
             }
         }
-        None => prompt.0 = None,
+        None => {
+            prompt.text = None;
+            prompt.target = None;
+        }
     }
 }

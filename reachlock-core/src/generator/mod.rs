@@ -9,6 +9,7 @@
 pub mod hull;
 pub mod music;
 pub mod planet;
+pub mod ship;
 pub mod station;
 pub mod system;
 pub mod transit;
@@ -82,6 +83,18 @@ pub enum RoomKind {
     Shipyard,
     Reactor,
     Bridge,
+    // Ship-interior kinds (docs/SHIPS.md §6). Stations don't generate these;
+    // authored ship layouts place them.
+    /// The pilot's seat and canopy — take the helm here.
+    Cockpit,
+    /// Processing floor + shuttle pad (the Loup-Garou's zero-g workspace).
+    TechBay,
+    /// The scanner array, a console in its own room.
+    Scanner,
+    /// Trauma and surgery.
+    MedBay,
+    /// Cryo pods — the only way living crew survive a self-generated jump.
+    Cryo,
 }
 
 /// A door connecting two rooms (indices into the room list).

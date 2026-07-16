@@ -9,11 +9,11 @@ use bevy::prelude::*;
 use crate::net::{ConnectionState, NetMode};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
-use crate::systems::interaction::{ActivePanel, Npc};
+use crate::systems::interaction::{ActivePanel, InteractionPrompt, Npc};
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::market::{market_panel_text, MarketState};
 use crate::systems::pause::PauseOverlay;
-use crate::systems::ship::ShipSystems;
+use crate::systems::ship::{FlightFeel, ShipSystems};
 use crate::systems::ticker::UniverseTicker;
 
 #[derive(Component)]
@@ -42,6 +42,24 @@ pub struct DialoguePanel;
 /// Market panel (S07): buy/sell UI text rendered from `market_panel_text`.
 #[derive(Component)]
 pub struct MarketPanel;
+
+/// Key-binding help line. Swapped per mode by `update_hud_status` so the
+/// flight bindings and the interior bindings never show at the wrong time.
+#[derive(Component)]
+pub struct HelpText;
+
+/// The "[E] Mara" interaction prompt, bottom-center. Until this element
+/// existed the prompt was computed every frame and shown nowhere — the whole
+/// interaction system was invisible to the player.
+#[derive(Component)]
+pub struct PromptText;
+
+const HELP_FLIGHT: &str =
+    "W/S pitch · A/D yaw · Q/E roll (double-tap: barrel roll) · Space thrust · \
+     Shift boost · Ctrl brake · F fire · G mine · T scan · M map · Enter dock/jump · J self-jump · \
+     X anomaly · Esc pause";
+const HELP_INTERIOR: &str = "WASD walk · E interact (board at the ship, disembark at the airlock, \
+     fly from the pilot seat) · L launch · F refuel (docked) · Esc pause";
 
 pub fn spawn_hud(mut commands: Commands) {
     commands.spawn((
@@ -135,7 +153,8 @@ pub fn spawn_hud(mut commands: Commands) {
         },
     ));
     commands.spawn((
-        Text::new("W/↑ thrust · Shift boost · Space brake · A/D turn · X anomaly · S scan · M map · E dock/board · L launch · B walk-ship · Esc pause"),
+        HelpText,
+        Text::new(HELP_FLIGHT),
         TextFont {
             font_size: 12.0,
             ..default()
@@ -145,6 +164,21 @@ pub fn spawn_hud(mut commands: Commands) {
             position_type: PositionType::Absolute,
             top: Val::Px(30.0),
             left: Val::Px(8.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
+        PromptText,
+        Text::new(""),
+        TextFont {
+            font_size: 18.0,
+            ..default()
+        },
+        TextColor(Color::srgb(1.0, 0.95, 0.6)),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Percent(18.0),
+            left: Val::Percent(46.0),
             ..default()
         },
     ));
@@ -189,6 +223,8 @@ pub fn update_hud_status(
     mode: Res<State<GameMode>>,
     location: Res<CurrentLocation>,
     systems: Res<ShipSystems>,
+    feel: Res<FlightFeel>,
+    prompt: Res<InteractionPrompt>,
     log: Res<ShipLog>,
     deliberation: Res<DeliberationState>,
     net_mode: Res<NetMode>,
@@ -200,6 +236,8 @@ pub fn update_hud_status(
         Query<&mut Text, With<DeliberationOverlay>>,
         Query<&mut Text, With<OfflineBadge>>,
         Query<&mut Text, With<PauseOverlay>>,
+        Query<&mut Text, With<HelpText>>,
+        Query<&mut Text, With<PromptText>>,
     )>,
 ) {
     if let Ok(mut text) = texts.p0().single_mut() {
@@ -207,8 +245,9 @@ pub fn update_hud_status(
             let pct = systems.fuel.0 * 100 / 1024;
             let hull = systems.hull_hp.0 * 100 / 1024;
             let breach = if systems.dead { "  ⚠ BREACH" } else { "" };
+            let spd = feel.speed.round() as i64;
             **text = format!(
-                "FUEL {pct}%{}  HULL {hull}%{breach}",
+                "SPD {spd}  FUEL {pct}%{}  HULL {hull}%{breach}",
                 if systems.thrusting { " ▲" } else { "" }
             );
         } else {
@@ -269,6 +308,19 @@ pub fn update_hud_status(
             GameMode::Paused => "⏸ PAUSED\n\nEsc to resume".to_string(),
             _ => String::new(),
         };
+    }
+    if let Ok(mut text) = texts.p6().single_mut() {
+        let help = match **mode {
+            GameMode::SpaceFlight => HELP_FLIGHT,
+            GameMode::Landed | GameMode::OnBoard => HELP_INTERIOR,
+            _ => "", // transition beats/pause: no bindings to advertise
+        };
+        if **text != help {
+            **text = help.to_string();
+        }
+    }
+    if let Ok(mut text) = texts.p7().single_mut() {
+        **text = prompt.text.clone().unwrap_or_default();
     }
 }
 
