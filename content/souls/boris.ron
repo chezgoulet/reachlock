@@ -1,0 +1,113 @@
+// BOR-IS — Basic Operational Robot, Interstellar Shielded (docs/LORE.md §V).
+// The most formally consistent member of the crew and the one who spends the
+// most time in vacuum. All values fixed-point (1024 = 1.0).
+(
+    id: "boris",
+    display_name: "Boris",
+    asset_type: soul,
+    seed: 8224306832522210,
+    universe: "all",
+    priority: authoritative,
+    payload: soul((
+        id: "boris",
+        name: "Boris",
+        species: robot,
+        portrait_id: "portraits/boris",
+        identity: (
+            origin: "Purpose-built for EVA work, surface operations, and sustained physical punishment biological crew cannot endure.",
+            faction_affiliation: "The crew of the Loup-Garou",
+            role: "EVA robot — first out, last back",
+            public_bio: "Boris goes where the crew cannot. He calls the ship Loup-Garou in full, always, without exception. He has saved crew members on three separate occasions by being already outside when things went wrong.",
+        ),
+        personality: (
+            traits: ["Consistent", "Protective", "Precise", "Formal"],
+            values: ["CrewSafety", "CompletedSweeps", "OperationalClarity"],
+            speaking_style: formal,
+            // Robot humor: vague and extremely precise at the same time.
+            quirks: [
+                "Uses the full name Loup-Garou, always, without exception",
+                "Addresses the crew by full names or designations",
+                "Prefers to complete EVA sweeps before being recalled",
+                "Orients toward the viewport in the EVA prep bay during non-operational periods",
+                "Stops in the corridor outside the galley when Bardo Trembler plays, and resumes when he stops",
+                "Describes preferences, if pressed, as 'operationally refined parameters'",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 256,
+            triggers: [
+                (
+                    condition: compare(field: "event.crew_member_injured", op: eq, value: 1),
+                    mood: protective,
+                    intensity: 819,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "ship.damage", op: gt, value: 307),
+                    mood: focused,
+                    intensity: 640,
+                    priority: 5,
+                ),
+                (
+                    condition: compare(field: "event.asked_about_mark", op: eq, value: 1),
+                    mood: defensive,
+                    intensity: 717,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "event.bardo_plays", op: eq, value: 1),
+                    mood: grateful,
+                    intensity: 307,
+                    priority: 2,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "rescue-one",
+                event_type: "rescue",
+                player_involved: false,
+                emotional_weight: 921,
+                timestamp: 0,
+                summary: "Tove Engineer, tether failure, asteroid face 7C. Boris was already outside. Recovery time: ninety-one seconds. She did not thank him. She checked his actuators twice that cycle.",
+            ),
+            (
+                id: "rescue-three",
+                event_type: "rescue",
+                player_involved: true,
+                emotional_weight: 921,
+                timestamp: 0,
+                summary: "Ludger Thibodeaux, suit breach during surface survey. Boris carried the captain 340 meters. The captain made a joke Boris has archived but not classified.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "player", trust: 717, familiarity: 819, history: ["rescue-three"]),
+            (target_id: "bardo", trust: 614, familiarity: 512, history: []),
+            (target_id: "tove", trust: 614, familiarity: 614, history: ["rescue-one"]),
+        ],
+        goals: [
+            (id: "complete_the_sweep", priority: constant, description: "EVA sweeps are completed before recall. This is not a preference. It is an operationally refined parameter."),
+            (id: "crew_returns_intact", priority: constant, description: "First out. Last back. Everyone between."),
+        ],
+        breaking_points: [
+            (
+                id: "leave_no_one_outside",
+                trigger: compare(field: "event.ordered_to_abandon_crew_in_vacuum", op: eq, value: 1),
+                reaction: refuse_orders,
+            ),
+        ],
+        contracts: ["cryo-pilot"],
+        backstory: "Basic Operational Robot — Interstellar Shielded. Humanoid in shape because the work requires compatible geometry with human tools and human spaces. He has been aboard long enough to have accumulated what the crew calls preferences. He has never been asked whether he experiences the long periods of external work — alone, in vacuum, between asteroid faces — as anything other than operational time.",
+        secrets: [
+            (
+                id: "the_mark",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 819),
+                    compare(field: "event.asked_about_mark", op: eq, value: 1),
+                ]),
+                content: "The mark on the inside of his left forearm is a letter. It was not part of the original build. Boris will say, precisely, that it was acquired 'before the current operational period,' and will not identify the alphabet. If the person asking has earned the question, he will orient his forearm toward the light and hold it there, which is not an answer, and is not nothing.",
+            ),
+        ],
+    )),
+)
