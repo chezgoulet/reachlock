@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 
-use crate::states::ModeScope;
+use crate::states::{ModeScope, SceneRegistry};
 
 /// Tear down the SpaceFlight scene when entering Hyperspace — the space
 /// entities (ModeScope) are not valid during transit and must not render or
@@ -19,22 +19,27 @@ use crate::states::ModeScope;
 /// NOT tagged ModeScope so it survives this teardown.
 pub fn teardown_for_hyperspace(
     mut commands: Commands,
+    mut registry: ResMut<SceneRegistry>,
     mode_entities: Query<Entity, With<ModeScope>>,
 ) {
     for entity in &mode_entities {
         commands.entity(entity).despawn();
     }
+    registry.space_alive = false;
 }
 
 /// Despawn leftover scene entities when leaving `InGame` entirely (the
 /// `GameMode` sub-state is dropped without firing its own `OnExit`).
 pub fn teardown_on_leave_game(
     mut commands: Commands,
+    mut registry: ResMut<SceneRegistry>,
     mode_entities: Query<Entity, With<ModeScope>>,
 ) {
     for entity in &mode_entities {
         commands.entity(entity).despawn();
     }
+    registry.space_alive = false;
+    registry.scene = None;
 }
 
 /// Follows the walking avatar for top-down interior modes (Landed/OnBoard):

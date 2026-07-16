@@ -184,10 +184,18 @@ half-broken.
 
 - [x] Authored two-deck Loup-Garou interior (`generator/ship.rs`), ladder
   deck transit, room-appropriate stations, cryo pod props, zero-g movement
-  rules (this sprint).
-- [ ] Station *views*: tactical HUD firing into the live flight view, miner
-  view, scanner view. (Helm→flight already works; the others render panels
-  without the live outside view yet.)
+  rules (S09c).
+- [x] Station *views*, first slice (S09d): leaving the helm mid-flight (`B`)
+  keeps the space scene alive and simulating under the interior
+  (`SceneRegistry::space_alive`); opening the gunner/scanner/miner console
+  in flight swaps the screen to the live flight scene with that console's
+  overlay. The gunner gets the aiming reticle and the real trigger (F —
+  bolts fly and land in the live world), the scanner gets the pulse (T),
+  the miner runs the beam (G). Walking off the console (or Esc) returns to
+  the interior; the ship coasts on momentum while nobody holds the stick.
+  *Still to come:* turret aim independent of the nose + target lock (S19),
+  scanner contact list, station operation by NPC/LLM crew (S13+), and
+  multi-body play (a pilot *and* a gunner needs S23).
 - [ ] Power allocation as a real constraint (engineering station budget
   feeding system effectiveness).
 - [ ] Damage → compartment fires → spread/fight/vent loop.

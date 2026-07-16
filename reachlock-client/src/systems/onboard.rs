@@ -9,12 +9,91 @@ use bevy::prelude::*;
 use reachlock_core::sim::SimEvent;
 use reachlock_core::util::rng::Fixed;
 
-use crate::states::{CurrentLocation, GameMode};
+use crate::states::{CurrentLocation, GameMode, ModeScope, SceneRegistry};
 use crate::systems::contract::ShipLog;
 use crate::systems::crew::{CrewFigure, CrewRoster, ORDER_ROOMS};
 use crate::systems::interaction::ActivePanel;
 use crate::systems::ship::{ShipCommand, ShipSystems, POWER_BUDGET, POWER_MAX_NOTCH};
 use crate::systems::ticker::UniverseTicker;
+
+/// Which console is showing the live flight scene (S09d station views —
+/// docs/SHIPS.md §1: "each station has its own view of the same live world").
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StationView {
+    Gunner,
+    Scanner,
+    Miner,
+}
+
+/// The station view open this frame, if any. Written once per frame by
+/// [`update_station_view`]; read by the camera manager, the flight systems
+/// (which key F/T/G to the matching console), and the reticle.
+#[derive(Resource, Default, PartialEq)]
+pub struct ActiveStationView(pub Option<StationView>);
+
+/// A station view is open when the crew is on board a ship *in flight* (the
+/// space scene is alive underneath the interior) and one of the flight
+/// consoles has focus. Docked, the same consoles keep their plain config
+/// panels — there is no live outside to show. Pure so it unit-tests without
+/// a Bevy world.
+pub fn station_view(
+    mode: GameMode,
+    panel: &ActivePanel,
+    is_docked: bool,
+    space_alive: bool,
+) -> Option<StationView> {
+    if mode != GameMode::OnBoard || is_docked || !space_alive {
+        return None;
+    }
+    match panel {
+        ActivePanel::Gunner => Some(StationView::Gunner),
+        ActivePanel::Scanner => Some(StationView::Scanner),
+        ActivePanel::Miner => Some(StationView::Miner),
+        _ => None,
+    }
+}
+
+/// Publish [`ActiveStationView`] for the frame.
+pub fn update_station_view(
+    mode: Option<Res<State<GameMode>>>,
+    panel: Res<ActivePanel>,
+    location: Res<CurrentLocation>,
+    registry: Res<SceneRegistry>,
+    mut view: ResMut<ActiveStationView>,
+) {
+    let current =
+        mode.and_then(|m| station_view(**m, &panel, location.is_docked, registry.space_alive));
+    if view.0 != current {
+        view.0 = current;
+    }
+}
+
+/// Hide the interior sprites while a station view fills the screen with the
+/// live flight scene, and restore them when the view closes (walking off the
+/// console — `InteractionPrompt::anchor` — or Esc both close it). Flips
+/// visibility only on a state change, not every frame.
+pub fn station_view_mask(
+    view: Res<ActiveStationView>,
+    mut was_open: Local<bool>,
+    mut interior_entities: Query<(&ModeScope, &mut Visibility)>,
+) {
+    let open = view.0.is_some();
+    if open == *was_open {
+        return;
+    }
+    *was_open = open;
+    for (scope, mut vis) in &mut interior_entities {
+        if matches!(scope.0, GameMode::OnBoard | GameMode::Landed) {
+            *vis = if open {
+                Visibility::Hidden
+            } else {
+                // Inherited is the spawn default for every interior entity;
+                // the interact glow re-resolves its own visibility each frame.
+                Visibility::Inherited
+            };
+        }
+    }
+}
 
 /// Panel marker components (screen-fixed via `Node` absolute positioning).
 #[derive(Component, Default)]
@@ -172,8 +251,10 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
 pub fn onboard_ship_consoles(
     keys: Res<ButtonInput<KeyCode>>,
     panel: Res<ActivePanel>,
+    view: Res<ActiveStationView>,
     mut command: ResMut<ShipCommand>,
     systems: Res<ShipSystems>,
+    feel: Res<crate::systems::ship::FlightFeel>,
     mut log: ResMut<ShipLog>,
     mut panels: ParamSet<(
         Query<&mut Text, With<GunnerPanel>>,
@@ -198,10 +279,20 @@ pub fn onboard_ship_consoles(
                 } else {
                     "SAFE"
                 };
-                **t = format!(
-                    "GUNNER\nweapons {state}\npower {}\nENTER: arm/safe\n(fly: F to fire)",
-                    command.power_weapons
-                );
+                **t = if view.0 == Some(StationView::Gunner) {
+                    // Live view: the reticle marks the guns' axis in the
+                    // scene behind this text; F fires for real.
+                    format!(
+                        "GUNNER — LIVE\nweapons {state} · power {}\nspeed {:.0}\n\
+                         F fire · ENTER arm/safe\nwalk away to stand down",
+                        command.power_weapons, feel.speed
+                    )
+                } else {
+                    format!(
+                        "GUNNER\nweapons {state}\npower {}\nENTER: arm/safe\n(fly: F to fire)",
+                        command.power_weapons
+                    )
+                };
             }
             _ => **t = String::new(),
         }
@@ -218,10 +309,18 @@ pub fn onboard_ship_consoles(
                     });
                 }
                 let mode = if command.scanner_boost { "LONG" } else { "STD" };
-                **t = format!(
-                    "SCANNER\nrange {mode}\npower {}\nENTER: toggle range\n(fly: T to pulse)",
-                    command.power_sensors
-                );
+                **t = if view.0 == Some(StationView::Scanner) {
+                    format!(
+                        "SCANNER — LIVE\nrange {mode} · power {}\n\
+                         T pulse · ENTER toggle range\nwalk away to stand down",
+                        command.power_sensors
+                    )
+                } else {
+                    format!(
+                        "SCANNER\nrange {mode}\npower {}\nENTER: toggle range\n(fly: T to pulse)",
+                        command.power_sensors
+                    )
+                };
             }
             _ => **t = String::new(),
         }
@@ -242,10 +341,18 @@ pub fn onboard_ship_consoles(
                 } else {
                     "STOWED"
                 };
-                **t = format!(
-                    "MINER\nrig {state}\nore {}\nENTER: toggle\n(fly: hold G)",
-                    systems.ore
-                );
+                **t = if view.0 == Some(StationView::Miner) {
+                    format!(
+                        "MINER — LIVE\nrig {state} · ore {}\n\
+                         hold G to run the beam · ENTER toggle\nwalk away to stand down",
+                        systems.ore
+                    )
+                } else {
+                    format!(
+                        "MINER\nrig {state}\nore {}\nENTER: toggle\n(fly: hold G)",
+                        systems.ore
+                    )
+                };
             }
             _ => **t = String::new(),
         }
@@ -286,6 +393,49 @@ pub fn onboard_ship_consoles(
                 );
             }
             _ => **t = String::new(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn station_views_open_only_on_board_in_flight() {
+        // In flight, undocked, space alive: the three flight consoles open
+        // their live views.
+        for (panel, expect) in [
+            (ActivePanel::Gunner, StationView::Gunner),
+            (ActivePanel::Scanner, StationView::Scanner),
+            (ActivePanel::Miner, StationView::Miner),
+        ] {
+            assert_eq!(
+                station_view(GameMode::OnBoard, &panel, false, true),
+                Some(expect)
+            );
+        }
+    }
+
+    #[test]
+    fn station_views_stay_closed_everywhere_else() {
+        let g = ActivePanel::Gunner;
+        // Docked: config panel only, no live outside to show.
+        assert_eq!(station_view(GameMode::OnBoard, &g, true, true), None);
+        // Space scene torn down (docked boarding path): no view.
+        assert_eq!(station_view(GameMode::OnBoard, &g, false, false), None);
+        // Not on board.
+        assert_eq!(station_view(GameMode::Landed, &g, false, true), None);
+        assert_eq!(station_view(GameMode::SpaceFlight, &g, false, true), None);
+        // Non-flight consoles never open a view.
+        for panel in [
+            ActivePanel::None,
+            ActivePanel::Helm,
+            ActivePanel::Engineering,
+            ActivePanel::Nav,
+            ActivePanel::Power,
+        ] {
+            assert_eq!(station_view(GameMode::OnBoard, &panel, false, true), None);
         }
     }
 }

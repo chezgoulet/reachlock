@@ -269,17 +269,30 @@ pub fn enter_interior(
     mut deck: ResMut<ActiveDeck>,
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
-    mode_entities: Query<Entity, With<ModeScope>>,
+    mode_entities: Query<(Entity, &ModeScope)>,
 ) {
     let mode = **mode;
     if registry.scene.as_ref() == Some(&mode) {
         return; // came back from pause; scene already present
     }
 
+    // S09d: boarding the ship *in flight* (leave the helm) keeps the space
+    // scene spawned and simulating underneath the interior — the ship is a
+    // place the crew walks while the world outside stays live, and the
+    // station consoles render that live world (docs/SHIPS.md §1). Docked
+    // boarding and landing tear space down as before.
+    let keep_space = mode == GameMode::OnBoard && !location.is_docked && registry.space_alive;
+
     // Tear down the previous scene (SpaceFlight / other interior) before
     // building this one.
-    for entity in &mode_entities {
+    for (entity, scope) in &mode_entities {
+        if keep_space && scope.0 == GameMode::SpaceFlight {
+            continue;
+        }
         commands.entity(entity).despawn();
+    }
+    if !keep_space {
+        registry.space_alive = false;
     }
 
     let mut zero_g = false;
@@ -1226,10 +1239,54 @@ pub(crate) fn room_center(layout: &GeneratedLayout, kind: RoomKind) -> Option<Ve
         .map(room_center_point)
 }
 
+/// Which deck of the Loup-Garou holds the cockpit, and where the avatar
+/// stands when they get up from the pilot seat (S09d "leave the helm" — the
+/// reverse of the pilot-seat `TakeHelm` interaction). Mirrors the seat
+/// placement in `spawn_props` (`RoomKind::Cockpit`), one tile astern of it.
+pub fn cockpit_seat_spawn() -> Option<(usize, Vec2)> {
+    let ship = reachlock_core::generator::ship::loup_garou_interior();
+    for (deck_index, deck) in ship.decks.iter().enumerate() {
+        let layout = scale_layout(&deck.layout, LAYOUT_SCALE);
+        if let Some(room) = layout.rooms.iter().find(|r| r.kind == RoomKind::Cockpit) {
+            let c = room_center_point(room);
+            let seat_y = room.y as f32 + room.height as f32 - WALL - 34.0;
+            return Some((deck_index, Vec2::new(c.x, seat_y - 26.0)));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{scale_layout, walkable, ysort, DOOR_R, LAYOUT_SCALE, WALL};
+    use super::{cockpit_seat_spawn, scale_layout, walkable, ysort, DOOR_R, LAYOUT_SCALE, WALL};
     use reachlock_core::generator::{Door, GeneratedLayout, Room, RoomKind};
+
+    /// S09d "leave the helm": standing up from the pilot seat must land the
+    /// avatar on the deck that has the cockpit, on walkable floor inside it.
+    #[test]
+    fn cockpit_seat_spawn_is_walkable_cockpit_floor() {
+        let (deck_index, pos) = cockpit_seat_spawn().expect("the Loup-Garou has a cockpit");
+        let ship = reachlock_core::generator::ship::loup_garou_interior();
+        let deck = &ship.decks[deck_index];
+        assert!(deck.zero_g, "the cockpit is Upstairs (docs/SHIPS.md §6)");
+        let layout = scale_layout(&deck.layout, LAYOUT_SCALE);
+        let cockpit = layout
+            .rooms
+            .iter()
+            .find(|r| r.kind == RoomKind::Cockpit)
+            .expect("cockpit room");
+        assert!(
+            pos.x >= cockpit.x as f32
+                && pos.x <= (cockpit.x + cockpit.width) as f32
+                && pos.y >= cockpit.y as f32
+                && pos.y <= (cockpit.y + cockpit.height) as f32,
+            "stand-up point {pos:?} is inside the cockpit rect"
+        );
+        assert!(
+            walkable(pos.x, pos.y, &layout),
+            "stand-up point {pos:?} is on walkable floor"
+        );
+    }
 
     /// Two rooms sharing the edge y=192 with one door at (96, 192) — the
     /// scaled shape of the generator's hangar + spine corridor.

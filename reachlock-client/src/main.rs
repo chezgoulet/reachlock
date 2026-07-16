@@ -42,6 +42,22 @@ fn in_any_interior(mode: Option<Res<State<GameMode>>>) -> bool {
     }
 }
 
+/// Run condition: the space scene exists and is simulating — flying, or on
+/// board mid-flight with the world alive underneath (S09d station views).
+/// Weapons, projectiles, collisions, sensors, and the chase-cam run here so
+/// shots fired from the gunner console land in the same live scene the pilot
+/// would see.
+fn space_live(mode: Option<Res<State<GameMode>>>, registry: Res<SceneRegistry>) -> bool {
+    match mode {
+        Some(mode) => match **mode {
+            GameMode::SpaceFlight => true,
+            GameMode::OnBoard => registry.space_alive,
+            _ => false,
+        },
+        None => false,
+    }
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -102,6 +118,8 @@ fn main() {
         // S09c: Star Fox feel layer — smoothed axes, bank, barrel roll,
         // camera blends. Render-layer only.
         .init_resource::<ship::FlightFeel>()
+        // S09d: which console is showing the live flight scene this frame.
+        .init_resource::<onboard::ActiveStationView>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
@@ -153,24 +171,28 @@ fn main() {
         // Update copy of the builder rebuilds the interior on the new deck
         // (it early-outs every other frame).
         .add_systems(Update, interior::enter_interior.run_if(in_any_interior))
-        // --- SpaceFlight-only gameplay ---
+        // --- SpaceFlight-only gameplay (the pilot's hands on the stick) ---
         .add_systems(
             Update,
             (
                 ship::control,
-                ship::camera_follow,
-                ship::sync_ship_visibility,
                 docking::try_dock,
+                docking::leave_helm,
                 jump::try_gate_jump,
                 jump::self_jump,
             )
                 .run_if(in_spaceflight),
         )
-        // S09b: weapons/scanner/mining driven by the OnBoard consoles via the
-        // ShipCommand bus, rendered in the 3D flight scene.
+        // S09b/S09d: weapons/scanner/mining driven by the OnBoard consoles
+        // via the ShipCommand bus, rendered in the 3D flight scene. These run
+        // whenever the space scene is live — flying, or crewing a console
+        // mid-flight — so a shot fired from the gunner console flies in real
+        // time in the same world.
         .add_systems(
             Update,
             (
+                ship::camera_follow,
+                ship::sync_ship_visibility,
                 ship::fire_weapons,
                 ship::step_projectiles,
                 ship::mining_beam,
@@ -179,9 +201,17 @@ fn main() {
                 ship::engine_glow,
                 systems::starfield::dust_parallax,
             )
-                .run_if(in_spaceflight),
+                .run_if(space_live),
         )
-        .add_systems(Update, (ship::collisions,).run_if(in_spaceflight))
+        .add_systems(Update, (ship::collisions,).run_if(space_live))
+        // S09d: publish which station view is open, then mask/unmask the
+        // interior around it (chained: the mask must see this frame's view).
+        .add_systems(
+            Update,
+            (onboard::update_station_view, onboard::station_view_mask)
+                .chain()
+                .run_if(in_state(AppState::InGame)),
+        )
         // S09c: the aiming reticle runs in every InGame mode so leaving
         // SpaceFlight hides it the same frame.
         .add_systems(
@@ -203,7 +233,7 @@ fn main() {
                 sensors::system_map,
                 sensors::map_overlay_text,
             )
-                .run_if(in_spaceflight),
+                .run_if(space_live),
         )
         // --- Hyperspace transit (cryo-pilot, anomaly, wake) ---
         // Tear down the space scene on entry (S09 gotcha: scope out the

@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use reachlock_core::generator::station::StationKind;
 
 use crate::states::{CurrentLocation, GameMode};
-use crate::systems::ship::PlayerShip;
+use crate::systems::ship::{PlayerShip, ShipSystems};
 
 /// Radius (world units) within which Enter docks with a station. Stations
 /// run up to ~160 units of collider radius themselves, so anything smaller
@@ -70,6 +70,33 @@ pub fn try_dock(
             return;
         }
     }
+}
+
+/// `B` in flight: stand up from the helm and walk the ship (S09d — the
+/// reverse of the pilot seat's `TakeHelm`, closing the loop the S09c handoff
+/// flagged). The space scene stays alive underneath (`SceneRegistry::
+/// space_alive`); the ship coasts with its last velocity — nobody is flying
+/// her until someone sits back down, which is the point (docs/SHIPS.md §1).
+pub fn leave_helm(
+    keys: Res<ButtonInput<KeyCode>>,
+    location: Res<CurrentLocation>,
+    mut systems: ResMut<ShipSystems>,
+    mut deck: ResMut<crate::systems::interior::ActiveDeck>,
+    mut next: ResMut<NextState<GameMode>>,
+    mut log: ResMut<crate::systems::contract::ShipLog>,
+) {
+    if !keys.just_pressed(KeyCode::KeyB) || location.is_docked || systems.dead {
+        return;
+    }
+    let Some((deck_index, spawn)) = crate::systems::interior::cockpit_seat_spawn() else {
+        return;
+    };
+    deck.index = deck_index;
+    deck.spawn = Some(spawn);
+    // Hands off the stick: thrust stops, momentum keeps whatever it had.
+    systems.thrusting = false;
+    log.log("You stand up from the helm. Lou coasts.");
+    next.set(GameMode::OnBoard);
 }
 
 /// `L` (launch) handling inside Landed. Boarding, disembarking, and taking
