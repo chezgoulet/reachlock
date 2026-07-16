@@ -75,13 +75,26 @@ pub fn enter_spaceflight(
     location: ResMut<CurrentLocation>,
     mut registry: ResMut<SceneRegistry>,
     ship: Query<Entity, With<PlayerShip>>,
-    mode_entities: Query<Entity, With<ModeScope>>,
+    mode_entities: Query<(Entity, &ModeScope)>,
 ) {
     if registry.scene == Some(GameMode::SpaceFlight) {
         return; // came back from pause; scene already present
     }
 
-    for entity in &mode_entities {
+    // S09d: returning to the helm from walking the ship mid-flight. The
+    // space scene never went away — drop the interior overlay and hand the
+    // world straight back to the pilot.
+    if registry.space_alive {
+        for (entity, scope) in &mode_entities {
+            if scope.0 != GameMode::SpaceFlight {
+                commands.entity(entity).despawn();
+            }
+        }
+        registry.scene = Some(GameMode::SpaceFlight);
+        return;
+    }
+
+    for (entity, _) in &mode_entities {
         commands.entity(entity).despawn();
     }
 
@@ -177,6 +190,7 @@ pub fn enter_spaceflight(
     }
 
     registry.scene = Some(GameMode::SpaceFlight);
+    registry.space_alive = true;
 }
 
 /// The player's ship. Priority: authored GLTF (`SHIP_GLTF`) → authored hull
