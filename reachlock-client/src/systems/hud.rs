@@ -9,12 +9,12 @@ use bevy::prelude::*;
 use crate::net::{ConnectionState, NetMode};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
-use crate::systems::factions::FactionState;
 use crate::systems::interaction::{ActivePanel, Npc};
 use crate::systems::inventory::PlayerInventory;
-use crate::systems::market::{market_panel_text, Economy, MarketState};
+use crate::systems::market::{market_panel_text, MarketState};
 use crate::systems::pause::PauseOverlay;
 use crate::systems::ship::ShipSystems;
+use crate::systems::ticker::UniverseTicker;
 
 #[derive(Component)]
 pub struct FuelReadout;
@@ -280,8 +280,7 @@ pub fn update_hud_panels(
     panel: Res<ActivePanel>,
     inventory: Res<PlayerInventory>,
     market_state: Res<MarketState>,
-    economy: Res<Economy>,
-    faction_state: Res<FactionState>,
+    ticker: Res<UniverseTicker>,
     npcs: Query<&Npc>,
     mut texts: ParamSet<(
         Query<&mut Text, With<DialoguePanel>>,
@@ -314,8 +313,8 @@ pub fn update_hud_panels(
                 &inventory,
                 &location,
                 &market_state,
-                &economy,
-                &faction_state,
+                &ticker.state.economy,
+                &ticker.state.factions,
             ),
             _ => String::new(),
         };

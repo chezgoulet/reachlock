@@ -3,16 +3,19 @@
 //! and fast-forwards on load with a hard cap.
 //!
 //! This replaces the old per-frame `tick_economy` and `tick_faction_system`
-//! systems — the universe is one clock now.
+//! systems — the universe is one clock now, and `UniverseTicker.state` is
+//! the *only* copy of the economy + factions the client holds. The market,
+//! HUD, and reputation systems all read through it.
 
 use bevy::prelude::*;
 
-use reachlock_core::economy::EconomyState;
-use reachlock_core::faction::{load_faction_catalog, load_storylines, FactionState};
-use reachlock_core::sim::{SimEvent, UniverseState};
+use reachlock_core::sim::{canon_universe, SimEvent, UniverseState, CANON_SEED};
 
-/// One universe tick every N seconds of real (non-paused) play.
-const TICK_INTERVAL_SECS: f64 = 5.0;
+/// One universe tick every N seconds of real (non-paused) play. Integer so
+/// save-file catch-up arithmetic stays in integers (iron rule #2 — the f64
+/// twin below exists only for frame-time accumulation on the render side).
+pub const TICK_SECS: u64 = 5;
+const TICK_INTERVAL_SECS: f64 = TICK_SECS as f64;
 /// Hard cap for catch-up: at most this many ticks may be fast-forwarded on
 /// load. Anything beyond is logged as "the markets moved while you slept."
 const CATCHUP_CAP: u64 = 200;
@@ -29,14 +32,13 @@ pub struct UniverseTicker {
 }
 
 impl UniverseTicker {
-    /// Build a fresh ticker from the canonical economy + faction catalogues.
-    pub fn new(economy: EconomyState, factions: FactionState) -> Self {
-        let state = UniverseState::new(economy, factions);
-        let storylines = load_storylines();
+    /// Build a fresh ticker from the canonical universe — the same
+    /// construction the server uses, so offline and online agree (parity).
+    pub fn new() -> Self {
         Self {
-            state,
+            state: canon_universe(),
             accumulator: 0.0,
-            storylines,
+            storylines: reachlock_core::faction::load_storylines(),
             online_mode: false,
         }
     }
@@ -45,7 +47,7 @@ impl UniverseTicker {
     /// (0.0 when paused). Skips everything when `online_mode` is true.
     /// Returns the ticks that actually advanced (for broadcasting to event
     /// subscribers).
-    pub fn tick_frame(&mut self, dt: f64, seed: u64) -> Vec<Vec<SimEvent>> {
+    pub fn tick_frame(&mut self, dt: f64) -> Vec<Vec<SimEvent>> {
         if self.online_mode || dt <= 0.0 {
             return Vec::new();
         }
@@ -53,64 +55,98 @@ impl UniverseTicker {
         let mut batch = Vec::new();
         while self.accumulator >= TICK_INTERVAL_SECS {
             self.accumulator -= TICK_INTERVAL_SECS;
-            let events = self.state.advance(seed, &self.storylines);
+            let events = self.state.advance(CANON_SEED, &self.storylines);
             batch.push(events);
         }
         batch
     }
 
-    /// Fast-forward after loading a save. Caps at CATCHUP_CAP ticks.
-    pub fn catch_up(&mut self, seed: u64) -> Vec<Vec<SimEvent>> {
+    /// Replay one authoritative server tick. Online mode receives
+    /// `EconomyTick` events instead of ticking locally; advancing with the
+    /// same canonical seed reproduces the server's step exactly (parity),
+    /// which is what updates local prices, standings, and news.
+    pub fn replay_server_tick(&mut self) -> Vec<SimEvent> {
+        self.state.advance(CANON_SEED, &self.storylines)
+    }
+
+    /// Fast-forward `elapsed_ticks` after loading a save, capped at
+    /// [`CATCHUP_CAP`]. Returns the per-tick event batches that ran.
+    pub fn catch_up(&mut self, elapsed_ticks: u64) -> Vec<Vec<SimEvent>> {
+        let ticks = elapsed_ticks.min(CATCHUP_CAP);
         let mut batch = Vec::new();
-        for _ in 0..CATCHUP_CAP {
-            let events = self.state.advance(seed, &self.storylines);
+        for _ in 0..ticks {
+            let events = self.state.advance(CANON_SEED, &self.storylines);
             batch.push(events);
         }
-        bevy::log::info!(
-            "catch-up: advanced {} ticks (markets moved while you slept).",
-            CATCHUP_CAP,
-        );
+        if elapsed_ticks > CATCHUP_CAP {
+            bevy::log::info!(
+                "catch-up truncated at {CATCHUP_CAP} of {elapsed_ticks} ticks \
+                 (the markets moved while you slept)."
+            );
+        } else if ticks > 0 {
+            bevy::log::info!("catch-up: advanced {ticks} ticks.");
+        }
         batch
     }
 }
 
-/// Spawn the universe ticker at startup.
-pub fn init_ticker(mut commands: Commands) {
-    let catalog = load_goods_catalog();
-    let station_seeds = vec![
-        (
-            "home".to_string(),
-            0x5EA17,
-            reachlock_core::economy::StationKind::Hub,
-            None,
-        ),
-        (
-            "refinery-prime".to_string(),
-            0xABCDEF,
-            reachlock_core::economy::StationKind::Refinery,
-            None,
-        ),
-        (
-            "outpost-7".to_string(),
-            0x13579B,
-            reachlock_core::economy::StationKind::Outpost,
-            None,
-        ),
-    ];
-    let economy = EconomyState::new(catalog, &station_seeds);
-    let factions = FactionState::new(load_faction_catalog());
-    commands.insert_resource(UniverseTicker::new(economy, factions));
+impl Default for UniverseTicker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Advance the universe ticker on the game clock (respects pause).
 pub fn tick_universe(time: Res<Time>, mut ticker: ResMut<UniverseTicker>) {
-    let dt = time.delta_secs_f64();
     // Time::delta is 0.0 when paused (the Pause system stops the clock).
     // The ticker handles dt <= 0.0 gracefully.
-    let seed = (time.elapsed_secs_f64() as u64).wrapping_mul(0x9E3779B1);
-    ticker.tick_frame(dt, seed);
+    ticker.tick_frame(time.delta_secs_f64());
 }
 
-fn load_goods_catalog() -> reachlock_core::economy::GoodsCatalog {
-    reachlock_core::economy::load_goods_catalog()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catch_up_advances_elapsed_ticks() {
+        let mut t = UniverseTicker::new();
+        let batches = t.catch_up(7);
+        assert_eq!(batches.len(), 7);
+        assert_eq!(t.state.tick_no, 7);
+    }
+
+    #[test]
+    fn catch_up_is_capped() {
+        let mut t = UniverseTicker::new();
+        let batches = t.catch_up(CATCHUP_CAP + 5_000);
+        assert_eq!(batches.len() as u64, CATCHUP_CAP);
+        assert_eq!(t.state.tick_no, CATCHUP_CAP);
+    }
+
+    #[test]
+    fn tick_frame_respects_pause_and_online_mode() {
+        let mut t = UniverseTicker::new();
+        assert!(t.tick_frame(0.0).is_empty(), "paused frames never tick");
+        t.online_mode = true;
+        assert!(
+            t.tick_frame(TICK_INTERVAL_SECS * 3.0).is_empty(),
+            "online mode never ticks locally (one authority per mode)"
+        );
+        t.online_mode = false;
+        let batches = t.tick_frame(TICK_INTERVAL_SECS * 3.0);
+        assert_eq!(batches.len(), 3, "accumulated time drains into ticks");
+    }
+
+    #[test]
+    fn offline_ticker_matches_server_replay() {
+        // The offline path (tick_frame) and the online path
+        // (replay_server_tick) must advance the universe identically.
+        let mut offline = UniverseTicker::new();
+        let mut online = UniverseTicker::new();
+        offline.tick_frame(TICK_INTERVAL_SECS * 4.0);
+        for _ in 0..4 {
+            online.replay_server_tick();
+        }
+        assert_eq!(offline.state, online.state);
+    }
 }

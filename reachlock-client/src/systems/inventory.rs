@@ -58,9 +58,29 @@ pub struct SaveFile {
     pub location: Option<LocationSnapshot>,
     #[serde(default)]
     pub universe: Option<UniverseState>,
+    /// Wall-clock stamp of the save, for universe catch-up on load. `None`
+    /// on platforms without a wall clock (wasm) — catch-up just skips.
+    #[serde(default)]
+    pub saved_at_epoch_secs: Option<u64>,
 }
 
 const SAVE_PATH: &str = "save/player.ron";
+
+/// Seconds since the Unix epoch, or `None` where the platform has no wall
+/// clock (`SystemTime::now` panics on wasm32-unknown-unknown).
+fn epoch_secs() -> Option<u64> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_secs())
+    }
+}
 
 /// Write the player's state to disk. Best-effort: a failed write is logged,
 /// never fatal (offline-first — the game must run with no FS).
@@ -78,6 +98,7 @@ pub fn save_player(inv: &PlayerInventory, loc: &CurrentLocation, universe: Optio
         inventory: inv.clone(),
         location: Some(snapshot),
         universe: universe.cloned(),
+        saved_at_epoch_secs: epoch_secs(),
     };
     match ron::to_string(&file) {
         Ok(text) => {
@@ -133,26 +154,28 @@ pub fn autosave_system(
 }
 
 /// Startup: restore inventory + location from a prior local save, if any.
-/// Also restores the universe state and runs catch-up for elapsed ticks.
-/// Wired in `main.rs` `Startup`; offine-safe (a missing/corrupt save is a
-/// fresh start, never a crash).
+/// Also restores the universe state and fast-forwards the ticks that elapsed
+/// while the game was closed (capped inside `catch_up`). Wired in `main.rs`
+/// `Startup`; offline-safe (a missing/corrupt save is a fresh start, never a
+/// crash). `UniverseTicker` is an `init_resource` so it already exists here.
 pub fn load_save(
     mut inv: ResMut<PlayerInventory>,
     mut loc: ResMut<CurrentLocation>,
-    mut ticker: Option<ResMut<UniverseTicker>>,
+    mut ticker: ResMut<UniverseTicker>,
 ) {
     if let Some((i, l)) = load_player() {
         *inv = i;
         *loc = l;
     }
-    // Restore universe from save (if present) and catch up.
-    if let Some(ref mut ticker) = ticker {
-        if let Ok(text) = std::fs::read_to_string(SAVE_PATH) {
-            if let Ok(file) = ron::from_str::<SaveFile>(&text) {
-                if let Some(saved) = file.universe {
-                    ticker.state = saved;
-                    let seed = 0x5EED_0001u64; // canonical catch-up seed
-                    let _events = ticker.catch_up(seed);
+    // Restore universe from save (if present) and catch up elapsed ticks.
+    if let Ok(text) = std::fs::read_to_string(SAVE_PATH) {
+        if let Ok(file) = ron::from_str::<SaveFile>(&text) {
+            if let Some(saved) = file.universe {
+                ticker.state = saved;
+                if let (Some(then), Some(now)) = (file.saved_at_epoch_secs, epoch_secs()) {
+                    let elapsed_ticks =
+                        now.saturating_sub(then) / crate::systems::ticker::TICK_SECS;
+                    let _events = ticker.catch_up(elapsed_ticks);
                 }
             }
         }

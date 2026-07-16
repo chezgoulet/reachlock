@@ -85,6 +85,10 @@ fn main() {
         .init_resource::<interaction::ActivePanel>()
         .init_resource::<inventory::SaveTimer>()
         .init_resource::<market::MarketState>()
+        // S12: the one universe — economy + factions + news, advanced by the
+        // ticker. Built before Startup so load_save can restore into it.
+        .init_resource::<ticker::UniverseTicker>()
+        .init_resource::<factions::ReputationPanelVisible>()
         // S09: live jump/transit bookkeeping + sensors.
         .init_resource::<jump::TransitState>()
         .init_resource::<sensors::MapOverlayState>()
@@ -102,8 +106,6 @@ fn main() {
                 inventory::load_save,
                 menu::spawn_menu,
                 sensors::init_blip_assets,
-                market::init_economy,
-                ticker::init_ticker,
             ),
         )
         .add_systems(

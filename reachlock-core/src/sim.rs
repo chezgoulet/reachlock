@@ -6,10 +6,42 @@
 //! test, it must never change without a manifest version bump.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
-use crate::economy::EconomyState;
-use crate::faction::{evaluate_storylines, tick_factions, FactionEvent, FactionState, Storyline};
+use crate::economy::{EconomyState, StationKind};
+use crate::faction::{
+    evaluate_storylines, load_faction_catalog, tick_factions, FactionEvent, FactionState, Storyline,
+};
+
+/// The canonical seed every authority feeds into [`UniverseState::advance`].
+/// The offline ticker, the server tick task, and online replay must all use
+/// this one value — parity ("same seed + same event log = same universe")
+/// holds only while there is exactly one seed.
+pub const CANON_SEED: u64 = 0x5EED_0001;
+
+/// Canonical station roster shared by the offline client and the server so
+/// both authorities advance byte-identical universes. The ids match the
+/// stations the client actually visits (S06 locations).
+pub fn canon_station_seeds() -> Vec<(String, u64, StationKind, Option<String>)> {
+    vec![
+        ("home".into(), 0x5EA17, StationKind::Hub, None),
+        (
+            "refinery-prime".into(),
+            0xABCDEF,
+            StationKind::Refinery,
+            None,
+        ),
+        ("outpost-7".into(), 0x13579B, StationKind::Outpost, None),
+    ]
+}
+
+/// Build the canonical starting universe both authorities share. Pure: same
+/// embedded catalogues, same station seeds, every call byte-identical.
+pub fn canon_universe() -> UniverseState {
+    let economy = EconomyState::new(crate::economy::load_goods_catalog(), &canon_station_seeds());
+    let factions = FactionState::new(load_faction_catalog());
+    UniverseState::new(economy, factions)
+}
 
 /// One logical tick's worth of output. Wraps events from the economy and
 /// faction subsystems.
@@ -43,8 +75,10 @@ pub struct UniverseState {
     pub economy: EconomyState,
     /// Faction simulation state (S11).
     pub factions: FactionState,
-    /// Chapter IDs that have already fired (idempotency guard).
-    pub chapters: HashSet<String>,
+    /// Chapter IDs that have already fired (idempotency guard). A `BTreeSet`
+    /// so the serialized form is deterministic — this struct is snapshot and
+    /// parity-compared as bytes.
+    pub chapters: BTreeSet<String>,
     /// Rolling event log (capped to a reasonable window).
     pub event_log: Vec<SimEvent>,
 }
@@ -56,7 +90,7 @@ impl UniverseState {
             tick_no: 0,
             economy,
             factions,
-            chapters: HashSet::new(),
+            chapters: BTreeSet::new(),
             event_log: Vec::new(),
         }
     }
@@ -168,6 +202,39 @@ mod tests {
             assert_eq!(ev_a, ev_b, "event divergence at tick {step}");
         }
         assert_eq!(a, b, "state divergence after 20 ticks");
+    }
+
+    /// The S12 headline: two universes, same seed, same injected player-trade
+    /// log — one advanced "offline-style", one "server-style" — must be
+    /// byte-identical (serialized) at tick N. Both sides start from
+    /// `canon_universe()` and advance with `CANON_SEED`, exactly like the
+    /// offline ticker and the server tick task.
+    #[test]
+    fn parity_offline_vs_server() {
+        let mut offline = canon_universe();
+        let mut server = canon_universe();
+        let stories = load_storylines();
+        let good = offline.economy.catalog.ids()[0].clone();
+
+        for step in 0..40u64 {
+            // Inject the same player-trade log on both sides mid-stream.
+            if step == 10 || step == 25 {
+                for u in [&mut offline, &mut server] {
+                    u.economy
+                        .stations
+                        .get_mut("home")
+                        .expect("canon universe has the home station")
+                        .record_trade(&good, 5);
+                }
+            }
+            let ev_a = offline.advance(CANON_SEED, &stories);
+            let ev_b = server.advance(CANON_SEED, &stories);
+            assert_eq!(ev_a, ev_b, "event divergence at tick {step}");
+        }
+
+        let a = serde_json::to_string(&offline).expect("serialize offline");
+        let b = serde_json::to_string(&server).expect("serialize server");
+        assert_eq!(a, b, "serialized state diverged at tick 40");
     }
 
     #[test]
