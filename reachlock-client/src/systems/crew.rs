@@ -62,11 +62,11 @@ impl CrewRoster {
         Self {
             members: vec![
                 member("tove", "Tove", CrewRole::Engineer, RoomKind::Reactor),
-                member("prudence", "Prudence", CrewRole::Pilot, RoomKind::Bridge),
+                member("prudence", "Prudence", CrewRole::Pilot, RoomKind::Cockpit),
                 member("risc", "Risc", CrewRole::Gunner, RoomKind::Bridge),
-                member("keene", "Doc Keene", CrewRole::Medic, RoomKind::Quarters),
+                member("keene", "Doc Keene", CrewRole::Medic, RoomKind::MedBay),
                 member("bardo", "Bardo", CrewRole::Navigator, RoomKind::Bar),
-                member("boris", "Boris", CrewRole::Engineer, RoomKind::Hangar),
+                member("boris", "Boris", CrewRole::Engineer, RoomKind::TechBay),
             ],
         }
     }
@@ -135,8 +135,23 @@ pub struct CrewNav {
 /// Seconds per shift half-cycle (duty ↔ quarters).
 const SHIFT_PERIOD: f32 = 24.0;
 
-/// Crew walking speed, world px per second (~4 tiles/s).
+/// Crew walking speed, world px per second (~4 tiles/s), before the
+/// body-kind × gravity factor.
 const CREW_SPEED: f32 = 64.0;
+
+/// Movement speed factor by body kind × deck gravity (docs/SHIPS.md §5):
+/// robots are built heavy — fastest movers in zero-g, slow under gravity;
+/// humans need mag boots in zero-g; androids are baseline everywhere.
+/// Pure — unit-tested; shared by the avatar and the crew.
+pub fn move_factor(body: crate::pixel::BodyKind, zero_g: bool) -> f32 {
+    use crate::pixel::BodyKind;
+    match (body, zero_g) {
+        (BodyKind::Robot, true) => 1.6,
+        (BodyKind::Robot, false) => 0.5,
+        (BodyKind::Human, true) => 0.7,
+        _ => 1.0,
+    }
+}
 
 /// Room index containing the point, if any.
 fn room_at(layout: &GeneratedLayout, p: Vec2) -> Option<usize> {
@@ -252,6 +267,7 @@ pub fn crew_shift_system(
         return;
     };
     let on_shift = shift_parity(*elapsed, SHIFT_PERIOD);
+    let zero_g = interior.zero_g;
     for (fig, mut nav, mut t) in &mut figures {
         let Some(m) = roster.by_id(&fig.0) else {
             continue;
@@ -266,7 +282,10 @@ pub fn crew_shift_system(
             continue;
         };
         let to = next - pos;
-        let step = CREW_SPEED * time.delta_secs();
+        // Boris flies across the zero-g deck and trudges under gravity;
+        // humans are the reverse (docs/SHIPS.md §5).
+        let factor = move_factor(crate::pixel::crew_look(&fig.0).body, zero_g);
+        let step = CREW_SPEED * factor * time.delta_secs();
         if to.length() <= step.max(2.0) {
             t.translation.x = next.x;
             t.translation.y = next.y;
@@ -292,6 +311,20 @@ mod tests {
             current_room: RoomKind::Reactor,
             order: None,
         }
+    }
+
+    #[test]
+    fn move_factor_matches_the_gravity_table() {
+        use crate::pixel::BodyKind;
+        // Robots: fastest in zero-g, slow under gravity.
+        assert!(move_factor(BodyKind::Robot, true) > 1.0);
+        assert!(move_factor(BodyKind::Robot, false) < 1.0);
+        // Humans: mag-boot slow in zero-g, baseline under gravity.
+        assert!(move_factor(BodyKind::Human, true) < 1.0);
+        assert_eq!(move_factor(BodyKind::Human, false), 1.0);
+        // Androids: baseline everywhere.
+        assert_eq!(move_factor(BodyKind::Android, true), 1.0);
+        assert_eq!(move_factor(BodyKind::Android, false), 1.0);
     }
 
     #[test]

@@ -34,6 +34,9 @@ pub enum InteractKind {
     Disembark,
     Launch,
     TakeHelm,
+    /// Climb between the ship's decks (rebuilds the interior scene on the
+    /// other deck, keeping position).
+    Ladder,
     /// S09b consoles (spec §22): drive the ship's flight systems from OnBoard.
     Gunner,
     Scanner,
@@ -103,6 +106,7 @@ const REACH: f32 = 40.0;
 /// station, the ship, and the helm is a visible thing you walk up to and
 /// use — not a hidden keybind. Runs only in interior modes (wired in
 /// `main.rs` under `in_any_interior`).
+#[allow(clippy::too_many_arguments)]
 pub fn try_interact(
     keys: Res<ButtonInput<KeyCode>>,
     avatar: Query<&Transform, With<PlayerAvatar>>,
@@ -111,6 +115,8 @@ pub fn try_interact(
     mut panel: ResMut<ActivePanel>,
     mut location: ResMut<CurrentLocation>,
     mut next: ResMut<NextState<GameMode>>,
+    mut deck: ResMut<crate::systems::interior::ActiveDeck>,
+    mut registry: ResMut<crate::states::SceneRegistry>,
 ) {
     let Ok(av) = avatar.single() else {
         prompt.text = None;
@@ -143,7 +149,18 @@ pub fn try_interact(
                     // Mode transitions — no panel, the world changes.
                     InteractKind::Board => {
                         location.is_docked = true;
+                        // Boarding always puts you on the airlock deck.
+                        deck.index = 0;
+                        deck.spawn = None;
                         next.set(GameMode::OnBoard);
+                    }
+                    InteractKind::Ladder => {
+                        // Climb: flip decks, come out beside the ladder.
+                        // Clearing the registry makes `enter_interior`
+                        // rebuild the scene on the new deck next frame.
+                        deck.index = 1 - deck.index.min(1);
+                        deck.spawn = Some(pos + Vec2::new(0.0, -24.0));
+                        registry.scene = None;
                     }
                     InteractKind::Disembark => {
                         // Only meaningful hard-docked at a station.

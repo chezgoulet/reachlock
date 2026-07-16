@@ -77,6 +77,7 @@ fn main() {
         })
         .init_resource::<SceneRegistry>()
         .init_resource::<interior::CurrentInterior>()
+        .init_resource::<interior::ActiveDeck>()
         .init_resource::<docking::TransitionBeat>()
         .init_resource::<pause::PausedFrom>()
         // S07/S08: inventory, crew, interaction, autosave.
@@ -146,6 +147,10 @@ fn main() {
         .add_systems(OnEnter(GameMode::Landed), interior::enter_interior)
         // --- OnBoard scene ---
         .add_systems(OnEnter(GameMode::OnBoard), interior::enter_interior)
+        // Deck transit: the ladder clears `SceneRegistry::scene`, and this
+        // Update copy of the builder rebuilds the interior on the new deck
+        // (it early-outs every other frame).
+        .add_systems(Update, interior::enter_interior.run_if(in_any_interior))
         // --- SpaceFlight-only gameplay ---
         .add_systems(
             Update,

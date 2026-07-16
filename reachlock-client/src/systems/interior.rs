@@ -21,7 +21,6 @@
 use bevy::prelude::*;
 
 use reachlock_core::content::{ContentPayload, NpcSpawn};
-use reachlock_core::generator::hull::HullClass;
 use reachlock_core::generator::station::generate_station;
 use reachlock_core::generator::{Door, GeneratedLayout, Room, RoomKind};
 use reachlock_core::util::color::generate_palette;
@@ -59,6 +58,18 @@ const WANDER_SPEED: f32 = 40.0;
 #[derive(Resource, Default, Clone, Debug)]
 pub struct CurrentInterior {
     pub layout: Option<GeneratedLayout>,
+    /// Zero-g deck (docs/SHIPS.md §5): humans move slow in mag boots,
+    /// robots move fast. Always false in stations.
+    pub zero_g: bool,
+}
+
+/// Which of the ship's decks the On-Board scene shows, and where to place
+/// the avatar on the next build (set by the ladder so climbing keeps your
+/// position). Deck 0 is the boarding deck.
+#[derive(Resource, Default)]
+pub struct ActiveDeck {
+    pub index: usize,
+    pub spawn: Option<Vec2>,
 }
 
 /// Scale a core grid-unit layout into pixel space.
@@ -149,6 +160,11 @@ fn room_kind_color(kind: RoomKind) -> Color {
         RoomKind::Bar => Color::srgb(0.58, 0.45, 0.28),
         RoomKind::Market => Color::srgb(0.48, 0.56, 0.42),
         RoomKind::Shipyard => Color::srgb(0.45, 0.52, 0.56),
+        RoomKind::Cockpit => Color::srgb(0.36, 0.56, 0.60),
+        RoomKind::TechBay => Color::srgb(0.48, 0.50, 0.55),
+        RoomKind::Scanner => Color::srgb(0.42, 0.46, 0.62),
+        RoomKind::MedBay => Color::srgb(0.72, 0.76, 0.78),
+        RoomKind::Cryo => Color::srgb(0.52, 0.62, 0.72),
     }
 }
 
@@ -180,7 +196,7 @@ fn room_label(mode: GameMode, kind: RoomKind) -> &'static str {
         RoomKind::Corridor => "",
         RoomKind::Bridge => {
             if onboard {
-                "COCKPIT"
+                "BRIDGE"
             } else {
                 "ADMIN"
             }
@@ -214,6 +230,11 @@ fn room_label(mode: GameMode, kind: RoomKind) -> &'static str {
                 "REPAIR BAY"
             }
         }
+        RoomKind::Cockpit => "COCKPIT",
+        RoomKind::TechBay => "TECH BAY",
+        RoomKind::Scanner => "SCANNER",
+        RoomKind::MedBay => "MED BAY",
+        RoomKind::Cryo => "CRYO",
     }
 }
 
@@ -234,7 +255,9 @@ fn decal(commands: &mut Commands, image: Handle<Image>, mode: GameMode, x: f32, 
 }
 
 /// Build the interior scene for a Landed or On-Board mode. Skips rebuild when
-/// re-entering the same mode we never tore down (the pause round-trip).
+/// re-entering the same mode we never tore down (the pause round-trip). Also
+/// runs in `Update` (guarded by `in_any_interior`): the ladder switches decks
+/// by clearing `SceneRegistry::scene`, and this rebuild picks it up.
 #[allow(clippy::too_many_arguments)]
 pub fn enter_interior(
     mode: Res<State<GameMode>>,
@@ -243,6 +266,7 @@ pub fn enter_interior(
     roster: Res<CrewRoster>,
     mut registry: ResMut<SceneRegistry>,
     mut interior: ResMut<CurrentInterior>,
+    mut deck: ResMut<ActiveDeck>,
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mode_entities: Query<Entity, With<ModeScope>>,
@@ -258,14 +282,23 @@ pub fn enter_interior(
         commands.entity(entity).despawn();
     }
 
+    let mut zero_g = false;
+    let mut ladder_px: Option<Vec2> = None;
     let (grid_layout, scene_seed) = match &mode {
-        GameMode::OnBoard => (
-            reachlock_core::generator::station::generate_hull_interior(
-                HULL_INTERIOR_SEED,
-                HullClass::Corvette,
-            ),
-            HULL_INTERIOR_SEED,
-        ),
+        GameMode::OnBoard => {
+            // The player ship is authored, not generated: the Loup-Garou's
+            // two-deck plan (docs/SHIPS.md §6). `ActiveDeck` picks the deck;
+            // the ladder toggles it.
+            let ship = reachlock_core::generator::ship::loup_garou_interior();
+            let d = deck.index.min(ship.decks.len() - 1);
+            let deck_def = &ship.decks[d];
+            zero_g = deck_def.zero_g;
+            ladder_px = Some(Vec2::new(
+                (deck_def.ladder.0 * LAYOUT_SCALE) as f32,
+                (deck_def.ladder.1 * LAYOUT_SCALE) as f32,
+            ));
+            (deck_def.layout.clone(), HULL_INTERIOR_SEED)
+        }
         GameMode::Landed => {
             let kind = location
                 .station_kind
@@ -296,11 +329,13 @@ pub fn enter_interior(
             None => generated_fillers(location.station_seed, &layout),
         };
 
-    // Start the avatar in the hangar (the airlock / board point).
+    // Start the avatar where the ladder put them, else in the hangar (the
+    // airlock / board point; the first room on decks without one).
     let hangar = layout
         .rooms
         .iter()
         .find(|r| r.kind == RoomKind::Hangar)
+        .or(layout.rooms.first())
         .cloned()
         .unwrap_or(Room {
             kind: RoomKind::Hangar,
@@ -309,7 +344,10 @@ pub fn enter_interior(
             width: 48 * LAYOUT_SCALE,
             height: 32 * LAYOUT_SCALE,
         });
-    let start = room_center_point(&hangar);
+    let start = deck
+        .spawn
+        .take()
+        .unwrap_or_else(|| room_center_point(&hangar));
 
     // Shared textures for this scene.
     let wall_tex = images.add(pixel::wall_texture(tinted(
@@ -424,6 +462,28 @@ pub fn enter_interior(
         ModeScope(mode),
     ));
 
+    // The inter-deck ladder (On-Board only): interact to climb. Same grid
+    // point on both decks, so climbing keeps your position.
+    if let Some(lp) = ladder_px {
+        let target = if deck.index == 0 {
+            "up to the zero-g deck"
+        } else {
+            "down to the gravity deck"
+        };
+        commands.spawn((
+            Sprite {
+                image: images.add(pixel::ladder_sprite(accent)),
+                ..default()
+            },
+            Transform::from_xyz(lp.x, lp.y, ysort(lp.y - 12.0)),
+            ModeScope(mode),
+            Interactable {
+                label: format!("Ladder — {target}"),
+                kind: InteractKind::Ladder,
+            },
+        ));
+    }
+
     // The avatar: Tib, captain of the Loup-Garou (docs/LORE.md §V) — dark
     // hair, worn brown flight jacket.
     spawn_figure(
@@ -438,6 +498,7 @@ pub fn enter_interior(
     );
 
     interior.layout = Some(layout);
+    interior.zero_g = zero_g;
     registry.scene = Some(mode);
 }
 
@@ -525,23 +586,78 @@ fn spawn_props(
                 room.y as f32 + room.height as f32 - WALL - 10.0,
                 0.4,
             );
-            if mode == GameMode::OnBoard {
-                // The pilot seat: walk up, E, and you're flying her.
-                let y = room.y as f32 + room.height as f32 - WALL - 34.0;
-                commands.spawn((
-                    Sprite {
-                        image: images.add(pixel::seat_sprite(accent)),
-                        ..default()
-                    },
-                    Transform::from_xyz(c.x, y, ysort(y - 10.0)),
-                    ModeScope(mode),
-                    Interactable {
-                        label: "Pilot seat — take the helm".to_string(),
-                        kind: InteractKind::TakeHelm,
-                    },
-                ));
+        }
+        // The cockpit: canopy stars and the pilot seat — walk up, E, and
+        // you're flying her (docs/SHIPS.md §1: the pilot's station view IS
+        // the Star Fox view).
+        RoomKind::Cockpit => {
+            let viewport = images.add(pixel::viewport_sprite(scene_seed ^ 0xC0C));
+            decal(
+                commands,
+                viewport,
+                mode,
+                c.x,
+                room.y as f32 + room.height as f32 - WALL - 10.0,
+                0.4,
+            );
+            let y = room.y as f32 + room.height as f32 - WALL - 34.0;
+            commands.spawn((
+                Sprite {
+                    image: images.add(pixel::seat_sprite(accent)),
+                    ..default()
+                },
+                Transform::from_xyz(c.x, y, ysort(y - 10.0)),
+                ModeScope(mode),
+                Interactable {
+                    label: "Pilot seat — take the helm".to_string(),
+                    kind: InteractKind::TakeHelm,
+                },
+            ));
+        }
+        // Tech bay: the processing floor — shuttle on its pad, cargo
+        // waiting to be broken down.
+        RoomKind::TechBay => {
+            let pad_x = room.x as f32 + room.width as f32 * 0.7;
+            let pad_y = room.y as f32 + room.height as f32 * 0.4;
+            let pad = images.add(pixel::pad_sprite(accent));
+            decal(commands, pad, mode, pad_x, pad_y, 0.12);
+            let shuttle = images.add(pixel::shuttle_sprite(accent));
+            sorted(commands, shuttle, pad_x, pad_y);
+            for _ in 0..4 + rng.next_below(3) {
+                let p = jitter(&mut rng, 40.0);
+                if (p - Vec2::new(pad_x, pad_y)).length() < 60.0 {
+                    continue; // keep the pad clear
+                }
+                let crate_tex = images.add(pixel::crate_sprite(rng.next_below(1 << 30)));
+                sorted(commands, crate_tex, p.x, p.y);
             }
         }
+        // Med bay: clean bunks under pale light.
+        RoomKind::MedBay => {
+            let sheet = Color::srgb(0.85, 0.9, 0.92);
+            for i in 0..2 {
+                let bunk = images.add(pixel::bunk_sprite(sheet));
+                sorted(
+                    commands,
+                    bunk,
+                    room.x as f32 + 44.0 + (i as f32) * 48.0,
+                    room.y as f32 + room.height as f32 - WALL - 16.0,
+                );
+            }
+        }
+        // Cryo chamber: ten pods in two ranks — one per possible sleeper
+        // (docs/SHIPS.md §3). Empty while the crew is awake.
+        RoomKind::Cryo => {
+            let pod = images.add(pixel::cryo_pod_sprite(false));
+            for row in 0..2 {
+                for col in 0..5 {
+                    let x = room.x as f32 + WALL + 20.0 + col as f32 * 22.0;
+                    let y = room.y as f32 + WALL + 24.0 + row as f32 * 56.0;
+                    sorted(commands, pod.clone(), x, y);
+                }
+            }
+        }
+        RoomKind::Scanner => {}
         RoomKind::Hangar => {
             let pad = images.add(pixel::pad_sprite(accent));
             decal(commands, pad, mode, c.x, c.y, 0.12);
@@ -632,7 +748,9 @@ pub fn walk_avatar(
         return;
     }
     let dir = dir.normalize();
-    let step = WALK_SPEED * time.delta_secs();
+    // Tib is human: mag boots on the zero-g deck (docs/SHIPS.md §5).
+    let factor = crate::systems::crew::move_factor(pixel::BodyKind::Human, interior.zero_g);
+    let step = WALK_SPEED * factor * time.delta_secs();
     let dx = dir.x * step;
     let dy = dir.y * step;
 
@@ -945,13 +1063,10 @@ fn spawn_crew(
     shadow: &Handle<Image>,
 ) {
     for m in &roster.members {
-        // Duty room first; small hulls don't always generate every room
-        // kind, so fall back through quarters → corridor rather than
-        // silently dropping a crew member.
-        let Some(center) = room_center(layout, m.current_room)
-            .or_else(|| room_center(layout, RoomKind::Quarters))
-            .or_else(|| room_center(layout, RoomKind::Corridor))
-        else {
+        // Crew spawn on the deck that has their room: Prudence and Boris
+        // work Upstairs, the rest live Downstairs. A member whose room
+        // isn't in this deck's layout is simply on the other deck.
+        let Some(center) = room_center(layout, m.current_room) else {
             continue;
         };
         // Canonical lore looks (Tove's coveralls, the androids, BOR-IS).
@@ -1012,30 +1127,29 @@ fn spawn_consoles(commands: &mut Commands, images: &mut Assets<Image>, layout: &
     };
     let teal = Color::srgb(0.3, 0.85, 0.8);
     let amber = Color::srgb(0.95, 0.7, 0.3);
-    if let Some(bridge) = room_center(layout, RoomKind::Bridge) {
+    let green = Color::srgb(0.7, 0.85, 0.5);
+    // Stations live in their lore rooms (docs/SHIPS.md §6). Each deck's
+    // layout only contains its own rooms, so every block below simply
+    // no-ops on the other deck.
+    // Cockpit (upper): flight systems beside the pilot seat.
+    if let Some(cockpit) = room_center(layout, RoomKind::Cockpit) {
         console(
             commands,
             images,
-            bridge.x - 44.0,
-            bridge.y + 20.0,
+            cockpit.x - 52.0,
+            cockpit.y + 8.0,
             "HELM",
             teal,
             InteractKind::Helm,
         );
+    }
+    // Bridge (lower, under the cockpit): tactical, stellar nav, comms log.
+    if let Some(bridge) = room_center(layout, RoomKind::Bridge) {
         console(
             commands,
             images,
-            bridge.x + 44.0,
-            bridge.y + 20.0,
-            "NAV",
-            teal,
-            InteractKind::Nav,
-        );
-        console(
-            commands,
-            images,
-            bridge.x - 44.0,
-            bridge.y - 28.0,
+            bridge.x - 52.0,
+            bridge.y + 12.0,
             "GUNNER",
             amber,
             InteractKind::Gunner,
@@ -1043,13 +1157,35 @@ fn spawn_consoles(commands: &mut Commands, images: &mut Assets<Image>, layout: &
         console(
             commands,
             images,
-            bridge.x + 44.0,
-            bridge.y - 28.0,
+            bridge.x,
+            bridge.y + 12.0,
+            "NAV",
+            teal,
+            InteractKind::Nav,
+        );
+        console(
+            commands,
+            images,
+            bridge.x + 52.0,
+            bridge.y + 12.0,
+            "LOG",
+            green,
+            InteractKind::Log,
+        );
+    }
+    // The scanner array: its own console in its own room.
+    if let Some(scanner) = room_center(layout, RoomKind::Scanner) {
+        console(
+            commands,
+            images,
+            scanner.x,
+            scanner.y + 8.0,
             "SCANNER",
             teal,
             InteractKind::Scanner,
         );
     }
+    // Engineering: power allocation, drive control, the mining rig.
     if let Some(reactor) = room_center(layout, RoomKind::Reactor) {
         console(
             commands,
@@ -1077,17 +1213,6 @@ fn spawn_consoles(commands: &mut Commands, images: &mut Assets<Image>, layout: &
             "MINER",
             teal,
             InteractKind::Miner,
-        );
-    }
-    if let Some(quarters) = room_center(layout, RoomKind::Quarters) {
-        console(
-            commands,
-            images,
-            quarters.x,
-            quarters.y,
-            "LOG",
-            Color::srgb(0.7, 0.85, 0.5),
-            InteractKind::Log,
         );
     }
 }

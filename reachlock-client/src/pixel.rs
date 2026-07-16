@@ -202,16 +202,23 @@ pub fn floor_texture(kind: RoomKind, base: Color, seed: u64) -> Image {
                 px.set(x, y, shade(b, 0.4)); // wear
             }
         }
-        // Poured deck: hangar / repair bay (dither of two shades).
-        RoomKind::Hangar | RoomKind::Shipyard => {
+        // Poured deck: hangar / repair bay / tech bay (dither of two shades).
+        RoomKind::Hangar | RoomKind::Shipyard | RoomKind::TechBay => {
             px.rect(0, 0, 32, 32, shade(b, 0.8));
             for _ in 0..170 {
                 let (x, y) = (n.below(32) as i32, n.below(32) as i32);
                 px.set(x, y, shade(b, if n.below(2) == 0 { 0.7 } else { 0.9 }));
             }
         }
-        // Metal deck plate: bridge / market / admin.
-        RoomKind::Bridge | RoomKind::Market => {
+        // Metal deck plate: bridge / market / admin, and the ship's clean
+        // technical rooms (cockpit, scanner, med bay, cryo) — the per-kind
+        // base color carries the distinction.
+        RoomKind::Bridge
+        | RoomKind::Market
+        | RoomKind::Cockpit
+        | RoomKind::Scanner
+        | RoomKind::MedBay
+        | RoomKind::Cryo => {
             px.rect(0, 0, 32, 32, shade(b, 0.9));
             for ty in [0, 16] {
                 for tx in [0, 16] {
@@ -1035,6 +1042,94 @@ pub fn seat_sprite(accent: Color) -> Image {
     px.rect(15, 9, 2, 8, shade(pad, 0.75));
     px.rect(2, 16, 14, 6, shade(pad, 0.9)); // seat pan
     px.rect(2, 21, 14, 1, shade(pad, 0.6));
+    px.outline();
+    px.into_image()
+}
+
+/// 20×28 deck ladder: rails, rungs, and a hazard-marked floor hatch.
+pub fn ladder_sprite(accent: Color) -> Image {
+    let rail = rgba(Color::srgb(0.55, 0.58, 0.64));
+    let a = rgba(accent);
+    let mut px = Px::new(20, 28);
+    // Hatch plate behind the rails.
+    px.rect(1, 20, 18, 7, shade(rail, 0.45));
+    for x in (1..19).step_by(4) {
+        px.rect(x, 21, 2, 2, a); // hazard studs
+    }
+    // Rails.
+    px.rect(4, 0, 2, 24, rail);
+    px.rect(14, 0, 2, 24, rail);
+    px.rect(4, 0, 2, 1, shade(rail, 1.3));
+    px.rect(14, 0, 2, 1, shade(rail, 1.3));
+    // Rungs.
+    for y in (2..24).step_by(4) {
+        px.rect(6, y, 8, 2, shade(rail, 1.15));
+    }
+    px.outline();
+    px.into_image()
+}
+
+/// 18×30 cryo pod: frosted canopy over a pale sleeper glow, status strip.
+/// Ten of these line the cryo chamber — the only way living crew survive a
+/// self-generated jump (docs/SHIPS.md §3).
+pub fn cryo_pod_sprite(occupied: bool) -> Image {
+    let shell = rgba(Color::srgb(0.72, 0.76, 0.82));
+    let glass = rgba(Color::srgb(0.55, 0.75, 0.85));
+    let mut px = Px::new(18, 30);
+    // Rounded shell.
+    px.rect(2, 1, 14, 28, shell);
+    px.rect(3, 0, 12, 30, shell);
+    px.rect(3, 0, 12, 1, shade(shell, 1.2));
+    // Canopy window.
+    px.rect(5, 3, 8, 16, shade(glass, 0.8));
+    px.rect(6, 4, 2, 6, shade(glass, 1.25)); // frost glint
+    if occupied {
+        px.rect(7, 7, 4, 3, rgba(Color::srgb(0.90, 0.76, 0.62))); // sleeper
+        px.rect(7, 10, 4, 7, shade(glass, 0.55));
+    }
+    // Status strip + base machinery.
+    let status = if occupied {
+        [120, 220, 160, 255]
+    } else {
+        [90, 110, 130, 255]
+    };
+    px.rect(5, 21, 8, 2, status);
+    px.rect(4, 24, 10, 4, shade(shell, 0.6));
+    px.rect(5, 25, 2, 1, shade(shell, 1.1)); // vents
+    px.rect(8, 25, 2, 1, shade(shell, 1.1));
+    px.rect(11, 25, 2, 1, shade(shell, 1.1));
+    px.outline();
+    px.into_image()
+}
+
+/// 30×40 support shuttle parked on the tech-bay pad: stubby fuselage, canopy,
+/// twin engines. Not jump-capable; it docks before every jump.
+pub fn shuttle_sprite(accent: Color) -> Image {
+    let hull = rgba(Color::srgb(0.44, 0.46, 0.52));
+    let a = rgba(accent);
+    let glass = rgba(Color::srgb(0.30, 0.50, 0.70));
+    let mut px = Px::new(30, 40);
+    // Nose taper.
+    for y in 0..8 {
+        let half = 3 + y * 5 / 8;
+        px.rect(15 - half, y, half * 2, 1, hull);
+    }
+    // Fuselage.
+    px.rect(7, 8, 16, 22, hull);
+    px.rect(9, 8, 2, 22, shade(hull, 1.15));
+    // Canopy.
+    px.rect(11, 6, 8, 6, glass);
+    px.set(12, 7, shade(glass, 1.4));
+    // Stub wings with accent tips.
+    px.rect(1, 20, 6, 8, shade(hull, 0.9));
+    px.rect(23, 20, 6, 8, shade(hull, 0.9));
+    px.rect(1, 26, 6, 2, a);
+    px.rect(23, 26, 6, 2, a);
+    // Engines.
+    px.rect(9, 30, 5, 7, shade(hull, 0.7));
+    px.rect(16, 30, 5, 7, shade(hull, 0.7));
+    px.rect(10, 37, 3, 2, [255, 200, 120, 255]);
+    px.rect(17, 37, 3, 2, [255, 200, 120, 255]);
     px.outline();
     px.into_image()
 }
