@@ -37,39 +37,37 @@ pub fn teardown_on_leave_game(
     }
 }
 
-/// Follows the walking avatar for top-down interior modes (Landed/OnBoard).
-/// Mirrors `ship::camera_follow` but driven by `PlayerAvatar` instead of the
-/// flying ship.
+/// Follows the walking avatar for top-down interior modes (Landed/OnBoard):
+/// eased follow with a small lookahead toward the walk direction, so moving
+/// reveals where you're going instead of pinning you to dead center (the
+/// same trick the space chase-cam plays). Zoom lives in
+/// `ship::manage_cameras`, which owns the 2D camera's per-mode projection.
+#[allow(clippy::type_complexity)]
 pub fn interior_camera_follow(
-    avatar: Query<&Transform, (With<PlayerAvatar>, Without<Camera2d>)>,
+    time: Res<Time>,
+    avatar: Query<
+        (&Transform, &crate::systems::interior::Figure),
+        (With<PlayerAvatar>, Without<Camera2d>),
+    >,
     mut camera: Query<&mut Transform, With<Camera2d>>,
 ) {
-    let (Ok(avatar), Ok(mut camera)) = (avatar.single(), camera.single_mut()) else {
+    let (Ok((avatar, figure)), Ok(mut camera)) = (avatar.single(), camera.single_mut()) else {
         return;
     };
-    camera.translation.x = avatar.translation.x;
-    camera.translation.y = avatar.translation.y;
+    // Facing vectors indexed like pixel::DIR_* (down, up, left, right).
+    const DIRS: [Vec2; 4] = [Vec2::NEG_Y, Vec2::Y, Vec2::NEG_X, Vec2::X];
+    let lookahead = if figure.moving {
+        DIRS[figure.dir.min(3)] * 48.0
+    } else {
+        Vec2::ZERO
+    };
+    let target = avatar.translation.truncate() + lookahead;
+    let k = 1.0 - (-6.0 * time.delta_secs()).exp();
+    camera.translation.x += (target.x - camera.translation.x) * k;
+    camera.translation.y += (target.y - camera.translation.y) * k;
 }
 
 /// The walking player square used in Landed/On-Board modes. Distinct from the
 /// flying `PlayerShip` so the two scenes never collide.
 #[derive(Component)]
 pub struct PlayerAvatar;
-
-/// Convenience: is the avatar currently inside a room of the given kind?
-/// Used by docking/boarding to decide what `E` does at the player's feet.
-pub fn avatar_in_room(
-    avatar: &Transform,
-    layout: &reachlock_core::generator::GeneratedLayout,
-    kind: reachlock_core::generator::RoomKind,
-) -> bool {
-    let px = avatar.translation.x;
-    let py = avatar.translation.y;
-    layout.rooms.iter().any(|r| {
-        r.kind == kind
-            && px >= r.x as f32
-            && px <= (r.x + r.width) as f32
-            && py >= r.y as f32
-            && py <= (r.y + r.height) as f32
-    })
-}

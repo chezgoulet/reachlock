@@ -6,6 +6,7 @@
 
 mod bridge;
 mod net;
+mod pixel;
 mod states;
 mod systems;
 
@@ -17,7 +18,7 @@ use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     content_index, contract, crew, docking, factions, hud, interaction, interior, inventory, jump,
-    market, menu, mode, network, onboard, pause, sensors, setup, ship,
+    market, menu, mode, network, onboard, pause, reticle, sensors, setup, ship,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -76,6 +77,7 @@ fn main() {
         })
         .init_resource::<SceneRegistry>()
         .init_resource::<interior::CurrentInterior>()
+        .init_resource::<interior::ActiveDeck>()
         .init_resource::<docking::TransitionBeat>()
         .init_resource::<pause::PausedFrom>()
         // S07/S08: inventory, crew, interaction, autosave.
@@ -93,6 +95,9 @@ fn main() {
         .init_resource::<ship::ShipCommand>()
         // S09b-2: death/respawn beat after a hull breach.
         .init_resource::<ship::RespawnTimer>()
+        // S09c: Star Fox feel layer — smoothed axes, bank, barrel roll,
+        // camera blends. Render-layer only.
+        .init_resource::<ship::FlightFeel>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
@@ -116,6 +121,7 @@ fn main() {
             OnEnter(AppState::InGame),
             (
                 hud::spawn_hud,
+                reticle::spawn_reticle,
                 onboard::spawn_onboard_panels,
                 network::connect_on_enter_playing,
                 factions::spawn_reputation_panel,
@@ -141,6 +147,10 @@ fn main() {
         .add_systems(OnEnter(GameMode::Landed), interior::enter_interior)
         // --- OnBoard scene ---
         .add_systems(OnEnter(GameMode::OnBoard), interior::enter_interior)
+        // Deck transit: the ladder clears `SceneRegistry::scene`, and this
+        // Update copy of the builder rebuilds the interior on the new deck
+        // (it early-outs every other frame).
+        .add_systems(Update, interior::enter_interior.run_if(in_any_interior))
         // --- SpaceFlight-only gameplay ---
         .add_systems(
             Update,
@@ -164,10 +174,18 @@ fn main() {
                 ship::mining_beam,
                 ship::scanner_pulse,
                 ship::request_scan_from_key,
+                ship::engine_glow,
+                systems::starfield::dust_parallax,
             )
                 .run_if(in_spaceflight),
         )
         .add_systems(Update, (ship::collisions,).run_if(in_spaceflight))
+        // S09c: the aiming reticle runs in every InGame mode so leaving
+        // SpaceFlight hides it the same frame.
+        .add_systems(
+            Update,
+            reticle::update_reticle.run_if(in_state(AppState::InGame)),
+        )
         // S09b-2: revive the ship after a hull breach (runs in all InGame
         // modes so the beat completes regardless of which scene is active).
         .add_systems(
@@ -207,6 +225,17 @@ fn main() {
                 onboard::onboard_panels,
                 onboard::onboard_ship_consoles,
                 jump::fuel_dock,
+            )
+                .run_if(in_any_interior),
+        )
+        // Interior feel layer: figure walk animation + y-sort (avatar, NPCs,
+        // crew share it), NPC wandering, and the interaction highlight ring.
+        .add_systems(
+            Update,
+            (
+                interior::animate_figures,
+                interior::wander_npcs,
+                interior::highlight_interactable,
             )
                 .run_if(in_any_interior),
         )
