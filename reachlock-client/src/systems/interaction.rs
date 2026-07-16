@@ -96,6 +96,8 @@ pub enum ActivePanel {
     Scanner,
     Miner,
     Power,
+    /// S12 galactic news feed.
+    News,
     Unknown,
 }
 

@@ -18,7 +18,7 @@ use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     content_index, contract, crew, docking, factions, hud, interaction, interior, inventory, jump,
-    market, menu, mode, network, onboard, pause, reticle, sensors, setup, ship,
+    market, menu, mode, network, onboard, pause, reticle, sensors, setup, ship, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -87,6 +87,10 @@ fn main() {
         .init_resource::<interaction::ActivePanel>()
         .init_resource::<inventory::SaveTimer>()
         .init_resource::<market::MarketState>()
+        // S12: the one universe — economy + factions + news, advanced by the
+        // ticker. Built before Startup so load_save can restore into it.
+        .init_resource::<ticker::UniverseTicker>()
+        .init_resource::<factions::ReputationPanelVisible>()
         // S09: live jump/transit bookkeeping + sensors.
         .init_resource::<jump::TransitState>()
         .init_resource::<sensors::MapOverlayState>()
@@ -107,8 +111,6 @@ fn main() {
                 inventory::load_save,
                 menu::spawn_menu,
                 sensors::init_blip_assets,
-                market::init_economy,
-                factions::init_faction_state,
             ),
         )
         .add_systems(
@@ -219,7 +221,6 @@ fn main() {
                 mode::interior_camera_follow,
                 docking::try_interior_transitions,
                 interaction::try_interact,
-                market::tick_economy,
                 market::market_system,
                 crew::crew_shift_system,
                 onboard::onboard_panels,
@@ -250,7 +251,7 @@ fn main() {
                 contract::tick_deliberation,
                 network::poll_network,
                 network::reconnect_backoff,
-                factions::tick_faction_system,
+                ticker::tick_universe,
                 factions::reputation_panel_toggle,
             )
                 .run_if(in_state(AppState::InGame)),

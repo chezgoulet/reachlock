@@ -9,52 +9,18 @@
 use bevy::prelude::*;
 
 use reachlock_core::economy::{
-    apply_buy, apply_sell, can_buy, can_sell, load_goods_catalog, EconomyState, GoodId, PriceTable,
-    TARIFF_ONE,
+    apply_buy, apply_sell, can_buy, can_sell, EconomyState, GoodId, PriceTable, TARIFF_ONE,
 };
-use reachlock_core::faction::tariff as faction_tariff;
+use reachlock_core::faction::{tariff as faction_tariff, FactionState};
 
 use crate::states::CurrentLocation;
-use crate::systems::factions::FactionState;
 use crate::systems::interaction::ActivePanel;
 use crate::systems::inventory::{save_player, PlayerInventory};
+use crate::systems::ticker::UniverseTicker;
 
-/// The live economy, held as a resource. Seeded once at boot from the
-/// embedded goods catalogue; ticks forward as the player plays (see
-/// `tick_economy`). The market reads the book for whatever station the
-/// player is docked at.
-#[derive(Resource)]
-pub struct Economy(pub EconomyState);
-
-/// Build the economy resource at startup. Stations are seeded from the
-/// current location's station plus a couple of neighbours so the market has
-/// a real, deterministic book immediately. (Station roster is fleshed out
-/// by S04/S05 system generation; here we guarantee a non-empty economy.)
-pub fn init_economy(mut commands: Commands) {
-    let catalog = load_goods_catalog();
-    let station_seeds = vec![
-        (
-            "home".to_string(),
-            0x5EA17,
-            reachlock_core::economy::StationKind::Hub,
-            None,
-        ),
-        (
-            "refinery-prime".to_string(),
-            0xABCDEF,
-            reachlock_core::economy::StationKind::Refinery,
-            None,
-        ),
-        (
-            "outpost-7".to_string(),
-            0x13579B,
-            reachlock_core::economy::StationKind::Outpost,
-            None,
-        ),
-    ];
-    let state = EconomyState::new(catalog, &station_seeds);
-    commands.insert_resource(Economy(state));
-}
+// The live economy lives inside `UniverseTicker.state.economy` — one copy,
+// advanced by the universe ticker (S12), read by the market/HUD/factions.
+// Stations come from `sim::canon_station_seeds()`, shared with the server.
 
 /// Selection + quantity for the keyboard market UI. A `Resource` (not `Local`)
 /// so the HUD can render the same cursor.
@@ -64,20 +30,10 @@ pub struct MarketState {
     pub qty: u32,
 }
 
-/// Advance every station's book a step. Cheap; called each frame (the move
-/// is tiny per tick). Deterministic given the same frame count.
-pub fn tick_economy(mut economy: ResMut<Economy>, frame: Res<Time>) {
-    // Use a frame counter so ticks are reproducible from a fixed seed if we
-    // ever need to. `elapsed` is monotonic; fold it into a u64 seed.
-    let seed = (frame.elapsed_secs_f64() as u64).wrapping_mul(0x9E3779B1);
-    economy.0.tick(seed);
-}
-
 /// Derive the price table for the player's current station from the live
 /// economy. Falls back to an empty table if the station isn't in the book.
-pub fn market_table(economy: &Economy, station: &str) -> PriceTable {
+pub fn market_table(economy: &EconomyState, station: &str) -> PriceTable {
     economy
-        .0
         .stations
         .get(station)
         .map(|e| e.prices.clone())
@@ -94,13 +50,12 @@ pub fn market_system(
     loc: Res<CurrentLocation>,
     panel: Res<ActivePanel>,
     mut state: ResMut<MarketState>,
-    mut economy: ResMut<Economy>,
-    faction_state: Res<FactionState>,
+    mut ticker: ResMut<UniverseTicker>,
 ) {
     if *panel != ActivePanel::Market {
         return;
     }
-    let table = market_table(&economy, &loc.station_id);
+    let table = market_table(&ticker.state.economy, &loc.station_id);
     let count = table.len();
     if count == 0 {
         return;
@@ -127,9 +82,9 @@ pub fn market_system(
     let good = table.keys().nth(state.sel).cloned().unwrap();
 
     // Compute tariff based on station faction and player reputation.
-    let tariff_num = compute_tariff(&loc, &economy, &faction_state, &good);
-    let buy_quote = economy.0.stations[&loc.station_id].buy_price(&good, tariff_num);
-    let sell_quote = economy.0.stations[&loc.station_id].sell_price(&good, tariff_num);
+    let tariff_num = compute_tariff(&loc, &ticker.state.economy, &ticker.state.factions, &good);
+    let buy_quote = ticker.state.economy.stations[&loc.station_id].buy_price(&good, tariff_num);
+    let sell_quote = ticker.state.economy.stations[&loc.station_id].sell_price(&good, tariff_num);
 
     if keys.just_pressed(KeyCode::KeyB) {
         let held = inv.cargo.get(&good).copied().unwrap_or(0);
@@ -137,10 +92,10 @@ pub fn market_system(
             let (credits, _held) = apply_buy(inv.credits, held, buy_quote, state.qty);
             inv.credits = credits;
             inv.cargo.insert(good.clone(), held + state.qty);
-            if let Some(station) = economy.0.stations.get_mut(&loc.station_id) {
+            if let Some(station) = ticker.state.economy.stations.get_mut(&loc.station_id) {
                 station.record_trade(&good, state.qty as i64);
             }
-            save_player(&inv, &loc);
+            save_player(&inv, &loc, Some(&ticker.state));
         }
     }
     if keys.just_pressed(KeyCode::KeyN) {
@@ -153,10 +108,10 @@ pub fn market_system(
             } else {
                 inv.cargo.insert(good.clone(), left);
             }
-            if let Some(station) = economy.0.stations.get_mut(&loc.station_id) {
+            if let Some(station) = ticker.state.economy.stations.get_mut(&loc.station_id) {
                 station.record_trade(&good, -(state.qty as i64));
             }
-            save_player(&inv, &loc);
+            save_player(&inv, &loc, Some(&ticker.state));
         }
     }
 }
@@ -166,27 +121,24 @@ pub fn market_system(
 /// Falls back to `TARIFF_ONE` (1.0) when no faction data is available.
 fn compute_tariff(
     loc: &CurrentLocation,
-    economy: &Economy,
+    economy: &EconomyState,
     faction_state: &FactionState,
     good: &GoodId,
 ) -> i64 {
     let r#try = || -> Option<i64> {
         let faction_id = economy
-            .0
             .stations
             .get(&loc.station_id)?
             .station_faction
             .as_ref()?;
         let faction = faction_state
-            .0
             .catalog
             .factions
             .iter()
             .find(|f| f.id.0 == *faction_id)?;
-        let trust = faction_state.0.rep(&faction.id).trust;
-        let category = economy.0.catalog.goods.get(good)?.category;
+        let trust = faction_state.rep(&faction.id).trust;
+        let category = economy.catalog.goods.get(good)?.category;
         let demand = economy
-            .0
             .stations
             .get(&loc.station_id)?
             .pressure
@@ -204,7 +156,7 @@ pub fn market_panel_text(
     inv: &PlayerInventory,
     loc: &CurrentLocation,
     state: &MarketState,
-    economy: &Economy,
+    economy: &EconomyState,
     faction_state: &FactionState,
 ) -> String {
     let table = market_table(economy, &loc.station_id);
@@ -232,8 +184,8 @@ pub fn market_panel_text(
     ];
     for (i, g) in goods.iter().enumerate() {
         let held = inv.cargo.get(*g).copied().unwrap_or(0);
-        let buy = economy.0.stations[&loc.station_id].buy_price(g, tariff_num);
-        let sell = economy.0.stations[&loc.station_id].sell_price(g, tariff_num);
+        let buy = economy.stations[&loc.station_id].buy_price(g, tariff_num);
+        let sell = economy.stations[&loc.station_id].sell_price(g, tariff_num);
         let marker = if i == sel { "> " } else { "  " };
         lines.push(format!(
             "{}{:>8}  buy {}  sell {}  have {}",
