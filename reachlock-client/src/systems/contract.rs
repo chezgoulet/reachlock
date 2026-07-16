@@ -286,9 +286,12 @@ pub fn resolve_timeout(
     ));
 }
 
-/// Success path: an online deliberation resolved via `llm.response`. Logs
-/// the server stub's actual reasoning (spec §6 deliberation UX) and signs +
-/// submits the resulting action, same as any other fired contract action.
+/// Success path: an online deliberation resolved via `llm.response` — now
+/// classified through the S15 outcome table (spec §18): the model answered,
+/// and the fiction decides how well. Rolls derive from `(contract_id,
+/// tick, chain position)`, so a replay replays the same fate. `trust` is
+/// the deliberating crew member's `trust.player` (S13), 0 when unknown.
+#[allow(clippy::too_many_arguments)]
 pub fn resolve_response(
     deliberation: &mut DeliberationState,
     systems: &mut ShipSystems,
@@ -297,14 +300,106 @@ pub fn resolve_response(
     outbox: &mut NetOutbox,
     action_kind: &str,
     reasoning: &str,
+    tier: reachlock_core::universe::UniverseTier,
+    trust: i64,
 ) {
+    use reachlock_core::agency;
+
     let Some(active) = deliberation.active.take() else {
         return;
     };
     systems.unknown_signal = false;
-    log.log(format!(
-        "{}: {reasoning} (verdict: {action_kind}).",
-        active.crew_member
-    ));
-    outbox.push(runtime.sign_eval(&Action::verb(action_kind.to_string())));
+
+    // The contract's own verb set: a wrong call is always a plausible one.
+    let mut action_set: Vec<String> = runtime
+        .contract
+        .rules
+        .iter()
+        .map(|r| r.action.kind.clone())
+        .collect();
+    action_set.dedup();
+
+    let weights = agency::weights(
+        &agency::BASELINE,
+        &[
+            agency::model_modifier(tier),
+            agency::crew_modifier(trust),
+            // Equipment pipe: stat keys read as zero until S05 items equip.
+            agency::equipment_modifier(0, 0),
+        ],
+    );
+    let (resolved, trace) = agency::deliberate(
+        &agency::DeliberationParams {
+            contract_id: &runtime.contract.id,
+            tick: runtime.next_tick,
+            chain_position: 0,
+            context_summary: &active.context_summary,
+            weights: &weights,
+            action_set: &action_set,
+            fallback_action: &active.fallback.kind,
+        },
+        agency::ProviderVerdict::Answered {
+            action: action_kind.to_string(),
+            reasoning: reasoning.to_string(),
+        },
+    );
+    // The start-of-deliberation line already hit the log when the moment
+    // opened; the outcome (and the fallback, if one fired) land now — the
+    // §18 traceability triple.
+    for entry in trace.iter().skip(1) {
+        log.log(entry.render(&active.crew_member));
+    }
+    let fired = resolved
+        .action
+        .clone()
+        .unwrap_or_else(|| active.fallback.kind.clone());
+    outbox.push(runtime.sign_eval(&Action::verb(fired)));
+
+    // Catastrophic escalation: recoverable by design (hull stress, never a
+    // corrupted save) — the death/respawn loop already handles a breach.
+    if let Some(escalation) = resolved.escalation {
+        systems.hull_hp = reachlock_core::util::rng::Fixed((systems.hull_hp.0 - 300).max(64));
+        log.log(format!(
+            "{} escalated: {escalation} — hull stress rising. Recoverable. Barely.",
+            active.crew_member
+        ));
+    }
+}
+
+/// Failure path with S15 categories: `llm.failed { reason }` maps onto the
+/// outcome table's rows (timeout/rate_limited → Timeout, bad_response →
+/// Collapse), so a timeout and a collapse read as different stories in the
+/// log before the fallback fires.
+pub fn resolve_failed(
+    deliberation: &mut DeliberationState,
+    systems: &mut ShipSystems,
+    log: &mut ShipLog,
+    runtime: &ContractRuntime,
+    reason: &str,
+) {
+    use reachlock_core::agency;
+
+    let Some(active) = deliberation.active.take() else {
+        return;
+    };
+    systems.unknown_signal = false;
+    let verdict = match reason {
+        "bad_response" => agency::ProviderVerdict::Collapsed,
+        _ => agency::ProviderVerdict::TimedOut,
+    };
+    let (_, trace) = agency::deliberate(
+        &agency::DeliberationParams {
+            contract_id: &runtime.contract.id,
+            tick: runtime.next_tick,
+            chain_position: 0,
+            context_summary: &active.context_summary,
+            weights: &agency::BASELINE,
+            action_set: &[],
+            fallback_action: &active.fallback.kind,
+        },
+        verdict,
+    );
+    for entry in trace.iter().skip(1) {
+        log.log(entry.render(&active.crew_member));
+    }
 }
