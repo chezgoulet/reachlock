@@ -207,6 +207,8 @@ mod tests {
                 },
                 content: "You should not see this yet.".into(),
             }],
+            dialogue: None,
+            deflections: vec![],
         }
     }
 

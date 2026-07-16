@@ -129,7 +129,8 @@ pub fn poll_network(
     mut ship: ResMut<ShipSystems>,
     mut runtime: ResMut<ContractRuntime>,
     mut ticker: Option<ResMut<UniverseTicker>>,
-    souls: Res<crate::systems::soul::SoulRegistry>,
+    mut souls: ResMut<crate::systems::soul::SoulRegistry>,
+    mut dialogue: ResMut<crate::systems::dialogue::DialogueSession>,
 ) {
     let NetMode::Online { universe, .. } = &*mode else {
         return;
@@ -204,6 +205,20 @@ pub fn poll_network(
                 action,
                 reasoning,
             }) => {
+                // S16: dialogue calls resolve into the open conversation
+                // (shaped in the soul's voice); superseded calls are
+                // ignored quietly.
+                if let Some(t) = ticker.as_deref() {
+                    if crate::systems::dialogue::resolve_dialogue_response(
+                        &mut dialogue,
+                        &mut souls,
+                        t,
+                        &call_id,
+                        &reasoning,
+                    ) {
+                        continue;
+                    }
+                }
                 let matches_active = deliberation
                     .active
                     .as_ref()
@@ -231,6 +246,18 @@ pub fn poll_network(
                 }
             }
             TransportEvent::Message(ServerMessage::LlmFailed { call_id, reason }) => {
+                if let Some(t) = ticker.as_deref() {
+                    if crate::systems::dialogue::resolve_dialogue_failure(
+                        &mut dialogue,
+                        &souls,
+                        t,
+                        &call_id,
+                        &mut log,
+                        &reason,
+                    ) {
+                        continue;
+                    }
+                }
                 let matches_active = deliberation
                     .active
                     .as_ref()

@@ -109,5 +109,74 @@
                 content: "The mark on the inside of his left forearm is a letter. It was not part of the original build. Boris will say, precisely, that it was acquired 'before the current operational period,' and will not identify the alphabet. If the person asking has earned the question, he will orient his forearm toward the light and hold it there, which is not an answer, and is not nothing.",
             ),
         ],
+        // S16: the mark-on-forearm deflection arc (spec §15's example flow).
+        dialogue: Some((
+            start: "hail",
+            nodes: [
+                (
+                    id: "hail",
+                    line: "Captain Thibodeaux. The sweep schedule is current. Is there an operational matter?",
+                    choices: [
+                        (
+                            label: "Ask about the sweep",
+                            next: Some("sweep"),
+                        ),
+                        (
+                            label: "Ask about the mark on his forearm",
+                            effects: [
+                                soul_event(
+                                    event_type: "asked_about_mark",
+                                    emotional_weight: 400,
+                                    summary: "The captain asked about the mark.",
+                                ),
+                                relationship_delta(trust: -51, familiarity: 20),
+                            ],
+                            next: Some("deflect"),
+                        ),
+                        (
+                            label: "That's all, Boris",
+                            next: None,
+                        ),
+                    ],
+                    llm_edge: true,
+                ),
+                (
+                    id: "sweep",
+                    line: "Faces 4A through 7C are complete. Face 7D is scheduled. I prefer to complete a sweep before recall. This is an operationally refined parameter.",
+                    choices: [
+                        ( label: "Back", next: Some("hail") ),
+                    ],
+                    llm_edge: true,
+                ),
+                (
+                    id: "deflect",
+                    line: "The mark predates the current operational period. It does not affect EVA performance. Face 7D is scheduled, Captain Thibodeaux.",
+                    choices: [
+                        (
+                            label: "Let it go",
+                            next: Some("hail"),
+                        ),
+                        (
+                            label: "Hold out your arm",
+                            condition: Some(compare(field: "trust.player", op: gt, value: 819)),
+                            effects: [
+                                soul_event(
+                                    event_type: "asked_about_mark",
+                                    emotional_weight: 819,
+                                    summary: "The captain asked again, having earned the question. Boris oriented his forearm toward the light.",
+                                ),
+                            ],
+                            next: None,
+                        ),
+                    ],
+                    llm_edge: true,
+                ),
+            ],
+        )),
+        deflections: [
+            "That query is outside the current operational scope. Face 7D is scheduled.",
+            "I have logged the question, Captain Thibodeaux. The answer is not operationally available.",
+            "Processing. The Loup-Garou requires my attention on the hull. Excuse me.",
+        ],
     )),
 )

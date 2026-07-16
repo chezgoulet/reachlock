@@ -340,7 +340,9 @@ pub fn resolve_response(
         },
         agency::ProviderVerdict::Answered {
             action: action_kind.to_string(),
-            reasoning: reasoning.to_string(),
+            // S16: crew comms speak through the same voice pipeline as
+            // dialogue — meta stripped, length capped, in-character.
+            reasoning: reachlock_core::dialogue::shape_line(reasoning, &active.crew_member),
         },
     );
     // The start-of-deliberation line already hit the log when the moment

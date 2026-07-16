@@ -104,6 +104,15 @@ pub struct SoulFile {
     pub backstory: String,
     #[serde(default)]
     pub secrets: Vec<Secret>,
+    /// S16: authored conversation graph, if this soul has one. Optional and
+    /// skipped when absent so the S13 wire shape is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dialogue: Option<crate::dialogue::DialogueGraph>,
+    /// S16: authored deflection lines for the unscripted edge when no
+    /// inference exists (offline / Classic). Never a hang, never lorem
+    /// ipsum — the soul deflects in its own voice. Picked deterministically.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deflections: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -301,6 +310,8 @@ mod tests {
             contracts: vec![],
             backstory: String::new(),
             secrets: vec![],
+            dialogue: None,
+            deflections: vec![],
         }
     }
 

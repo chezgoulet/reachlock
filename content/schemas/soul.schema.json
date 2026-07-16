@@ -139,6 +139,84 @@
                   "content": { "type": "string" }
                 }
               }
+            },
+            "dialogue": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["start", "nodes"],
+              "properties": {
+                "start": { "type": "string" },
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "line"],
+                    "properties": {
+                      "id": { "type": "string" },
+                      "line": { "type": "string" },
+                      "llm_edge": { "type": "boolean" },
+                      "choices": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["label"],
+                          "properties": {
+                            "label": { "type": "string" },
+                            "condition": { "$ref": "#/definitions/condition" },
+                            "next": { "type": "string" },
+                            "effects": {
+                              "type": "array",
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["soul_event"],
+                                    "properties": {
+                                      "soul_event": {
+                                        "type": "object",
+                                        "additionalProperties": false,
+                                        "required": ["event_type", "emotional_weight", "summary"],
+                                        "properties": {
+                                          "event_type": { "type": "string" },
+                                          "emotional_weight": { "$ref": "#/definitions/unit" },
+                                          "summary": { "type": "string" }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["relationship_delta"],
+                                    "properties": {
+                                      "relationship_delta": {
+                                        "type": "object",
+                                        "additionalProperties": false,
+                                        "required": ["trust", "familiarity"],
+                                        "properties": {
+                                          "trust": { "type": "integer" },
+                                          "familiarity": { "type": "integer" }
+                                        }
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "deflections": {
+              "type": "array",
+              "items": { "type": "string" }
             }
           }
         }

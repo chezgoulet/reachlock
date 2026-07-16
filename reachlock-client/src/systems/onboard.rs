@@ -583,8 +583,15 @@ pub fn onboard_panels(
                         if cur { " *" } else { "" }
                     ));
                 }
-                s.push_str("press 1-5 to set · 0 to clear");
+                s.push_str("press 1-5 to set · 0 to clear · T talk");
                 **t = s;
+                // S16: talking is the other half of the crew surface — T
+                // hands this figure to the dialogue session (soul-backed).
+                let target = *e;
+                if keys.just_pressed(KeyCode::KeyT) {
+                    *panel = ActivePanel::Dialogue(target);
+                    return;
+                }
                 // Number keys 1-5 set the order (matching `ORDER_ROOMS`);
                 // 0 clears it.
                 let pressed = (1..=ORDER_ROOMS.len()).position(|n| {
