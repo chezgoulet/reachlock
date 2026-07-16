@@ -12,7 +12,6 @@ use reachlock_core::network::{ClientMessage, ServerMessage};
 
 use super::session::Session;
 use super::AppState;
-use crate::services::llm_proxy::{route_llm_call, LlmError};
 use crate::services::verify::Verdict;
 
 pub async fn upgrade(
@@ -172,17 +171,32 @@ async fn route(
                     call_id: call_id.clone(),
                 })
                 .await;
-            match route_llm_call(session.universe, &contract_id, &context).await {
-                Ok(response) => Some(ServerMessage::LlmResponse {
-                    call_id,
-                    action: response.action,
-                    reasoning: response.reasoning,
-                }),
-                Err(LlmError::NoInferenceTier) => Some(ServerMessage::LlmFailed {
-                    call_id,
-                    reason: "no_inference_tier".into(),
-                }),
-            }
+            // S14 gotcha: a real provider call can take seconds; awaiting it
+            // inline would block this player's whole message loop. Spawn it
+            // and reply through the session's out_tx.
+            let state = Arc::clone(state);
+            let out_tx = out_tx.clone();
+            let universe = session.universe;
+            let player_id = session.player_id.clone();
+            tokio::spawn(async move {
+                let reply = match state
+                    .llm
+                    .route(universe, &player_id, &contract_id, &context)
+                    .await
+                {
+                    Ok(response) => ServerMessage::LlmResponse {
+                        call_id,
+                        action: response.action,
+                        reasoning: response.reasoning,
+                    },
+                    Err(e) => ServerMessage::LlmFailed {
+                        call_id,
+                        reason: e.reason().into(),
+                    },
+                };
+                let _ = out_tx.send(reply).await;
+            });
+            None
         }
         ClientMessage::PlayerPosition {
             system_id,
