@@ -1,33 +1,34 @@
 //! Interior renderer + walking avatar (spec §14 Mode 1 "Stardew × Zelda ×
-//! Pokémon" / Mode 2 "FTL × Trust"). One renderer serves both Landed
-//! (station interior) and On-Board (ship interior): a `GeneratedLayout` of
-//! rooms rendered as walled floors with door apertures, palette-tinted per
-//! location so two stations never look alike, dressed with seeded per-kind
-//! props (bar tables, bunks, crates, the reactor core), and populated by
-//! wandering NPCs. The player avatar has a facing nose and a walk bob; the
-//! nearest interactable gets a pulsing highlight ring.
+//! Pokémon" / Mode 2 "FTL × Trust"), pixel-art edition. One renderer serves
+//! both Landed (station interior) and On-Board (ship interior):
+//!
+//! - The core `GeneratedLayout` (grid units) is scaled ×6 into pixel space —
+//!   1 tile = 16px, rooms run 9–18 tiles across — so interiors breathe at
+//!   Stardew scale instead of reading as a cramped diagram.
+//! - Floors and walls are seeded pixel textures tiled per room kind (deck
+//!   plate, planks, carpet, grating, poured concrete), palette-tinted per
+//!   location so two stations never look alike.
+//! - Furniture is painted at Terraria furniture dimensions (crates 26×22,
+//!   tables 26×20, bunks 28×20, consoles 24×20) by `crate::pixel`.
+//! - Every walking figure — avatar, NPCs, crew — is a 16×26 SNES-JRPG
+//!   sprite (4 facings × 2 walk frames) with a drop shadow and a name tag,
+//!   y-sorted so actors pass in front of and behind furniture correctly.
 //!
 //! Movement is door-honest: walkable space is each room inset by the wall
 //! thickness, plus apertures at the layout's doors — you cross between rooms
 //! where the doors are, not through walls (Zelda, not noclip).
-//!
-//! Coordinates are 1:1 grid→world units; the camera follows the avatar
-//! zoomed to a Zelda-ish framing (`mode.rs` / `ship::manage_cameras`). The
-//! flying `SpaceFlight` scene uses entirely separate world coordinates and
-//! the `PlayerShip` entity.
 
-use bevy::asset::RenderAssetUsages;
-use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 
 use reachlock_core::content::{ContentPayload, NpcSpawn};
 use reachlock_core::generator::hull::HullClass;
 use reachlock_core::generator::station::generate_station;
-use reachlock_core::generator::{GeneratedLayout, Room, RoomKind};
+use reachlock_core::generator::{Door, GeneratedLayout, Room, RoomKind};
 use reachlock_core::util::color::generate_palette;
 use reachlock_core::util::rng::SeededRng;
 
 use crate::bridge;
+use crate::pixel::{self, Look, TILE};
 use crate::states::{CurrentLocation, GameMode, ModeScope, SceneRegistry};
 use crate::systems::content_index::ContentIndex;
 use crate::systems::crew::{CrewFigure, CrewNav, CrewRoster};
@@ -38,51 +39,91 @@ use crate::systems::mode::PlayerAvatar;
 /// seed in `systems/setup.rs` so the On-Board scene is the ship you fly.
 pub const HULL_INTERIOR_SEED: u64 = 0x5EED_0001 ^ 0x51119;
 
-/// Walk speed in world units per second (interior scale).
-const WALK_SPEED: f32 = 110.0;
-/// Avatar body half-extent in world units.
-const AVATAR_HALF: f32 = 7.0;
-/// Wall thickness: floors are inset this much inside each room rect, and the
-/// dark band between adjacent floors is exactly the un-walkable wall.
-pub const WALL: f32 = 3.0;
-/// Radius around a door point that stays walkable across the wall band.
-pub const DOOR_R: f32 = 12.0;
-/// NPC wander speed, world units per second.
-const WANDER_SPEED: f32 = 32.0;
+/// Core layout grid → pixel world. Grid unit 8 × 6 = 48px = 3 tiles, so a
+/// generated 3–6-grid room becomes 9–18 tiles across.
+pub const LAYOUT_SCALE: i32 = 6;
 
-/// The layout currently walked, so the walk + transition systems can test
-/// room membership without regenerating it.
+/// Walk speed, px/s (~6 tiles/s — A-Link-to-the-Past pace).
+const WALK_SPEED: f32 = 104.0;
+/// Wall thickness: exactly one tile. Floors inset this much inside each room
+/// rect; the dark band between adjacent floors is the un-walkable wall.
+pub const WALL: f32 = TILE;
+/// Radius around a door point that stays walkable across the wall band
+/// (2 tiles: a doorway, not a pinhole).
+pub const DOOR_R: f32 = TILE * 2.0;
+/// NPC wander speed, px/s (~2.5 tiles/s amble).
+const WANDER_SPEED: f32 = 40.0;
+
+/// The layout currently walked (already scaled to pixel space), so the walk
+/// + transition systems can test room membership without regenerating it.
 #[derive(Resource, Default, Clone, Debug)]
 pub struct CurrentInterior {
     pub layout: Option<GeneratedLayout>,
 }
 
-/// The avatar's live motion state, written by `walk_avatar` and read by
-/// `animate_avatar` (bob + nose) and the camera lookahead.
-#[derive(Component)]
-pub struct AvatarMotion {
-    pub facing: Vec2,
-    pub moving: bool,
-    pub phase: f32,
+/// Scale a core grid-unit layout into pixel space.
+pub fn scale_layout(l: &GeneratedLayout, s: i32) -> GeneratedLayout {
+    GeneratedLayout {
+        rooms: l
+            .rooms
+            .iter()
+            .map(|r| Room {
+                kind: r.kind,
+                x: r.x * s,
+                y: r.y * s,
+                width: r.width * s,
+                height: r.height * s,
+            })
+            .collect(),
+        doors: l
+            .doors
+            .iter()
+            .map(|d| Door {
+                from: d.from,
+                to: d.to,
+                x: d.x * s,
+                y: d.y * s,
+            })
+            .collect(),
+    }
 }
 
-impl Default for AvatarMotion {
-    fn default() -> Self {
-        AvatarMotion {
-            facing: Vec2::new(0.0, -1.0),
-            moving: false,
+/// Y-sorted depth for actors and furniture: lower on screen = in front.
+/// Stays inside (0.5, 0.8) — above floors/thresholds, below name tags.
+pub fn ysort(y: f32) -> f32 {
+    0.5 + (20_000.0 - y).clamp(0.0, 25_000.0) * 1e-5
+}
+
+/// A walking figure's live animation state (avatar, NPC, or crew): facing +
+/// walk phase derived from actual movement, consumed by `animate_figures`.
+#[derive(Component)]
+pub struct Figure {
+    pub last: Vec2,
+    pub dir: usize,
+    pub phase: f32,
+    pub moving: bool,
+}
+
+impl Figure {
+    fn at(pos: Vec2) -> Self {
+        Figure {
+            last: pos,
+            dir: pixel::DIR_DOWN,
             phase: 0.0,
+            moving: false,
         }
     }
 }
 
-/// The avatar's body quad (bobbed while walking).
+/// The figure's body sprite child: carries the 4×2 walk frame set.
 #[derive(Component)]
-pub struct AvatarBody;
+pub struct FigureBody;
 
-/// The avatar's facing "nose" quad.
+/// Walk frames for one figure, `[direction][frame]`.
 #[derive(Component)]
-pub struct AvatarNose;
+pub struct CharacterSprite {
+    pub frames: [[Handle<Image>; 2]; 4],
+}
 
 /// An NPC that idles around its room. Tiny xorshift state keeps each one's
 /// path deterministic-ish without threading a resource through.
@@ -98,31 +139,16 @@ pub struct Wanderer {
 #[derive(Component)]
 pub struct InteractGlow;
 
-/// A unit quad (1×1, centered) shared by every rect in the scene.
-fn unit_quad() -> Mesh {
-    let positions = vec![
-        [-0.5, -0.5, 0.0],
-        [0.5, -0.5, 0.0],
-        [0.5, 0.5, 0.0],
-        [-0.5, 0.5, 0.0],
-    ];
-    let indices = Indices::U32(vec![0, 1, 2, 0, 2, 3]);
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::all());
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-    mesh.insert_indices(indices);
-    mesh
-}
-
-fn room_color(kind: RoomKind) -> Color {
+fn room_kind_color(kind: RoomKind) -> Color {
     match kind {
-        RoomKind::Hangar => Color::srgb(0.4, 0.5, 0.7),
-        RoomKind::Corridor => Color::srgb(0.25, 0.25, 0.28),
-        RoomKind::Bridge => Color::srgb(0.3, 0.6, 0.5),
-        RoomKind::Reactor => Color::srgb(0.7, 0.4, 0.3),
-        RoomKind::Quarters => Color::srgb(0.5, 0.4, 0.6),
-        RoomKind::Bar => Color::srgb(0.6, 0.5, 0.3),
-        RoomKind::Market => Color::srgb(0.5, 0.6, 0.4),
-        RoomKind::Shipyard => Color::srgb(0.4, 0.55, 0.6),
+        RoomKind::Hangar => Color::srgb(0.45, 0.52, 0.62),
+        RoomKind::Corridor => Color::srgb(0.42, 0.44, 0.48),
+        RoomKind::Bridge => Color::srgb(0.38, 0.58, 0.55),
+        RoomKind::Reactor => Color::srgb(0.6, 0.42, 0.36),
+        RoomKind::Quarters => Color::srgb(0.5, 0.42, 0.55),
+        RoomKind::Bar => Color::srgb(0.58, 0.45, 0.28),
+        RoomKind::Market => Color::srgb(0.48, 0.56, 0.42),
+        RoomKind::Shipyard => Color::srgb(0.45, 0.52, 0.56),
     }
 }
 
@@ -198,8 +224,16 @@ fn room_center_point(room: &Room) -> Vec2 {
     )
 }
 
-/// Build the interior scene for a Landed or On-Board mode. Reuses the same
-/// code path: a `GeneratedLayout` → walled floors. Skips rebuild when
+/// A plain static pixel sprite at a position/z.
+fn decal(commands: &mut Commands, image: Handle<Image>, mode: GameMode, x: f32, y: f32, z: f32) {
+    commands.spawn((
+        Sprite { image, ..default() },
+        Transform::from_xyz(x, y, z),
+        ModeScope(mode),
+    ));
+}
+
+/// Build the interior scene for a Landed or On-Board mode. Skips rebuild when
 /// re-entering the same mode we never tore down (the pause round-trip).
 #[allow(clippy::too_many_arguments)]
 pub fn enter_interior(
@@ -210,8 +244,7 @@ pub fn enter_interior(
     mut registry: ResMut<SceneRegistry>,
     mut interior: ResMut<CurrentInterior>,
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut images: ResMut<Assets<Image>>,
     mode_entities: Query<Entity, With<ModeScope>>,
 ) {
     let mode = **mode;
@@ -225,7 +258,7 @@ pub fn enter_interior(
         commands.entity(entity).despawn();
     }
 
-    let (layout, scene_seed) = match &mode {
+    let (grid_layout, scene_seed) = match &mode {
         GameMode::OnBoard => (
             reachlock_core::generator::station::generate_hull_interior(
                 HULL_INTERIOR_SEED,
@@ -244,13 +277,13 @@ pub fn enter_interior(
         }
         _ => return,
     };
+    let layout = scale_layout(&grid_layout, LAYOUT_SCALE);
     let palette = generate_palette(scene_seed);
     let accent = bridge::color_from_palette(palette.accent);
     let structure = bridge::color_from_palette(palette.structure);
 
     // NPCs: authored spawns if a content station matches this seed, else a
-    // seeded filler set (bar → patron, market → vendor). Each entry is
-    // (room_index, name, dialogue_lines).
+    // seeded filler set. Each entry is (room_index, name, dialogue_lines).
     let npcs: Vec<(usize, String, Vec<String>)> =
         match content.find_station_by_seed(location.station_seed) {
             Some(f) => match &f.payload {
@@ -263,8 +296,6 @@ pub fn enter_interior(
             None => generated_fillers(location.station_seed, &layout),
         };
 
-    let quad = meshes.add(unit_quad());
-
     // Start the avatar in the hangar (the airlock / board point).
     let hangar = layout
         .rooms
@@ -275,36 +306,65 @@ pub fn enter_interior(
             kind: RoomKind::Hangar,
             x: 0,
             y: 0,
-            width: 48,
-            height: 32,
+            width: 48 * LAYOUT_SCALE,
+            height: 32 * LAYOUT_SCALE,
         });
     let start = room_center_point(&hangar);
 
-    // Rooms: a dark wall slab per room rect with the floor inset by WALL —
-    // where two rooms adjoin, the two wall strips form the party wall, and
-    // walkability (below) matches the picture exactly.
-    let wall_color = Color::srgb(0.07, 0.08, 0.11);
+    // Shared textures for this scene.
+    let wall_tex = images.add(pixel::wall_texture(tinted(
+        Color::srgb(0.5, 0.52, 0.6),
+        structure,
+        0.4,
+    )));
+    let shadow_tex = images.add(pixel::shadow_sprite());
+    let mut floor_tex = std::collections::HashMap::new();
+
+    // Rooms: a tiled wall slab per room rect with the tiled floor inset by
+    // WALL — where two rooms adjoin, the two wall strips form the party
+    // wall, and walkability (below) matches the picture exactly.
     for room in &layout.rooms {
         let c = room_center_point(room);
+        let floor_color = tinted(room_kind_color(room.kind), structure, 0.35);
+        let floor = floor_tex
+            .entry(room.kind as u64)
+            .or_insert_with(|| {
+                images.add(pixel::floor_texture(
+                    room.kind,
+                    floor_color,
+                    scene_seed ^ room.kind as u64,
+                ))
+            })
+            .clone();
         commands.spawn((
-            Mesh2d(quad.clone()),
-            MeshMaterial2d(materials.add(wall_color)),
-            Transform::from_xyz(c.x, c.y, 0.0).with_scale(Vec3::new(
-                room.width as f32,
-                room.height as f32,
-                1.0,
-            )),
+            Sprite {
+                image: wall_tex.clone(),
+                custom_size: Some(Vec2::new(room.width as f32, room.height as f32)),
+                image_mode: SpriteImageMode::Tiled {
+                    tile_x: true,
+                    tile_y: true,
+                    stretch_value: 1.0,
+                },
+                ..default()
+            },
+            Transform::from_xyz(c.x, c.y, 0.0),
             ModeScope(mode),
         ));
-        let floor = tinted(room_color(room.kind), structure, 0.3);
         commands.spawn((
-            Mesh2d(quad.clone()),
-            MeshMaterial2d(materials.add(floor)),
-            Transform::from_xyz(c.x, c.y, 0.1).with_scale(Vec3::new(
-                room.width as f32 - WALL * 2.0,
-                room.height as f32 - WALL * 2.0,
-                1.0,
-            )),
+            Sprite {
+                image: floor,
+                custom_size: Some(Vec2::new(
+                    room.width as f32 - WALL * 2.0,
+                    room.height as f32 - WALL * 2.0,
+                )),
+                image_mode: SpriteImageMode::Tiled {
+                    tile_x: true,
+                    tile_y: true,
+                    stretch_value: 1.0,
+                },
+                ..default()
+            },
+            Transform::from_xyz(c.x, c.y, 0.1),
             ModeScope(mode),
         ));
         let label = room_label(mode, room.kind);
@@ -312,139 +372,96 @@ pub fn enter_interior(
             commands.spawn((
                 Text2d::new(label),
                 TextFont {
-                    font_size: 10.0,
+                    font_size: 12.0,
                     ..default()
                 },
-                TextColor(Color::srgba(0.95, 0.96, 1.0, 0.55)),
-                Transform::from_xyz(c.x, c.y + room.height as f32 * 0.5 - 9.0, 2.0),
+                TextColor(Color::srgba(0.95, 0.96, 1.0, 0.5)),
+                Transform::from_xyz(c.x, c.y + room.height as f32 * 0.5 - 26.0, 2.0),
                 ModeScope(mode),
             ));
         }
-        spawn_props(
+        spawn_props(&mut commands, &mut images, mode, room, scene_seed, accent);
+    }
+
+    // Door thresholds: hazard-striped plates bridging the party wall.
+    let threshold_tex = images.add(pixel::threshold_sprite(
+        tinted(Color::srgb(0.55, 0.56, 0.62), structure, 0.3),
+        accent,
+    ));
+    for door in &layout.doors {
+        decal(
             &mut commands,
-            &mut materials,
+            threshold_tex.clone(),
             mode,
-            room,
-            scene_seed,
-            accent,
-            &quad,
+            door.x as f32,
+            door.y as f32,
+            0.15,
         );
     }
 
-    // Door apertures: floor-colored bridges across the party wall, so doors
-    // read as the openings they are.
-    for door in &layout.doors {
-        let floor = layout
-            .rooms
-            .get(door.to as usize)
-            .map(|r| tinted(room_color(r.kind), structure, 0.3))
-            .unwrap_or(wall_color);
-        commands.spawn((
-            Mesh2d(quad.clone()),
-            MeshMaterial2d(materials.add(floor)),
-            Transform::from_xyz(door.x as f32, door.y as f32, 0.15).with_scale(Vec3::new(
-                DOOR_R * 1.6,
-                WALL * 2.0 + 2.0,
-                1.0,
-            )),
-            ModeScope(mode),
-        ));
-        commands.spawn((
-            Mesh2d(quad.clone()),
-            MeshMaterial2d(materials.add(accent.with_alpha(0.5))),
-            Transform::from_xyz(door.x as f32, door.y as f32, 0.16).with_scale(Vec3::new(
-                DOOR_R * 1.6,
-                1.2,
-                1.0,
-            )),
-            ModeScope(mode),
-        ));
-    }
-
-    // NPCs (authored or seeded fillers) + a market counter marker.
-    // On-Board also puts the crew at their stations and drops the ship's
-    // consoles as `Interactable`s.
+    // NPCs + market counter; On-Board adds crew and the ship's consoles.
     spawn_actors(
         &mut commands,
-        &mut materials,
+        &mut images,
         mode,
         &layout,
         &npcs,
         &roster,
         scene_seed,
-        quad.clone(),
+        &shadow_tex,
     );
 
     // The interaction highlight ring (moved onto the nearest interactable by
     // `highlight_interactable`).
     commands.spawn((
         InteractGlow,
-        Mesh2d(quad.clone()),
-        MeshMaterial2d(materials.add(Color::srgba(1.0, 0.95, 0.55, 0.3))),
-        Transform::from_xyz(start.x, start.y, 0.9),
+        Sprite {
+            image: images.add(pixel::ring_sprite()),
+            ..default()
+        },
+        Transform::from_xyz(start.x, start.y, 0.49),
         Visibility::Hidden,
         ModeScope(mode),
     ));
 
-    // The avatar: an unscaled root (so children keep their own sizes) with a
-    // body quad that bobs while walking and a nose quad showing facing.
-    commands
-        .spawn((
-            PlayerAvatar,
-            AvatarMotion::default(),
-            Transform::from_xyz(start.x, start.y, 1.0),
-            Visibility::default(),
-            ModeScope(mode),
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                AvatarBody,
-                Mesh2d(quad.clone()),
-                MeshMaterial2d(materials.add(Color::srgb(0.95, 0.95, 0.4))),
-                Transform::from_xyz(0.0, 0.0, 0.0).with_scale(Vec3::new(
-                    AVATAR_HALF * 2.0,
-                    AVATAR_HALF * 2.0,
-                    1.0,
-                )),
-            ));
-            parent.spawn((
-                AvatarNose,
-                Mesh2d(quad.clone()),
-                MeshMaterial2d(materials.add(Color::srgb(0.6, 0.55, 0.2))),
-                Transform::from_xyz(0.0, -AVATAR_HALF, 0.05).with_scale(Vec3::new(5.0, 5.0, 1.0)),
-            ));
-        });
+    // The avatar: green-tunic'd, gold-haired — the hero sprite.
+    let avatar_look = Look {
+        skin: Color::srgb(0.94, 0.78, 0.62),
+        hair: Color::srgb(0.83, 0.66, 0.28),
+        shirt: Color::srgb(0.22, 0.55, 0.3),
+        pants: Color::srgb(0.25, 0.22, 0.18),
+    };
+    spawn_figure(
+        &mut commands,
+        &mut images,
+        mode,
+        start,
+        "",
+        avatar_look,
+        &shadow_tex,
+        (PlayerAvatar,),
+    );
 
     interior.layout = Some(layout);
     registry.scene = Some(mode);
 }
 
-/// Seeded per-kind set dressing so rooms read as places, not colored rects:
-/// tables in the bar, bunks in quarters, crates in cargo, a glowing core in
-/// the reactor, a landing pad in the hangar, a viewport strip on the bridge.
-#[allow(clippy::too_many_arguments)]
+/// Seeded per-kind set dressing at Terraria furniture dimensions, y-sorted
+/// so figures walk in front of and behind it.
 fn spawn_props(
     commands: &mut Commands,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
+    images: &mut Assets<Image>,
     mode: GameMode,
     room: &Room,
     scene_seed: u64,
     accent: Color,
-    quad: &Handle<Mesh>,
 ) {
     let mut rng = SeededRng::new(scene_seed ^ ((room.x as u64) << 20) ^ (room.y as u64));
     let c = room_center_point(room);
-    let prop = |commands: &mut Commands,
-                materials: &mut ResMut<Assets<ColorMaterial>>,
-                x: f32,
-                y: f32,
-                w: f32,
-                h: f32,
-                color: Color| {
+    let sorted = |commands: &mut Commands, image: Handle<Image>, x: f32, y: f32| {
         commands.spawn((
-            Mesh2d(quad.clone()),
-            MeshMaterial2d(materials.add(color)),
-            Transform::from_xyz(x, y, 0.6).with_scale(Vec3::new(w, h, 1.0)),
+            Sprite { image, ..default() },
+            Transform::from_xyz(x, y, ysort(y - 8.0)),
             ModeScope(mode),
         ));
     };
@@ -459,103 +476,79 @@ fn spawn_props(
     };
     match room.kind {
         RoomKind::Bar => {
-            for _ in 0..2 + rng.next_below(2) {
-                let p = jitter(&mut rng, 10.0);
-                prop(
-                    commands,
-                    materials,
-                    p.x,
-                    p.y,
-                    9.0,
-                    9.0,
-                    Color::srgb(0.45, 0.32, 0.2),
-                );
+            let table = images.add(pixel::table_sprite());
+            for _ in 0..2 + rng.next_below(3) {
+                let p = jitter(&mut rng, 44.0);
+                sorted(commands, table.clone(), p.x, p.y);
             }
+            let counter = images.add(pixel::counter_sprite(tinted(
+                Color::srgb(0.5, 0.38, 0.24),
+                accent,
+                0.15,
+            )));
+            sorted(
+                commands,
+                counter,
+                c.x,
+                room.y as f32 + room.height as f32 - WALL - 18.0,
+            );
         }
         RoomKind::Quarters => {
+            let blankets = [
+                Color::srgb(0.55, 0.25, 0.25),
+                Color::srgb(0.25, 0.4, 0.55),
+                Color::srgb(0.3, 0.5, 0.35),
+            ];
             for i in 0..2 + rng.next_below(2) {
-                prop(
+                let bunk = images.add(pixel::bunk_sprite(blankets[i as usize % 3]));
+                sorted(
                     commands,
-                    materials,
-                    room.x as f32 + 12.0 + (i as f32) * 16.0,
-                    room.y as f32 + room.height as f32 - 9.0,
-                    12.0,
-                    6.0,
-                    Color::srgb(0.35, 0.38, 0.55),
+                    bunk,
+                    room.x as f32 + 40.0 + (i as f32) * 44.0,
+                    room.y as f32 + room.height as f32 - WALL - 16.0,
                 );
             }
         }
         RoomKind::Shipyard | RoomKind::Market => {
-            for _ in 0..3 {
-                let p = jitter(&mut rng, 9.0);
-                prop(
-                    commands,
-                    materials,
-                    p.x,
-                    p.y,
-                    8.0,
-                    8.0,
-                    Color::srgb(0.5, 0.45, 0.3),
-                );
+            for _ in 0..3 + rng.next_below(2) {
+                let p = jitter(&mut rng, 40.0);
+                let crate_tex = images.add(pixel::crate_sprite(rng.next_below(1 << 30)));
+                sorted(commands, crate_tex, p.x, p.y);
             }
         }
         RoomKind::Reactor => {
-            prop(commands, materials, c.x, c.y + 10.0, 14.0, 14.0, accent);
-            prop(
-                commands,
-                materials,
-                c.x,
-                c.y + 10.0,
-                8.0,
-                8.0,
-                Color::srgb(1.0, 0.9, 0.6),
-            );
+            let core = images.add(pixel::core_sprite(accent));
+            sorted(commands, core, c.x, c.y + 30.0);
         }
         RoomKind::Bridge => {
-            // Viewport strip along the far wall.
-            prop(
+            let viewport = images.add(pixel::viewport_sprite(scene_seed));
+            decal(
                 commands,
-                materials,
+                viewport,
+                mode,
                 c.x,
-                room.y as f32 + room.height as f32 - WALL - 3.0,
-                room.width as f32 * 0.6,
-                4.0,
-                Color::srgb(0.1, 0.16, 0.3),
+                room.y as f32 + room.height as f32 - WALL - 10.0,
+                0.4,
             );
         }
         RoomKind::Hangar => {
-            // Landing pad ring.
-            prop(
-                commands,
-                materials,
-                c.x,
-                c.y,
-                room.width as f32 * 0.45,
-                room.height as f32 * 0.45,
-                Color::srgba(0.0, 0.0, 0.0, 0.25),
-            );
-            prop(
-                commands,
-                materials,
-                c.x,
-                c.y,
-                4.0,
-                4.0,
-                accent.with_alpha(0.6),
-            );
+            let pad = images.add(pixel::pad_sprite(accent));
+            decal(commands, pad, mode, c.x, c.y, 0.12);
         }
-        RoomKind::Corridor => {
-            // Guide stripe down the spine.
-            prop(
-                commands,
-                materials,
-                c.x,
-                c.y,
-                room.width as f32 - WALL * 4.0,
-                1.2,
-                accent.with_alpha(0.25),
-            );
-        }
+        RoomKind::Corridor => {}
+    }
+    // The mandatory JRPG foliage, anywhere people linger.
+    if matches!(
+        room.kind,
+        RoomKind::Bar | RoomKind::Market | RoomKind::Quarters | RoomKind::Bridge
+    ) {
+        let plant = images.add(pixel::plant_sprite(rng.next_below(1 << 30)));
+        sorted(
+            commands,
+            plant,
+            room.x as f32 + WALL + 14.0,
+            room.y as f32 + WALL + 16.0,
+        );
     }
 }
 
@@ -566,12 +559,12 @@ pub fn walk_avatar(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     interior: Res<CurrentInterior>,
-    mut avatar: Query<(&mut Transform, &mut AvatarMotion), With<PlayerAvatar>>,
+    mut avatar: Query<&mut Transform, With<PlayerAvatar>>,
 ) {
     let Some(layout) = &interior.layout else {
         return;
     };
-    let Ok((mut transform, mut motion)) = avatar.single_mut() else {
+    let Ok(mut transform) = avatar.single_mut() else {
         return;
     };
 
@@ -589,13 +582,9 @@ pub fn walk_avatar(
         dir.x += 1.0;
     }
     if dir == Vec2::ZERO {
-        motion.moving = false;
         return;
     }
     let dir = dir.normalize();
-    motion.moving = true;
-    motion.facing = dir;
-    motion.phase += time.delta_secs() * 11.0;
     let step = WALK_SPEED * time.delta_secs();
     let dx = dir.x * step;
     let dy = dir.y * step;
@@ -609,27 +598,47 @@ pub fn walk_avatar(
     }
 }
 
-/// Bob the avatar body while walking and keep the nose on the facing side.
-pub fn animate_avatar(
-    motion: Query<&AvatarMotion, With<PlayerAvatar>>,
-    mut body: Query<&mut Transform, (With<AvatarBody>, Without<AvatarNose>)>,
-    mut nose: Query<&mut Transform, (With<AvatarNose>, Without<AvatarBody>)>,
+/// Animate every walking figure from its actual movement: derive facing and
+/// walk phase from the position delta, pick the matching frame, and y-sort.
+/// One system covers the avatar, NPCs, and crew alike.
+pub fn animate_figures(
+    time: Res<Time>,
+    mut roots: Query<(&mut Figure, &mut Transform, &Children)>,
+    mut bodies: Query<(&mut Sprite, &CharacterSprite), With<FigureBody>>,
 ) {
-    let Ok(motion) = motion.single() else {
-        return;
-    };
-    if let Ok(mut body) = body.single_mut() {
-        let bob = if motion.moving {
-            1.0 + motion.phase.sin() * 0.06
+    for (mut fig, mut tx, children) in &mut roots {
+        let pos = tx.translation.truncate();
+        let delta = pos - fig.last;
+        fig.last = pos;
+        fig.moving = delta.length() > 0.05;
+        if fig.moving {
+            fig.dir = if delta.x.abs() > delta.y.abs() {
+                if delta.x > 0.0 {
+                    pixel::DIR_RIGHT
+                } else {
+                    pixel::DIR_LEFT
+                }
+            } else if delta.y > 0.0 {
+                pixel::DIR_UP
+            } else {
+                pixel::DIR_DOWN
+            };
+            fig.phase += time.delta_secs() * 8.0;
+        }
+        tx.translation.z = ysort(pos.y);
+        let frame = if fig.moving {
+            (fig.phase as usize) % 2
         } else {
-            1.0
+            0
         };
-        body.scale = Vec3::new(AVATAR_HALF * 2.0 / bob, AVATAR_HALF * 2.0 * bob, 1.0);
-    }
-    if let Ok(mut nose) = nose.single_mut() {
-        let offset = motion.facing * AVATAR_HALF;
-        nose.translation.x = offset.x;
-        nose.translation.y = offset.y;
+        for child in children {
+            if let Ok((mut sprite, frames)) = bodies.get_mut(*child) {
+                let want = frames.frames[fig.dir][frame].clone();
+                if sprite.image != want {
+                    sprite.image = want;
+                }
+            }
+        }
     }
 }
 
@@ -656,7 +665,7 @@ pub fn wander_npcs(time: Res<Time>, mut npcs: Query<(&mut Transform, &mut Wander
         x ^= x >> 7;
         x ^= x << 17;
         w.rng = x;
-        let margin = 10.0_f32;
+        let margin = 36.0_f32;
         let rw = (w.room.width as f32 - margin * 2.0).max(1.0);
         let rh = (w.room.height as f32 - margin * 2.0).max(1.0);
         w.target = Vec2::new(
@@ -682,7 +691,8 @@ pub fn highlight_interactable(
             *vis = Visibility::Visible;
             tx.translation.x = pos.x;
             tx.translation.y = pos.y;
-            let pulse = 16.0 + (time.elapsed_secs() * 5.0).sin() * 2.0;
+            tx.translation.z = ysort(pos.y) - 0.01;
+            let pulse = 1.0 + (time.elapsed_secs() * 5.0).sin() * 0.08;
             tx.scale = Vec3::new(pulse, pulse, 1.0);
         }
         None => *vis = Visibility::Hidden,
@@ -718,20 +728,23 @@ pub fn walkable(x: f32, y: f32, layout: &GeneratedLayout) -> bool {
 }
 
 /// Seeded filler NPCs for a *generated* station (authored stations supply
-/// their own via `npc_spawns`). Bars get a patron, markets a vendor, 1–2
-/// per qualifying room, named from a small pool so two stations differ.
+/// their own via `npc_spawns`). Bars get patrons, markets vendors, 1–3 per
+/// qualifying room, named from a small pool so two stations differ.
 fn generated_fillers(seed: u64, layout: &GeneratedLayout) -> Vec<(usize, String, Vec<String>)> {
     let mut rng = SeededRng::new(seed ^ 0xBEEF);
-    let names = ["Pell", "Mara", "Voss", "Juno", "Dax", "Rill"];
+    let names = [
+        "Pell", "Mara", "Voss", "Juno", "Dax", "Rill", "Oona", "Brix",
+    ];
     let mut out = Vec::new();
     for (i, room) in layout.rooms.iter().enumerate() {
         let (role, lines) = match room.kind {
             RoomKind::Bar => ("patron", vec!["*nods at you*".to_string()]),
             RoomKind::Market => ("vendor", vec!["Looking to trade?".to_string()]),
             RoomKind::Quarters => ("crew", vec!["Off-shift. Don't slack.".to_string()]),
+            RoomKind::Shipyard => ("dockhand", vec!["Mind the crates.".to_string()]),
             _ => continue,
         };
-        let count = 1 + (rng.next_below(2) as usize); // 1..=2
+        let count = 1 + (rng.next_below(3) as usize); // 1..=3
         for _ in 0..count {
             let name = names[rng.next_below(names.len() as u64) as usize];
             let full = format!("{name} the {role}");
@@ -741,40 +754,40 @@ fn generated_fillers(seed: u64, layout: &GeneratedLayout) -> Vec<(usize, String,
     out
 }
 
-/// Spawn every NPC as a figure root (Interactable + Npc + Wanderer) with a
-/// body quad and a name label as children, scattered in its room rather than
-/// stacked at the center. Also drop a `Shop` counter in the first Market
-/// room, and — On-Board — the crew and the ship's consoles.
+/// Spawn every NPC as a walking pixel figure (Interactable + Npc + Wanderer)
+/// scattered in its room rather than stacked at the center. Also drop a
+/// `Shop` counter in the first Market room, and — On-Board — the crew and
+/// the ship's consoles.
 #[allow(clippy::too_many_arguments)]
 fn spawn_actors(
     commands: &mut Commands,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
+    images: &mut Assets<Image>,
     mode: GameMode,
     layout: &GeneratedLayout,
     npcs: &[(usize, String, Vec<String>)],
     roster: &CrewRoster,
     scene_seed: u64,
-    quad: Handle<Mesh>,
+    shadow: &Handle<Image>,
 ) {
     let mut rng = SeededRng::new(scene_seed ^ 0x5CA7);
     for (room_index, name, dialogue) in npcs {
         let Some(room) = layout.rooms.get(*room_index) else {
             continue;
         };
-        let margin = 12.0;
+        let margin = 44.0;
         let rw = (room.width as f32 - margin * 2.0).max(1.0) as u64;
         let rh = (room.height as f32 - margin * 2.0).max(1.0) as u64;
         let px = room.x as f32 + margin + rng.next_below(rw + 1) as f32;
         let py = room.y as f32 + margin + rng.next_below(rh + 1) as f32;
-        let hue = 0.55 + (rng.next_below(40) as f32) / 100.0;
+        let look_seed = rng.next_below(1 << 30);
         spawn_figure(
             commands,
-            materials,
-            &quad,
+            images,
             mode,
             Vec2::new(px, py),
             name,
-            Color::srgb(0.85, hue, 0.5),
+            Look::seeded(look_seed),
+            shadow,
             (
                 Interactable {
                     label: name.clone(),
@@ -788,106 +801,122 @@ fn spawn_actors(
                     room: room.clone(),
                     target: Vec2::new(px, py),
                     pause: (rng.next_below(30) as f32) / 10.0,
-                    rng: scene_seed ^ ((*room_index as u64) << 32) ^ rng.next_below(u64::MAX - 1),
+                    rng: look_seed | 1,
                 },
             ),
         );
     }
 
-    // Market counter marker (the shop verb target).
+    // Market counter (the shop verb target).
     if let Some(market) = layout.rooms.iter().find(|r| r.kind == RoomKind::Market) {
         let c = room_center_point(market);
+        let y = market.y as f32 + market.height as f32 - WALL - 18.0;
         commands.spawn((
-            Mesh2d(quad.clone()),
-            MeshMaterial2d(materials.add(Color::srgb(0.4, 0.7, 0.5))),
-            Transform::from_xyz(c.x, c.y, 0.65).with_scale(Vec3::new(20.0, 10.0, 1.0)),
+            Sprite {
+                image: images.add(pixel::counter_sprite(Color::srgb(0.35, 0.55, 0.45))),
+                ..default()
+            },
+            Transform::from_xyz(c.x, y, ysort(y - 8.0)),
             ModeScope(mode),
             Interactable {
                 label: "MARKET".to_string(),
                 kind: InteractKind::Shop,
             },
         ));
-        commands.spawn((
-            Text2d::new("¤"),
-            TextFont {
-                font_size: 9.0,
-                ..default()
-            },
-            TextColor(Color::srgb(0.85, 1.0, 0.9)),
-            Transform::from_xyz(c.x, c.y, 0.66),
-            ModeScope(mode),
-        ));
     }
 
     // On-Board: crew at their stations + the ship's consoles.
     if mode == GameMode::OnBoard {
-        spawn_crew(commands, materials, layout, roster, &quad);
-        spawn_consoles(commands, materials, layout, &quad);
+        spawn_crew(commands, images, layout, roster, shadow);
+        spawn_consoles(commands, images, layout);
     }
 }
 
-/// Spawn a walking figure: unscaled root carrying the game components (so
-/// interaction distance and movement work on the root), with the body quad
-/// and name label as children that follow it around.
+/// Spawn a walking pixel figure: unscaled root carrying the game components
+/// (so interaction distance and movement work on the root), with the shadow,
+/// the animated body sprite, and the name tag as children.
 #[allow(clippy::too_many_arguments)]
 fn spawn_figure(
     commands: &mut Commands,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
-    quad: &Handle<Mesh>,
+    images: &mut Assets<Image>,
     mode: GameMode,
     pos: Vec2,
     name: &str,
-    color: Color,
+    look: Look,
+    shadow: &Handle<Image>,
     extra: impl Bundle,
-) -> Entity {
+) {
+    let frames = pixel::character_frames(images, look);
+    let idle = frames[pixel::DIR_DOWN][0].clone();
     commands
         .spawn((
-            Transform::from_xyz(pos.x, pos.y, 1.0),
+            Figure::at(pos),
+            Transform::from_xyz(pos.x, pos.y, ysort(pos.y)),
             Visibility::default(),
             ModeScope(mode),
             extra,
         ))
         .with_children(|parent| {
             parent.spawn((
-                Mesh2d(quad.clone()),
-                MeshMaterial2d(materials.add(color)),
-                Transform::from_scale(Vec3::new(10.0, 10.0, 1.0)),
-            ));
-            parent.spawn((
-                Text2d::new(name.to_string()),
-                TextFont {
-                    font_size: 7.0,
+                Sprite {
+                    image: shadow.clone(),
                     ..default()
                 },
-                TextColor(Color::srgb(0.95, 0.9, 0.8)),
-                Transform::from_xyz(0.0, -11.0, 0.1),
+                Transform::from_xyz(0.0, -1.0, -0.002),
             ));
-        })
-        .id()
+            parent.spawn((
+                FigureBody,
+                CharacterSprite { frames },
+                Sprite {
+                    image: idle,
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 10.0, 0.0),
+            ));
+            if !name.is_empty() {
+                parent.spawn((
+                    Text2d::new(name.to_string()),
+                    TextFont {
+                        font_size: 8.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgba(0.95, 0.9, 0.8, 0.9)),
+                    Transform::from_xyz(0.0, 30.0, 0.05),
+                ));
+            }
+        });
 }
 
-/// Place each roster member as a walking figure + `CrewFigure` tag (so the
-/// shift system can find the entity) + a `Crew` `Interactable` (so you can
-/// order them). All `ModeScope`; they respawn on board.
+/// Place each roster member as a uniformed pixel figure + `CrewFigure` tag
+/// (so the shift system can find the entity) + a `Crew` `Interactable` (so
+/// you can order them). All `ModeScope`; they respawn on board.
 fn spawn_crew(
     commands: &mut Commands,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
+    images: &mut Assets<Image>,
     layout: &GeneratedLayout,
     roster: &CrewRoster,
-    quad: &Handle<Mesh>,
+    shadow: &Handle<Image>,
 ) {
     for m in &roster.members {
         let Some(center) = room_center(layout, m.current_room) else {
             continue;
         };
+        // Ship uniform over seeded skin/hair (stable per crew id).
+        let id_seed =
+            m.id.bytes()
+                .fold(0u64, |a, b| a.wrapping_mul(31) + b as u64);
+        let look = Look {
+            shirt: Color::srgb(0.25, 0.38, 0.62),
+            ..Look::seeded(id_seed)
+        };
         spawn_figure(
             commands,
-            materials,
-            quad,
+            images,
             GameMode::OnBoard,
             center,
             &m.name,
-            Color::srgb(0.6, 0.7, 0.95),
+            look,
+            shadow,
             (
                 CrewFigure(m.id.clone()),
                 CrewNav::default(),
@@ -900,127 +929,120 @@ fn spawn_crew(
     }
 }
 
-/// Drop the ship's consoles as `Interactable`s in their rooms:
-/// Helm + Nav on the Bridge, Engineering in the Reactor, Log in Quarters.
-/// Offsets keep multiple consoles in one room from overlapping.
-fn spawn_consoles(
-    commands: &mut Commands,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
-    layout: &GeneratedLayout,
-    quad: &Handle<Mesh>,
-) {
+/// Drop the ship's consoles as glowing-screen pixel sprites in their rooms:
+/// Helm + Nav + Gunner + Scanner on the Bridge, Engineering + Power + Miner
+/// in the Reactor, Log in Quarters.
+fn spawn_consoles(commands: &mut Commands, images: &mut Assets<Image>, layout: &GeneratedLayout) {
+    let console = |commands: &mut Commands,
+                   images: &mut Assets<Image>,
+                   x: f32,
+                   y: f32,
+                   label: &str,
+                   glow: Color,
+                   kind: InteractKind| {
+        commands.spawn((
+            Sprite {
+                image: images.add(pixel::console_sprite(glow)),
+                ..default()
+            },
+            Transform::from_xyz(x, y, ysort(y - 8.0)),
+            ModeScope(GameMode::OnBoard),
+            Interactable {
+                label: label.to_string(),
+                kind,
+            },
+        ));
+        commands.spawn((
+            Text2d::new(label.to_string()),
+            TextFont {
+                font_size: 7.0,
+                ..default()
+            },
+            TextColor(Color::srgba(0.75, 0.9, 1.0, 0.7)),
+            Transform::from_xyz(x, y + 18.0, 1.9),
+            ModeScope(GameMode::OnBoard),
+        ));
+    };
+    let teal = Color::srgb(0.3, 0.85, 0.8);
+    let amber = Color::srgb(0.95, 0.7, 0.3);
     if let Some(bridge) = room_center(layout, RoomKind::Bridge) {
         console(
             commands,
-            materials,
-            quad,
-            bridge.x - 12.0,
-            bridge.y,
+            images,
+            bridge.x - 44.0,
+            bridge.y + 20.0,
             "HELM",
+            teal,
             InteractKind::Helm,
         );
         console(
             commands,
-            materials,
-            quad,
-            bridge.x + 12.0,
-            bridge.y,
+            images,
+            bridge.x + 44.0,
+            bridge.y + 20.0,
             "NAV",
+            teal,
             InteractKind::Nav,
         );
-        // S09b: gunner + scanner consoles on the bridge (spec §22). Staggered
-        // in +y so they don't overlap HELM/NAV.
         console(
             commands,
-            materials,
-            quad,
-            bridge.x - 12.0,
-            bridge.y + 14.0,
+            images,
+            bridge.x - 44.0,
+            bridge.y - 28.0,
             "GUNNER",
+            amber,
             InteractKind::Gunner,
         );
         console(
             commands,
-            materials,
-            quad,
-            bridge.x + 12.0,
-            bridge.y + 14.0,
+            images,
+            bridge.x + 44.0,
+            bridge.y - 28.0,
             "SCANNER",
+            teal,
             InteractKind::Scanner,
         );
     }
     if let Some(reactor) = room_center(layout, RoomKind::Reactor) {
         console(
             commands,
-            materials,
-            quad,
-            reactor.x,
-            reactor.y,
+            images,
+            reactor.x - 44.0,
+            reactor.y - 20.0,
             "ENG",
+            amber,
             InteractKind::Engineering,
         );
-        // S09b: power routing + mining rig consoles in the reactor.
         console(
             commands,
-            materials,
-            quad,
-            reactor.x - 14.0,
-            reactor.y + 14.0,
+            images,
+            reactor.x + 44.0,
+            reactor.y - 20.0,
             "POWER",
+            amber,
             InteractKind::Power,
         );
         console(
             commands,
-            materials,
-            quad,
-            reactor.x + 14.0,
-            reactor.y + 14.0,
+            images,
+            reactor.x,
+            reactor.y - 44.0,
             "MINER",
+            teal,
             InteractKind::Miner,
         );
     }
     if let Some(quarters) = room_center(layout, RoomKind::Quarters) {
         console(
             commands,
-            materials,
-            quad,
+            images,
             quarters.x,
             quarters.y,
             "LOG",
+            Color::srgb(0.7, 0.85, 0.5),
             InteractKind::Log,
         );
     }
-}
-
-fn console(
-    commands: &mut Commands,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
-    quad: &Handle<Mesh>,
-    x: f32,
-    y: f32,
-    label: &str,
-    kind: InteractKind,
-) {
-    commands.spawn((
-        Mesh2d(quad.clone()),
-        MeshMaterial2d(materials.add(Color::srgb(0.3, 0.45, 0.55))),
-        Transform::from_xyz(x, y, 0.7).with_scale(Vec3::new(14.0, 10.0, 1.0)),
-        ModeScope(GameMode::OnBoard),
-        Interactable {
-            label: label.to_string(),
-            kind,
-        },
-    ));
-    commands.spawn((
-        Text2d::new(label.to_string()),
-        TextFont {
-            font_size: 6.0,
-            ..default()
-        },
-        TextColor(Color::srgba(0.75, 0.9, 1.0, 0.8)),
-        Transform::from_xyz(x, y + 8.0, 0.71),
-        ModeScope(GameMode::OnBoard),
-    ));
 }
 
 /// Center of the first room of a given kind, if the layout has one.
@@ -1034,10 +1056,11 @@ pub(crate) fn room_center(layout: &GeneratedLayout, kind: RoomKind) -> Option<Ve
 
 #[cfg(test)]
 mod tests {
-    use super::{walkable, DOOR_R, WALL};
+    use super::{scale_layout, walkable, ysort, DOOR_R, LAYOUT_SCALE, WALL};
     use reachlock_core::generator::{Door, GeneratedLayout, Room, RoomKind};
 
-    /// Two rooms sharing the edge y=32 with one door at (24, 32).
+    /// Two rooms sharing the edge y=192 with one door at (96, 192) — the
+    /// scaled shape of the generator's hangar + spine corridor.
     fn two_rooms() -> GeneratedLayout {
         GeneratedLayout {
             rooms: vec![
@@ -1045,53 +1068,84 @@ mod tests {
                     kind: RoomKind::Hangar,
                     x: 0,
                     y: 0,
-                    width: 48,
-                    height: 32,
+                    width: 288,
+                    height: 192,
                 },
                 Room {
                     kind: RoomKind::Corridor,
                     x: 0,
-                    y: 32,
-                    width: 96,
-                    height: 16,
+                    y: 192,
+                    width: 576,
+                    height: 96,
                 },
             ],
             doors: vec![Door {
                 from: 0,
                 to: 1,
-                x: 24,
-                y: 32,
+                x: 96,
+                y: 192,
             }],
         }
     }
 
     #[test]
+    fn scale_layout_multiplies_rooms_and_doors() {
+        let grid = GeneratedLayout {
+            rooms: vec![Room {
+                kind: RoomKind::Hangar,
+                x: 0,
+                y: 4,
+                width: 48,
+                height: 32,
+            }],
+            doors: vec![Door {
+                from: 0,
+                to: 0,
+                x: 16,
+                y: 32,
+            }],
+        };
+        let px = scale_layout(&grid, LAYOUT_SCALE);
+        assert_eq!(px.rooms[0].width, 48 * LAYOUT_SCALE);
+        assert_eq!(px.rooms[0].y, 4 * LAYOUT_SCALE);
+        assert_eq!(px.doors[0].x, 16 * LAYOUT_SCALE);
+    }
+
+    #[test]
     fn room_centers_are_walkable() {
         let l = two_rooms();
-        assert!(walkable(24.0, 16.0, &l));
-        assert!(walkable(48.0, 40.0, &l));
+        assert!(walkable(144.0, 96.0, &l));
+        assert!(walkable(288.0, 240.0, &l));
     }
 
     #[test]
     fn walls_block_including_shared_edges_away_from_doors() {
         let l = two_rooms();
         // Outside everything.
-        assert!(!walkable(-10.0, 10.0, &l));
+        assert!(!walkable(-10.0, 90.0, &l));
         // Inside the wall band on an exterior edge.
-        assert!(!walkable(1.0, 16.0, &l));
+        assert!(!walkable(6.0, 96.0, &l));
         // On the shared edge, but far from the door: blocked (no noclip
         // through party walls).
-        assert!(!walkable(80.0, 32.0, &l));
+        assert!(!walkable(480.0, 192.0, &l));
     }
 
     #[test]
     fn door_aperture_is_walkable_but_only_near_the_door() {
         let l = two_rooms();
         // On the shared edge at the door: open.
-        assert!(walkable(24.0, 32.0, &l));
+        assert!(walkable(96.0, 192.0, &l));
         // A step to the side, still within DOOR_R: open.
-        assert!(walkable(24.0 + DOOR_R - 1.0, 32.0, &l));
+        assert!(walkable(96.0 + DOOR_R - 1.0, 192.0, &l));
         // Beyond the aperture: wall.
-        assert!(!walkable(24.0 + DOOR_R + 2.0 + WALL, 32.0, &l));
+        assert!(!walkable(96.0 + DOOR_R + 2.0 + WALL, 192.0, &l));
+    }
+
+    #[test]
+    fn ysort_puts_lower_y_in_front() {
+        assert!(ysort(100.0) > ysort(900.0));
+        // And stays inside the actor band (above floors, below labels).
+        assert!(ysort(0.0) < 0.8);
+        assert!(ysort(2000.0) > 0.5);
     }
 }

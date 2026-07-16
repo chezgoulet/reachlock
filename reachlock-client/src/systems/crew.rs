@@ -140,8 +140,8 @@ pub struct CrewNav {
 /// Seconds per shift half-cycle (duty ↔ quarters).
 const SHIFT_PERIOD: f32 = 24.0;
 
-/// Crew walking speed, world units per second.
-const CREW_SPEED: f32 = 48.0;
+/// Crew walking speed, world px per second (~4 tiles/s).
+const CREW_SPEED: f32 = 64.0;
 
 /// Room index containing the point, if any.
 fn room_at(layout: &GeneratedLayout, p: Vec2) -> Option<usize> {

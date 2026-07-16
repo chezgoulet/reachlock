@@ -6,6 +6,7 @@
 
 mod bridge;
 mod net;
+mod pixel;
 mod states;
 mod systems;
 
@@ -222,12 +223,12 @@ fn main() {
             )
                 .run_if(in_any_interior),
         )
-        // Interior feel layer: avatar bob + facing, NPC wandering, and the
-        // interaction highlight ring.
+        // Interior feel layer: figure walk animation + y-sort (avatar, NPCs,
+        // crew share it), NPC wandering, and the interaction highlight ring.
         .add_systems(
             Update,
             (
-                interior::animate_avatar,
+                interior::animate_figures,
                 interior::wander_npcs,
                 interior::highlight_interactable,
             )

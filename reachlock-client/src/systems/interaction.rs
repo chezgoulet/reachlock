@@ -88,8 +88,9 @@ pub enum ActivePanel {
     Unknown,
 }
 
-/// How close (world units) the avatar must be to an `Interactable` to use it.
-const REACH: f32 = 26.0;
+/// How close (world px) the avatar must be to an `Interactable` to use it —
+/// about 2.5 tiles at the pixel-art scale.
+const REACH: f32 = 40.0;
 
 /// Detect the nearest `Interactable` in reach of the avatar, show its prompt,
 /// and on `E` open the matching panel (router inline — Bevy 0.18 has no

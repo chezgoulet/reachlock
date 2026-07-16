@@ -553,9 +553,10 @@ pub fn sync_ship_visibility(
     };
 }
 
-/// Ortho zoom for the walking interiors: <1 magnifies. At 0.35 a 48-unit
-/// room spans a good third of the screen — Zelda framing, not a wall map.
-const INTERIOR_ZOOM: f32 = 0.35;
+/// Ortho zoom for the walking interiors: <1 magnifies. At 0.25 each 16px
+/// tile renders 64 screen pixels — the 4× integer scale pixel art wants,
+/// showing ~30×17 tiles on a 1080p window (Stardew framing).
+const INTERIOR_ZOOM: f32 = 0.25;
 
 /// Activate the 3D chase-cam in SpaceFlight and the 2D camera everywhere else.
 /// In space the 2D camera keeps rendering the HUD on top (its clear is turned

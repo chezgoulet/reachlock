@@ -46,16 +46,18 @@ pub fn teardown_on_leave_game(
 pub fn interior_camera_follow(
     time: Res<Time>,
     avatar: Query<
-        (&Transform, &crate::systems::interior::AvatarMotion),
+        (&Transform, &crate::systems::interior::Figure),
         (With<PlayerAvatar>, Without<Camera2d>),
     >,
     mut camera: Query<&mut Transform, With<Camera2d>>,
 ) {
-    let (Ok((avatar, motion)), Ok(mut camera)) = (avatar.single(), camera.single_mut()) else {
+    let (Ok((avatar, figure)), Ok(mut camera)) = (avatar.single(), camera.single_mut()) else {
         return;
     };
-    let lookahead = if motion.moving {
-        motion.facing * 26.0
+    // Facing vectors indexed like pixel::DIR_* (down, up, left, right).
+    const DIRS: [Vec2; 4] = [Vec2::NEG_Y, Vec2::Y, Vec2::NEG_X, Vec2::X];
+    let lookahead = if figure.moving {
+        DIRS[figure.dir.min(3)] * 48.0
     } else {
         Vec2::ZERO
     };
