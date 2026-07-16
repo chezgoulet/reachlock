@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use crate::net::{ConnectionState, NetMode};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
+use crate::systems::factions::FactionState;
 use crate::systems::interaction::{ActivePanel, InteractionPrompt, Npc};
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::market::{market_panel_text, MarketState};
