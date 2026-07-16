@@ -18,6 +18,7 @@ use crate::gen;
 const HULL_SCHEMA: &str = include_str!("../../content/schemas/hull.schema.json");
 const STATION_SCHEMA: &str = include_str!("../../content/schemas/station.schema.json");
 const CONTRACT_SCHEMA: &str = include_str!("../../content/schemas/contract.schema.json");
+const SOUL_SCHEMA: &str = include_str!("../../content/schemas/soul.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -177,6 +178,19 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
             let svg = match &content.payload {
                 ContentPayload::Hull(mesh) => gen::mesh_svg(mesh),
                 ContentPayload::Station { layout, .. } => gen::layout_svg(layout),
+                ContentPayload::Soul(soul) => {
+                    // Souls are people, not geometry — summarize instead.
+                    println!(
+                        "{}: soul \"{}\" ({:?}, {}) — {} trigger(s), {} secret(s)",
+                        path.display(),
+                        soul.name,
+                        soul.species,
+                        soul.identity.role,
+                        soul.emotional_state.triggers.len(),
+                        soul.secrets.len(),
+                    );
+                    return Ok(());
+                }
                 ContentPayload::Contract(_) => {
                     // Contracts are text, not geometry — summarize instead.
                     println!(
@@ -206,6 +220,7 @@ fn validate_schema(
         AssetType::Hull => HULL_SCHEMA,
         AssetType::Station => STATION_SCHEMA,
         AssetType::Contract => CONTRACT_SCHEMA,
+        AssetType::Soul => SOUL_SCHEMA,
     };
 
     let schema = serde_json::from_str::<serde_json::Value>(schema_text)

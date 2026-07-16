@@ -1,0 +1,206 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Soul Content File",
+  "description": "An NPC soul (spec §15): who a character is — identity, personality, emotional baseline, memories, relationships, goals, breaking points, secrets. All numeric values are fixed-point i64 (1024 = 1.0).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "asset_type", "seed", "universe", "priority", "payload"],
+  "properties": {
+    "id": { "type": "string", "description": "Unique soul id; must equal payload.soul.id" },
+    "display_name": { "type": "string" },
+    "asset_type": { "type": "string", "enum": ["soul"] },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "universe": { "type": "string" },
+    "priority": { "type": "string", "enum": ["procedural", "curated", "event", "authoritative"] },
+    "expires_at": { "type": "integer" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["soul"],
+      "properties": {
+        "soul": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "name", "species", "identity", "personality", "emotional_state"],
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "species": { "type": "string", "enum": ["human", "android", "robot"] },
+            "portrait_id": { "type": "string" },
+            "identity": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["origin", "faction_affiliation", "role", "public_bio"],
+              "properties": {
+                "origin": { "type": "string" },
+                "faction_affiliation": { "type": "string" },
+                "role": { "type": "string" },
+                "public_bio": { "type": "string" }
+              }
+            },
+            "personality": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["speaking_style"],
+              "properties": {
+                "traits": { "type": "array", "items": { "type": "string" } },
+                "values": { "type": "array", "items": { "type": "string" } },
+                "speaking_style": {
+                  "type": "string",
+                  "enum": ["terse", "elaborate", "technical", "lyrical", "sarcastic", "blunt", "formal", "wry", "warm"]
+                },
+                "quirks": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "emotional_state": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["dominant_mood", "intensity"],
+              "properties": {
+                "dominant_mood": { "$ref": "#/definitions/mood" },
+                "intensity": { "$ref": "#/definitions/unit" },
+                "triggers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["condition", "mood", "intensity"],
+                    "properties": {
+                      "condition": { "$ref": "#/definitions/condition" },
+                      "mood": { "$ref": "#/definitions/mood" },
+                      "intensity": { "$ref": "#/definitions/unit" },
+                      "priority": { "type": "integer", "minimum": 0, "maximum": 255 }
+                    }
+                  }
+                }
+              }
+            },
+            "memory_tree": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "event_type", "emotional_weight", "timestamp", "summary"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "event_type": { "type": "string" },
+                  "player_involved": { "type": "boolean" },
+                  "emotional_weight": { "$ref": "#/definitions/unit" },
+                  "timestamp": { "type": "integer", "minimum": 0 },
+                  "summary": { "type": "string" }
+                }
+              }
+            },
+            "relationship_graph": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["target_id", "trust", "familiarity"],
+                "properties": {
+                  "target_id": { "type": "string" },
+                  "trust": { "type": "integer", "minimum": -1024, "maximum": 1024 },
+                  "familiarity": { "$ref": "#/definitions/unit" },
+                  "history": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            },
+            "goals": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/goal" }
+            },
+            "breaking_points": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "trigger", "reaction"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "trigger": { "$ref": "#/definitions/condition" },
+                  "reaction": {
+                    "type": "string",
+                    "enum": ["leave_ship", "refuse_orders", "confront", "withdraw", "betray"]
+                  }
+                }
+              }
+            },
+            "contracts": { "type": "array", "items": { "type": "string" } },
+            "backstory": { "type": "string" },
+            "secrets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "reveal_condition", "content"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "reveal_condition": { "$ref": "#/definitions/condition" },
+                  "content": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "unit": { "type": "integer", "minimum": 0, "maximum": 1024 },
+    "mood": {
+      "type": "string",
+      "enum": ["stable", "happy", "tense", "grieving", "suspicious", "grateful", "anxious", "protective", "defensive", "focused", "withdrawn"]
+    },
+    "goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "priority", "description"],
+      "properties": {
+        "id": { "type": "string" },
+        "priority": { "type": "string", "enum": ["constant", "situational"] },
+        "description": { "type": "string" }
+      }
+    },
+    "condition": {
+      "description": "reachlock_core::contract::types::Condition — the one predicate language (reused, not reinvented)",
+      "oneOf": [
+        { "type": "string", "enum": ["always"] },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["compare"],
+          "properties": {
+            "compare": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field", "op", "value"],
+              "properties": {
+                "field": { "type": "string" },
+                "op": { "type": "string", "enum": ["lt", "le", "eq", "ne", "ge", "gt"] },
+                "value": { "type": "integer" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["not"],
+          "properties": { "not": { "$ref": "#/definitions/condition" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all"],
+          "properties": { "all": { "type": "array", "items": { "$ref": "#/definitions/condition" } } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["any"],
+          "properties": { "any": { "type": "array", "items": { "$ref": "#/definitions/condition" } } }
+        }
+      ]
+    }
+  }
+}
