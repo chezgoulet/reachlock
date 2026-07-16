@@ -70,6 +70,10 @@ pub struct Npc {
 pub struct InteractionPrompt {
     pub text: Option<String>,
     pub target: Option<Vec2>,
+    /// Where the currently open panel was opened from. Walking away from
+    /// this point closes the panel (`LEAVE_RANGE`), so a conversation
+    /// doesn't stay locked after you've left it.
+    pub anchor: Option<Vec2>,
 }
 
 /// Which interaction panel (if any) is currently open. Set by `try_interact`
@@ -99,6 +103,12 @@ pub enum ActivePanel {
 /// about 2.5 tiles at the pixel-art scale.
 const REACH: f32 = 40.0;
 
+/// How far (world px) the avatar can drift from the spot an interaction was
+/// opened at before the panel closes on its own — wider than `REACH` so a
+/// small shuffle doesn't drop a conversation, but walking off breaks the
+/// focus without needing Esc.
+const LEAVE_RANGE: f32 = 64.0;
+
 /// Detect the nearest `Interactable` in reach of the avatar, show its prompt,
 /// and on `E` open the matching panel (router inline — Bevy 0.18 has no
 /// `EventReader`). Mode-transition kinds (Board / Disembark / TakeHelm) set
@@ -124,6 +134,21 @@ pub fn try_interact(
         return;
     };
     let av_pos = av.translation.truncate();
+
+    // A panel keeps focus only while you stay near what opened it. Walking
+    // away breaks the conversation (Esc still works too), so interactions
+    // never stay locked behind a panel you've left behind.
+    if *panel != ActivePanel::None {
+        match prompt.anchor {
+            Some(anchor) if av_pos.distance(anchor) > LEAVE_RANGE => {
+                *panel = ActivePanel::None;
+                prompt.anchor = None;
+            }
+            _ => {}
+        }
+    } else {
+        prompt.anchor = None;
+    }
 
     let mut nearest: Option<(f32, Entity, String, InteractKind, Vec2)> = None;
     for (e, t, inter) in &interactables {
@@ -172,6 +197,7 @@ pub fn try_interact(
                         next.set(GameMode::SpaceFlight);
                     }
                     kind => {
+                        prompt.anchor = Some(pos);
                         *panel = match kind {
                             InteractKind::Talk => ActivePanel::Dialogue(e),
                             InteractKind::Shop => ActivePanel::Market,
