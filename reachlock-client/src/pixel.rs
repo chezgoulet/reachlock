@@ -1135,6 +1135,35 @@ pub fn shuttle_sprite(accent: Color) -> Image {
 }
 
 /// 36×36 interaction ring (hollow circle, drawn over the highlight target).
+/// A compartment fire (S09f, docs/SHIPS.md §4): a 14×18 flame painted in
+/// code like everything else — dark ember base, orange body, yellow core.
+pub fn fire_sprite() -> Image {
+    let mut px = Px::new(14, 18);
+    for y in 0..18i32 {
+        for x in 0..14i32 {
+            let cx = (x as f32 - 6.5).abs();
+            // Flame silhouette: wide at the base, tapering to a licking tip.
+            let h = y as f32 / 18.0;
+            let width = 6.0 * (1.0 - h) + 1.0;
+            let flicker = ((x * 7 + y * 13) % 5) as f32 * 0.35;
+            if cx < width - flicker {
+                let color = if h > 0.85 {
+                    [255, 246, 160, 235] // tip
+                } else if cx < width * 0.45 && h > 0.2 {
+                    [255, 214, 90, 240] // core
+                } else if h < 0.12 {
+                    [120, 40, 20, 220] // ember base
+                } else {
+                    [235, 120, 30, 235] // body
+                };
+                // Painted top-down; flames rise, so flip vertically.
+                px.set(x, 17 - y, color);
+            }
+        }
+    }
+    px.into_image()
+}
+
 pub fn ring_sprite() -> Image {
     let mut px = Px::new(36, 36);
     for y in 0..36 {

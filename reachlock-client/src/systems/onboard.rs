@@ -255,6 +255,7 @@ pub fn onboard_ship_consoles(
     mut command: ResMut<ShipCommand>,
     systems: Res<ShipSystems>,
     feel: Res<crate::systems::ship::FlightFeel>,
+    fires: Res<crate::systems::crisis::ShipFires>,
     mut log: ResMut<ShipLog>,
     mut panels: ParamSet<(
         Query<&mut Text, With<GunnerPanel>>,
@@ -362,6 +363,24 @@ pub fn onboard_ship_consoles(
             ActivePanel::Power => {
                 // 1/2/3 bump a subsystem's notch; wraps to 0 past the cap or the
                 // shared budget. This is the spec §22 reference console.
+                // S09f: a burning reactor room cuts the distributable budget
+                // (the crisis tick force-sheds routing; here we stop the
+                // player re-raising it while the fire holds the reactor).
+                let budget = {
+                    let layouts: Vec<reachlock_core::generator::GeneratedLayout> =
+                        reachlock_core::generator::ship::loup_garou_interior()
+                            .decks
+                            .into_iter()
+                            .map(|d| d.layout)
+                            .collect();
+                    let refs: Vec<&reachlock_core::generator::GeneratedLayout> =
+                        layouts.iter().collect();
+                    reachlock_core::crisis::effective_power_budget(
+                        POWER_BUDGET,
+                        &fires.state,
+                        &refs,
+                    )
+                };
                 let used: u8 =
                     command.power_weapons + command.power_engines + command.power_sensors;
                 let bump = |cur: u8, add: bool| -> u8 {
@@ -369,7 +388,7 @@ pub fn onboard_ship_consoles(
                         return cur;
                     }
                     let next = cur + 1;
-                    if next > POWER_MAX_NOTCH || used - cur + next > POWER_BUDGET {
+                    if next > POWER_MAX_NOTCH || used - cur + next > budget {
                         0
                     } else {
                         next
@@ -384,11 +403,16 @@ pub fn onboard_ship_consoles(
                 if keys.just_pressed(KeyCode::Digit3) {
                     command.power_sensors = bump(command.power_sensors, true);
                 }
-                let free = POWER_BUDGET as i32
+                let free = budget as i32
                     - (command.power_weapons + command.power_engines + command.power_sensors)
                         as i32;
+                let fire_note = if budget < POWER_BUDGET {
+                    "  ⚠ REACTOR FIRE"
+                } else {
+                    ""
+                };
                 **t = format!(
-                    "POWER  (budget {POWER_BUDGET})\n1 WPN {}\n2 ENG {}\n3 SEN {}\nfree {free}",
+                    "POWER  (budget {budget}{fire_note})\n1 WPN {}\n2 ENG {}\n3 SEN {}\nfree {free}",
                     command.power_weapons, command.power_engines, command.power_sensors
                 );
             }
@@ -465,6 +489,7 @@ pub fn onboard_panels(
     souls: Res<crate::systems::soul::SoulRegistry>,
     mut plan: ResMut<crate::systems::cryojump::JumpPlan>,
     transit: Res<crate::systems::jump::TransitState>,
+    mut fires: ResMut<crate::systems::crisis::ShipFires>,
 ) {
     if let Ok(mut t) = panels.p0().single_mut() {
         match &*panel {
@@ -484,13 +509,45 @@ pub fn onboard_panels(
                 let pct = systems.fuel.0 * 100 / 1024;
                 let hull = systems.hull_hp.0 * 100 / 1024;
                 let docked = location.is_docked;
+                // S09f: fires read from engineering; the zero-g deck can be
+                // vented from here (fast, brutal, ruins anything unsecured).
+                let fire_line = if fires.state.burning.is_empty() {
+                    String::new()
+                } else {
+                    let upper_burning = fires.state.burning.keys().any(|(deck, _)| *deck == 1);
+                    format!(
+                        "\nFIRES: {} compartment(s) burning{}",
+                        fires.state.burning.len(),
+                        if upper_burning {
+                            " · X vent the zero-g deck"
+                        } else {
+                            ""
+                        }
+                    )
+                };
                 **t = if docked {
                     format!(
-                        "ENGINEERING\nfuel {pct}%\nhull {hull}%\nPress V refill · R repair (10cr/hp)",
+                        "ENGINEERING\nfuel {pct}%\nhull {hull}%\nPress V refill · R repair (10cr/hp){fire_line}",
                     )
                 } else {
-                    format!("ENGINEERING\nfuel {pct}%\nhull {hull}%  (dock to repair)")
+                    format!("ENGINEERING\nfuel {pct}%\nhull {hull}%  (dock to repair){fire_line}")
                 };
+                if keys.just_pressed(KeyCode::KeyX) {
+                    let vented: Vec<usize> = fires
+                        .state
+                        .burning
+                        .keys()
+                        .filter(|(deck, _)| *deck == 1)
+                        .map(|(_, room)| *room)
+                        .collect();
+                    for room in vented {
+                        fires.state.vent(1, room);
+                        log.log(
+                            "Compartment vented to vacuum. The fire dies instantly. \
+                             So does everything that wasn't bolted down.",
+                        );
+                    }
+                }
                 if keys.just_pressed(KeyCode::KeyV) {
                     systems.fuel = Fixed(1024);
                     log.log("Engineering: refilled fuel");

@@ -1,6 +1,7 @@
 pub mod content_index;
 pub mod contract;
 pub mod crew;
+pub mod crisis;
 pub mod cryojump;
 pub mod dialogue;
 pub mod docking;

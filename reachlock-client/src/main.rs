@@ -17,7 +17,7 @@ use bevy_rapier3d::prelude::*;
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
-    content_index, contract, crew, cryojump, dialogue, docking, factions, hud, interaction,
+    content_index, contract, crew, crisis, cryojump, dialogue, docking, factions, hud, interaction,
     interior, inventory, jump, market, menu, mode, network, onboard, pause, reticle, sensors,
     setup, ship, soul, ticker,
 };
@@ -128,6 +128,8 @@ fn main() {
         .init_resource::<dialogue::DialogueSession>()
         // S09e: the jump-cryo loop's plan/clock (SHIPS.md §3).
         .init_resource::<cryojump::JumpPlan>()
+        // S09f: compartment fires + the crisis clock (SHIPS.md §4).
+        .init_resource::<crisis::ShipFires>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
@@ -307,6 +309,18 @@ fn main() {
                 // point. The pod doesn't care which console you're at.
                 cryojump::jump_clock,
                 cryojump::pod_stasis,
+            )
+                .run_if(in_state(AppState::InGame)),
+        )
+        // S09f: fires ignite from flight damage and burn on their own clock
+        // whichever deck (or mode) you're in; sprites render on the active
+        // deck only.
+        .add_systems(
+            Update,
+            (
+                crisis::ignite_from_damage,
+                crisis::tick_fires,
+                crisis::sync_fire_sprites,
             )
                 .run_if(in_state(AppState::InGame)),
         )

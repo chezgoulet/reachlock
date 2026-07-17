@@ -196,9 +196,26 @@ half-broken.
   *Still to come:* turret aim independent of the nose + target lock (S19),
   scanner contact list, station operation by NPC/LLM crew (S13+), and
   multi-body play (a pilot *and* a gunner needs S23).
-- [ ] Power allocation as a real constraint (engineering station budget
-  feeding system effectiveness).
-- [ ] Damage → compartment fires → spread/fight/vent loop.
+- [x] Power allocation as a real constraint, first slice (S09f): the power
+  console's budget is live — a fire in engineering cuts the reactor budget
+  from 5 to 3, the crisis tick force-sheds routing (engines first, then
+  sensors, then weapons — "the miner's beam dies because engineering
+  needed its power"), and the console shows ⚠ REACTOR FIRE and refuses to
+  re-raise past the cut. *Still to come:* FTL charge, gravity, and life
+  support as powered systems; per-system repair at the system.
+- [x] Damage → compartment fires → spread/fight/vent, first slice (S09f):
+  hull hits in flight ignite compartments (deterministic rolls, core
+  `crisis` model, unit-tested); fires grow, jump doors, mark room systems
+  damaged, and burn out; the inter-deck hatch is a bulkhead (fire never
+  crosses decks). Fires render as painted flames on the active deck and
+  are fought room-by-room (E, multiple extinguisher actions), or the
+  zero-g deck is vented from engineering — instant, and brutal to
+  anything unsecured. Crew in a burning room take an injury soul event
+  and abandon their station (the run-fix-return loop); the rest of the
+  crew feels it (Boris's protective trigger fires). *Still to come:*
+  fires hurting the player avatar, system damage actually degrading the
+  station it names (scanner blind, engine drag), repair-at-the-system,
+  NPC crew fighting fires themselves (needs S15 dispatch orders).
 - [x] The jump loop, first slice (S09e): `J` at the NAV console programs +
   arms a self-generated jump (destination derived from the seed protocol);
   a 30s window opens; every human crew member is auto-ordered to cryo and
