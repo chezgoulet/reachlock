@@ -38,8 +38,9 @@ Thumbs.db
 __pycache__/
 *.pyc
 
-# Local agent worktrees / session state
-.claude/
+# Local agent worktrees / session state — but path-scoped rules are shared
+.claude/*
+!.claude/rules/
 
 # Runtime saves (S16B: the dev save was churning in every playtest commit)
 save/
