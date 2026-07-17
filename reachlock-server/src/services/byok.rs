@@ -158,6 +158,196 @@ impl ByokService {
     }
 }
 
+#[cfg(feature = "postgres")]
+pub mod pg {
+    //! Postgres-backed BYOK storage against the existing `byok_keys`
+    //! migration. The row's `api_key_encrypted` column carries a JSON
+    //! envelope `{url, model, key_b64}` (the encrypted blob base64-inside)
+    //! so the S03 schema needs no new migration; `provider` records the
+    //! dialect ("openai_compat"). Same blocking contract as
+    //! `PgContractStore`: invoke from `spawn_blocking`, never an async
+    //! worker.
+
+    use super::*;
+    use sqlx::types::Uuid;
+    use sqlx::PgPool;
+
+    pub struct PgByokStore {
+        pool: PgPool,
+        runtime: tokio::runtime::Handle,
+    }
+
+    impl PgByokStore {
+        pub fn new(pool: PgPool) -> Self {
+            PgByokStore {
+                pool,
+                runtime: tokio::runtime::Handle::current(),
+            }
+        }
+    }
+
+    fn b64(bytes: &[u8]) -> String {
+        // Tiny local base64 (standard alphabet, padded) — not worth a dep.
+        const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        for chunk in bytes.chunks(3) {
+            let b = [
+                chunk[0],
+                chunk.get(1).copied().unwrap_or(0),
+                chunk.get(2).copied().unwrap_or(0),
+            ];
+            let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
+            out.push(A[(n >> 18) as usize & 63] as char);
+            out.push(A[(n >> 12) as usize & 63] as char);
+            out.push(if chunk.len() > 1 {
+                A[(n >> 6) as usize & 63] as char
+            } else {
+                '='
+            });
+            out.push(if chunk.len() > 2 {
+                A[n as usize & 63] as char
+            } else {
+                '='
+            });
+        }
+        out
+    }
+
+    fn unb64(text: &str) -> Option<Vec<u8>> {
+        const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let val = |c: u8| A.iter().position(|a| *a == c).map(|p| p as u32);
+        let clean: Vec<u8> = text.bytes().filter(|c| *c != b'=').collect();
+        let mut out = Vec::new();
+        for chunk in clean.chunks(4) {
+            let mut n = 0u32;
+            for (i, c) in chunk.iter().enumerate() {
+                n |= val(*c)? << (18 - 6 * i);
+            }
+            out.push((n >> 16) as u8);
+            if chunk.len() > 2 {
+                out.push((n >> 8) as u8);
+            }
+            if chunk.len() > 3 {
+                out.push(n as u8);
+            }
+        }
+        Some(out)
+    }
+
+    impl ByokStore for PgByokStore {
+        fn put(&self, player_id: &str, base_url: &str, model: &str, key_encrypted: Vec<u8>) {
+            let pool = self.pool.clone();
+            let username = player_id.to_string();
+            let envelope = serde_json::json!({
+                "url": base_url,
+                "model": model,
+                "key_b64": b64(&key_encrypted),
+            })
+            .to_string();
+            self.runtime.block_on(async move {
+                let mut tx = pool.begin().await.expect("begin byok tx");
+                let (pid,): (Uuid,) = sqlx::query_as(
+                    "INSERT INTO players (username) VALUES ($1)
+                     ON CONFLICT (username) DO UPDATE SET last_login = NOW()
+                     RETURNING id",
+                )
+                .bind(&username)
+                .fetch_one(&mut *tx)
+                .await
+                .expect("upsert player");
+                // One active key per player: retire the old ones.
+                sqlx::query("UPDATE byok_keys SET is_active = false WHERE player_id = $1")
+                    .bind(pid)
+                    .execute(&mut *tx)
+                    .await
+                    .expect("retire old keys");
+                sqlx::query(
+                    "INSERT INTO byok_keys (player_id, provider, api_key_encrypted)
+                     VALUES ($1, 'openai_compat', $2)",
+                )
+                .bind(pid)
+                .bind(&envelope)
+                .execute(&mut *tx)
+                .await
+                .expect("insert byok key");
+                tx.commit().await.expect("commit byok tx");
+            });
+        }
+
+        fn get(&self, player_id: &str) -> Option<ByokRow> {
+            let pool = self.pool.clone();
+            let username = player_id.to_string();
+            let envelope: Option<(String,)> = self.runtime.block_on(async move {
+                sqlx::query_as(
+                    "SELECT k.api_key_encrypted FROM byok_keys k
+                     JOIN players p ON p.id = k.player_id
+                     WHERE p.username = $1 AND k.is_active
+                     ORDER BY k.created_at DESC LIMIT 1",
+                )
+                .bind(&username)
+                .fetch_optional(&pool)
+                .await
+                .expect("select byok key")
+            });
+            let (text,) = envelope?;
+            let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+            Some((
+                value.get("url")?.as_str()?.to_string(),
+                value.get("model")?.as_str()?.to_string(),
+                unb64(value.get("key_b64")?.as_str()?)?,
+            ))
+        }
+    }
+
+    #[cfg(test)]
+    mod pg_tests {
+        use super::*;
+
+        /// Runs only where `DATABASE_URL` points at a reachable Postgres —
+        /// CI's postgres job sets it (same convention as the seed store).
+        #[tokio::test(flavor = "multi_thread")]
+        async fn put_get_round_trips_when_db_available() {
+            let Ok(url) = std::env::var("DATABASE_URL") else {
+                return;
+            };
+            let pool = PgPool::connect(&url).await.expect("connect");
+            sqlx::migrate!("./migrations").run(&pool).await.ok();
+            let store = PgByokStore::new(pool);
+            let blob = vec![1u8, 2, 3, 254, 255];
+            let (store, row) = tokio::task::spawn_blocking(move || {
+                store.put(
+                    "byok-test-player",
+                    "https://api.example",
+                    "m1",
+                    blob.clone(),
+                );
+                let row = store.get("byok-test-player");
+                (store, row)
+            })
+            .await
+            .expect("blocking task");
+            drop(store);
+            let (url_, model, key) = row.expect("row present");
+            assert_eq!(url_, "https://api.example");
+            assert_eq!(model, "m1");
+            assert_eq!(key, vec![1u8, 2, 3, 254, 255]);
+        }
+
+        #[test]
+        fn base64_round_trips() {
+            for input in [
+                vec![],
+                vec![1u8],
+                vec![1, 2],
+                vec![1, 2, 3],
+                vec![0, 255, 128, 7],
+            ] {
+                assert_eq!(unb64(&b64(&input)).unwrap(), input);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

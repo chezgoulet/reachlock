@@ -164,6 +164,9 @@ async fn route(
             call_id,
             contract_id,
             context,
+            system_prompt,
+            timeout_ms,
+            max_tokens,
         } => {
             // Immediately: "the crew is thinking" (spec §6 deliberation UX).
             let _ = out_tx
@@ -179,9 +182,14 @@ async fn route(
             let universe = session.universe;
             let player_id = session.player_id.clone();
             tokio::spawn(async move {
+                let overrides = crate::services::llm_proxy::CallOverrides {
+                    system_prompt,
+                    timeout_ms,
+                    max_tokens,
+                };
                 let reply = match state
                     .llm
-                    .route(universe, &player_id, &contract_id, &context)
+                    .route(universe, &player_id, &contract_id, &context, overrides)
                     .await
                 {
                     Ok(response) => ServerMessage::LlmResponse {
@@ -213,13 +221,16 @@ async fn route(
             None
         }
         ClientMessage::ContractSync { contracts } => {
-            // Server-side contract backup lands with the Postgres store;
-            // accept and log for now so clients can already ship the sync.
-            tracing::debug!(
-                player = %session.player_id,
-                count = contracts.len(),
-                "contract sync received (not yet persisted)"
-            );
+            // S16B: the sync persists through the store seam (memory by
+            // default; the pg store documents its blocking contract, so it
+            // runs off the async worker).
+            let state = Arc::clone(state);
+            let player_id = session.player_id.clone();
+            let count = contracts.len();
+            tokio::task::spawn_blocking(move || {
+                state.contracts.sync(&player_id, &contracts);
+            });
+            tracing::debug!(player = %session.player_id, count, "contract sync persisted");
             None
         }
     }

@@ -116,6 +116,7 @@ pub fn hyperspace_tick(
     mut plan: ResMut<crate::systems::cryojump::JumpPlan>,
     mut roster: ResMut<crate::systems::crew::CrewRoster>,
     mut deck: ResMut<crate::systems::interior::ActiveDeck>,
+    mut feed: ResMut<crate::systems::comms::CommFeed>,
 ) {
     if !state.active {
         return;
@@ -192,7 +193,7 @@ pub fn hyperspace_tick(
         // cryo chamber — the walk back to the cockpit is part of arrival.
         // Gate transits stay at the helm (crew was awake the whole way).
         if plan.cryo_wake {
-            crate::systems::cryojump::revive(&mut plan, &mut roster, &mut log);
+            crate::systems::cryojump::revive(&mut plan, &mut roster, &mut log, &mut feed);
             if let Some((deck_index, spawn)) = crate::systems::interior::cryo_wake_spawn() {
                 deck.index = deck_index;
                 deck.spawn = Some(spawn);

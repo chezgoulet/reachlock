@@ -28,10 +28,21 @@ pub struct CrewMember {
     pub name: String,
     pub role: CrewRole,
     pub duty_room: RoomKind,
-    /// Where the sprite currently is (driven by the shift cycle / orders).
+    /// The room this member is actually in right now. Kept live: on-screen
+    /// figures write it back when they arrive; off-screen members advance
+    /// it through the abstract walker. The jump-cryo check and the fire
+    /// loop read it, so it MUST be true (S16B).
     pub current_room: RoomKind,
+    /// Which deck this member is on (0 = gravity, 1 = zero-g). Kept live
+    /// alongside `current_room`.
+    #[serde(default)]
+    pub deck: usize,
     /// An order overrides the shift cycle until cleared (`None`).
     pub order: Option<RoomKind>,
+    /// Seconds until the member's next off-screen movement leg completes.
+    /// Transient — not part of the save.
+    #[serde(skip, default)]
+    pub offscreen_eta: f32,
 }
 
 /// The ship's crew. Persists in the save; the sprites don't.
@@ -57,7 +68,9 @@ impl CrewRoster {
             role,
             duty_room,
             current_room: duty_room,
+            deck: deck_of(duty_room),
             order: None,
+            offscreen_eta: 0.0,
         };
         Self {
             members: vec![
@@ -108,16 +121,41 @@ pub fn shift_parity(t: f32, period: f32) -> bool {
     half % 2 == 0
 }
 
-/// Rooms the player can order a crew member to. Index → room, so number keys
-/// map cleanly in the order panel. Drawn from the room kinds the generator
-/// actually emits (no `Cargo`/`Galley` variants exist yet).
-pub const ORDER_ROOMS: [RoomKind; 5] = [
+/// Rooms the player can order a crew member to. Index → digit key (1–9,
+/// then 0) in the order panel. Covers every room of the authored ship
+/// (S16B closes the S09c watch-list gap); a room absent from the current
+/// hull simply routes nowhere.
+pub const ORDER_ROOMS: [RoomKind; 10] = [
     RoomKind::Quarters,
     RoomKind::Bridge,
     RoomKind::Reactor,
     RoomKind::Bar,
     RoomKind::Market,
+    RoomKind::Cockpit,
+    RoomKind::TechBay,
+    RoomKind::Scanner,
+    RoomKind::MedBay,
+    RoomKind::Cryo,
 ];
+
+/// Which deck of the Loup-Garou a room kind lives on (0 = gravity deck,
+/// 1 = zero-g deck). Rooms absent from the authored ship default to the
+/// gravity deck. Pure — unit-tested.
+pub fn deck_of(kind: RoomKind) -> usize {
+    let ship = reachlock_core::generator::ship::loup_garou_interior();
+    for (index, deck) in ship.decks.iter().enumerate() {
+        if deck.layout.rooms.iter().any(|r| r.kind == kind) {
+            return index;
+        }
+    }
+    0
+}
+
+/// Whether a deck index runs zero-g on the authored ship.
+pub fn deck_zero_g(index: usize) -> bool {
+    let ship = reachlock_core::generator::ship::loup_garou_interior();
+    ship.decks.get(index).map(|d| d.zero_g).unwrap_or(false)
+}
 
 /// Tag a crew sprite entity with its member id, so the shift system and the
 /// order system can find the roster entry it represents.
@@ -168,10 +206,8 @@ fn center_of(layout: &GeneratedLayout, index: usize) -> Vec2 {
     Vec2::new((r.x + r.width / 2) as f32, (r.y + r.height / 2) as f32)
 }
 
-/// Door-honest route from `from` to the first room of `kind`: BFS over the
-/// door graph, emitting each door crossing as a waypoint and the target room
-/// center last. Crew walk corridors like the FTL crew they are — no lerping
-/// through walls. Pure — unit-tested.
+/// Door-honest route from `from` to the first room of `kind`. Pure —
+/// unit-tested. See [`route_indexed`] for the BFS itself.
 pub fn route(layout: &GeneratedLayout, from: Vec2, kind: RoomKind) -> Vec<Vec2> {
     let Some(start) = room_at(layout, from) else {
         return Vec::new();
@@ -179,6 +215,34 @@ pub fn route(layout: &GeneratedLayout, from: Vec2, kind: RoomKind) -> Vec<Vec2> 
     let Some(goal) = layout.rooms.iter().position(|r| r.kind == kind) else {
         return Vec::new();
     };
+    route_indexed(layout, start, goal)
+}
+
+/// Door-honest route to an exact point (S16B: the inter-deck ladder is a
+/// position, not a room kind — and room kinds can repeat, e.g. Quarters ×2,
+/// so the containing room is found by index). The final waypoint is the
+/// point itself.
+pub fn route_to_point(layout: &GeneratedLayout, from: Vec2, point: Vec2) -> Vec<Vec2> {
+    let Some(start) = room_at(layout, from) else {
+        return Vec::new();
+    };
+    let Some(goal) = room_at(layout, point) else {
+        return Vec::new();
+    };
+    let mut path = route_indexed(layout, start, goal);
+    if path.is_empty() {
+        return path;
+    }
+    // Swap the goal-room center for the exact point.
+    path.pop();
+    path.push(point);
+    path
+}
+
+/// BFS over the door graph from room index to room index, emitting each door
+/// crossing as a waypoint and the target room center last. Crew walk
+/// corridors like the FTL crew they are — no lerping through walls.
+fn route_indexed(layout: &GeneratedLayout, start: usize, goal: usize) -> Vec<Vec2> {
     if start == goal {
         return vec![center_of(layout, goal)];
     }
@@ -251,49 +315,117 @@ pub fn route(layout: &GeneratedLayout, from: Vec2, kind: RoomKind) -> Vec<Vec2> 
     path
 }
 
-/// Drive crew figures along door-honest routes on the shift cycle (orders
-/// override). When the resolved room changes, a fresh route is computed;
-/// figures then walk waypoint to waypoint at a steady pace.
+/// Seconds one abstract off-screen movement leg takes at baseline speed —
+/// roughly an on-screen walk across half a deck, so the jump clock is fair
+/// in both directions (the S16B gotcha). Scaled by body kind × gravity.
+const OFFSCREEN_LEG_SECS: f32 = 8.0;
+
+/// Drive the crew on the shift cycle (orders override), everywhere:
+///
+/// - Members on the ACTIVE deck walk visibly along door-honest routes. A
+///   member whose target is on the other deck routes to the ladder and
+///   climbs (their sprite is despawned by `interior::sync_crew_deck_presence`
+///   once `deck` flips). Arriving anywhere writes `current_room` back — the
+///   jump-cryo check and the fire loop read it, so it must be live.
+/// - Members WITHOUT a sprite (other deck, or no interior scene at all —
+///   e.g. the player is at the helm) move abstractly: one timed leg per
+///   ladder climb or room change, at speeds matching their body kind and
+///   deck gravity. Crew keep living their lives when you aren't looking.
 #[allow(clippy::type_complexity)]
 pub fn crew_shift_system(
     time: Res<Time>,
     interior: Res<crate::systems::interior::CurrentInterior>,
-    roster: Res<CrewRoster>,
+    active_deck: Res<crate::systems::interior::ActiveDeck>,
+    mode: Option<Res<State<crate::states::GameMode>>>,
+    mut roster: ResMut<CrewRoster>,
     mut elapsed: Local<f32>,
     mut figures: Query<(&CrewFigure, &mut CrewNav, &mut Transform)>,
 ) {
-    *elapsed += time.delta_secs();
-    let Some(layout) = &interior.layout else {
-        return;
-    };
+    let dt = time.delta_secs();
+    *elapsed += dt;
     let on_shift = shift_parity(*elapsed, SHIFT_PERIOD);
-    let zero_g = interior.zero_g;
-    for (fig, mut nav, mut t) in &mut figures {
-        let Some(m) = roster.by_id(&fig.0) else {
-            continue;
-        };
-        let target = resolve_room(m, on_shift);
-        let pos = t.translation.truncate();
-        if nav.target != Some(target) {
-            nav.target = Some(target);
-            nav.path = route(layout, pos, target);
+    let on_board =
+        mode.is_some_and(|m| **m == crate::states::GameMode::OnBoard) && interior.layout.is_some();
+
+    // ── on-screen: visible walking on the active deck ──
+    let mut sprited: Vec<String> = Vec::new();
+    if on_board {
+        let layout = interior.layout.as_ref().expect("checked above");
+        for (fig, mut nav, mut t) in &mut figures {
+            sprited.push(fig.0.clone());
+            let Some(m) = roster.by_id_mut(&fig.0) else {
+                continue;
+            };
+            if m.deck != active_deck.index {
+                continue; // climbed away; the presence sync will despawn it
+            }
+            let target = resolve_room(m, on_shift);
+            let cross_deck = deck_of(target) != m.deck;
+            let pos = t.translation.truncate();
+            if nav.target != Some(target) {
+                nav.target = Some(target);
+                nav.path = if cross_deck {
+                    // The way to the other deck is the ladder.
+                    match interior.ladder {
+                        Some(ladder) => route_to_point(layout, pos, ladder),
+                        None => Vec::new(),
+                    }
+                } else {
+                    route(layout, pos, target)
+                };
+            }
+            let Some(&next) = nav.path.first() else {
+                continue;
+            };
+            let to = next - pos;
+            // Boris flies across the zero-g deck and trudges under gravity;
+            // humans are the reverse (docs/SHIPS.md §5).
+            let factor = move_factor(crate::pixel::crew_look(&fig.0).body, interior.zero_g);
+            let step = CREW_SPEED * factor * dt;
+            if to.length() <= step.max(2.0) {
+                t.translation.x = next.x;
+                t.translation.y = next.y;
+                nav.path.remove(0);
+                if nav.path.is_empty() {
+                    if cross_deck {
+                        // At the ladder: climb. One abstract leg covers the
+                        // far side; the presence sync removes the sprite.
+                        m.deck = deck_of(target);
+                        m.offscreen_eta = OFFSCREEN_LEG_SECS
+                            / move_factor(crate::pixel::crew_look(&m.id).body, deck_zero_g(m.deck));
+                    } else {
+                        m.current_room = target;
+                    }
+                }
+            } else {
+                let d = to.normalize() * step;
+                t.translation.x += d.x;
+                t.translation.y += d.y;
+            }
         }
-        let Some(&next) = nav.path.first() else {
+    }
+
+    // ── off-screen: abstract legs for everyone without a sprite ──
+    for m in roster.members.iter_mut() {
+        if sprited.contains(&m.id) {
             continue;
-        };
-        let to = next - pos;
-        // Boris flies across the zero-g deck and trudges under gravity;
-        // humans are the reverse (docs/SHIPS.md §5).
-        let factor = move_factor(crate::pixel::crew_look(&fig.0).body, zero_g);
-        let step = CREW_SPEED * factor * time.delta_secs();
-        if to.length() <= step.max(2.0) {
-            t.translation.x = next.x;
-            t.translation.y = next.y;
-            nav.path.remove(0);
-        } else {
-            let d = to.normalize() * step;
-            t.translation.x += d.x;
-            t.translation.y += d.y;
+        }
+        let target = resolve_room(m, on_shift);
+        if m.current_room == target && deck_of(target) == m.deck {
+            m.offscreen_eta = 0.0;
+            continue;
+        }
+        if m.offscreen_eta <= 0.0 {
+            m.offscreen_eta = OFFSCREEN_LEG_SECS
+                / move_factor(crate::pixel::crew_look(&m.id).body, deck_zero_g(m.deck));
+        }
+        m.offscreen_eta -= dt;
+        if m.offscreen_eta <= 0.0 {
+            if deck_of(target) != m.deck {
+                m.deck = deck_of(target); // climbed the ladder, unseen
+            } else {
+                m.current_room = target; // walked into the room, unseen
+            }
         }
     }
 }
@@ -309,8 +441,46 @@ mod tests {
             role: CrewRole::Engineer,
             duty_room: RoomKind::Reactor,
             current_room: RoomKind::Reactor,
+            deck: deck_of(RoomKind::Reactor),
             order: None,
+            offscreen_eta: 0.0,
         }
+    }
+
+    #[test]
+    fn deck_of_matches_the_authored_ship() {
+        // Lower/gravity deck (docs/SHIPS.md §6).
+        for kind in [
+            RoomKind::Bridge,
+            RoomKind::Reactor,
+            RoomKind::MedBay,
+            RoomKind::Cryo,
+            RoomKind::Quarters,
+            RoomKind::Bar,
+        ] {
+            assert_eq!(deck_of(kind), 0, "{kind:?} is Downstairs");
+            assert!(!deck_zero_g(deck_of(kind)));
+        }
+        // Upper/zero-g deck.
+        for kind in [RoomKind::Cockpit, RoomKind::TechBay] {
+            assert_eq!(deck_of(kind), 1, "{kind:?} is Upstairs");
+            assert!(deck_zero_g(deck_of(kind)));
+        }
+    }
+
+    #[test]
+    fn order_rooms_cover_the_whole_ship() {
+        // The S09c watch-list gap: every authored ship room is orderable.
+        for kind in [
+            RoomKind::Cockpit,
+            RoomKind::TechBay,
+            RoomKind::Scanner,
+            RoomKind::MedBay,
+            RoomKind::Cryo,
+        ] {
+            assert!(ORDER_ROOMS.contains(&kind), "{kind:?} missing");
+        }
+        assert!(ORDER_ROOMS.len() <= 10, "must fit digit keys 1-9,0");
     }
 
     #[test]
@@ -402,6 +572,13 @@ mod tests {
         // Already in the target room: path is just the room center.
         let stay = route(&layout, Vec2::new(24.0, 16.0), RoomKind::Hangar);
         assert_eq!(stay, vec![Vec2::new(24.0, 16.0)]);
+
+        // route_to_point ends on the exact point (S16B: the ladder is a
+        // position, not a room kind).
+        let ladder = Vec2::new(70.0, 60.0); // inside Quarters
+        let to_point = route_to_point(&layout, Vec2::new(24.0, 16.0), ladder);
+        assert_eq!(to_point.last(), Some(&ladder));
+        assert_eq!(to_point.len(), 4, "same door-honest path, point-terminated");
     }
 
     #[test]

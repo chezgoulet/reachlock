@@ -26,11 +26,23 @@ use super::providers::{
     AnyProvider, InferenceRequest, OllamaNative, OpenAiCompat, Provider, ProviderError, Stub,
 };
 
-/// Default per-call budget when the contract doesn't say otherwise
-/// (`LlmConfig::timeout_ms` isn't on the `llm.call` wire shape yet — S15/16
-/// may add it; until then the server default rules).
+/// Default per-call budget when the wire carries no override (S16B added
+/// `system_prompt`/`timeout_ms`/`max_tokens` to `llm.call`; absent fields
+/// keep these defaults, and the server cap always wins).
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const DEFAULT_MAX_TOKENS: u32 = 256;
+
+/// Per-call overrides carried by the S16B `llm.call` revision. All optional;
+/// `Default` reproduces the pre-revision behavior exactly.
+#[derive(Debug, Clone, Default)]
+pub struct CallOverrides {
+    /// Replaces the generic wrapper as the TRUE system prompt (the response
+    /// shaping instructions are still appended — the contract engine needs
+    /// its JSON either way).
+    pub system_prompt: Option<String>,
+    pub timeout_ms: Option<u32>,
+    pub max_tokens: Option<u32>,
+}
 
 pub use super::providers::STUB_DELIBERATION_MS;
 
@@ -135,6 +147,7 @@ impl LlmService {
         player_id: &str,
         contract_id: &str,
         context: &serde_json::Value,
+        overrides: CallOverrides,
     ) -> Result<LlmResponse, LlmError> {
         if !inference_grant(tier).llm_allowed {
             return Err(LlmError::NoInferenceTier);
@@ -145,14 +158,20 @@ impl LlmService {
         }
 
         let request = InferenceRequest {
-            system_prompt: format!(
-                "You are the deliberation engine for ship contract '{contract_id}' \
-                 in the game REACHLOCK. Decide the crew's next action from the \
-                 context object."
-            ),
+            system_prompt: overrides.system_prompt.unwrap_or_else(|| {
+                format!(
+                    "You are the deliberation engine for ship contract '{contract_id}' \
+                     in the game REACHLOCK. Decide the crew's next action from the \
+                     context object."
+                )
+            }),
             context_json: context.clone(),
-            max_tokens: DEFAULT_MAX_TOKENS,
-            timeout: DEFAULT_TIMEOUT,
+            max_tokens: overrides.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS).min(2048),
+            timeout: overrides
+                .timeout_ms
+                .map(|ms| std::time::Duration::from_millis(ms as u64))
+                .unwrap_or(DEFAULT_TIMEOUT)
+                .min(super::providers::SERVER_TIMEOUT_CAP),
         };
 
         let started = std::time::Instant::now();
@@ -227,7 +246,13 @@ mod tests {
     async fn classic_gets_no_inference() {
         let svc = stub_service();
         let r = svc
-            .route(UniverseTier::Classic, "tib", "c", &serde_json::json!({}))
+            .route(
+                UniverseTier::Classic,
+                "tib",
+                "c",
+                &serde_json::json!({}),
+                CallOverrides::default(),
+            )
             .await;
         assert_eq!(r, Err(LlmError::NoInferenceTier));
     }
@@ -241,6 +266,7 @@ mod tests {
                 "tib",
                 "cryo-pilot",
                 &serde_json::json!({"unknown_signal": 1}),
+                CallOverrides::default(),
             )
             .await
             .unwrap();
@@ -257,11 +283,24 @@ mod tests {
         );
         let ctx = serde_json::json!({});
         assert!(svc
-            .route(UniverseTier::FairPlay, "tib", "c", &ctx)
+            .route(
+                UniverseTier::FairPlay,
+                "tib",
+                "c",
+                &ctx,
+                CallOverrides::default()
+            )
             .await
             .is_ok());
         assert_eq!(
-            svc.route(UniverseTier::FairPlay, "tib", "c", &ctx).await,
+            svc.route(
+                UniverseTier::FairPlay,
+                "tib",
+                "c",
+                &ctx,
+                CallOverrides::default()
+            )
+            .await,
             Err(LlmError::RateLimited)
         );
     }
@@ -270,7 +309,13 @@ mod tests {
     async fn byok_without_key_fails_cleanly() {
         let svc = stub_service();
         let r = svc
-            .route(UniverseTier::Byok, "tib", "c", &serde_json::json!({}))
+            .route(
+                UniverseTier::Byok,
+                "tib",
+                "c",
+                &serde_json::json!({}),
+                CallOverrides::default(),
+            )
             .await;
         assert_eq!(r, Err(LlmError::Failed("provider_error")));
     }

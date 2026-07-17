@@ -88,6 +88,73 @@ fn load_snapshot(path: &Path) -> Option<UniverseState> {
     }
 }
 
+#[cfg(feature = "postgres")]
+pub mod pg {
+    //! S16B: the `universe_events` append the S12 brief named. Same shape
+    //! as every pg module here: the implementation + an env-gated test;
+    //! the S03 store-selection follow-up threads the pool into `run`.
+
+    use reachlock_core::sim::SimEvent;
+    use reachlock_core::universe::UniverseTier;
+    use sqlx::PgPool;
+
+    /// Append one tick's events to the ledger.
+    pub async fn append_events(
+        pool: &PgPool,
+        tier: UniverseTier,
+        events: &[SimEvent],
+    ) -> Result<(), sqlx::Error> {
+        for event in events {
+            let (event_type, payload) = match serde_json::to_value(event) {
+                Ok(v) => {
+                    let t = v
+                        .as_object()
+                        .and_then(|o| o.keys().next().cloned())
+                        .unwrap_or_else(|| "sim_event".into());
+                    (t, v)
+                }
+                Err(_) => continue,
+            };
+            sqlx::query(
+                "INSERT INTO universe_events (universe, event_type, payload)
+                 VALUES ($1::universe_tier, $2, $3)",
+            )
+            .bind(tier.as_str())
+            .bind(&event_type)
+            .bind(&payload)
+            .execute(pool)
+            .await?;
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    mod pg_tests {
+        use super::*;
+
+        /// Runs only where `DATABASE_URL` is set (CI's postgres job).
+        #[tokio::test]
+        async fn events_append_when_db_available() {
+            let Ok(url) = std::env::var("DATABASE_URL") else {
+                return;
+            };
+            let pool = PgPool::connect(&url).await.expect("connect");
+            sqlx::migrate!("./migrations").run(&pool).await.ok();
+            let events = vec![SimEvent::EconomyTick { tick_no: 1 }];
+            append_events(&pool, UniverseTier::FairPlay, &events)
+                .await
+                .expect("append");
+            let (count,): (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM universe_events WHERE event_type = 'economy_tick'",
+            )
+            .fetch_one(&pool)
+            .await
+            .expect("count");
+            assert!(count >= 1);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

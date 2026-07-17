@@ -131,6 +131,7 @@ pub fn poll_network(
     mut ticker: Option<ResMut<UniverseTicker>>,
     mut souls: ResMut<crate::systems::soul::SoulRegistry>,
     mut dialogue: ResMut<crate::systems::dialogue::DialogueSession>,
+    mut feed: ResMut<crate::systems::comms::CommFeed>,
 ) {
     let NetMode::Online { universe, .. } = &*mode else {
         return;
@@ -238,6 +239,7 @@ pub fn poll_network(
                         &mut log,
                         &mut runtime,
                         &mut outbox,
+                        &mut feed,
                         &action,
                         &reasoning,
                         *universe,
@@ -270,6 +272,7 @@ pub fn poll_network(
                         &mut ship,
                         &mut log,
                         &runtime,
+                        &mut feed,
                         &reason,
                     );
                 }

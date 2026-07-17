@@ -7,7 +7,9 @@
 
 use bevy::prelude::*;
 
-use reachlock_core::crisis::{crisis_roll, effective_power_budget, CrisisEvent, FireState};
+use reachlock_core::crisis::{
+    crisis_roll, effective_power_budget, CrisisEvent, FireState, SystemDamage, SystemState,
+};
 use reachlock_core::generator::{GeneratedLayout, RoomKind};
 use reachlock_core::soul::SoulEvent;
 
@@ -32,6 +34,9 @@ const IGNITION_CHANCE: u64 = 480;
 #[derive(Resource)]
 pub struct ShipFires {
     pub state: FireState,
+    /// S16B: per-system damage (SHIPS.md §4) — fires mark the room's
+    /// system Damaged/Disabled; repair happens at that system's console.
+    pub systems: SystemDamage,
     timer: Timer,
     /// Monotonic crisis-tick counter feeding the deterministic rolls (the
     /// universe tick advances too slowly to salt per-second spread).
@@ -42,9 +47,18 @@ impl Default for ShipFires {
     fn default() -> Self {
         ShipFires {
             state: FireState::default(),
+            systems: SystemDamage::default(),
             timer: Timer::from_seconds(CRISIS_TICK_SECS, TimerMode::Repeating),
             crisis_tick: 0,
         }
+    }
+}
+
+impl ShipFires {
+    /// Fixed-point effectiveness of the system owned by `room`'s station,
+    /// as an f32 multiplier for the render layer.
+    pub fn effectiveness(&self, room: RoomKind) -> f32 {
+        self.systems.state(room).factor() as f32 / 1024.0
     }
 }
 
@@ -135,20 +149,38 @@ pub fn tick_fires(
                 .tick_deck(deck, layout, location.system_seed, crisis_tick),
         );
     }
+    let room_kind = |deck: usize, room: usize| {
+        layouts
+            .get(deck)
+            .and_then(|l| l.rooms.get(room))
+            .map(|r| r.kind)
+    };
     for event in &events {
         match event {
             CrisisEvent::Spread { deck, to, .. } => log.log(format!(
                 "The fire spreads — {} is burning.",
                 room_name(&layouts, *deck, *to)
             )),
-            CrisisEvent::SystemsBurning { deck, room } => log.log(format!(
-                "{} systems are cooking off — degraded until repaired.",
-                room_name(&layouts, *deck, *room)
-            )),
-            CrisisEvent::BurnedOut { deck, room } => log.log(format!(
-                "{} burns out. Nothing left in there to save.",
-                room_name(&layouts, *deck, *room)
-            )),
+            CrisisEvent::SystemsBurning { deck, room } => {
+                // S16B: the room's system is now actually Damaged — the
+                // station it names runs below capacity until repaired.
+                if let Some(kind) = room_kind(*deck, *room) {
+                    fires.systems.mark(kind, SystemState::Damaged);
+                }
+                log.log(format!(
+                    "{} systems are cooking off — degraded until repaired at the console.",
+                    room_name(&layouts, *deck, *room)
+                ));
+            }
+            CrisisEvent::BurnedOut { deck, room } => {
+                if let Some(kind) = room_kind(*deck, *room) {
+                    fires.systems.mark(kind, SystemState::Disabled);
+                }
+                log.log(format!(
+                    "{} burns out — its systems are DOWN until rebuilt at the console.",
+                    room_name(&layouts, *deck, *room)
+                ));
+            }
             _ => {}
         }
     }

@@ -61,6 +61,9 @@ pub struct CurrentInterior {
     /// Zero-g deck (docs/SHIPS.md §5): humans move slow in mag boots,
     /// robots move fast. Always false in stations.
     pub zero_g: bool,
+    /// The inter-deck ladder's pixel position on this deck (ship interiors
+    /// only). Cross-deck crew routing targets it (S16B).
+    pub ladder: Option<Vec2>,
 }
 
 /// Which of the ship's decks the On-Board scene shows, and where to place
@@ -512,7 +515,62 @@ pub fn enter_interior(
 
     interior.layout = Some(layout);
     interior.zero_g = zero_g;
+    interior.ladder = ladder_px;
     registry.scene = Some(mode);
+}
+
+/// Keep crew sprites in step with which deck each member is on (S16B
+/// cross-deck routing): a member who climbed away loses their sprite; a
+/// member who arrived appears at the ladder and walks on from there.
+#[allow(clippy::too_many_arguments)]
+pub fn sync_crew_deck_presence(
+    mode: Option<Res<State<GameMode>>>,
+    deck: Res<ActiveDeck>,
+    interior: Res<CurrentInterior>,
+    roster: Res<CrewRoster>,
+    figures: Query<(Entity, &CrewFigure)>,
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+) {
+    if !mode.is_some_and(|m| **m == GameMode::OnBoard) {
+        return;
+    }
+    let Some(ladder) = interior.ladder else {
+        return;
+    };
+    // Departures: the sprite's member is no longer on this deck.
+    let mut present: Vec<&str> = Vec::new();
+    for (entity, fig) in &figures {
+        match roster.by_id(&fig.0) {
+            Some(m) if m.deck == deck.index => present.push(&fig.0),
+            _ => commands.entity(entity).despawn(),
+        }
+    }
+    // Arrivals: members on this deck without a sprite step off the ladder.
+    let shadow = images.add(pixel::shadow_sprite());
+    for m in roster
+        .members
+        .iter()
+        .filter(|m| m.deck == deck.index && !present.contains(&m.id.as_str()))
+    {
+        spawn_figure(
+            &mut commands,
+            &mut images,
+            GameMode::OnBoard,
+            ladder + Vec2::new(0.0, -20.0),
+            &m.name,
+            pixel::crew_look(&m.id),
+            &shadow,
+            (
+                CrewFigure(m.id.clone()),
+                CrewNav::default(),
+                Interactable {
+                    label: m.name.clone(),
+                    kind: InteractKind::Crew,
+                },
+            ),
+        );
+    }
 }
 
 /// Seeded per-kind set dressing at Terraria furniture dimensions, y-sorted

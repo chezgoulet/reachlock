@@ -282,6 +282,7 @@ pub fn control(
     time: Res<Time>,
     mut systems: ResMut<ShipSystems>,
     command: Res<ShipCommand>,
+    fires: Res<crate::systems::crisis::ShipFires>,
     mut feel: ResMut<FlightFeel>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
     mut query: Query<(&Transform, &mut Velocity, &mut ExternalForce), With<PlayerShip>>,
@@ -311,8 +312,10 @@ pub fn control(
     }
 
     let h = HullHandling::for_class(PLAYER_HULL_SEED, HullClass::Corvette);
-    // Engine power routes into how hard the hull thrusts and turns.
-    let engine_mult = 0.5 + 0.25 * command.power_engines as f32;
+    // Engine power routes into how hard the hull thrusts and turns — scaled
+    // by engineering's system state (S16B: a burned reactor room limps).
+    let engine_mult = (0.5 + 0.25 * command.power_engines as f32)
+        * fires.effectiveness(reachlock_core::generator::RoomKind::Reactor);
 
     let has_fuel = systems.fuel.0 > 0;
     let thrust_key = keys.pressed(KeyCode::Space);
@@ -813,6 +816,7 @@ pub fn fire_weapons(
     mut commands: Commands,
     mut systems: ResMut<ShipSystems>,
     command: Res<ShipCommand>,
+    fires: Res<crate::systems::crisis::ShipFires>,
     mut feel: ResMut<FlightFeel>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -837,10 +841,19 @@ pub fn fire_weapons(
         }
         return;
     }
+    // S16B: the tactical station's system state gates the guns — a burned
+    // bridge fires slow (Damaged) or not at all (Disabled) until repaired.
+    let weapons_eff = fires.effectiveness(reachlock_core::generator::RoomKind::Bridge);
+    if weapons_eff < 0.5 {
+        if keys.just_pressed(KeyCode::KeyF) {
+            log.log("Fire control is DOWN — repair it at the gunner console.");
+        }
+        return;
+    }
     if systems.gun_cooldown > 0.0 {
         return;
     }
-    systems.gun_cooldown = 0.6 / (command.power_weapons as f32);
+    systems.gun_cooldown = 0.6 / (command.power_weapons as f32) / weapons_eff;
     let forward = ship.forward().as_vec3();
     // Muzzle sits past the ship's own collider — a corvette hull runs ~50
     // units of radius, and a bolt born inside it collides with (and damages)
@@ -1005,6 +1018,8 @@ pub fn scanner_pulse(
     mut commands: Commands,
     mut command: ResMut<ShipCommand>,
     systems: Res<ShipSystems>,
+    fires: Res<crate::systems::crisis::ShipFires>,
+    mut log: ResMut<crate::systems::contract::ShipLog>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     ship: Query<&Transform, With<PlayerShip>>,
@@ -1031,10 +1046,17 @@ pub fn scanner_pulse(
     }
     command.scan_pulse = false;
     let Ok(ship) = ship.single() else { return };
+    // S16B: the scanner array's system state scales the sweep — a burned
+    // scanner room is blind until repaired at its console.
+    let scanner_eff = fires.effectiveness(reachlock_core::generator::RoomKind::Scanner);
+    if scanner_eff < 0.5 {
+        log.log("Scanner array is DOWN — the pulse dies in the housing. Repair it at the console.");
+        return;
+    }
     let base = systems.sensor_range.0 as f32 / 1024.0;
     let power = 1.0 + 0.5 * command.power_sensors as f32;
     let boost = if command.scanner_boost { 1.8 } else { 1.0 };
-    let range = base * power * boost;
+    let range = base * power * boost * scanner_eff;
 
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(2.0))),

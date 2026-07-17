@@ -212,10 +212,14 @@ half-broken.
   zero-g deck is vented from engineering — instant, and brutal to
   anything unsecured. Crew in a burning room take an injury soul event
   and abandon their station (the run-fix-return loop); the rest of the
-  crew feels it (Boris's protective trigger fires). *Still to come:*
-  fires hurting the player avatar, system damage actually degrading the
-  station it names (scanner blind, engine drag), repair-at-the-system,
-  NPC crew fighting fires themselves (needs S15 dispatch orders).
+  crew feels it (Boris's protective trigger fires). *S16B closed:*
+  per-system damage is real — a burning room marks its system Damaged
+  (burned out: Disabled), a damaged scanner sweeps short and a dead one
+  is blind, a hurt reactor limps the engines, burned fire control slows
+  or silences the guns — and repair happens AT the system (R at its
+  console, multiple actions, disabled costs more). *Re-homed:* fires
+  hurting the player avatar → S20 (needs a player health model); NPC
+  crew fighting fires under dispatch orders → S19.
 - [x] The jump loop, first slice (S09e): `J` at the NAV console programs +
   arms a self-generated jump (destination derived from the seed protocol);
   a 30s window opens; every human crew member is auto-ordered to cryo and
@@ -228,10 +232,12 @@ half-broken.
   the cryo chamber — the walk back to the cockpit is part of arrival.
   Gate transits stay awake at the helm (lore: stable windows). The awake
   emergency self-jump (`J` in flight) still exists and now costs flesh.
-  *Still to come:* wake conditions on the plan (fuel/hostile triggers),
-  automation modules as the no-synthetic-crew fallback, cross-deck crew
-  routing to pods (crew on the inactive deck still freeze), pod capacity
-  as a hard constraint for passengers/prisoners.
+  *S16B closed:* cross-deck crew routing — crew path to the ladder, climb,
+  and continue (abstractly when unseen, at honest speeds), so humans
+  Upstairs reach the pods; `current_room` is live now, so the cryo check
+  reads the truth. *Re-homed (ship-automation brief, with S19):* wake
+  conditions on the plan, automation modules as the no-synthetic-crew
+  fallback, pod capacity as a hard constraint for passengers/prisoners.
 - [ ] Automation modules occupying hull slots; slot/customization economy.
 - [ ] LLM-driven crew operating stations (souls, S13) — including being
   trusted with the jump.

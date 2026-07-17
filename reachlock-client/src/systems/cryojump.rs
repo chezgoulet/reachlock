@@ -56,6 +56,7 @@ pub fn arm_jump(
     system_seed: u64,
     roster: &mut CrewRoster,
     log: &mut ShipLog,
+    feed: &mut crate::systems::comms::CommFeed,
 ) {
     if plan.armed.is_some() || transit.active {
         return;
@@ -89,8 +90,12 @@ pub fn arm_jump(
         match consider_order("run the crossing", &ctx) {
             Consideration::Accept => {
                 log.log("Prudence: \"Vectors are mine. Go to sleep.\"");
+                feed.say("Prudence", "Vectors are mine. Go to sleep.");
             }
-            Consideration::Counter { rationale, .. } => log.log(format!("Prudence: {rationale}")),
+            Consideration::Counter { rationale, .. } => {
+                log.log(format!("Prudence: {rationale}"));
+                feed.say("Prudence", rationale);
+            }
         }
     }
 }
@@ -188,7 +193,12 @@ pub fn pod_stasis(plan: Res<JumpPlan>, mut avatar: Query<&mut Visibility, With<P
 /// Revival (SHIPS.md §3 step 4): called by `jump::hyperspace_tick` when a
 /// cryo transit completes. Returns the log beats; the caller routes the
 /// wake into the cryo chamber.
-pub fn revive(plan: &mut JumpPlan, roster: &mut CrewRoster, log: &mut ShipLog) {
+pub fn revive(
+    plan: &mut JumpPlan,
+    roster: &mut CrewRoster,
+    log: &mut ShipLog,
+    feed: &mut crate::systems::comms::CommFeed,
+) {
     plan.cryo_wake = false;
     plan.player_in_pod = false;
     for member in roster.members.iter_mut() {
@@ -198,4 +208,8 @@ pub fn revive(plan: &mut JumpPlan, roster: &mut CrewRoster, log: &mut ShipLog) {
     }
     log.log("The pods open. Med-bay light, recycled antiseptic — arrival.");
     log.log("Prudence: \"Crossing complete. All sleepers viable. You are welcome.\"");
+    feed.say(
+        "Prudence",
+        "Crossing complete. All sleepers viable. You are welcome.",
+    );
 }
