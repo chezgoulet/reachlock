@@ -45,6 +45,10 @@ A sprint may start when its listed dependencies are merged.
 | 6 | S23 | MMO presence & coordination | S02, S03 |
 | 6 | S24 | Web distribution & release pipeline | — (any time) |
 | 7 | S25 | Content editor suite (standalone dev/modder GUI) | S01, S04, S05 |
+| 7 | S26 | Server operations — observability, admin API, graceful degradation | S03, S23 |
+| 7 | S27 | LLM cost & quota management | S14, S26 |
+| 7 | S28 | Payments & subscriptions (Stripe) | S23, S26 |
+| 7 | S29 | Voice chat (WebRTC, spatial audio, P2P signaling) | S23 |
 
 Phase-4 polish (economy balancing, audio pass, UI pass, beta) is deliberately
 NOT pre-cut into sprints: those briefs get written against real systems once
