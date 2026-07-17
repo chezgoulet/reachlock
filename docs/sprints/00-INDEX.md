@@ -44,6 +44,7 @@ A sprint may start when its listed dependencies are merged.
 | 6 | S22 | Modding framework | S01 |
 | 6 | S23 | MMO presence & coordination | S02, S03 |
 | 6 | S24 | Web distribution & release pipeline | — (any time) |
+| 7 | S25 | Content editor suite (standalone dev/modder GUI) | S01, S04, S05 |
 
 Phase-4 polish (economy balancing, audio pass, UI pass, beta) is deliberately
 NOT pre-cut into sprints: those briefs get written against real systems once
@@ -94,6 +95,8 @@ cross-platform determinism gate. These are non-negotiable.
 - Seeds are ≤ 2^53 (JSON float survival). `Seed::new` masks; keep it that way.
 - Bevy query filters trip clippy `type_complexity`; `#[allow]` on the system
   fn is the accepted pattern.
+- S25 (editor suite) is native-only — exempt from `make check` WASM build.
+  `bevy_egui` + `wgpu` render targets don't compile to wasm32.
 
 **Handoff etiquette.** Read your brief top to bottom, then read the spec
 sections it cites, then the files it lists — in that order. Deliver exactly
