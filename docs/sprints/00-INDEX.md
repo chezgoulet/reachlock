@@ -49,6 +49,7 @@ A sprint may start when its listed dependencies are merged.
 | 7 | S27 | LLM cost & quota management | S14, S26 |
 | 7 | S28 | Payments & subscriptions (Stripe) | S23, S26 |
 | 7 | S29 | Voice chat (WebRTC, spatial audio, P2P signaling) | S23 |
+| 7 | S30 | Agent tooling — CI gate, codex CLI, auto-generated context | — (standalone) |
 
 Phase-4 polish (economy balancing, audio pass, UI pass, beta) is deliberately
 NOT pre-cut into sprints: those briefs get written against real systems once
