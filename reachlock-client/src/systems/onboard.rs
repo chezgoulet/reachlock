@@ -421,8 +421,10 @@ pub fn onboard_ship_consoles(
                         &refs,
                     )
                 };
-                let used: u8 =
-                    command.power_weapons + command.power_engines + command.power_sensors;
+                let used: u8 = command.power_weapons
+                    + command.power_engines
+                    + command.power_sensors
+                    + command.power_shields;
                 let bump = |cur: u8, add: bool| -> u8 {
                     if !add {
                         return cur;
@@ -443,17 +445,26 @@ pub fn onboard_ship_consoles(
                 if keys.just_pressed(KeyCode::Digit3) {
                     command.power_sensors = bump(command.power_sensors, true);
                 }
+                // S19: the shield generator shares the same budget.
+                if keys.just_pressed(KeyCode::Digit4) {
+                    command.power_shields = bump(command.power_shields, true);
+                }
                 let free = budget as i32
-                    - (command.power_weapons + command.power_engines + command.power_sensors)
-                        as i32;
+                    - (command.power_weapons
+                        + command.power_engines
+                        + command.power_sensors
+                        + command.power_shields) as i32;
                 let fire_note = if budget < POWER_BUDGET {
                     "  ⚠ REACTOR FIRE"
                 } else {
                     ""
                 };
                 **t = format!(
-                    "POWER  (budget {budget}{fire_note})\n1 WPN {}\n2 ENG {}\n3 SEN {}\nfree {free}",
-                    command.power_weapons, command.power_engines, command.power_sensors
+                    "POWER  (budget {budget}{fire_note})\n1 WPN {}\n2 ENG {}\n3 SEN {}\n4 SHD {}\nfree {free}",
+                    command.power_weapons,
+                    command.power_engines,
+                    command.power_sensors,
+                    command.power_shields
                 );
             }
             _ => **t = String::new(),

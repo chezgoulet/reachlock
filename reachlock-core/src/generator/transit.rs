@@ -34,6 +34,17 @@ pub fn malfunction_roll(seed: u64, n: u64) -> u64 {
     rng.next_below(4)
 }
 
+/// Self-jump malfunction severity while UNDER FIRE (S19 escape wiring,
+/// spec §22 "emergency jump — high risk of drive malfunction"). Two
+/// independent rolls, worst one wins: a spooling drive with hostiles on
+/// the scope malfunctions strictly more often, never less. Deterministic
+/// in `(seed, n)` like every transit roll.
+pub fn malfunction_roll_under_fire(seed: u64, n: u64) -> u64 {
+    let calm = malfunction_roll(seed, n);
+    let mut rng = SeededRng::new(seed ^ 0xF12E ^ n.wrapping_mul(0x9E37_79B9));
+    calm.max(rng.next_below(4))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,6 +81,25 @@ mod tests {
         let b = malfunction_roll(0xCAFE, 7);
         assert_eq!(a, b);
         assert!(a <= 3);
+    }
+
+    /// Under fire, the malfunction roll is deterministic and never BETTER
+    /// than the calm roll (S19: pressure raises risk, never lowers it).
+    #[test]
+    fn under_fire_roll_is_deterministic_and_never_kinder() {
+        for n in 0..50 {
+            let calm = malfunction_roll(0x5EED, n);
+            let hot = malfunction_roll_under_fire(0x5EED, n);
+            assert_eq!(hot, malfunction_roll_under_fire(0x5EED, n));
+            assert!(hot >= calm, "under fire must not roll below calm");
+            assert!(hot <= 3);
+        }
+        // And it genuinely bites sometimes: across 50 jumps, at least one
+        // is strictly worse than its calm counterpart.
+        assert!(
+            (0..50).any(|n| malfunction_roll_under_fire(0x5EED, n) > malfunction_roll(0x5EED, n)),
+            "the modifier never fired across 50 rolls"
+        );
     }
 
     /// Different (seed, n) pairs produce different severities (basic

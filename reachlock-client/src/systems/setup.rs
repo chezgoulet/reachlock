@@ -236,6 +236,12 @@ fn spawn_player_ship(
         GravityScale(0.0),
         Collider::ball(collider_radius),
         ActiveEvents::COLLISION_EVENTS,
+        // S19: the player is in the PLAYER collision group so its own bolts
+        // (which filter that group out) can never hit it.
+        CollisionGroups::new(
+            crate::systems::combat::G_PLAYER,
+            Group::ALL & !crate::systems::combat::G_PLAYER_PROJ,
+        ),
         Velocity::default(),
         ExternalForce::default(),
         Damping {

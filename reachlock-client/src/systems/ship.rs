@@ -110,6 +110,11 @@ pub struct ShipSystems {
     /// Hull integrity, fixed-point (1024 = pristine). Drained by impacts and
     /// projectile hits; zero triggers the death/respawn loop.
     pub hull_hp: Fixed,
+    /// S19: shield points (0..=`combat::player_shield_max`). Absorbs enemy
+    /// fire by weapon type before the hull takes anything.
+    pub shield: Fixed,
+    /// S19: chaff charges (debug stock; a consumable slot buys more later).
+    pub chaff: u32,
     /// Real-time gun cooldown (render-layer flight feel, seconds).
     pub gun_cooldown: f32,
     /// True while the hull is breached and the ship is in its death/respawning
@@ -126,6 +131,8 @@ impl Default for ShipSystems {
             sensor_range: Fixed(400 * 1024),
             ore: 0,
             hull_hp: Fixed(1024),
+            shield: Fixed(128),
+            chaff: 3,
             gun_cooldown: 0.0,
             dead: false,
         }
@@ -148,6 +155,8 @@ pub struct ShipCommand {
     pub power_weapons: u8,
     pub power_engines: u8,
     pub power_sensors: u8,
+    /// S19: shield generator notch — sets both capacity and recharge.
+    pub power_shields: u8,
     /// Edge flag set by the scanner console / flight key: emit one pulse.
     pub scan_pulse: bool,
 }
@@ -161,6 +170,7 @@ impl Default for ShipCommand {
             power_weapons: 1,
             power_engines: 2,
             power_sensors: 1,
+            power_shields: 1,
             scan_pulse: false,
         }
     }
@@ -768,6 +778,7 @@ pub fn respawn_ship(
     mut systems: ResMut<ShipSystems>,
     mut timer: ResMut<RespawnTimer>,
     mut ship: Query<(&mut Transform, &mut Velocity), With<PlayerShip>>,
+    mut inv: ResMut<crate::systems::inventory::PlayerInventory>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
 ) {
     if !systems.dead {
@@ -797,9 +808,21 @@ pub fn respawn_ship(
     }
     systems.hull_hp = Fixed(1024);
     systems.fuel = Fixed(1024);
+    systems.shield = Fixed(0);
+    systems.chaff = 3;
     systems.dead = false;
     timer.0 = None;
-    log.log("Hull rebuilt — back in the black.");
+    // S19: losing the ship costs money, not the save — harsh but
+    // recoverable (permadeath options are Phase 2).
+    let fee = (inv.credits / 6).max(0).min(inv.credits);
+    if fee > 0 {
+        inv.credits -= fee;
+        log.log(format!(
+            "Hull rebuilt — back in the black. Salvage-tug fees: -{fee}cr."
+        ));
+    } else {
+        log.log("Hull rebuilt — back in the black.");
+    }
 }
 
 /// Fire the guns while `F` is held (hold-to-autofire, gated by the cooldown) —
@@ -882,6 +905,9 @@ pub fn fire_weapons(
         Collider::ball(0.6),
         ActiveEvents::COLLISION_EVENTS,
         Sensor,
+        // S19: formal collision groups — player bolts never hit the player
+        // or each other, whatever the muzzle geometry does.
+        crate::systems::combat::player_projectile_groups(),
         Projectile {
             life: Timer::from_seconds(2.0, TimerMode::Once),
             damage: 60,

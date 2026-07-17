@@ -6,6 +6,7 @@
 //! neither adds gameplay logic of its own.
 
 pub mod agency;
+pub mod combat;
 pub mod content;
 pub mod contract;
 pub mod crisis;
