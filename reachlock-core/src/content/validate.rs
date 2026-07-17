@@ -49,6 +49,11 @@ pub enum ValidationError {
         envelope_id: String,
         soul_id: String,
     },
+    /// S16: the soul's authored dialogue graph is structurally broken
+    /// (missing start node, dangling `next`, duplicate ids).
+    DialogueGraphProblem {
+        problem: String,
+    },
 }
 
 impl std::fmt::Display for ValidationError {
@@ -96,6 +101,9 @@ impl std::fmt::Display for ValidationError {
                 f,
                 "envelope id {envelope_id:?} != soul id {soul_id:?} (souls are keyed by one id)"
             ),
+            ValidationError::DialogueGraphProblem { problem } => {
+                write!(f, "dialogue graph: {problem}")
+            }
         }
     }
 }
@@ -174,6 +182,11 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
                     r.familiarity,
                     0,
                 );
+            }
+            if let Some(graph) = &soul.dialogue {
+                for problem in graph.validate() {
+                    errors.push(ValidationError::DialogueGraphProblem { problem });
+                }
             }
         }
     }

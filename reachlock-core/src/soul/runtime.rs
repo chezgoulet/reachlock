@@ -431,6 +431,8 @@ mod tests {
                 ]),
                 content: "A letter, in an alphabet no one asked about.".into(),
             }],
+            dialogue: None,
+            deflections: vec![],
         }
     }
 

@@ -129,7 +129,12 @@ pub fn try_interact(
     mut next: ResMut<NextState<GameMode>>,
     mut deck: ResMut<crate::systems::interior::ActiveDeck>,
     mut registry: ResMut<crate::states::SceneRegistry>,
+    dialogue: Res<crate::systems::dialogue::DialogueSession>,
 ) {
+    // S16: free-input typing owns the keyboard (E would re-interact).
+    if dialogue.typing() {
+        return;
+    }
     let Ok(av) = avatar.single() else {
         prompt.text = None;
         prompt.target = None;

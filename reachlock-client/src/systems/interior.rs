@@ -735,8 +735,13 @@ pub fn walk_avatar(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     interior: Res<CurrentInterior>,
+    dialogue: Res<crate::systems::dialogue::DialogueSession>,
     mut avatar: Query<&mut Transform, With<PlayerAvatar>>,
 ) {
+    // S16: while typing a free-input line, WASD spells words, not steps.
+    if dialogue.typing() {
+        return;
+    }
     let Some(layout) = &interior.layout else {
         return;
     };

@@ -17,8 +17,9 @@ use bevy_rapier3d::prelude::*;
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
-    content_index, contract, crew, docking, factions, hud, interaction, interior, inventory, jump,
-    market, menu, mode, network, onboard, pause, reticle, sensors, setup, ship, soul, ticker,
+    content_index, contract, crew, dialogue, docking, factions, hud, interaction, interior,
+    inventory, jump, market, menu, mode, network, onboard, pause, reticle, sensors, setup, ship,
+    soul, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -123,6 +124,8 @@ fn main() {
         // S13: authored souls + live soul state (filled by init_souls,
         // restored over by load_save).
         .init_resource::<soul::SoulRegistry>()
+        // S16: the one live conversation (soul-backed dialogue panel).
+        .init_resource::<dialogue::DialogueSession>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
@@ -260,6 +263,8 @@ fn main() {
                 mode::interior_camera_follow,
                 docking::try_interior_transitions,
                 interaction::try_interact,
+                dialogue::sync_dialogue_session,
+                dialogue::dialogue_input,
                 market::market_system,
                 crew::crew_shift_system,
                 onboard::onboard_panels,

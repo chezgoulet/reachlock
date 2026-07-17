@@ -334,6 +334,8 @@ pub fn update_hud_panels(
     inventory: Res<PlayerInventory>,
     market_state: Res<MarketState>,
     ticker: Res<UniverseTicker>,
+    dialogue: Res<crate::systems::dialogue::DialogueSession>,
+    souls: Res<crate::systems::soul::SoulRegistry>,
     npcs: Query<&Npc>,
     mut texts: ParamSet<(
         Query<&mut Text, With<DialoguePanel>>,
@@ -342,6 +344,14 @@ pub fn update_hud_panels(
 ) {
     if let Ok(mut text) = texts.p0().single_mut() {
         **text = match &*panel {
+            // S16: soul-backed conversations render through the session
+            // (choices, free input, in-panel deliberation); legacy NPCs
+            // keep the S07 authored-lines rendering below.
+            ActivePanel::Dialogue(_)
+                if crate::systems::dialogue::panel_text(&dialogue, &souls).is_some() =>
+            {
+                crate::systems::dialogue::panel_text(&dialogue, &souls).unwrap_or_default()
+            }
             ActivePanel::Dialogue(e) => match npcs.get(*e) {
                 Ok(npc) => {
                     let mut s = format!("{}:\n", npc.name);

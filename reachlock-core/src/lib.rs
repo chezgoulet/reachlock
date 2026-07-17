@@ -9,6 +9,7 @@ pub mod agency;
 pub mod content;
 pub mod contract;
 pub mod determinism;
+pub mod dialogue;
 pub mod economy;
 pub mod faction;
 pub mod generator;
