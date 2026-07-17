@@ -659,14 +659,31 @@ fn spawn_props(
             }
         }
         // Cryo chamber: ten pods in two ranks — one per possible sleeper
-        // (docs/SHIPS.md §3). Empty while the crew is awake.
+        // (docs/SHIPS.md §3). Empty while the crew is awake. On board every
+        // pod is a place you can climb into — the jump-cryo loop's whole
+        // point is the walk here beating the jump clock.
         RoomKind::Cryo => {
             let pod = images.add(pixel::cryo_pod_sprite(false));
             for row in 0..2 {
                 for col in 0..5 {
                     let x = room.x as f32 + WALL + 20.0 + col as f32 * 22.0;
                     let y = room.y as f32 + WALL + 24.0 + row as f32 * 56.0;
-                    sorted(commands, pod.clone(), x, y);
+                    if mode == GameMode::OnBoard {
+                        commands.spawn((
+                            Sprite {
+                                image: pod.clone(),
+                                ..default()
+                            },
+                            Transform::from_xyz(x, y, ysort(y)),
+                            ModeScope(mode),
+                            Interactable {
+                                label: "Cryo pod".to_string(),
+                                kind: InteractKind::CryoPod,
+                            },
+                        ));
+                    } else {
+                        sorted(commands, pod.clone(), x, y);
+                    }
                 }
             }
         }
@@ -736,10 +753,12 @@ pub fn walk_avatar(
     time: Res<Time>,
     interior: Res<CurrentInterior>,
     dialogue: Res<crate::systems::dialogue::DialogueSession>,
+    plan: Res<crate::systems::cryojump::JumpPlan>,
     mut avatar: Query<&mut Transform, With<PlayerAvatar>>,
 ) {
     // S16: while typing a free-input line, WASD spells words, not steps.
-    if dialogue.typing() {
+    // S09e: a sealed cryo pod holds its sleeper until revival.
+    if dialogue.typing() || plan.player_in_pod {
         return;
     }
     let Some(layout) = &interior.layout else {
@@ -1242,6 +1261,19 @@ pub(crate) fn room_center(layout: &GeneratedLayout, kind: RoomKind) -> Option<Ve
         .iter()
         .find(|r| r.kind == kind)
         .map(room_center_point)
+}
+
+/// Which deck holds the cryo chamber, and where a revived sleeper stands
+/// when the pods open (the jump-cryo wake beat, SHIPS.md §3 step 4).
+pub fn cryo_wake_spawn() -> Option<(usize, Vec2)> {
+    let ship = reachlock_core::generator::ship::loup_garou_interior();
+    for (deck_index, deck) in ship.decks.iter().enumerate() {
+        let layout = scale_layout(&deck.layout, LAYOUT_SCALE);
+        if let Some(center) = room_center(&layout, RoomKind::Cryo) {
+            return Some((deck_index, center));
+        }
+    }
+    None
 }
 
 /// Which deck of the Loup-Garou holds the cockpit, and where the avatar

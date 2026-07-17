@@ -34,13 +34,30 @@ pub const FUEL_PRICE_PER_UNIT: i64 = 1;
 
 /// Live transit bookkeeping. `active` gates the systems; the world is
 /// regenerated on wake.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct TransitState {
     pub active: bool,
     pub timer: Timer,
     pub dest_seed: u64,
     pub jump_count: u64,
     pub anomaly_fired: bool,
+    /// Who runs the crossing: Boris for gate transits (the cryo-pilot
+    /// contract), Prudence for programmed self-jumps (SHIPS.md §3 — the
+    /// synthetic crew has the ship while the humans sleep).
+    pub pilot: String,
+}
+
+impl Default for TransitState {
+    fn default() -> Self {
+        TransitState {
+            active: false,
+            timer: Timer::default(),
+            dest_seed: 0,
+            jump_count: 0,
+            anomaly_fired: false,
+            pilot: "Boris".into(),
+        }
+    }
 }
 
 /// Screen-fixed hyperspace wash, spawned/despawned by `hyperspace_tick`.
@@ -73,8 +90,9 @@ pub fn try_gate_jump(
     state.anomaly_fired = false;
     state.dest_seed = transit_destination(location.system_seed, state.jump_count);
     state.timer = Timer::from_seconds(TRANSIT_SECS, TimerMode::Once);
+    state.pilot = "Boris".into();
     log.log(format!(
-        "Jump drive engaged → system {:#x}",
+        "Gate transit engaged → system {:#x} (stable window; crew stays awake)",
         state.dest_seed
     ));
     next.set(GameMode::Hyperspace);
@@ -95,6 +113,9 @@ pub fn hyperspace_tick(
     mut log: ResMut<ShipLog>,
     mode: Res<NetMode>,
     mut outbox: ResMut<NetOutbox>,
+    mut plan: ResMut<crate::systems::cryojump::JumpPlan>,
+    mut roster: ResMut<crate::systems::crew::CrewRoster>,
+    mut deck: ResMut<crate::systems::interior::ActiveDeck>,
 ) {
     if !state.active {
         return;
@@ -124,7 +145,7 @@ pub fn hyperspace_tick(
         if anomaly_rolls(location.system_seed, state.jump_count) {
             let d: crate::systems::contract::Deliberation =
                 crate::systems::contract::Deliberation {
-                    crew_member: "Boris".into(),
+                    crew_member: state.pilot.clone(),
                     context_summary: story.clone(),
                     remaining: Timer::from_seconds(1.5, TimerMode::Once),
                     fallback: Action::verb("hold course"),
@@ -167,7 +188,19 @@ pub fn hyperspace_tick(
                 log.log(format!("Arrived in system {:#x}", location.system_seed));
             }
         }
-        next.set(GameMode::SpaceFlight);
+        // SHIPS.md §3 step 4: a cryo transit wakes the sleepers in the
+        // cryo chamber — the walk back to the cockpit is part of arrival.
+        // Gate transits stay at the helm (crew was awake the whole way).
+        if plan.cryo_wake {
+            crate::systems::cryojump::revive(&mut plan, &mut roster, &mut log);
+            if let Some((deck_index, spawn)) = crate::systems::interior::cryo_wake_spawn() {
+                deck.index = deck_index;
+                deck.spawn = Some(spawn);
+            }
+            next.set(GameMode::OnBoard);
+        } else {
+            next.set(GameMode::SpaceFlight);
+        }
     }
 }
 
@@ -203,8 +236,16 @@ pub fn self_jump(
     state.active = true;
     state.dest_seed = location.system_seed;
     state.anomaly_fired = true;
+    state.pilot = "Boris".into();
     state.timer = Timer::from_seconds(TRANSIT_SECS, TimerMode::Once);
-    log.log(format!("Emergency self-jump: {outcome} (fuel {cost}/1024)"));
+    // You were AWAKE for that (docs/LORE.md §III): unshielded proximity to
+    // an open window costs flesh. Recoverable — barely — and never free.
+    // The programmed cryo route (nav console → pods) is the survivable one.
+    systems.hull_hp = fixed_clamp((systems.hull_hp.0 - 400).max(64));
+    log.log(format!(
+        "Emergency self-jump: {outcome} (fuel {cost}/1024). You were awake for it. \
+         Your nose is bleeding and the corridor lights look wrong."
+    ));
     next.set(GameMode::Hyperspace);
 }
 

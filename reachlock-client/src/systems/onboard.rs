@@ -463,6 +463,8 @@ pub fn onboard_panels(
     crew_figs: Query<&CrewFigure>,
     ticker_state: Res<UniverseTicker>,
     souls: Res<crate::systems::soul::SoulRegistry>,
+    mut plan: ResMut<crate::systems::cryojump::JumpPlan>,
+    transit: Res<crate::systems::jump::TransitState>,
 ) {
     if let Ok(mut t) = panels.p0().single_mut() {
         match &*panel {
@@ -511,8 +513,35 @@ pub fn onboard_panels(
     if let Ok(mut t) = panels.p2().single_mut() {
         match &*panel {
             ActivePanel::Nav => {
+                // S09e: the jump-cryo loop starts here (SHIPS.md §3 step 1).
+                // J programs + arms a self-generated jump; the window opens
+                // on a clock and every human must be in a pod first.
+                if keys.just_pressed(KeyCode::KeyJ) && !location.is_docked {
+                    crate::systems::cryojump::arm_jump(
+                        &mut plan,
+                        &transit,
+                        location.system_seed,
+                        &mut roster,
+                        &mut log,
+                    );
+                }
+                let jump_line = match &plan.armed {
+                    Some(armed) => format!(
+                        "JUMP ARMED → {:#x} · window opens in {:.0}s\n{}",
+                        armed.dest_seed,
+                        (armed.window.duration().as_secs_f32() - armed.window.elapsed_secs())
+                            .max(0.0),
+                        if plan.player_in_pod {
+                            "you are in a pod"
+                        } else {
+                            "GET TO A CRYO POD"
+                        }
+                    ),
+                    None if location.is_docked => "J: self-jump (undock first)".to_string(),
+                    None => "J: program + arm self-jump (humans must reach cryo)".to_string(),
+                };
                 let mut news_lines = vec![format!(
-                    "NAV · system {:#x}\ntick {}\n\n── GALACTIC NEWS ──",
+                    "NAV · system {:#x}\ntick {}\n{jump_line}\n\n── GALACTIC NEWS ──",
                     location.system_seed, ticker_state.state.tick_no,
                 )];
                 for ev in ticker_state.state.event_log.iter().rev().take(10) {

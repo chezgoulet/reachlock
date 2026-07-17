@@ -37,6 +37,9 @@ pub enum InteractKind {
     /// Climb between the ship's decks (rebuilds the interior scene on the
     /// other deck, keeping position).
     Ladder,
+    /// A cryo pod (SHIPS.md §3): with a jump armed, climbing in beats the
+    /// clock. Without one, the pod stays open.
+    CryoPod,
     /// S09b consoles (spec §22): drive the ship's flight systems from OnBoard.
     Gunner,
     Scanner,
@@ -130,6 +133,8 @@ pub fn try_interact(
     mut deck: ResMut<crate::systems::interior::ActiveDeck>,
     mut registry: ResMut<crate::states::SceneRegistry>,
     dialogue: Res<crate::systems::dialogue::DialogueSession>,
+    mut plan: ResMut<crate::systems::cryojump::JumpPlan>,
+    mut log: ResMut<crate::systems::contract::ShipLog>,
 ) {
     // S16: free-input typing owns the keyboard (E would re-interact).
     if dialogue.typing() {
@@ -202,6 +207,22 @@ pub fn try_interact(
                     }
                     InteractKind::TakeHelm => {
                         next.set(GameMode::SpaceFlight);
+                    }
+                    InteractKind::CryoPod => {
+                        // SHIPS.md §3 step 2: reaching the pod before the
+                        // window opens is the whole game of the jump clock.
+                        if plan.armed.is_some() {
+                            plan.player_in_pod = true;
+                            log.log(
+                                "You seal the pod. The cold comes up through \
+                                 the lining like a tide.",
+                            );
+                        } else {
+                            log.log(
+                                "The pod stays open — no jump is programmed. \
+                                 (Arm one at the NAV console.)",
+                            );
+                        }
                     }
                     kind => {
                         prompt.anchor = Some(pos);
