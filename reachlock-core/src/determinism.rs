@@ -368,13 +368,49 @@ pub fn manifest() -> Manifest {
             seed,
             checksum: h.finish(),
         });
+
+        // S19 — combat. Encounters for the canonical Frontier system, the
+        // per-class weapon rolls, and a scripted apply_hit exchange, so any
+        // drift in spawn/damage math is caught cross-platform.
+        let sys = generator::system::generate_system(
+            seed,
+            Biome::Frontier,
+            generator::system::Fidelity::Full,
+        );
+        entries.push(Entry {
+            generator: "combat_encounters".into(),
+            seed,
+            checksum: hash_serde(&crate::combat::generate_encounters(seed, &sys)),
+        });
+        let mut vessel = crate::combat::EnemyClass::Bomber.vessel(6);
+        let gun = crate::combat::EnemyClass::Interceptor.weapon(seed, 6);
+        let mut results = Vec::new();
+        for target in [
+            None,
+            Some(crate::combat::SubsystemKind::Engines),
+            Some(crate::combat::SubsystemKind::Drive),
+        ] {
+            for _ in 0..4 {
+                results.push(crate::combat::apply_hit(&mut vessel, &gun, target));
+            }
+        }
+        let mut h = Hasher::new();
+        h.write_i64(hash_serde(&gun) as i64);
+        h.write_i64(hash_serde(&vessel) as i64);
+        h.write_i64(hash_serde(&results) as i64);
+        entries.push(Entry {
+            generator: "combat_damage".into(),
+            seed,
+            checksum: h.finish(),
+        });
     }
 
     Manifest {
         // v3: added S06 hull_interior (ship interior layout) generator.
         // v4: added S10 economy engine golden entries.
         // v5: added S11 faction engine golden entries.
-        version: 5,
+        // v6: added S19 combat golden entries (encounters + damage model).
+        version: 6,
         entries,
     }
 }

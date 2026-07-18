@@ -10,7 +10,8 @@ use bevy::time::TimerMode;
 
 use reachlock_core::contract::types::Action;
 use reachlock_core::generator::transit::{
-    anomaly_rolls, malfunction_roll, transit_destination, SELF_JUMP_BURN,
+    anomaly_rolls, malfunction_roll, malfunction_roll_under_fire, transit_destination,
+    SELF_JUMP_BURN,
 };
 use reachlock_core::network::ClientMessage;
 use reachlock_core::seed::types::{Seed, SystemId};
@@ -206,12 +207,15 @@ pub fn hyperspace_tick(
 }
 
 /// Emergency self-jump (`J` in flight): higher fuel cost + a seeded
-/// malfunction roll. Never a silent fail — the log narrates.
+/// malfunction roll — a WORSE one with hostiles engaged (S19 escape wiring:
+/// spooling the drive under fire raises the malfunction odds, spec §22).
+/// Never a silent fail — the log narrates.
 pub fn self_jump(
     keys: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<TransitState>,
     location: Res<CurrentLocation>,
     mut systems: ResMut<ShipSystems>,
+    enemies: Query<&crate::systems::combat::EnemyShip>,
     mut next: ResMut<NextState<GameMode>>,
     mut log: ResMut<ShipLog>,
 ) {
@@ -223,7 +227,14 @@ pub fn self_jump(
     if systems.fuel.0 > 0 {
         systems.fuel = fixed_clamp(systems.fuel.0.saturating_sub(cost));
     }
-    let sev = malfunction_roll(location.system_seed, state.jump_count);
+    let under_fire = enemies
+        .iter()
+        .any(|e| !matches!(e.state, reachlock_core::combat::BehaviorState::Patrol));
+    let sev = if under_fire {
+        malfunction_roll_under_fire(location.system_seed, state.jump_count)
+    } else {
+        malfunction_roll(location.system_seed, state.jump_count)
+    };
     state.jump_count = state.jump_count.wrapping_add(1);
     let outcome = match sev {
         0 => "clean arrival",
@@ -243,8 +254,18 @@ pub fn self_jump(
     // an open window costs flesh. Recoverable — barely — and never free.
     // The programmed cryo route (nav console → pods) is the survivable one.
     systems.hull_hp = fixed_clamp((systems.hull_hp.0 - 400).max(64));
+    // S19: a bad roll under fire stresses the frame further (still never
+    // below the survivable floor).
+    if sev >= 2 {
+        systems.hull_hp = fixed_clamp((systems.hull_hp.0 - 200).max(64));
+    }
+    let fire_note = if under_fire {
+        " Spooling under fire — the drive screamed the whole way."
+    } else {
+        ""
+    };
     log.log(format!(
-        "Emergency self-jump: {outcome} (fuel {cost}/1024). You were awake for it. \
+        "Emergency self-jump: {outcome} (fuel {cost}/1024).{fire_note} You were awake for it. \
          Your nose is bleeding and the corridor lights look wrong."
     ));
     next.set(GameMode::Hyperspace);

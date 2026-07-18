@@ -17,9 +17,9 @@ use bevy_rapier3d::prelude::*;
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
-    comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions, hud,
-    interaction, interior, inventory, jump, market, menu, mode, network, onboard, pause, reticle,
-    sensors, setup, ship, soul, ticker,
+    combat, comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions,
+    hud, interaction, interior, inventory, jump, market, menu, mode, network, onboard, pause,
+    reticle, sensors, setup, ship, soul, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -132,6 +132,14 @@ fn main() {
         .init_resource::<crisis::ShipFires>()
         // S16B: crew comm traffic (HUD lines + speech bubbles).
         .init_resource::<comms::CommFeed>()
+        // S19: space combat — seeded encounters, subsystem targeting, the
+        // in-flight power split, and the damage-control contract.
+        .init_resource::<combat::SpawnedEncounters>()
+        .init_resource::<combat::ReinforcedWings>()
+        .init_resource::<combat::PlayerTargeting>()
+        .init_resource::<combat::ShieldRegenCarry>()
+        .init_resource::<combat::PowerSelect>()
+        .init_resource::<combat::DamageControl>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
@@ -162,6 +170,7 @@ fn main() {
                 reticle::spawn_reticle,
                 onboard::spawn_onboard_panels,
                 comms::spawn_comm_hud,
+                combat::spawn_combat_hud,
                 network::connect_on_enter_playing,
                 factions::spawn_reputation_panel,
                 factions::spawn_faction_banner,
@@ -223,6 +232,38 @@ fn main() {
                 .run_if(space_live),
         )
         .add_systems(Update, (ship::collisions,).run_if(space_live))
+        // S19: space combat. Enemies fly/fire whenever the space scene is
+        // live (a gunner at the console fights the same battle the pilot
+        // would); the quick-key controls belong to the stick, so they run
+        // in SpaceFlight only.
+        .add_systems(
+            Update,
+            (
+                combat::spawn_encounters,
+                combat::enemy_fly,
+                combat::enemy_fire,
+                combat::step_enemy_projectiles,
+                combat::combat_hits,
+                combat::step_explosions,
+                combat::player_shield,
+            )
+                .run_if(space_live),
+        )
+        .add_systems(
+            Update,
+            (
+                combat::cycle_target,
+                combat::power_quick_keys,
+                combat::pop_chaff,
+            )
+                .run_if(in_spaceflight),
+        )
+        // The damage-control contract and combat HUD run in every InGame
+        // mode: fires burn (and Tove triages) whichever deck you're on.
+        .add_systems(
+            Update,
+            (combat::damage_control, combat::update_combat_hud).run_if(in_state(AppState::InGame)),
+        )
         // S09d: publish which station view is open, then mask/unmask the
         // interior around it (chained: the mask must see this frame's view).
         .add_systems(
