@@ -70,6 +70,24 @@ Sprints that make LLM behavior into gameplay *content* rather than gameplay
 | S37 | Captain's log — LLM-written personal narrative from session traces | S15, S16, S33 |
 | S38 | Deliberation theater — sequential group deliberation, player as audience | S15, S16, S33 |
 
+### Wave 9 — Living Galaxy
+
+The galaxy is alive. Ecosystems. Cultures. An economy of goods and upgrades.
+Career paths. Piracy. Missions that read the universe state. Planets that
+feel like worlds.
+
+| Sprint | Title | Depends on |
+|---|---|---|
+| S39 | Ecosystem & life — procedural organisms, discovery catalog, event-driven change | S04, S05, S36 |
+| S40 | Trope engine: templates — authored narrative beats with procedural fill | S04, S36 |
+| S41 | Trope engine: scripted encounters — fully authored, multi-scene encounters | S40 |
+| S42 | Unified career progression — military, trade, exploration, science, criminal | S11 |
+| S43 | Piracy — ship capture, contraband, notoriety, bounty system, pirate havens | S11, S19, S20, S42 |
+| S44 | Advanced economy: goods — luxury, cybernetics, production chains, investment | S10, S05 |
+| S45 | Ship room upgrades — widgets, repurposing, power budget, tiered progression | S18, S05, S44 |
+| S46 | Mission engine — context-aware mission generation from economy/politics/state | S10, S11, S40, S42 |
+| S47 | Planet scale & culture — cities, language, customs, architecture, coherent cultures | S04, S11 |
+
 ## Fleet playbook (read before starting any sprint)
 
 **Branching.** One branch per sprint: `sprint-v2/sXX-short-name`, cut from
