@@ -56,6 +56,20 @@ NOT pre-cut into sprints: those briefs get written against real systems once
 the systems exist. Colonization (spec §17) waits for a live MMO — cut it as
 its own sprint after S23 ships.
 
+### Wave 8 — LLM Gameplay
+
+Sprints that make LLM behavior into gameplay *content* rather than gameplay
+*support*. These are the mechanics that make ReachLock about LLMs.
+
+| Sprint | Title | Depends on |
+|---|---|---|
+| S33 | Crew dynamics — concurrent crew deliberation & argument | S13, S15, S16 |
+| S34 | Contract crafting — player expression through rule-based characters | S13, S15, S16 |
+| S35 | Persistent relationship memory — characters that remember weeks | S13, S15, S16 |
+| S36 | Procedural dilemma generator — situations designed for the LLM edge | S04, S15, S16 |
+| S37 | Captain's log — LLM-written personal narrative from session traces | S15, S16, S33 |
+| S38 | Deliberation theater — sequential group deliberation, player as audience | S15, S16, S33 |
+
 ## Fleet playbook (read before starting any sprint)
 
 **Branching.** One branch per sprint: `sprint-v2/sXX-short-name`, cut from
