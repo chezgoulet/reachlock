@@ -76,10 +76,8 @@ pub enum LoadOrderError {
 /// 4. If any mod declares a conflict with another present mod, error.
 pub fn resolve_load_order(manifests: &[ModManifest]) -> Result<Vec<String>, LoadOrderError> {
     let official_id = "reachlock";
-    let mut remaining: Vec<&ModManifest> = manifests
-        .iter()
-        .filter(|m| m.id != official_id)
-        .collect();
+    let mut remaining: Vec<&ModManifest> =
+        manifests.iter().filter(|m| m.id != official_id).collect();
 
     // Check conflicts first.
     for m in manifests {
@@ -115,9 +113,10 @@ pub fn resolve_load_order(manifests: &[ModManifest]) -> Result<Vec<String>, Load
         if ready.is_empty() {
             // Deadlock — a remaining mod has an unsatisfied dep or cycle.
             if let Some(stuck) = remaining.first() {
-                let missing = stuck.dependencies.iter().find(|dep| {
-                    dep.as_str() != official_id && !sorted.contains(dep)
-                });
+                let missing = stuck
+                    .dependencies
+                    .iter()
+                    .find(|dep| dep.as_str() != official_id && !sorted.contains(dep));
                 return Err(LoadOrderError::MissingDependency {
                     mod_id: stuck.id.clone(),
                     dependency: missing.cloned().unwrap_or_default(),

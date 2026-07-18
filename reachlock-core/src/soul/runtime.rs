@@ -341,7 +341,8 @@ pub fn apply_mutation(
 pub fn load_soul_mutations() -> Vec<SoulMutation> {
     ron::from_str(SOUL_MUTATIONS_RON).expect("embedded loup_garou_souls.ron")
 }
-const SOUL_MUTATIONS_RON: &str = include_str!("../../../mods/reachlock/storylines/loup_garou_souls.ron");
+const SOUL_MUTATIONS_RON: &str =
+    include_str!("../../../mods/reachlock/storylines/loup_garou_souls.ron");
 
 #[cfg(test)]
 mod tests {

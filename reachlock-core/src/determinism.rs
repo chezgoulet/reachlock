@@ -517,8 +517,16 @@ pub fn manifest() -> Manifest {
         // across platforms is caught.
         for coord in &[
             crate::galaxy::GalaxyCoord { x: 0, y: 0, z: 0 },
-            crate::galaxy::GalaxyCoord { x: 1000, y: 2000, z: 3000 },
-            crate::galaxy::GalaxyCoord { x: -500, y: 8000, z: -12000 },
+            crate::galaxy::GalaxyCoord {
+                x: 1000,
+                y: 2000,
+                z: 3000,
+            },
+            crate::galaxy::GalaxyCoord {
+                x: -500,
+                y: 8000,
+                z: -12000,
+            },
         ] {
             entries.push(Entry {
                 generator: format!("deep_space_seed_{}_{}_{}", coord.x, coord.y, coord.z),

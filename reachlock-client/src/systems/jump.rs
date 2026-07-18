@@ -130,7 +130,10 @@ pub fn try_gate_jump(
         .any(|g| g.translation.distance(ship_pos.translation) <= GATE_REACH);
     // Jump triggers on the dock/interact key, or automatically if the player
     // already chose a gate from the multi-gate selection overlay.
-    if !near || (!keys.just_pressed(settings.key(InputAction::EditorConfirm)) && state.chosen_gate_id.is_none()) {
+    if !near
+        || (!keys.just_pressed(settings.key(InputAction::EditorConfirm))
+            && state.chosen_gate_id.is_none())
+    {
         return;
     }
 

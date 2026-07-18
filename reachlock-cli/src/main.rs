@@ -4,6 +4,7 @@
 mod content;
 mod determinism;
 mod gen;
+mod mod_cmd;
 
 use clap::{Parser, Subcommand};
 
@@ -26,6 +27,11 @@ enum Command {
         #[command(subcommand)]
         action: determinism::DeterminismCommand,
     },
+    /// Mod packing, installation, and listing (S22).
+    Mod {
+        #[command(subcommand)]
+        action: mod_cmd::ModCommand,
+    },
     /// Validate and preview authored content files (spec §10).
     Content {
         #[command(subcommand)]
@@ -39,6 +45,7 @@ fn main() -> std::process::ExitCode {
         Command::Gen { what } => gen::run(what),
         Command::Determinism { action } => determinism::run(action),
         Command::Content { action } => content::run(action),
+        Command::Mod { action } => mod_cmd::run(action),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,

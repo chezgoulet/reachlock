@@ -20,7 +20,8 @@ const HULL_FRAME_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/hull_
 const STATION_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/station.schema.json");
 const CONTRACT_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/contract.schema.json");
 const SOUL_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/soul.schema.json");
-const ROOM_TEMPLATE_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/room_template.schema.json");
+const ROOM_TEMPLATE_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/room_template.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
