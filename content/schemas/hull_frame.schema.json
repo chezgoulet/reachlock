@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Hull Frame Content File",
+  "description": "A hull frame: the structural constants of one hull class the exterior editor (spec §19) composes a HullConfiguration against — hardpoint slot positions, the engine mount, plating zones, decal slots",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "asset_type", "seed", "universe", "priority", "payload"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for this frame (HullConfiguration.hull_id references it)"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name for display in the editor UI"
+    },
+    "asset_type": {
+      "type": "string",
+      "enum": ["hull_frame"],
+      "description": "Must be 'hull_frame' for this schema"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Canonical seed (hash of content_override, system_id, object_id)"
+    },
+    "universe": {
+      "type": "string",
+      "description": "'all' or a universe tier name (classic, fair_play, spectrum, byok)"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["procedural", "curated", "event", "authoritative"],
+      "description": "Priority level for this content"
+    },
+    "expires_at": {
+      "type": "integer",
+      "description": "Optional expiration timestamp (only meaningful when priority is 'event')"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hull_frame"],
+      "properties": {
+        "hull_frame": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["class", "slots", "engine_mount", "zones", "decal_slots"],
+          "properties": {
+            "class": {
+              "type": "string",
+              "enum": ["shuttle", "freighter", "corvette", "station", "rock"],
+              "description": "The HullClass whose generated silhouette this frame dresses"
+            },
+            "slots": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "position", "size_class"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Slot id, unique within the frame (Hardpoint.slot_id references it)"
+                  },
+                  "position": {
+                    "$ref": "#/definitions/fixed_vec2"
+                  },
+                  "size_class": {
+                    "$ref": "#/definitions/size_class"
+                  }
+                }
+              },
+              "description": "Hardpoint slot layout"
+            },
+            "engine_mount": {
+              "$ref": "#/definitions/fixed_vec2",
+              "description": "Where the engine attachment welds on"
+            },
+            "zones": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Zone id, unique within the frame (ArmorSegment.zone_id references it)"
+                  }
+                }
+              },
+              "description": "Customizable plating zones"
+            },
+            "decal_slots": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Decal slot ids, unique within the frame (Decal.slot_id references them)"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "fixed_vec2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "description": "X coordinate (fixed-point i64, 1/1024)"
+        },
+        "y": {
+          "type": "integer",
+          "description": "Y coordinate (fixed-point i64, 1/1024)"
+        }
+      }
+    },
+    "size_class": {
+      "type": "string",
+      "enum": ["small", "medium", "large"],
+      "description": "Hardpoint size class"
+    }
+  }
+}

@@ -1085,6 +1085,27 @@ fn spawn_actors(
         ));
     }
 
+    // Shipyard terminal (S17): stations only — on board, the Shipyard room
+    // kind doubles as the cargo hold and gets no refit verb.
+    if mode == GameMode::Landed {
+        if let Some(yard) = layout.rooms.iter().find(|r| r.kind == RoomKind::Shipyard) {
+            let c = room_center_point(yard);
+            let y = yard.y as f32 + yard.height as f32 - WALL - 18.0;
+            commands.spawn((
+                Sprite {
+                    image: images.add(pixel::console_sprite(Color::srgb(0.85, 0.65, 0.25))),
+                    ..default()
+                },
+                Transform::from_xyz(c.x, y, ysort(y - 8.0)),
+                ModeScope(mode),
+                Interactable {
+                    label: "SHIPYARD".to_string(),
+                    kind: InteractKind::Shipyard,
+                },
+            ));
+        }
+    }
+
     // On-Board: crew at their stations + the ship's consoles.
     if mode == GameMode::OnBoard {
         spawn_crew(commands, images, layout, roster, shadow);

@@ -16,6 +16,7 @@ use crate::gen;
 
 // Load schemas at compile time
 const HULL_SCHEMA: &str = include_str!("../../content/schemas/hull.schema.json");
+const HULL_FRAME_SCHEMA: &str = include_str!("../../content/schemas/hull_frame.schema.json");
 const STATION_SCHEMA: &str = include_str!("../../content/schemas/station.schema.json");
 const CONTRACT_SCHEMA: &str = include_str!("../../content/schemas/contract.schema.json");
 const SOUL_SCHEMA: &str = include_str!("../../content/schemas/soul.schema.json");
@@ -201,6 +202,20 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                     );
                     return Ok(());
                 }
+                ContentPayload::HullFrame(frame) => {
+                    // Frames are slot layouts over a generated silhouette —
+                    // summarize; the composed hull is what the editor previews.
+                    println!(
+                        "{}: hull frame \"{}\" ({:?}) — {} slot(s), {} zone(s), {} decal slot(s)",
+                        path.display(),
+                        content.display_name,
+                        frame.class,
+                        frame.slots.len(),
+                        frame.zones.len(),
+                        frame.decal_slots.len(),
+                    );
+                    return Ok(());
+                }
             };
             let out = out.unwrap_or_else(|| path.with_extension("svg"));
             std::fs::write(&out, svg).map_err(|e| format!("writing {}: {e}", out.display()))?;
@@ -218,6 +233,7 @@ fn validate_schema(
 ) -> Result<Vec<String>, String> {
     let schema_text = match asset_type {
         AssetType::Hull => HULL_SCHEMA,
+        AssetType::HullFrame => HULL_FRAME_SCHEMA,
         AssetType::Station => STATION_SCHEMA,
         AssetType::Contract => CONTRACT_SCHEMA,
         AssetType::Soul => SOUL_SCHEMA,

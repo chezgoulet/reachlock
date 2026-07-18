@@ -47,6 +47,9 @@ pub enum InteractKind {
     Scanner,
     Miner,
     Power,
+    /// S17: the shipyard terminal — opens the exterior editor while docked
+    /// at a station with a Shipyard room (spec §19).
+    Shipyard,
     Unknown,
 }
 
@@ -103,6 +106,8 @@ pub enum ActivePanel {
     Power,
     /// S12 galactic news feed.
     News,
+    /// S17 exterior editor (spec §19), opened from a Shipyard terminal.
+    ShipExterior,
     Unknown,
 }
 
@@ -246,6 +251,7 @@ pub fn try_interact(
                             InteractKind::Scanner => ActivePanel::Scanner,
                             InteractKind::Miner => ActivePanel::Miner,
                             InteractKind::Power => ActivePanel::Power,
+                            InteractKind::Shipyard => ActivePanel::ShipExterior,
                             _ => ActivePanel::Unknown,
                         };
                     }

@@ -44,6 +44,7 @@ pub fn market_table(economy: &EconomyState, station: &str) -> PriceTable {
 /// the selection, `A`/`D` shift quantity, `B` buys, `N` sells. `Esc`
 /// closes the panel (handled by `pause::toggle_pause`). Writes the save on
 /// every settled trade.
+#[allow(clippy::too_many_arguments)]
 pub fn market_system(
     keys: Res<ButtonInput<KeyCode>>,
     mut inv: ResMut<PlayerInventory>,
@@ -52,6 +53,7 @@ pub fn market_system(
     mut state: ResMut<MarketState>,
     mut ticker: ResMut<UniverseTicker>,
     souls: Res<crate::systems::soul::SoulRegistry>,
+    shipcfg: Res<crate::systems::shipeditor::ShipConfig>,
 ) {
     if *panel != ActivePanel::Market {
         return;
@@ -96,7 +98,13 @@ pub fn market_system(
             if let Some(station) = ticker.state.economy.stations.get_mut(&loc.station_id) {
                 station.record_trade(&good, state.qty as i64);
             }
-            save_player(&inv, &loc, Some(&ticker.state), &souls.states);
+            save_player(
+                &inv,
+                &loc,
+                Some(&ticker.state),
+                &souls.states,
+                shipcfg.config.as_ref(),
+            );
         }
     }
     if keys.just_pressed(KeyCode::KeyN) {
@@ -112,7 +120,13 @@ pub fn market_system(
             if let Some(station) = ticker.state.economy.stations.get_mut(&loc.station_id) {
                 station.record_trade(&good, -(state.qty as i64));
             }
-            save_player(&inv, &loc, Some(&ticker.state), &souls.states);
+            save_player(
+                &inv,
+                &loc,
+                Some(&ticker.state),
+                &souls.states,
+                shipcfg.config.as_ref(),
+            );
         }
     }
 }

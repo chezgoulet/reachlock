@@ -1,0 +1,39 @@
+(
+    id: "frame_freighter",
+    display_name: "Longhaul Freighter Frame",
+    asset_type: hull_frame,
+    seed: 360261647605794,
+    universe: "all",
+    priority: curated,
+    payload: hull_frame((
+        class: freighter,
+        slots: [
+            (
+                id: "bow",
+                position: (x: 53248, y: 0),
+                size_class: small,
+            ),
+            (
+                id: "dorsal",
+                position: (x: 0, y: 45056),
+                size_class: medium,
+            ),
+            (
+                id: "ventral",
+                position: (x: 0, y: -45056),
+                size_class: medium,
+            ),
+        ],
+        engine_mount: (x: -57344, y: 0),
+        zones: [
+            (id: "bow"),
+            (id: "cargo_port"),
+            (id: "cargo_starboard"),
+            (id: "stern"),
+        ],
+        decal_slots: [
+            "bow",
+            "flank",
+        ],
+    )),
+)

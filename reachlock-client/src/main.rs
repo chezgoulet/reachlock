@@ -19,7 +19,7 @@ use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     combat, comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions,
     hud, interaction, interior, inventory, jump, market, menu, mode, network, onboard, pause,
-    reticle, sensors, setup, ship, soul, ticker,
+    reticle, sensors, setup, ship, shipeditor, soul, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -104,6 +104,10 @@ fn main() {
         .init_resource::<interaction::ActivePanel>()
         .init_resource::<inventory::SaveTimer>()
         .init_resource::<market::MarketState>()
+        // S17: the applied exterior config (restored by load_save) + the
+        // editor's live state. Must exist before Startup: load_save reads it.
+        .init_resource::<shipeditor::ShipConfig>()
+        .init_resource::<shipeditor::ShipEditorState>()
         // S12: the one universe — economy + factions + news, advanced by the
         // ticker. Built before Startup so load_save can restore into it.
         .init_resource::<ticker::UniverseTicker>()
@@ -320,6 +324,14 @@ fn main() {
                 onboard::onboard_ship_consoles,
                 jump::fuel_dock,
             )
+                .run_if(in_any_interior),
+        )
+        // S17: the exterior editor (Shipyard terminal panel) + its orbit
+        // preview. Interior-only — the panel opens while docked/landed.
+        .add_systems(
+            Update,
+            (shipeditor::editor_system, shipeditor::editor_preview)
+                .chain()
                 .run_if(in_any_interior),
         )
         // Interior feel layer: figure walk animation + y-sort (avatar, NPCs,
