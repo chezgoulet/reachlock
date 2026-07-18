@@ -21,6 +21,7 @@ pub mod onboard;
 pub mod pause;
 pub mod reticle;
 pub mod sensors;
+pub mod settings_ui;
 pub mod setup;
 pub mod ship;
 pub mod shipeditor;

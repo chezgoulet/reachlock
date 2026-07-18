@@ -11,6 +11,7 @@ use bevy::prelude::*;
 
 use reachlock_core::generator::station::StationKind;
 
+use crate::settings::{InputAction, Settings};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::ship::{PlayerShip, ShipSystems};
 
@@ -39,6 +40,7 @@ pub struct TransitionBeat {
 
 pub fn try_dock(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     ship: Query<&Transform, With<PlayerShip>>,
     stations: Query<(&Transform, &Dockable)>,
     mut next: ResMut<NextState<GameMode>>,
@@ -48,7 +50,7 @@ pub fn try_dock(
     // Enter is the flight "commit transit" key (dock here, gate jump in
     // jump.rs). E can't be used: it's the roll-right axis in flight, and a
     // roll near a station must not slam the ship into a dock.
-    if !keys.just_pressed(KeyCode::Enter) {
+    if !keys.just_pressed(settings.key(InputAction::EditorConfirm)) {
         return;
     }
     let Ok(ship) = ship.single() else {
@@ -79,13 +81,17 @@ pub fn try_dock(
 /// her until someone sits back down, which is the point (docs/SHIPS.md §1).
 pub fn leave_helm(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     location: Res<CurrentLocation>,
     mut systems: ResMut<ShipSystems>,
     mut deck: ResMut<crate::systems::interior::ActiveDeck>,
     mut next: ResMut<NextState<GameMode>>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyB) || location.is_docked || systems.dead {
+    if !keys.just_pressed(settings.key(InputAction::OpenCrewRoster))
+        || location.is_docked
+        || systems.dead
+    {
         return;
     }
     let Some((deck_index, spawn)) = crate::systems::interior::cockpit_seat_spawn() else {
@@ -104,11 +110,12 @@ pub fn leave_helm(
 /// the parked ship / airlock hatch / pilot seat and press E.
 pub fn try_interior_transitions(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mode: Res<State<GameMode>>,
     mut next: ResMut<NextState<GameMode>>,
     mut beat: ResMut<TransitionBeat>,
 ) {
-    if **mode == GameMode::Landed && keys.just_pressed(KeyCode::KeyL) {
+    if **mode == GameMode::Landed && keys.just_pressed(settings.key(InputAction::OpenShipLog)) {
         next.set(GameMode::Undocking);
         beat.timer = Some(Timer::from_seconds(TRANSITION_SECS, TimerMode::Once));
     }

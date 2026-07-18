@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use reachlock_core::sim::SimEvent;
 use reachlock_core::util::rng::Fixed;
 
+use crate::settings::{InputAction, Settings};
 use crate::states::{CurrentLocation, GameMode, ModeScope, SceneRegistry};
 use crate::systems::contract::ShipLog;
 use crate::systems::crew::{CrewFigure, CrewRoster, ORDER_ROOMS};
@@ -250,6 +251,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn onboard_ship_consoles(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     panel: Res<ActivePanel>,
     view: Res<ActiveStationView>,
     mut command: ResMut<ShipCommand>,
@@ -436,17 +438,17 @@ pub fn onboard_ship_consoles(
                         next
                     }
                 };
-                if keys.just_pressed(KeyCode::Digit1) {
+                if keys.just_pressed(settings.key(InputAction::ConsoleDigit1)) {
                     command.power_weapons = bump(command.power_weapons, true);
                 }
-                if keys.just_pressed(KeyCode::Digit2) {
+                if keys.just_pressed(settings.key(InputAction::ConsoleDigit2)) {
                     command.power_engines = bump(command.power_engines, true);
                 }
-                if keys.just_pressed(KeyCode::Digit3) {
+                if keys.just_pressed(settings.key(InputAction::ConsoleDigit3)) {
                     command.power_sensors = bump(command.power_sensors, true);
                 }
                 // S19: the shield generator shares the same budget.
-                if keys.just_pressed(KeyCode::Digit4) {
+                if keys.just_pressed(settings.key(InputAction::ConsoleDigit4)) {
                     command.power_shields = bump(command.power_shields, true);
                 }
                 let free = budget as i32

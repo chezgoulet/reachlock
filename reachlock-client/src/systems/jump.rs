@@ -17,6 +17,7 @@ use reachlock_core::network::ClientMessage;
 use reachlock_core::seed::types::{Seed, SystemId};
 
 use crate::net::{NetMode, NetOutbox};
+use crate::settings::{InputAction, Settings};
 use crate::states::{CurrentLocation, GameMode, SceneRegistry};
 use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::inventory::PlayerInventory;
@@ -66,8 +67,10 @@ impl Default for TransitState {
 pub struct TransitVisual;
 
 /// ENTER near a gate → engage the jump drive (Hyperspace mode).
+#[allow(clippy::too_many_arguments)]
 pub fn try_gate_jump(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     ship: Query<&Transform, With<PlayerShip>>,
     gates: Query<&Transform, With<Gate>>,
     mut state: ResMut<TransitState>,
@@ -84,7 +87,7 @@ pub fn try_gate_jump(
     let near = gates
         .iter()
         .any(|g| g.translation.distance(ship_pos.translation) <= GATE_REACH);
-    if !near || !keys.just_pressed(KeyCode::Enter) {
+    if !near || !keys.just_pressed(settings.key(InputAction::EditorConfirm)) {
         return;
     }
     state.active = true;
@@ -209,9 +212,11 @@ pub fn hyperspace_tick(
 /// Emergency self-jump (`J` in flight): higher fuel cost + a seeded
 /// malfunction roll — a WORSE one with hostiles engaged (S19 escape wiring:
 /// spooling the drive under fire raises the malfunction odds, spec §22).
+#[allow(clippy::too_many_arguments)]
 /// Never a silent fail — the log narrates.
 pub fn self_jump(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mut state: ResMut<TransitState>,
     location: Res<CurrentLocation>,
     mut systems: ResMut<ShipSystems>,
@@ -219,7 +224,7 @@ pub fn self_jump(
     mut next: ResMut<NextState<GameMode>>,
     mut log: ResMut<ShipLog>,
 ) {
-    if state.active || !keys.just_pressed(KeyCode::KeyJ) {
+    if state.active || !keys.just_pressed(settings.key(InputAction::OpenMissionBoard)) {
         return;
     }
     let cost = SELF_JUMP_BURN;
@@ -275,12 +280,13 @@ pub fn self_jump(
 /// landed/docked; fills the tank and charges the wallet.
 pub fn fuel_dock(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     location: Res<CurrentLocation>,
     mut inv: ResMut<PlayerInventory>,
     mut systems: ResMut<ShipSystems>,
     mut log: ResMut<ShipLog>,
 ) {
-    if !location.is_docked || !keys.just_pressed(KeyCode::KeyF) {
+    if !location.is_docked || !keys.just_pressed(settings.key(InputAction::FireMissile)) {
         return;
     }
     let need = (1024 - systems.fuel.0).max(0);

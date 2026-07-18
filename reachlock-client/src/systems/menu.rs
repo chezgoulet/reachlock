@@ -1,11 +1,22 @@
-//! Main menu: title card, Enter to launch. The seed IS the game — show it.
+//! Main menu: title card with a selectable Launch / Settings option. The seed
+//! IS the game — show it. Settings opens the S31 settings panel.
 
 use bevy::prelude::*;
 use bevy::ui::IsDefaultUiCamera;
 
+use crate::settings::{InputAction, Settings};
 use crate::states::AppState;
+use crate::systems::settings_ui::{open_settings_from_menu, SettingsUiState};
 use crate::systems::setup::SYSTEM_SEED;
 use crate::systems::ship::SpaceCamera;
+
+/// Which main-menu option is highlighted. Tab / ↓ cycles; Enter activates.
+#[derive(Resource, Default, PartialEq, Eq)]
+pub enum MenuSelection {
+    #[default]
+    Launch,
+    Settings,
+}
 
 #[derive(Component)]
 pub struct MenuUi;
@@ -37,9 +48,7 @@ pub fn spawn_menu(mut commands: Commands) {
     ));
     commands.spawn((
         MenuUi,
-        Text::new(format!(
-            "R E A C H L O C K\n\nsystem seed {SYSTEM_SEED:#x}\n\npress ENTER to launch"
-        )),
+        Text::new(menu_text(&MenuSelection::default())),
         TextFont {
             font_size: 28.0,
             ..default()
@@ -54,16 +63,64 @@ pub fn spawn_menu(mut commands: Commands) {
     ));
 }
 
+fn menu_text(sel: &MenuSelection) -> String {
+    let launch = if *sel == MenuSelection::Launch {
+        "> "
+    } else {
+        "  "
+    };
+    let settings = if *sel == MenuSelection::Settings {
+        "> "
+    } else {
+        "  "
+    };
+    format!(
+        "R E A C H L O C K\n\nsystem seed {SYSTEM_SEED:#x}\n\n\
+         {launch}Launch\n\
+         {settings}Settings\n\n\
+         Tab/↓ select · Enter activate"
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn menu_input(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mut next: ResMut<NextState<AppState>>,
+    mut sel: ResMut<MenuSelection>,
+    mut ui: ResMut<SettingsUiState>,
     menu: Query<Entity, With<MenuUi>>,
+    mut texts: Query<&mut Text, With<MenuUi>>,
     mut commands: Commands,
 ) {
-    if keys.just_pressed(KeyCode::Enter) {
-        for entity in &menu {
-            commands.entity(entity).despawn();
+    // S31: don't drive the menu while the settings panel is open (it owns the
+    // keyboard); closing the panel returns focus here.
+    if ui.open {
+        return;
+    }
+    let cycle = keys.just_pressed(KeyCode::Tab)
+        || keys.just_pressed(KeyCode::ArrowDown)
+        || keys.just_pressed(KeyCode::ArrowUp);
+    if cycle {
+        *sel = match *sel {
+            MenuSelection::Launch => MenuSelection::Settings,
+            MenuSelection::Settings => MenuSelection::Launch,
+        };
+        if let Ok(mut t) = texts.single_mut() {
+            **t = menu_text(&sel);
         }
-        next.set(AppState::InGame);
+    }
+    if keys.just_pressed(settings.key(InputAction::EditorConfirm)) {
+        match *sel {
+            MenuSelection::Launch => {
+                for entity in &menu {
+                    commands.entity(entity).despawn();
+                }
+                next.set(AppState::InGame);
+            }
+            MenuSelection::Settings => {
+                open_settings_from_menu(ui.as_mut(), &settings);
+            }
+        }
     }
 }

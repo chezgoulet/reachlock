@@ -28,6 +28,7 @@ use reachlock_core::util::rng::SeededRng;
 
 use crate::bridge;
 use crate::pixel::{self, Look, TILE};
+use crate::settings::{InputAction, Settings};
 use crate::states::{CurrentLocation, GameMode, ModeScope, SceneRegistry};
 use crate::systems::content_index::ContentIndex;
 use crate::systems::crew::{CrewFigure, CrewNav, CrewRoster};
@@ -857,6 +858,7 @@ fn spawn_props(
 /// apertures (`walkable`).
 pub fn walk_avatar(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     time: Res<Time>,
     interior: Res<CurrentInterior>,
     dialogue: Res<crate::systems::dialogue::DialogueSession>,
@@ -876,16 +878,24 @@ pub fn walk_avatar(
     };
 
     let mut dir = Vec2::ZERO;
-    if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
+    if keys.pressed(settings.key(InputAction::ThrustForward))
+        || keys.pressed(settings.key(InputAction::EditorCursorUp))
+    {
         dir.y += 1.0;
     }
-    if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
+    if keys.pressed(settings.key(InputAction::ThrustBackward))
+        || keys.pressed(settings.key(InputAction::EditorCursorDown))
+    {
         dir.y -= 1.0;
     }
-    if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
+    if keys.pressed(settings.key(InputAction::StrafeLeft))
+        || keys.pressed(settings.key(InputAction::EditorCursorLeft))
+    {
         dir.x -= 1.0;
     }
-    if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
+    if keys.pressed(settings.key(InputAction::StrafeRight))
+        || keys.pressed(settings.key(InputAction::EditorCursorRight))
+    {
         dir.x += 1.0;
     }
     if dir == Vec2::ZERO {

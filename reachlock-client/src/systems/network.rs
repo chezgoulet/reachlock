@@ -20,6 +20,7 @@ use reachlock_core::network::{ClientMessage, ServerMessage};
 use reachlock_core::seed::types::{Seed, SystemId};
 
 use crate::net::{handshake_url, ConnectionState, NetMode, NetOutbox, TransportEvent, WsTransport};
+use crate::settings::Settings;
 use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog};
 use crate::systems::setup::SYSTEM_SEED;
 use crate::systems::ship::ShipSystems;
@@ -88,6 +89,7 @@ fn spike_system_id() -> SystemId {
 /// lands.
 pub fn connect_on_enter_playing(
     mode: Res<NetMode>,
+    settings: Res<Settings>,
     mut client: NonSendMut<NetworkClient>,
     mut conn: ResMut<ConnectionState>,
     mut log: ResMut<ShipLog>,
@@ -100,7 +102,15 @@ pub fn connect_on_enter_playing(
     else {
         return; // offline: never opens a socket
     };
-    let target = handshake_url(url, player, *universe);
+    // S31: the persisted server URL + auto-connect preference can override the
+    // env-derived one (NetMode stays frozen; this only chooses the target).
+    let effective_url = if settings.network.auto_connect && !settings.network.server_url.is_empty()
+    {
+        settings.network.server_url.as_str()
+    } else {
+        url.as_str()
+    };
+    let target = handshake_url(effective_url, player, *universe);
     match WsTransport::connect(&target) {
         Ok(t) => {
             client.transport = Some(t);

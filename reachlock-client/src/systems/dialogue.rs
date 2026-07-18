@@ -19,6 +19,7 @@ use reachlock_core::dialogue::{
 use reachlock_core::soul::SoulEvent;
 
 use crate::net::{NetMode, NetOutbox};
+use crate::settings::{InputAction, Settings};
 use crate::systems::contract::ShipLog;
 use crate::systems::crew::CrewFigure;
 use crate::systems::interaction::{ActivePanel, Npc};
@@ -149,6 +150,7 @@ fn start_session(
 #[allow(clippy::too_many_arguments)]
 pub fn dialogue_input(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mut chars: bevy::ecs::message::MessageReader<KeyboardInput>,
     mut session: ResMut<DialogueSession>,
     mut souls: ResMut<SoulRegistry>,
@@ -189,11 +191,11 @@ pub fn dialogue_input(
                 _ => {}
             }
         }
-        if keys.just_pressed(KeyCode::Escape) {
+        if keys.just_pressed(settings.key(InputAction::Pause)) {
             active.typing = None;
             return;
         }
-        if keys.just_pressed(KeyCode::Enter) {
+        if keys.just_pressed(settings.key(InputAction::EditorConfirm)) {
             let utterance = active.typing.take().unwrap_or_default();
             if !utterance.trim().is_empty() {
                 submit_utterance(
@@ -227,7 +229,7 @@ pub fn dialogue_input(
         .cloned();
     let Some(node) = node else {
         // Edge-of-graph beat: only the free-input edge remains.
-        if keys.just_pressed(KeyCode::Digit9) {
+        if keys.just_pressed(settings.key(InputAction::QuickSave)) {
             active.typing = Some(String::new());
         }
         return;
@@ -320,7 +322,7 @@ pub fn dialogue_input(
         return;
     }
 
-    if node.llm_edge && keys.just_pressed(KeyCode::Digit9) {
+    if node.llm_edge && keys.just_pressed(settings.key(InputAction::QuickSave)) {
         active.typing = Some(String::new());
     }
 }

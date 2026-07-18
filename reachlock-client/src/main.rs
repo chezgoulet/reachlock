@@ -7,6 +7,7 @@
 mod bridge;
 mod net;
 mod pixel;
+mod settings;
 mod states;
 mod systems;
 
@@ -19,7 +20,7 @@ use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     combat, comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions,
     hud, interaction, interior, inventory, jump, market, menu, mode, network, onboard, pause,
-    reticle, sensors, setup, ship, shipeditor, soul, ticker,
+    reticle, sensors, settings_ui, setup, ship, shipeditor, soul, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -97,6 +98,8 @@ fn main() {
         .init_resource::<interior::ActiveDeck>()
         .init_resource::<docking::TransitionBeat>()
         .init_resource::<pause::PausedFrom>()
+        .init_resource::<pause::PauseSelection>()
+        .init_resource::<menu::MenuSelection>()
         // S07/S08: inventory, crew, interaction, autosave.
         .init_resource::<inventory::PlayerInventory>()
         .init_resource::<crew::CrewRoster>()
@@ -113,6 +116,11 @@ fn main() {
         // reads it; enter_interior realizes it on boarding.
         .init_resource::<shipeditor::InteriorConfig>()
         .init_resource::<shipeditor::InteriorEditorState>()
+        // S31: settings loaded from disk BEFORE any system reads them. The
+        // cached help text is derived from it.
+        .insert_resource(settings::load_settings())
+        .init_resource::<settings::HelpTextCache>()
+        .init_resource::<settings_ui::SettingsUiState>()
         // S12: the one universe — economy + factions + news, advanced by the
         // ticker. Built before Startup so load_save can restore into it.
         .init_resource::<ticker::UniverseTicker>()
@@ -164,11 +172,23 @@ fn main() {
                     .chain(),
                 menu::spawn_menu,
                 sensors::init_blip_assets,
+                setup::apply_video_settings,
             ),
         )
         .add_systems(
             Update,
             menu::menu_input.run_if(in_state(AppState::MainMenu)),
+        )
+        // S31: keep the help-text cache in sync with keybind changes.
+        .add_systems(Update, hud::refresh_help_cache)
+        // S31: settings panel — spawn/despawn the text entity and drive it.
+        // Both systems early-return when the panel is closed.
+        .add_systems(
+            Update,
+            (
+                settings_ui::sync_settings_panel,
+                settings_ui::settings_ui_system,
+            ),
         )
         // HUD spawns once when the game starts; it adapts per mode in
         // `update_hud`.

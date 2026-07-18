@@ -12,6 +12,7 @@
 
 use bevy::prelude::*;
 
+use crate::settings::{InputAction, Settings};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::mode::PlayerAvatar;
 
@@ -137,6 +138,7 @@ const LEAVE_RANGE: f32 = 64.0;
 #[allow(clippy::too_many_arguments)]
 pub fn try_interact(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     avatar: Query<&Transform, With<PlayerAvatar>>,
     interactables: Query<(Entity, &Transform, &Interactable)>,
     mut prompt: ResMut<InteractionPrompt>,
@@ -194,9 +196,13 @@ pub fn try_interact(
 
     match nearest {
         Some((_, e, label, kind, pos)) => {
-            prompt.text = Some(format!("[E] {label}"));
+            prompt.text = Some(format!(
+                "[{}] {label}",
+                settings.key_display(InputAction::Interact)
+            ));
             prompt.target = Some(pos);
-            if keys.just_pressed(KeyCode::KeyE) && *panel == ActivePanel::None {
+            if keys.just_pressed(settings.key(InputAction::Interact)) && *panel == ActivePanel::None
+            {
                 match kind {
                     // Mode transitions — no panel, the world changes.
                     InteractKind::Board => {

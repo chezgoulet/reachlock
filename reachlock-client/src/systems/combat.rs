@@ -30,6 +30,7 @@ use reachlock_core::generator::FixedVec2;
 use reachlock_core::util::rng::{Fixed, SeededRng};
 
 use crate::bridge;
+use crate::settings::{InputAction, Settings};
 use crate::states::{CurrentLocation, GameMode, ModeScope};
 use crate::systems::contract::{Deliberation, DeliberationState, ShipLog};
 use crate::systems::sensors::Contact;
@@ -689,10 +690,11 @@ pub fn player_shield(
 /// sensors → drive (spec §22: strand it, silence it, blind it, trap it).
 pub fn cycle_target(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mut targeting: ResMut<PlayerTargeting>,
     mut log: ResMut<ShipLog>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyR) {
+    if !keys.just_pressed(settings.key(InputAction::CycleTarget)) {
         return;
     }
     targeting.subsystem = match targeting.subsystem {
@@ -714,19 +716,20 @@ pub fn cycle_target(
 /// console gave them — the stick only juggles the combat triangle.
 pub fn power_quick_keys(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mut select: ResMut<PowerSelect>,
     mut command: ResMut<ShipCommand>,
     mut log: ResMut<ShipLog>,
 ) {
-    if keys.just_pressed(KeyCode::ArrowUp) {
+    if keys.just_pressed(settings.key(InputAction::PowerSelectUp)) {
         select.0 = (select.0 + 2) % 3;
     }
-    if keys.just_pressed(KeyCode::ArrowDown) {
+    if keys.just_pressed(settings.key(InputAction::PowerSelectDown)) {
         select.0 = (select.0 + 1) % 3;
     }
-    let delta: i8 = if keys.just_pressed(KeyCode::ArrowRight) {
+    let delta: i8 = if keys.just_pressed(settings.key(InputAction::PowerAdjustRight)) {
         1
-    } else if keys.just_pressed(KeyCode::ArrowLeft) {
+    } else if keys.just_pressed(settings.key(InputAction::PowerAdjustLeft)) {
         -1
     } else {
         return;
@@ -756,13 +759,14 @@ pub fn power_quick_keys(
 /// dies, and every engaged enemy loses lock and breaks off for a beat.
 pub fn pop_chaff(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mut commands: Commands,
     mut systems: ResMut<ShipSystems>,
     bolts: Query<Entity, With<EnemyProjectile>>,
     mut enemies: Query<&mut EnemyShip>,
     mut log: ResMut<ShipLog>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyC) {
+    if !keys.just_pressed(settings.key(InputAction::LaunchChaff)) {
         return;
     }
     if systems.chaff == 0 {
