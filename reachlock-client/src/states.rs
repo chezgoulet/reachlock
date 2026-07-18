@@ -108,6 +108,12 @@ pub struct CurrentLocation {
     pub station_seed: u64,
     /// Kind of the docked station, if any.
     pub station_kind: Option<StationKind>,
+    /// S20: id of the authored hostile location to fight through this Landed
+    /// visit, if any. `None` for an ordinary station landing (no raiders);
+    /// `Some(id)` when the player enters a derelict POI. Set by whatever POI
+    /// approach flow routes the player into a fight; `spawn_landed_enemies`
+    /// reads it on `OnEnter(Landed)`.
+    pub hostile_location_id: Option<String>,
 }
 
 impl Default for CurrentLocation {
@@ -124,6 +130,7 @@ impl Default for CurrentLocation {
             station_position: Vec2::ZERO,
             station_seed: 0,
             station_kind: None,
+            hostile_location_id: None,
         }
     }
 }

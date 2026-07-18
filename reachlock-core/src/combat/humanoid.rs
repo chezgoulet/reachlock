@@ -387,7 +387,10 @@ mod tests {
         let intent = humanoid_step(&mut state, &mut timer, &s, &arch);
         assert_eq!(state, HumanoidState::Flee);
         // Runs directly away from the target.
-        assert_eq!(intent, HumanoidIntent::Walk(-s.to_target.x.0, -s.to_target.y.0));
+        assert_eq!(
+            intent,
+            HumanoidIntent::Walk(-s.to_target.x.0, -s.to_target.y.0)
+        );
     }
 
     #[test]
@@ -451,12 +454,18 @@ mod tests {
         let mut s = senses();
         s.hp_frac = 0;
         // First zero-HP tick reports Die and latches Downed.
-        assert_eq!(humanoid_step(&mut state, &mut timer, &s, &arch), HumanoidIntent::Die);
+        assert_eq!(
+            humanoid_step(&mut state, &mut timer, &s, &arch),
+            HumanoidIntent::Die
+        );
         assert_eq!(state, HumanoidState::Downed);
         // Thereafter it idles regardless of what the world does.
         s.hp_frac = ONE; // even a phantom heal doesn't self-revive
         s.dist_to_target = 10;
-        assert_eq!(humanoid_step(&mut state, &mut timer, &s, &arch), HumanoidIntent::Idle);
+        assert_eq!(
+            humanoid_step(&mut state, &mut timer, &s, &arch),
+            HumanoidIntent::Idle
+        );
         assert_eq!(state, HumanoidState::Downed);
     }
 
@@ -471,7 +480,12 @@ mod tests {
             HumanoidState::Flee,
         ];
         let mut battery = Vec::new();
-        for dist in [10i64, 1024, arch.chase_radius + 1, arch.disengage_radius + 1] {
+        for dist in [
+            10i64,
+            1024,
+            arch.chase_radius + 1,
+            arch.disengage_radius + 1,
+        ] {
             for hp in [ONE, arch.flee_hp_frac - 1] {
                 for in_range in [false, true] {
                     let mut s = senses();
@@ -504,7 +518,11 @@ mod tests {
     fn step_is_deterministic() {
         let arch = archetype();
         let s = senses();
-        for state in [HumanoidState::Idle, HumanoidState::Chase, HumanoidState::Flee] {
+        for state in [
+            HumanoidState::Idle,
+            HumanoidState::Chase,
+            HumanoidState::Flee,
+        ] {
             let mut a = state;
             let mut ta = 0;
             let mut b = state;

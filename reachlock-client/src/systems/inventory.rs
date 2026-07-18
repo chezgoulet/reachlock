@@ -206,9 +206,10 @@ pub fn load_player() -> Option<(PlayerInventory, CurrentLocation)> {
             system_id: reachlock_core::seed::types::SystemId(s.system_id),
             system_biome: parse_biome(&s.system_biome),
             system_fidelity: parse_fidelity(&s.system_fidelity),
-            galaxy_coord: s
-                .galaxy_coord
-                .map(|[x, y, z]| reachlock_core::galaxy::GalaxyCoord { x, y, z }),
+            galaxy_coord: s.galaxy_coord.map(|[x, y, z]| reachlock_core::galaxy::GalaxyCoord { x, y, z }),
+            // Hostile-location routing is transient (set on POI approach), not
+            // persisted — a reload never drops you mid-fight.
+            hostile_location_id: None,
             station_id: s.station_id,
             is_docked: s.is_docked,
             display_name: s.display_name,

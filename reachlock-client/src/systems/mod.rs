@@ -14,6 +14,7 @@ pub mod interaction;
 pub mod interior;
 pub mod inventory;
 pub mod jump;
+pub mod landed_combat;
 pub mod market;
 pub mod menu;
 pub mod mode;

@@ -97,7 +97,10 @@ mod tests {
         // Target 100 units due east, attacker facing east, 5-unit reach isn't
         // enough — but 200 is, and it's straight ahead.
         assert!(in_melee_arc((0, 0), EAST, (100, 0), 200, 45));
-        assert!(!in_melee_arc((0, 0), EAST, (100, 0), 50, 45), "out of range");
+        assert!(
+            !in_melee_arc((0, 0), EAST, (100, 0), 50, 45),
+            "out of range"
+        );
     }
 
     #[test]

@@ -19,8 +19,8 @@ use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     combat, comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions,
-    galaxy_map, hud, interaction, interior, inventory, jump, market, menu, mode, network, onboard,
-    pause, reticle, sensors, settings_ui, setup, ship, shipeditor, soul, ticker,
+    galaxy_map, hud, interaction, interior, inventory, jump, landed_combat, market, menu, mode,
+    network, onboard, pause, reticle, sensors, settings_ui, setup, ship, shipeditor, soul, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -161,6 +161,10 @@ fn main() {
         .init_resource::<combat::ShieldRegenCarry>()
         .init_resource::<combat::PowerSelect>()
         .init_resource::<combat::DamageControl>()
+        // S20: landed (humanoid) combat — enemy/companion state, the 10 Hz
+        // tick gate.
+        .init_resource::<landed_combat::LandedCombatState>()
+        .init_resource::<landed_combat::LandedTick>()
         // S08: start with the canonical crew (stable ids for S13 souls).
         .insert_resource(crew::CrewRoster::default_crew())
         .add_systems(
@@ -225,7 +229,38 @@ fn main() {
         // early-out when `SceneRegistry` already holds the target mode).
         .add_systems(OnEnter(GameMode::SpaceFlight), setup::enter_spaceflight)
         // --- Landed scene ---
-        .add_systems(OnEnter(GameMode::Landed), interior::enter_interior)
+        .add_systems(
+            OnEnter(GameMode::Landed),
+            (
+                interior::enter_interior,
+                landed_combat::spawn_landed_enemies,
+            )
+                .chain(),
+        )
+        // S20: landed combat sim runs on a fixed 10 Hz tick (frame-rate
+        // independent i-frames). The gate advances first; the rest read it.
+        .add_systems(
+            FixedUpdate,
+            (
+                landed_combat::advance_landed_tick,
+                landed_combat::step_landed_enemies,
+                landed_combat::apply_landed_hits,
+                landed_combat::companion_combat_system,
+            )
+                .chain()
+                .run_if(in_state(GameMode::Landed)),
+        )
+        // S20: input capture, gizmo/HUD render, and prop resolution run every
+        // frame (input responsiveness + immediate-mode gizmos).
+        .add_systems(
+            Update,
+            (
+                landed_combat::landed_combat_player,
+                landed_combat::render_landed_combat,
+                landed_combat::step_props,
+            )
+                .run_if(in_state(GameMode::Landed)),
+        )
         // --- OnBoard scene ---
         .add_systems(OnEnter(GameMode::OnBoard), interior::enter_interior)
         // Deck transit: the ladder clears `SceneRegistry::scene`, and this

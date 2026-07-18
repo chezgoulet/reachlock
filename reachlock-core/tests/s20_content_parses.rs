@@ -5,7 +5,12 @@ fn content(rel: &str) -> String {
 }
 #[test]
 fn archetypes_parse() {
-    for f in ["raider_melee", "raider_gunner", "security_bot", "raider_boss"] {
+    for f in [
+        "raider_melee",
+        "raider_gunner",
+        "security_bot",
+        "raider_boss",
+    ] {
         let text = content(&format!("combat/{f}.ron"));
         let a: HostileArchetype = ron::from_str(&text).unwrap_or_else(|e| panic!("{f}: {e}"));
         assert_eq!(a.id, f);
@@ -17,6 +22,13 @@ fn location_parses() {
     let loc: HostileLocation = ron::from_str(&text).expect("derelict parses");
     assert_eq!(loc.rooms.len(), 5);
     assert!(loc.keycard.is_some());
-    let known = ["raider_melee", "raider_gunner", "security_bot", "raider_boss"];
-    for a in loc.referenced_archetypes() { assert!(known.contains(&a), "unknown archetype {a}"); }
+    let known = [
+        "raider_melee",
+        "raider_gunner",
+        "security_bot",
+        "raider_boss",
+    ];
+    for a in loc.referenced_archetypes() {
+        assert!(known.contains(&a), "unknown archetype {a}");
+    }
 }
