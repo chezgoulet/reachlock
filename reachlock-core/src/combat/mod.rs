@@ -10,9 +10,18 @@
 pub mod behavior;
 pub mod damage;
 pub mod encounter;
+pub mod humanoid;
+pub mod location;
+pub mod melee;
 
 pub use behavior::{enemy_step, BehaviorState, Intent, Senses};
 pub use damage::{
     apply_hit, CombatVessel, DamageResult, SubsystemKind, SubsystemState, WeaponKind, WeaponStats,
 };
 pub use encounter::{generate_encounters, EncounterSpawn, EnemyClass};
+pub use humanoid::{
+    humanoid_step, AttackWindow, BlockWindow, DodgeWindow, HostileArchetype, HumanoidIntent,
+    HumanoidSenses, HumanoidState,
+};
+pub use location::{HostileLocation, HostileProp, HostileRoom, HostileSpawn, Keycard};
+pub use melee::{block_reduce, in_melee_arc, is_dodging};

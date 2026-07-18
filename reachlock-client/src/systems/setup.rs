@@ -16,6 +16,7 @@
 //! scene entity is `ModeScope(GameMode::SpaceFlight)` and torn down on exit.
 
 use crate::settings::Settings;
+use crate::systems::docking::HostileDockable;
 use bevy::audio::Volume;
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, VideoModeSelection};
@@ -23,9 +24,9 @@ use bevy_rapier3d::prelude::*;
 use reachlock_core::content::{resolve, ContentPayload, Resolved, SeedParams};
 use reachlock_core::generator::hull::HullClass;
 use reachlock_core::generator::system::{
-    generate_system, AsteroidField, Fidelity, Orbit, StationSlot,
+    generate_system, AsteroidField, Fidelity, HostileLocationKind, Orbit, StationSlot,
 };
-use reachlock_core::generator::{self, FixedVec2, GeneratedMesh};
+use reachlock_core::generator::{self, generate_hull_class, FixedVec2, GeneratedMesh};
 use reachlock_core::universe::tier::UniverseTier;
 use reachlock_core::util::color::{generate_palette, Palette};
 use reachlock_core::util::rng::{Fixed, SeededRng};
@@ -164,6 +165,21 @@ pub fn enter_spaceflight(
             &palette,
             slot,
             index,
+        );
+    }
+    // S20: spawn boardable hostile location markers (derelict wrecks) in the
+    // flight scene. The player flies to one and docks to enter landed combat.
+    for slot in &system.hostile_locations {
+        let location_id = match slot.kind {
+            HostileLocationKind::Derelict => "derelict_hold",
+        };
+        spawn_derelict_marker(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            slot.position,
+            slot.seed,
+            location_id.to_string(),
         );
     }
     for orbit in &system.orbits {
@@ -638,6 +654,147 @@ fn spawn_gate_marker(
         ModeScope(GameMode::SpaceFlight),
         Gate,
     ));
+}
+
+/// Marker for a derelict's beacon ring — used by `pulse_beacons` to animate
+/// emissive intensity at ~4 Hz without the asset store thrash per frame.
+#[derive(Component)]
+pub struct BeaconPulse {
+    pub phase: f32,
+}
+
+/// Tags a child mesh (torus ring) whose emissive should pulse with the
+/// derelict's beacon rhythm. Only entities with this component get their
+/// emissive overwritten by `pulse_beacons`.
+#[derive(Component)]
+pub struct BeaconRing;
+
+/// Spawn a polished derelict wreck in the flight scene — a boardable hostile
+/// location marker. Composition: generated Freighter hull (damaged, dark-rust
+/// material) + crossed beacon rings (red-orange emissive torii creating a 3D
+/// crosshair) + hazard point light + 10 debris fragments + subtle dust halo.
+/// No assets — everything is procedural from the seed.
+#[allow(clippy::too_many_arguments)]
+fn spawn_derelict_marker(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    position: FixedVec2,
+    seed: u64,
+    location_id: String,
+) {
+    let pos = plane(position, 0.0);
+    let damage_seed = seed ^ 0xDEAD_5EED;
+    let hull = generate_hull_class(damage_seed, HullClass::Freighter);
+    let radius = bounding_radius(&hull);
+    let mut rng = reachlock_core::util::rng::SeededRng::new(seed);
+
+    // Hull mesh (damaged Freighter, dark-rust palette).
+    let hull_mesh = meshes.add(bridge::mesh3d_from_generated(&hull, radius * 0.8));
+    let hull_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.18, 0.14, 0.10),
+        perceptual_roughness: 0.9,
+        metallic: 0.3,
+        emissive: LinearRgba::rgb(0.4, 0.15, 0.03),
+        ..default()
+    });
+
+    // Beacon ring mesh (thin torus).
+    let beacon_mesh = meshes.add(Torus::new(radius * 1.1, radius * 1.18));
+    let beacon_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.0, 0.0, 0.0, 0.0),
+        emissive: LinearRgba::rgb(8.0, 1.5, 0.3),
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        ..default()
+    });
+
+    // Debris cloud (faint dust halo).
+    let cloud_mesh = meshes.add(Sphere::new(radius * 1.5));
+    let cloud_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.30, 0.20, 0.08, 0.04),
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        ..default()
+    });
+
+    commands
+        .spawn((
+            Transform::from_translation(pos),
+            Visibility::default(),
+            RigidBody::Fixed,
+            Collider::ball(radius * 1.6),
+            Contact,
+            HostileDockable { location_id },
+            BeaconPulse {
+                phase: rng.next_below(1000) as f32 * 0.001,
+            },
+            ModeScope(GameMode::SpaceFlight),
+        ))
+        .with_children(|parent| {
+            // Hull
+            parent.spawn((
+                Mesh3d(hull_mesh.clone()),
+                MeshMaterial3d(hull_mat.clone()),
+                Transform::IDENTITY,
+            ));
+            // Beacon ring A — tilted on X
+            parent.spawn((
+                BeaconRing,
+                Mesh3d(beacon_mesh.clone()),
+                MeshMaterial3d(beacon_mat.clone()),
+                Transform::from_rotation(Quat::from_rotation_x(0.8)),
+            ));
+            // Beacon ring B — tilted on Z, crossed with A
+            parent.spawn((
+                BeaconRing,
+                Mesh3d(beacon_mesh.clone()),
+                MeshMaterial3d(beacon_mat.clone()),
+                Transform::from_rotation(Quat::from_rotation_z(0.8)),
+            ));
+            // Hazard point light
+            parent.spawn((
+                PointLight {
+                    range: 300.0,
+                    intensity: 8000.0,
+                    color: Color::srgb(1.0, 0.35, 0.08),
+                    shadows_enabled: false,
+                    ..default()
+                },
+                Transform::from_xyz(0.0, radius * 0.4, 0.0),
+            ));
+            // Debris fragments (10 pieces, seeded positions)
+            for _ in 0..10 {
+                let dx = (rng.next_below(160) as f32 - 80.0) * 0.01 * radius;
+                let dy = (rng.next_below(160) as f32 - 80.0) * 0.01 * radius;
+                let dz = (rng.next_below(160) as f32 - 80.0) * 0.01 * radius;
+                let size = (rng.next_below(10) as f32 + 4.0) * 0.01 * radius;
+                parent.spawn((
+                    Mesh3d(meshes.add(Cuboid::new(size, size * 0.6, size))),
+                    MeshMaterial3d(hull_mat.clone()),
+                    Transform {
+                        translation: Vec3::new(dx, dy, dz),
+                        rotation: Quat::from_axis_angle(
+                            Vec3::new(
+                                rng.next_below(100) as f32 * 0.01,
+                                rng.next_below(100) as f32 * 0.01,
+                                rng.next_below(100) as f32 * 0.01,
+                            )
+                            .normalize()
+                            .max(Vec3::Z),
+                            rng.next_below(100) as f32 * 0.01,
+                        ),
+                        scale: Vec3::ONE,
+                    },
+                ));
+            }
+            // Debris cloud (dust halo)
+            parent.spawn((
+                Mesh3d(cloud_mesh),
+                MeshMaterial3d(cloud_mat),
+                Transform::IDENTITY,
+            ));
+        });
 }
 
 fn polar_offset(radius: i64, turn: u16) -> FixedVec2 {

@@ -8,12 +8,15 @@ use reachlock_core::galaxy::{ChartedSystem, GateNetwork};
 /// at startup (local mode)"). Empty on wasm — there is no filesystem to
 /// read; server distribution of overrides is S23's problem.
 ///
-/// S21 adds two typed sub-indices for the galaxy module: charted systems
-/// and the gate network, loaded as plain structs from `content/systems/`
-/// and `content/gate_network/`.
+/// S20 adds typed sub-indices for landed-combat content; S21 adds galaxy
+/// content. All loaded as plain structs from subdirectories of `content/`.
 #[derive(Resource, Default)]
 pub struct ContentIndex {
     pub files: Vec<ContentFile>,
+    /// S20 enemy/companion archetypes, keyed by `HostileArchetype::id`.
+    pub hostile_archetypes: HashMap<String, reachlock_core::combat::HostileArchetype>,
+    /// S20 authored hostile interiors, keyed by `HostileLocation::id`.
+    pub hostile_locations: HashMap<String, reachlock_core::combat::HostileLocation>,
     /// S21: authored charted systems, keyed by system id.
     pub charted_systems: HashMap<String, ChartedSystem>,
     /// S21: the authored gate network (single file: `core_region.ron`).
@@ -50,8 +53,11 @@ pub fn load_content_index(mut commands: Commands) {
     } else {
         warn!("content index: no content/ directory found at {root:?}; index is empty");
     }
-    // S21: load charted systems and gate network as plain (non-ContentFile)
-    // structs, matching the pattern from S20's hostile combat content.
+    // S20/S21: typed content loaded as plain structs (not ContentFile envelope).
+    let hostile_archetypes = load_typed::<reachlock_core::combat::HostileArchetype, _>(
+        root.join("combat"), "archetype", |a| a.id.clone());
+    let hostile_locations = load_typed::<reachlock_core::combat::HostileLocation, _>(
+        root.join("locations"), "location", |l| l.id.clone());
     let charted_systems = load_typed(root.join("systems"), "system", |s: &ChartedSystem| {
         s.id.clone()
     });
@@ -63,12 +69,16 @@ pub fn load_content_index(mut commands: Commands) {
         .next()
         .map(|(_, n)| n);
     info!(
-        "content index: loaded {} authored file(s), {} charted system(s)",
+        "content index: loaded {} authored file(s), {} archetype(s), {} location(s), {} system(s)",
         files.len(),
-        charted_systems.len()
+        hostile_archetypes.len(),
+        hostile_locations.len(),
+        charted_systems.len(),
     );
     commands.insert_resource(ContentIndex {
         files,
+        hostile_archetypes,
+        hostile_locations,
         charted_systems,
         gate_network,
     });
@@ -84,7 +94,7 @@ where
 {
     let mut out = HashMap::new();
     let Ok(entries) = std::fs::read_dir(&dir) else {
-        return out;
+        return out; // no such directory: nothing authored yet
     };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -113,12 +123,9 @@ fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            // Skip the S21 typed-content directories (they're plain structs
-            // parsed by `load_typed`, not ContentFile envelopes).
-            if path
-                .file_name()
-                .is_some_and(|n| n == FIXTURES_DIR || n == "systems" || n == "gate_network")
-            {
+            // Skip typed-content dirs parsed by `load_typed` (not ContentFile).
+            let skip = [FIXTURES_DIR, "combat", "locations", "systems", "gate_network"];
+            if path.file_name().is_some_and(|n| skip.contains(&n.to_str().unwrap_or(""))) {
                 continue;
             }
             walk(&path, out);

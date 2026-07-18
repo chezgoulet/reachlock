@@ -75,6 +75,60 @@ pub fn try_dock(
     }
 }
 
+/// Marks a hostile location (derelict, ruin) in the flight scene as boardable.
+/// The player flies within `DOCK_RADIUS` and presses the dock key to enter;
+/// boarding sets `CurrentLocation::hostile_location_id` and transitions to
+/// Landed mode, where `spawn_landed_enemies` arms combat.
+#[derive(Component, Clone, Debug)]
+pub struct HostileDockable {
+    pub location_id: String,
+}
+
+/// Fly to a hostile marker and board it. Stations have priority — if any
+/// station is within dock range, boarding is skipped. Sets
+/// `hostile_location_id` on `CurrentLocation` so the existing
+/// `spawn_landed_enemies` system arms combat on Enter(Landed).
+#[allow(clippy::too_many_arguments)]
+pub fn try_board_hostile(
+    keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
+    ship: Query<&Transform, With<PlayerShip>>,
+    stations: Query<&Transform, With<Dockable>>,
+    hostiles: Query<(&Transform, &HostileDockable)>,
+    mut next: ResMut<NextState<GameMode>>,
+    mut location: ResMut<CurrentLocation>,
+    mut beat: ResMut<TransitionBeat>,
+) {
+    let dock_pressed = keys.just_pressed(settings.key(InputAction::EditorConfirm));
+    if !dock_pressed && !settings.gameplay.auto_dock {
+        return;
+    }
+    let Ok(ship) = ship.single() else {
+        return;
+    };
+    // Stations have priority: skip if any station is close enough to dock.
+    for st in &stations {
+        if ship.translation.distance(st.translation) <= DOCK_RADIUS {
+            return;
+        }
+    }
+    for (ht, hd) in &hostiles {
+        let d = ship.translation.distance(ht.translation);
+        if d <= DOCK_RADIUS {
+            location.hostile_location_id = Some(hd.location_id.clone());
+            location.display_name = format!("Derelict — {}", hd.location_id);
+            location.is_docked = true;
+            location.station_id = String::new();
+            location.station_seed = 0;
+            location.station_kind = None;
+            location.station_position = Vec2::new(ht.translation.x, ht.translation.z);
+            next.set(GameMode::Docking);
+            beat.timer = Some(Timer::from_seconds(TRANSITION_SECS, TimerMode::Once));
+            return;
+        }
+    }
+}
+
 /// `B` in flight: stand up from the helm and walk the ship (S09d — the
 /// reverse of the pilot seat's `TakeHelm`, closing the loop the S09c handoff
 /// flagged). The space scene stays alive underneath (`SceneRegistry::

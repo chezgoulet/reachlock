@@ -1,0 +1,46 @@
+// Derelict Cargo Hold (S20) — a raider-held derelict interior reachable from a
+// system POI. Five rooms on a linear spine: airlock → corridor → storage
+// (arena) → hold (mini-boss, behind a keycard door) → cache (reward). Room
+// sizes are in cells; spawn/prop/patrol coordinates are cells within their
+// room. `#![enable(implicit_some)]` lets the optional keycard gate be written
+// bare. Loaded straight into reachlock_core::combat::HostileLocation.
+#![enable(implicit_some)]
+HostileLocation(
+    id: "derelict_hold",
+    display_name: "Derelict Cargo Hold",
+    rooms: [
+        (id: "airlock", width: 10, height: 6, kind: "empty"),
+        (id: "corridor", width: 4, height: 12, kind: "corridor"),
+        (id: "storage", width: 8, height: 8, kind: "arena",
+            spawns: [
+                (archetype: "raider_melee", pos: (2, 3), patrol: [(2, 3), (6, 3)]),
+                (archetype: "raider_gunner", pos: (5, 7), patrol: [(5, 7), (5, 2)]),
+            ],
+            props: [
+                (kind: "barrel", pos: (7, 6)),
+                (kind: "crate", pos: (3, 1)),
+            ],
+        ),
+        (id: "hold", width: 12, height: 10, kind: "boss",
+            spawns: [
+                (archetype: "security_bot", pos: (2, 8), patrol: [(2, 8), (10, 8)]),
+                (archetype: "raider_boss", pos: (6, 5)),
+            ],
+            props: [
+                (kind: "barrel", pos: (10, 2)),
+            ],
+        ),
+        (id: "cache", width: 4, height: 4, kind: "reward",
+            props: [
+                (kind: "crate", pos: (2, 2)),
+            ],
+        ),
+    ],
+    connections: [
+        ("airlock", "corridor"),
+        ("corridor", "storage"),
+        ("storage", "hold"),
+        ("hold", "cache"),
+    ],
+    keycard: (door: ("storage", "hold"), key_name: "keycard_hold"),
+)

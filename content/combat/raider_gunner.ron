@@ -1,0 +1,17 @@
+// Raider (gunner) — keeps distance and plinks. Long reach on both attacks so
+// its "melee arc" is really a firing cone; slow feet (speed 128) mean it never
+// wants to close, and it breaks early (flee at 40% HP) when pressured. Squishy
+// (hp 4096): reward for running it down. Fixed-point, 10 Hz ticks.
+HostileArchetype(
+    id: "raider_gunner",
+    display_name: "Raider Gunner",
+    hp: 4096,
+    speed: 128,
+    light_attack: (startup_ticks: 10, active_ticks: 2, recovery_ticks: 14, damage: 768, range: 7168),
+    heavy_attack: (startup_ticks: 20, active_ticks: 2, recovery_ticks: 24, damage: 1536, range: 8192),
+    block: (active_ticks: 12, cooldown_ticks: 40, parry_ticks: 3),
+    dodge: (i_frame_ticks: 6, recovery_ticks: 16, distance: 2048),
+    chase_radius: 10240,
+    disengage_radius: 18000,
+    flee_hp_frac: 410,
+)

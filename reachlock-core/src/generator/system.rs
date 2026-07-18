@@ -70,6 +70,23 @@ pub struct StationSlot {
     pub seed: u64,
 }
 
+/// What sits at a hostile location slot — the kind determines which authored
+/// [`HostileLocation`](crate::combat::HostileLocation) the client resolves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HostileLocationKind {
+    Derelict,
+}
+
+/// A hostile interior (derelict, ruin, anomaly) placed somewhere in the
+/// system. The client spawns a boardable marker at this position; boarding it
+/// arms landed combat via `CurrentLocation::hostile_location_id`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostileLocationSlot {
+    pub kind: HostileLocationKind,
+    pub position: FixedVec2,
+    pub seed: u64,
+}
+
 /// A whole star system as plain data (spec §5, §14 Mode 3). Frozen
 /// contract: S01's authored content and S21's frontier both deserialize
 /// into this struct — additive changes only, never remove/rename a field.
@@ -79,6 +96,9 @@ pub struct GeneratedSystem {
     pub orbits: Vec<Orbit>,
     pub asteroid_fields: Vec<AsteroidField>,
     pub station_slots: Vec<StationSlot>,
+    /// S20: hostile interiors the player can board and fight through. Seeded
+    /// by biome: Derelict systems have the most; Core has none.
+    pub hostile_locations: Vec<HostileLocationSlot>,
     pub gate_position: FixedVec2,
     /// Seed for the client's on-demand starfield (see `generate_starfield`)
     /// — cheap to regenerate, so it isn't embedded here.
@@ -115,6 +135,7 @@ pub fn generate_system(seed: u64, biome: Biome, fidelity: Fidelity) -> Generated
     let (orbits, system_edge) = generate_orbits(&mut rng, seed, biome, fidelity);
     let asteroid_fields = generate_asteroid_fields(&mut rng, biome, fidelity, &orbits);
     let station_slots = generate_stations(&mut rng, seed, biome, fidelity, &orbits);
+    let hostile_locations = generate_hostile_locations(&mut rng, biome, seed, &orbits);
 
     let gate_radius = system_edge + GATE_MARGIN + rng.next_below(GATE_JITTER as u64) as i64;
     let gate_turn = rng.next_below(65536) as u16;
@@ -128,6 +149,7 @@ pub fn generate_system(seed: u64, biome: Biome, fidelity: Fidelity) -> Generated
         orbits,
         asteroid_fields,
         station_slots,
+        hostile_locations,
         gate_position,
         starfield_seed,
         threat_level,
@@ -207,6 +229,45 @@ fn sparse_range(range: (usize, usize)) -> (usize, usize) {
 fn count_in_range(rng: &mut SeededRng, range: (usize, usize)) -> usize {
     let (lo, hi) = range;
     lo + rng.next_below((hi - lo + 1) as u64) as usize
+}
+
+fn hostile_location_count(biome: Biome) -> (usize, usize) {
+    match biome {
+        // Derelict systems are overrun — multiple wreck sites to clear.
+        Biome::Derelict => (1, 3),
+        // Frontier has the occasional abandoned structure.
+        Biome::Frontier => (0, 2),
+        // Nebula and deep space have very sparse finds.
+        Biome::Nebula => (0, 1),
+        Biome::DeepSpace => (0, 1),
+        // Core space is maintained — no derelicts drift here.
+        Biome::Core => (0, 0),
+    }
+}
+
+/// Seeded hostile location slots placed beyond the orbit bands. Count driven
+/// by biome; positions use the same rejection-sampling as stations.
+fn generate_hostile_locations(
+    rng: &mut SeededRng,
+    biome: Biome,
+    system_seed: u64,
+    orbits: &[Orbit],
+) -> Vec<HostileLocationSlot> {
+    let range = hostile_location_count(biome);
+    let count = count_in_range(rng, range);
+
+    let mut slots = Vec::with_capacity(count);
+    for i in 0..count {
+        let position = place_clear_of_orbits(rng, orbits);
+        let slot_seed = child_seed(system_seed, 0xFA7A_1DE5, i as u64);
+        // For now every slot is Derelict — future sprints add Ruin/Anomaly.
+        slots.push(HostileLocationSlot {
+            kind: HostileLocationKind::Derelict,
+            position,
+            seed: slot_seed,
+        });
+    }
+    slots
 }
 
 fn generate_orbits(
@@ -423,6 +484,32 @@ mod tests {
     }
 
     #[test]
+    fn hostile_locations_in_derelict_biome() {
+        let sys = generate_system(0xCAFE, Biome::Derelict, Fidelity::Full);
+        assert!(
+            (1..=3).contains(&sys.hostile_locations.len()),
+            "Derelict biome should generate 1-3 hostile locations, got {}",
+            sys.hostile_locations.len()
+        );
+        for slot in &sys.hostile_locations {
+            assert_eq!(slot.kind, HostileLocationKind::Derelict);
+        }
+    }
+
+    #[test]
+    fn hostile_locations_deterministic() {
+        let a = generate_system(0xBEEF, Biome::Frontier, Fidelity::Full);
+        let b = generate_system(0xBEEF, Biome::Frontier, Fidelity::Full);
+        assert_eq!(a.hostile_locations, b.hostile_locations);
+    }
+
+    #[test]
+    fn core_has_no_hostile_locations() {
+        let sys = generate_system(0, Biome::Core, Fidelity::Full);
+        assert!(sys.hostile_locations.is_empty());
+    }
+
+    #[test]
     fn exactly_one_gate() {
         // `gate_position` is a single field, not a Vec — this test locks
         // that the contract stays that way (one gate per system, always).
@@ -572,6 +659,8 @@ mod tests {
         /// (orbit count, field count, station count, threat, checksum) for
         /// seed 42 / Frontier / Full. Captured on x86_64; must match on
         /// every target.
-        pub const SEED_42: (usize, usize, usize, u8, i64) = (4, 2, 2, 56, -372411290521051861);
+        /// v10: threat_level and checksum changed because generate_hostile_locations
+        /// now consumes RNG draws between stations and gate/threat calculation.
+        pub const SEED_42: (usize, usize, usize, u8, i64) = (4, 2, 2, 41, -372411290518455257);
     }
 }

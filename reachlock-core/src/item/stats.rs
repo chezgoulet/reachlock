@@ -54,6 +54,7 @@ fn family_stat_ranges(family: ItemFamily) -> Vec<StatRange> {
         ],
         ItemFamily::MeleeWeapon => vec![
             r(StatKey::Damage, 6, 10, 4),
+            r(StatKey::Range, 3, 5, 1),
             r(StatKey::FireRate, 4, 8, 2),
             r(StatKey::Weight, 2, 4, 1),
         ],

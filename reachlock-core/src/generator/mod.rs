@@ -15,11 +15,11 @@ pub mod system;
 pub mod transit;
 pub mod ui;
 
-pub use hull::generate_hull;
+pub use hull::{generate_hull, generate_hull_class};
 pub use music::{generate_music, generate_tone, Mood};
 pub use planet::generate_planet;
 pub use station::generate_station;
-pub use system::{generate_starfield, generate_system};
+pub use system::{generate_starfield, generate_system, HostileLocationKind, HostileLocationSlot};
 pub use transit::{anomaly_rolls, malfunction_roll, transit_destination};
 pub use ui::generate_ui_panel;
 

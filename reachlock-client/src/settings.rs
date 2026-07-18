@@ -332,6 +332,14 @@ pub enum InputAction {
     PowerAdjustRight,
     LaunchChaff,
 
+    // Landed combat (S20)
+    LockOnCycleNext,
+    LockOnCyclePrev,
+    AttackLight,
+    AttackHeavy,
+    Dodge,
+    Block,
+
     // Interaction
     Interact,
     Pause,
@@ -398,6 +406,16 @@ impl InputAction {
             (PowerAdjustLeft, KeyBind(ArrowLeft)),
             (PowerAdjustRight, KeyBind(ArrowRight)),
             (LaunchChaff, KeyBind(KeyC)),
+            // Landed combat (S20). Keys deliberately overlap non-combat
+            // actions (J/K/Tab/Space/Q): landed combat and, say, the mission
+            // board are never both live, and duplicate keys across actions are
+            // allowed (only per-action uniqueness is enforced).
+            (LockOnCycleNext, KeyBind(Tab)),
+            (LockOnCyclePrev, KeyBind(ShiftLeft)),
+            (AttackLight, KeyBind(KeyJ)),
+            (AttackHeavy, KeyBind(KeyK)),
+            (Dodge, KeyBind(Space)),
+            (Block, KeyBind(KeyQ)),
             // Interaction
             (Interact, KeyBind(KeyE)),
             (Self::Pause, KeyBind(Escape)),
@@ -453,6 +471,12 @@ impl InputAction {
             PowerAdjustLeft,
             PowerAdjustRight,
             LaunchChaff,
+            LockOnCycleNext,
+            LockOnCyclePrev,
+            AttackLight,
+            AttackHeavy,
+            Dodge,
+            Block,
             Interact,
             Pause,
             OpenComms,
@@ -503,6 +527,12 @@ impl InputAction {
             PowerAdjustLeft => "Power adjust left",
             PowerAdjustRight => "Power adjust right",
             LaunchChaff => "Launch chaff",
+            LockOnCycleNext => "Lock-on next",
+            LockOnCyclePrev => "Lock-on previous",
+            AttackLight => "Light attack",
+            AttackHeavy => "Heavy attack",
+            Dodge => "Dodge roll",
+            Block => "Block",
             Interact => "Interact",
             Pause => "Pause",
             OpenComms => "Open comms",
@@ -586,6 +616,7 @@ impl KeyBind {
             KeyM => "KeyM",
             KeyI => "KeyI",
             KeyJ => "KeyJ",
+            KeyK => "KeyK",
             KeyL => "KeyL",
             KeyU => "KeyU",
             KeyP => "KeyP",
@@ -698,6 +729,7 @@ impl KeyBind {
             "KeyM" => KeyM,
             "KeyI" => KeyI,
             "KeyJ" => KeyJ,
+            "KeyK" => KeyK,
             "KeyL" => KeyL,
             "KeyU" => KeyU,
             "KeyP" => KeyP,
@@ -811,6 +843,7 @@ impl KeyBind {
             KeyM => "M",
             KeyI => "I",
             KeyJ => "J",
+            KeyK => "K",
             KeyL => "L",
             KeyU => "U",
             KeyP => "P",
