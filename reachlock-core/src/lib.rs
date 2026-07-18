@@ -16,6 +16,7 @@ pub mod economy;
 pub mod editor;
 pub mod faction;
 pub mod galaxy;
+pub mod mod_manifest;
 pub mod generator;
 pub mod item;
 pub mod network;
