@@ -50,6 +50,7 @@ A sprint may start when its listed dependencies are merged.
 | 7 | S28 | Payments & subscriptions (Stripe) | S23, S26 |
 | 7 | S29 | Voice chat (WebRTC, spatial audio, P2P signaling) | S23 |
 | 7 | S30 | Agent tooling — CI gate, codex CLI, auto-generated context | — (standalone) |
+| 7 | S31 | Game settings & preferences — keybinds, audio/video, accessibility | — (infrastructure) |
 
 Phase-4 polish (economy balancing, audio pass, UI pass, beta) is deliberately
 NOT pre-cut into sprints: those briefs get written against real systems once
@@ -134,6 +135,9 @@ cross-platform determinism gate. These are non-negotiable.
   fn is the accepted pattern.
 - S25 (editor suite) is native-only — exempt from `make check` WASM build.
   `bevy_egui` + `wgpu` render targets don't compile to wasm32.
+- S31 (settings): `KeyCode` doesn't derive serde natively. Store keybinds as
+  strings via Bevy's `KeyCode`→`&str` conversion; deserialize via lookup.
+  Never hardcode another key literal — use `settings.key(InputAction::Foo)`.
 
 **Handoff etiquette.** Read your brief top to bottom, then read the spec
 sections it cites, then the files it lists — in that order. Deliver exactly
