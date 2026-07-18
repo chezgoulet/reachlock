@@ -279,6 +279,51 @@ pub fn manifest() -> Manifest {
             });
         }
 
+        // S18 — interior realization over a fixture placement: the six-room
+        // corvette layout with one corridor, realized through the reference
+        // template set. Hashes the walkable GeneratedLayout so drift in the
+        // door pass, corridor legs, or cell math is caught cross-platform.
+        {
+            use crate::editor::interior;
+            let place = |template_id: &str, x: u8, y: u8| interior::PlacedRoom {
+                template_id: template_id.into(),
+                position: (x, y),
+                rotation: 0,
+            };
+            let layout = interior::ShipInteriorLayout {
+                hull_id: "frame_corvette".into(),
+                rooms: vec![
+                    place("airlock", 0, 0),
+                    place("cockpit", 0, 2),
+                    place("galley", 2, 0),
+                    place("quarters", 3, 2),
+                    place("engineering", 0, 6),
+                    place("cargo_hold", 4, 6),
+                ],
+                corridors: vec![interior::Corridor {
+                    from: (1, 4),
+                    to: (1, 5),
+                }],
+                furniture: vec![interior::PlacedFurniture {
+                    slot_id: "galley".into(),
+                    room_idx: 2,
+                    kind: interior::FurnitureKind::GalleyUnit,
+                }],
+                seed,
+            };
+            let bounds =
+                crate::editor::exterior::HullFrame::reference(generator::hull::HullClass::Corvette)
+                    .grid_bounds;
+            let realized =
+                interior::realize(&layout, &interior::RoomTemplate::reference_set(), bounds)
+                    .expect("fixture layout realizes");
+            entries.push(Entry {
+                generator: "ship_interior".into(),
+                seed,
+                checksum: hash_layout(&realized),
+            });
+        }
+
         // S10 — economy engine. Hash the starter catalogue plus a seeded,
         // ticked `EconomyState` so any drift in price/tick math is caught
         // cross-platform (iron rule #3: new generator ⇒ golden entry).
@@ -476,7 +521,8 @@ pub fn manifest() -> Manifest {
         // v7: added S17 hull_config (exterior composition) golden entry.
         //     (S17 and S19 both bumped 5->6 on their branches; the merge
         //     carries both entry sets, so the merged manifest is v7.)
-        version: 7,
+        // v8: added S18 ship_interior (interior realization) golden entry.
+        version: 8,
         entries,
     }
 }

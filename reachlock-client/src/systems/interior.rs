@@ -168,7 +168,17 @@ fn room_kind_color(kind: RoomKind) -> Color {
         RoomKind::Scanner => Color::srgb(0.42, 0.46, 0.62),
         RoomKind::MedBay => Color::srgb(0.72, 0.76, 0.78),
         RoomKind::Cryo => Color::srgb(0.52, 0.62, 0.72),
+        RoomKind::Hydroponics => Color::srgb(0.42, 0.58, 0.38),
+        RoomKind::Armory => Color::srgb(0.55, 0.45, 0.4),
+        RoomKind::Brig => Color::srgb(0.44, 0.46, 0.52),
     }
+}
+
+/// The per-kind room fill used by the S18 interior-editor grid preview —
+/// the same palette the walked interior tints, so the editor reads as a
+/// blueprint of the ship you'll walk.
+pub fn editor_room_color(kind: RoomKind) -> Color {
+    room_kind_color(kind)
 }
 
 /// Blend `base` toward `tint` by `t` in srgb space — gives every location its
@@ -238,6 +248,9 @@ fn room_label(mode: GameMode, kind: RoomKind) -> &'static str {
         RoomKind::Scanner => "SCANNER",
         RoomKind::MedBay => "MED BAY",
         RoomKind::Cryo => "CRYO",
+        RoomKind::Hydroponics => "HYDROPONICS",
+        RoomKind::Armory => "ARMORY",
+        RoomKind::Brig => "BRIG",
     }
 }
 
@@ -267,6 +280,7 @@ pub fn enter_interior(
     location: Res<CurrentLocation>,
     content: Res<ContentIndex>,
     roster: Res<CrewRoster>,
+    interior_cfg: Res<crate::systems::shipeditor::InteriorConfig>,
     mut registry: ResMut<SceneRegistry>,
     mut interior: ResMut<CurrentInterior>,
     mut deck: ResMut<ActiveDeck>,
@@ -302,18 +316,33 @@ pub fn enter_interior(
     let mut ladder_px: Option<Vec2> = None;
     let (grid_layout, scene_seed) = match &mode {
         GameMode::OnBoard => {
-            // The player ship is authored, not generated: the Loup-Garou's
-            // two-deck plan (docs/SHIPS.md §6). `ActiveDeck` picks the deck;
-            // the ladder toggles it.
-            let ship = reachlock_core::generator::ship::loup_garou_interior();
-            let d = deck.index.min(ship.decks.len() - 1);
-            let deck_def = &ship.decks[d];
-            zero_g = deck_def.zero_g;
-            ladder_px = Some(Vec2::new(
-                (deck_def.ladder.0 * LAYOUT_SCALE) as f32,
-                (deck_def.ladder.1 * LAYOUT_SCALE) as f32,
-            ));
-            (deck_def.layout.clone(), HULL_INTERIOR_SEED)
+            // S18: a player-applied interior layout replaces the authored
+            // deck plan. Custom layouts are single-deck (deck 0, gravity, no
+            // ladder), realized through the SAME `interior::realize` the
+            // editor validated with — you walk exactly what you edited.
+            match interior_cfg.layout.as_ref().and_then(|layout| {
+                let templates = crate::systems::shipeditor::templates_for(&content);
+                let bounds =
+                    crate::systems::shipeditor::frame_for(&content, &layout.hull_id).grid_bounds;
+                reachlock_core::editor::interior::realize(layout, &templates, bounds)
+                    .ok()
+                    .map(|realized| (realized, layout.seed))
+            }) {
+                Some(built) => built,
+                None => {
+                    // The authored Loup-Garou two-deck plan (docs/SHIPS.md
+                    // §6). `ActiveDeck` picks the deck; the ladder toggles it.
+                    let ship = reachlock_core::generator::ship::loup_garou_interior();
+                    let d = deck.index.min(ship.decks.len() - 1);
+                    let deck_def = &ship.decks[d];
+                    zero_g = deck_def.zero_g;
+                    ladder_px = Some(Vec2::new(
+                        (deck_def.ladder.0 * LAYOUT_SCALE) as f32,
+                        (deck_def.ladder.1 * LAYOUT_SCALE) as f32,
+                    ));
+                    (deck_def.layout.clone(), HULL_INTERIOR_SEED)
+                }
+            }
         }
         GameMode::Landed => {
             let kind = location
@@ -745,7 +774,27 @@ fn spawn_props(
                 }
             }
         }
-        RoomKind::Scanner => {}
+        // Hydroponics: grow beds read as the JRPG foliage they are.
+        RoomKind::Hydroponics => {
+            for _ in 0..3 + rng.next_below(3) {
+                let p = jitter(&mut rng, 36.0);
+                let plant = images.add(pixel::plant_sprite(rng.next_below(1 << 30)));
+                sorted(commands, plant, p.x, p.y);
+            }
+        }
+        // Armory: secured crates along the back wall.
+        RoomKind::Armory => {
+            for i in 0..2 {
+                let crate_tex = images.add(pixel::crate_sprite(rng.next_below(1 << 30)));
+                sorted(
+                    commands,
+                    crate_tex,
+                    room.x as f32 + WALL + 20.0 + i as f32 * 34.0,
+                    room.y as f32 + room.height as f32 - WALL - 14.0,
+                );
+            }
+        }
+        RoomKind::Scanner | RoomKind::Brig => {}
         RoomKind::Hangar => {
             let pad = images.add(pixel::pad_sprite(accent));
             decal(commands, pad, mode, c.x, c.y, 0.12);
@@ -1085,8 +1134,10 @@ fn spawn_actors(
         ));
     }
 
-    // Shipyard terminal (S17): stations only — on board, the Shipyard room
-    // kind doubles as the cargo hold and gets no refit verb.
+    // Shipyard terminals (S17/S18): stations only — on board, the Shipyard
+    // room kind doubles as the cargo hold and gets no refit verb. Two
+    // consoles side by side: the exterior editor (S17) and the interior
+    // refit editor (S18).
     if mode == GameMode::Landed {
         if let Some(yard) = layout.rooms.iter().find(|r| r.kind == RoomKind::Shipyard) {
             let c = room_center_point(yard);
@@ -1096,11 +1147,23 @@ fn spawn_actors(
                     image: images.add(pixel::console_sprite(Color::srgb(0.85, 0.65, 0.25))),
                     ..default()
                 },
-                Transform::from_xyz(c.x, y, ysort(y - 8.0)),
+                Transform::from_xyz(c.x - 26.0, y, ysort(y - 8.0)),
                 ModeScope(mode),
                 Interactable {
-                    label: "SHIPYARD".to_string(),
+                    label: "SHIPYARD · exterior".to_string(),
                     kind: InteractKind::Shipyard,
+                },
+            ));
+            commands.spawn((
+                Sprite {
+                    image: images.add(pixel::console_sprite(Color::srgb(0.4, 0.7, 0.85))),
+                    ..default()
+                },
+                Transform::from_xyz(c.x + 26.0, y, ysort(y - 8.0)),
+                ModeScope(mode),
+                Interactable {
+                    label: "SHIPYARD · interior refit".to_string(),
+                    kind: InteractKind::InteriorRefit,
                 },
             ));
         }

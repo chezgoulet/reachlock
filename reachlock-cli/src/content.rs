@@ -20,6 +20,7 @@ const HULL_FRAME_SCHEMA: &str = include_str!("../../content/schemas/hull_frame.s
 const STATION_SCHEMA: &str = include_str!("../../content/schemas/station.schema.json");
 const CONTRACT_SCHEMA: &str = include_str!("../../content/schemas/contract.schema.json");
 const SOUL_SCHEMA: &str = include_str!("../../content/schemas/soul.schema.json");
+const ROOM_TEMPLATE_SCHEMA: &str = include_str!("../../content/schemas/room_template.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -216,6 +217,27 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                     );
                     return Ok(());
                 }
+                ContentPayload::RoomTemplates(templates) => {
+                    // Templates are a palette, not geometry — summarize;
+                    // the realized layout is what the editor previews.
+                    println!(
+                        "{}: room templates \"{}\" — {} template(s)",
+                        path.display(),
+                        content.display_name,
+                        templates.len(),
+                    );
+                    for tpl in templates {
+                        println!(
+                            "  {} ({:?}) {}x{} cells, {} slot(s)",
+                            tpl.id,
+                            tpl.kind,
+                            tpl.width,
+                            tpl.height,
+                            tpl.furniture_slots.len(),
+                        );
+                    }
+                    return Ok(());
+                }
             };
             let out = out.unwrap_or_else(|| path.with_extension("svg"));
             std::fs::write(&out, svg).map_err(|e| format!("writing {}: {e}", out.display()))?;
@@ -237,6 +259,7 @@ fn validate_schema(
         AssetType::Station => STATION_SCHEMA,
         AssetType::Contract => CONTRACT_SCHEMA,
         AssetType::Soul => SOUL_SCHEMA,
+        AssetType::RoomTemplates => ROOM_TEMPLATE_SCHEMA,
     };
 
     let schema = serde_json::from_str::<serde_json::Value>(schema_text)

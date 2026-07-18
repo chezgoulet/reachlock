@@ -50,6 +50,9 @@ pub enum InteractKind {
     /// S17: the shipyard terminal — opens the exterior editor while docked
     /// at a station with a Shipyard room (spec §19).
     Shipyard,
+    /// S18: the interior-refit terminal beside it — opens the interior
+    /// editor (room placement on the hull grid, spec §19).
+    InteriorRefit,
     Unknown,
 }
 
@@ -108,6 +111,9 @@ pub enum ActivePanel {
     News,
     /// S17 exterior editor (spec §19), opened from a Shipyard terminal.
     ShipExterior,
+    /// S18 interior editor (spec §19), opened from the interior-refit
+    /// terminal in the same shipyard room.
+    ShipInterior,
     Unknown,
 }
 
@@ -252,6 +258,7 @@ pub fn try_interact(
                             InteractKind::Miner => ActivePanel::Miner,
                             InteractKind::Power => ActivePanel::Power,
                             InteractKind::Shipyard => ActivePanel::ShipExterior,
+                            InteractKind::InteriorRefit => ActivePanel::ShipInterior,
                             _ => ActivePanel::Unknown,
                         };
                     }

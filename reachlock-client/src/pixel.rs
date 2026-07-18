@@ -190,8 +190,9 @@ pub fn floor_texture(kind: RoomKind, base: Color, seed: u64) -> Image {
                 }
             }
         }
-        // Grating: corridors and the reactor room.
-        RoomKind::Corridor | RoomKind::Reactor => {
+        // Grating: corridors, the reactor room, and the hydroponics deck
+        // (drainage under the grow beds).
+        RoomKind::Corridor | RoomKind::Reactor | RoomKind::Hydroponics => {
             px.rect(0, 0, 32, 32, shade(b, 0.55));
             for i in (0..32).step_by(4) {
                 px.rect(i, 0, 1, 32, shade(b, 0.85));
@@ -218,7 +219,9 @@ pub fn floor_texture(kind: RoomKind, base: Color, seed: u64) -> Image {
         | RoomKind::Cockpit
         | RoomKind::Scanner
         | RoomKind::MedBay
-        | RoomKind::Cryo => {
+        | RoomKind::Cryo
+        | RoomKind::Armory
+        | RoomKind::Brig => {
             px.rect(0, 0, 32, 32, shade(b, 0.9));
             for ty in [0, 16] {
                 for tx in [0, 16] {

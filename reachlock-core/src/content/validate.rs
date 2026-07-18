@@ -60,6 +60,17 @@ pub enum ValidationError {
         namespace: &'static str,
         id: String,
     },
+    /// S18: two room templates share an id or a realized `RoomKind` —
+    /// placements reference templates by id, and crew duty rooms map by
+    /// kind, so both must be unique within the set.
+    DuplicateRoomTemplate {
+        namespace: &'static str,
+        id: String,
+    },
+    /// S18: a room template with a zero-cell dimension can't be placed.
+    ZeroSizeRoomTemplate {
+        id: String,
+    },
 }
 
 impl std::fmt::Display for ValidationError {
@@ -112,6 +123,12 @@ impl std::fmt::Display for ValidationError {
             }
             ValidationError::DuplicateFrameId { namespace, id } => {
                 write!(f, "hull frame: duplicate {namespace} id {id:?}")
+            }
+            ValidationError::DuplicateRoomTemplate { namespace, id } => {
+                write!(f, "room templates: duplicate {namespace} {id:?}")
+            }
+            ValidationError::ZeroSizeRoomTemplate { id } => {
+                write!(f, "room template {id:?} has a zero-cell dimension")
             }
         }
     }
@@ -213,6 +230,28 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
             check_unique("slot", frame.slots.iter().map(|s| &s.id).collect());
             check_unique("zone", frame.zones.iter().map(|z| &z.id).collect());
             check_unique("decal slot", frame.decal_slots.iter().collect());
+        }
+        ContentPayload::RoomTemplates(templates) => {
+            let mut ids = std::collections::BTreeSet::new();
+            let mut kinds = std::collections::BTreeSet::new();
+            for tpl in templates {
+                if !ids.insert(tpl.id.clone()) {
+                    errors.push(ValidationError::DuplicateRoomTemplate {
+                        namespace: "id",
+                        id: tpl.id.clone(),
+                    });
+                }
+                // RoomKind isn't Ord; the debug token is a stable stand-in.
+                if !kinds.insert(format!("{:?}", tpl.kind)) {
+                    errors.push(ValidationError::DuplicateRoomTemplate {
+                        namespace: "kind",
+                        id: tpl.id.clone(),
+                    });
+                }
+                if tpl.width == 0 || tpl.height == 0 {
+                    errors.push(ValidationError::ZeroSizeRoomTemplate { id: tpl.id.clone() });
+                }
+            }
         }
     }
 
@@ -455,6 +494,63 @@ mod tests {
             };
             assert!(validate_content(&file).is_empty(), "{class:?}");
         }
+    }
+
+    fn templates_file(templates: Vec<crate::editor::interior::RoomTemplate>) -> ContentFile {
+        ContentFile {
+            id: "room_templates".into(),
+            display_name: "Room Templates".into(),
+            asset_type: AssetType::RoomTemplates,
+            seed: 1,
+            universe: "all".into(),
+            priority: Priority::Curated,
+            expires_at: None,
+            payload: ContentPayload::RoomTemplates(templates),
+        }
+    }
+
+    #[test]
+    fn reference_room_templates_pass() {
+        use crate::editor::interior::RoomTemplate;
+        assert!(validate_content(&templates_file(RoomTemplate::reference_set())).is_empty());
+    }
+
+    #[test]
+    fn duplicate_template_id_and_kind_are_rejected() {
+        use crate::editor::interior::RoomTemplate;
+        let mut set = RoomTemplate::reference_set();
+        let dup = set[0].clone();
+        set.push(dup);
+        let errors = validate_content(&templates_file(set));
+        // The duplicate trips both namespaces: id and kind.
+        assert_eq!(errors.len(), 2);
+        assert!(errors.iter().any(|e| matches!(
+            e,
+            ValidationError::DuplicateRoomTemplate {
+                namespace: "id",
+                ..
+            }
+        )));
+        assert!(errors.iter().any(|e| matches!(
+            e,
+            ValidationError::DuplicateRoomTemplate {
+                namespace: "kind",
+                ..
+            }
+        )));
+        assert!(errors[0].to_string().contains("cockpit"));
+    }
+
+    #[test]
+    fn zero_size_template_is_rejected() {
+        use crate::editor::interior::RoomTemplate;
+        let mut set = RoomTemplate::reference_set();
+        set[0].width = 0;
+        let errors = validate_content(&templates_file(set));
+        assert!(matches!(
+            errors[0],
+            ValidationError::ZeroSizeRoomTemplate { .. }
+        ));
     }
 
     #[test]

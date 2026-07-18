@@ -95,6 +95,16 @@ pub enum RoomKind {
     MedBay,
     /// Cryo pods — the only way living crew survive a self-generated jump.
     Cryo,
+    // S18 interior-editor kinds (spec §19 template list). Appended so the
+    // existing kinds keep their discriminants (the determinism manifest
+    // hashes `kind as u8`). Stations don't generate these; placed room
+    // templates realize into them.
+    /// Grow beds and aeroponics — the ship feeds itself.
+    Hydroponics,
+    /// Weapon racks and armor lockers.
+    Armory,
+    /// A holding cell with an isolation chamber.
+    Brig,
 }
 
 /// A door connecting two rooms (indices into the room list).

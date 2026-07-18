@@ -22,5 +22,6 @@
         decal_slots: [
             "tail",
         ],
+        grid_bounds: (10, 8),
     )),
 )

@@ -35,5 +35,6 @@
             "bow",
             "flank",
         ],
+        grid_bounds: (22, 16),
     )),
 )

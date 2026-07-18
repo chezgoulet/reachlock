@@ -34,5 +34,6 @@
             "nose",
             "tail",
         ],
+        grid_bounds: (16, 12),
     )),
 )
