@@ -15,12 +15,12 @@ use std::path::{Path, PathBuf};
 use crate::gen;
 
 // Load schemas at compile time
-const HULL_SCHEMA: &str = include_str!("../../content/schemas/hull.schema.json");
-const HULL_FRAME_SCHEMA: &str = include_str!("../../content/schemas/hull_frame.schema.json");
-const STATION_SCHEMA: &str = include_str!("../../content/schemas/station.schema.json");
-const CONTRACT_SCHEMA: &str = include_str!("../../content/schemas/contract.schema.json");
-const SOUL_SCHEMA: &str = include_str!("../../content/schemas/soul.schema.json");
-const ROOM_TEMPLATE_SCHEMA: &str = include_str!("../../content/schemas/room_template.schema.json");
+const HULL_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/hull.schema.json");
+const HULL_FRAME_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/hull_frame.schema.json");
+const STATION_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/station.schema.json");
+const CONTRACT_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/contract.schema.json");
+const SOUL_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/soul.schema.json");
+const ROOM_TEMPLATE_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/room_template.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {

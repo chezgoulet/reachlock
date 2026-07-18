@@ -1,0 +1,12 @@
+ModManifest(
+    id: "reachlock",
+    name: "ReachLock",
+    version: (1, 0, 0),
+    author: "chezgoulet",
+    description: "The official ReachLock game content. This is the base layer upon which community mods build.",
+    dependencies: [],
+    conflicts: [],
+    load_order: 0,
+    content_adds: [],
+    content_overrides: [],
+)

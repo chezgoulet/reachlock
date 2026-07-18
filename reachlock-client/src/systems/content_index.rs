@@ -47,22 +47,23 @@ const FIXTURES_DIR: &str = "_fixtures";
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_content_index(mut commands: Commands) {
     let mut files = Vec::new();
-    let root = std::path::Path::new("content");
+    let root = std::path::Path::new("mods");
+    let official = root.join("reachlock");
     if root.is_dir() {
         walk(root, &mut files);
     } else {
-        warn!("content index: no content/ directory found at {root:?}; index is empty");
+        warn!("content index: no mods/ directory found at {root:?}; index is empty");
     }
     // S20/S21: typed content loaded as plain structs (not ContentFile envelope).
     let hostile_archetypes = load_typed::<reachlock_core::combat::HostileArchetype, _>(
-        root.join("combat"), "archetype", |a| a.id.clone());
+        official.join("combat"), "archetype", |a| a.id.clone());
     let hostile_locations = load_typed::<reachlock_core::combat::HostileLocation, _>(
-        root.join("locations"), "location", |l| l.id.clone());
-    let charted_systems = load_typed(root.join("systems"), "system", |s: &ChartedSystem| {
+        official.join("locations"), "location", |l| l.id.clone());
+    let charted_systems = load_typed(official.join("systems"), "system", |s: &ChartedSystem| {
         s.id.clone()
     });
     let gate_network =
-        load_typed::<GateNetwork, _>(root.join("gate_network"), "gate_network", |_| {
+        load_typed::<GateNetwork, _>(official.join("gate_network"), "gate_network", |_| {
             "core_region".into()
         })
         .into_iter()
