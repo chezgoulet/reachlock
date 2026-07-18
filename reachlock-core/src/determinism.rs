@@ -517,16 +517,8 @@ pub fn manifest() -> Manifest {
         // across platforms is caught.
         for coord in &[
             crate::galaxy::GalaxyCoord { x: 0, y: 0, z: 0 },
-            crate::galaxy::GalaxyCoord {
-                x: 1000,
-                y: 2000,
-                z: 3000,
-            },
-            crate::galaxy::GalaxyCoord {
-                x: -500,
-                y: 8000,
-                z: -12000,
-            },
+            crate::galaxy::GalaxyCoord { x: 1000, y: 2000, z: 3000 },
+            crate::galaxy::GalaxyCoord { x: -500, y: 8000, z: -12000 },
         ] {
             entries.push(Entry {
                 generator: format!("deep_space_seed_{}_{}_{}", coord.x, coord.y, coord.z),
@@ -536,6 +528,83 @@ pub fn manifest() -> Manifest {
                     crate::universe::tier::UniverseTier::Classic,
                 )
                 .value(),
+            });
+        }
+
+        // S20 — landed (humanoid) combat. Drive `humanoid_step` through a
+        // fixed engagement (Idle → Chase → repeated swings) with a
+        // seed-derived patrol, capturing (state, intent) at ticks 0/10/20/
+        // 50/100 so any drift in the state machine or its tick math is caught
+        // cross-platform. Same SeededRng pattern the behavior tree uses.
+        {
+            use crate::combat::humanoid::{
+                humanoid_step, AttackWindow, BlockWindow, DodgeWindow, HostileArchetype,
+                HumanoidSenses, HumanoidState,
+            };
+            let mut rng = crate::util::rng::SeededRng::new(seed ^ 0x5A5A_1234);
+            let mut waypoints = [(0i64, 0i64); 4];
+            for wp in &mut waypoints {
+                *wp = (
+                    (rng.next_below(20_000) as i64) - 10_000,
+                    (rng.next_below(20_000) as i64) - 10_000,
+                );
+            }
+            let win = |s: u32, a: u32, r: u32, d: i64, rng: i64| AttackWindow {
+                startup_ticks: s,
+                active_ticks: a,
+                recovery_ticks: r,
+                damage: d,
+                range: rng,
+            };
+            let arch = HostileArchetype {
+                id: "manifest_raider".into(),
+                display_name: "Manifest Raider".into(),
+                hp: 8192,
+                speed: 256,
+                light_attack: win(8, 4, 12, 1024, 2048),
+                heavy_attack: win(16, 6, 20, 2048, 2560),
+                block: BlockWindow {
+                    active_ticks: 20,
+                    cooldown_ticks: 30,
+                    parry_ticks: 4,
+                },
+                dodge: DodgeWindow {
+                    i_frame_ticks: 8,
+                    recovery_ticks: 12,
+                    distance: 3072,
+                },
+                chase_radius: 8192,
+                disengage_radius: 16000,
+                flee_hp_frac: 256,
+            };
+            let senses = HumanoidSenses {
+                to_target: crate::generator::FixedVec2 {
+                    x: crate::util::rng::Fixed(3 * 1024),
+                    y: crate::util::rng::Fixed(2 * 1024),
+                },
+                dist_to_target: 3600,
+                hp_frac: 1024,
+                weapon_ready: true,
+                target_in_range: true,
+                target_telegraphing: false,
+                under_attack: false,
+                ally_count: 1,
+                patrol_waypoints: waypoints,
+                waypoint_index: (seed % 4) as u32,
+            };
+            let mut state = HumanoidState::Idle;
+            let mut timer = 0u32;
+            let mut captures = Vec::new();
+            for tick in 0..=100u32 {
+                let intent = humanoid_step(&mut state, &mut timer, &senses, &arch);
+                if matches!(tick, 0 | 10 | 20 | 50 | 100) {
+                    captures.push((state, intent));
+                }
+            }
+            entries.push(Entry {
+                generator: "combat_humanoid".into(),
+                seed,
+                checksum: hash_serde(&captures),
             });
         }
     }
@@ -550,6 +619,7 @@ pub fn manifest() -> Manifest {
         //     carries both entry sets, so the merged manifest is v7.)
         // v8: added S18 ship_interior (interior realization) golden entry.
         // v9: added S21 deep_space_seed (frozen protocol, like derive_seed).
+        // v9 also: added S20 combat_humanoid (landed combat state machine) golden.
         version: 9,
         entries,
     }
