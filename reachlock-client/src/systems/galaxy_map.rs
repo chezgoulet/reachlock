@@ -54,7 +54,7 @@ struct MapProjection {
 }
 
 impl MapProjection {
-    fn compute(content: &ContentIndex) -> Option<Self> {
+    fn compute(content: &ContentIndex, window: &Window) -> Option<Self> {
         let positions: Vec<_> = content
             .charted_systems
             .values()
@@ -74,8 +74,8 @@ impl MapProjection {
             min_x,
             min_y,
             scale,
-            center_x: 960.0,
-            center_y: 540.0,
+            center_x: window.width() * 0.5,
+            center_y: window.height() * 0.5,
         })
     }
 
@@ -111,10 +111,10 @@ pub fn galaxy_map_click(
     if overlay.single().is_err() || !buttons.just_pressed(MouseButton::Left) {
         return;
     }
-    let Some(proj) = MapProjection::compute(&content) else {
+    let Ok(w) = windows.single() else { return };
+    let Some(proj) = MapProjection::compute(&content, w) else {
         return;
     };
-    let Ok(w) = windows.single() else { return };
     let cursor = w.cursor_position().unwrap_or_default();
     let coord = proj.screen_to_coord(cursor);
 
@@ -151,6 +151,7 @@ pub fn render_galaxy_map(
     location: Res<CurrentLocation>,
     ftl: Res<FtlRoute>,
     overlay: Query<&Node, With<GalaxyMapOverlay>>,
+    windows: Query<&Window>,
     mut gizmos: Gizmos,
 ) {
     if overlay.single().is_err() {
@@ -159,7 +160,8 @@ pub fn render_galaxy_map(
     let Some(network) = content.gate_network.as_ref() else {
         return;
     };
-    let Some(proj) = MapProjection::compute(&content) else {
+    let Ok(w) = windows.single() else { return };
+    let Some(proj) = MapProjection::compute(&content, w) else {
         return;
     };
 

@@ -58,9 +58,10 @@ pub struct TransitState {
     /// contract), Prudence for programmed self-jumps (SHIPS.md §3 — the
     /// synthetic crew has the ship while the humans sleep).
     pub pilot: String,
-    /// S21: which gate index the player chose (when a system has multiple).
-    /// `None` means auto-select the first active gate.
-    pub chosen_gate: Option<usize>,
+    /// S21: which gate the player chose (by destination SystemId). When set,
+    /// `try_gate_jump` looks up the gate by matching `to`. `None` means
+    /// auto-select the first active gate.
+    pub chosen_gate_id: Option<SystemId>,
     /// S21: true while the player is choosing among multiple outgoing gates.
     pub gate_awaiting_choice: bool,
     /// S21: the outgoing gate destinations shown in the choice UI.
@@ -80,7 +81,7 @@ impl Default for TransitState {
             jump_count: 0,
             anomaly_fired: false,
             pilot: "Boris".into(),
-            chosen_gate: None,
+            chosen_gate_id: None,
             gate_awaiting_choice: false,
             gate_choices: Vec::new(),
         }
@@ -127,7 +128,7 @@ pub fn try_gate_jump(
         .any(|g| g.translation.distance(ship_pos.translation) <= GATE_REACH);
     // Jump triggers on Enter key, or automatically if the player already
     // chose a gate from the multi-gate selection overlay.
-    if !near || (!keys.just_pressed(KeyCode::Enter) && state.chosen_gate.is_none()) {
+    if !near || (!keys.just_pressed(KeyCode::Enter) && state.chosen_gate_id.is_none()) {
         return;
     }
 
@@ -144,12 +145,11 @@ pub fn try_gate_jump(
         ));
         return;
     }
-    // If system has >1 active gate, let the player choose which one to take.
-    // If the player already chose (chosen_gate is set from a previous frame's
-    // system prompt), use that choice. Otherwise auto-select if only one
-    // active gate exists, or prompt for selection.
-    let gate = if let Some(idx) = state.chosen_gate {
-        let Some(g) = gates.get(idx) else {
+    // If the player already chose a gate (via number-key selection), find
+    // it by matching the destination SystemId. Otherwise auto-select if
+    // only one active gate exists, or prompt for selection.
+    let gate = if let Some(ref dest_id) = state.chosen_gate_id {
+        let Some(g) = gates.iter().find(|g| &g.to == dest_id) else {
             log.log("Invalid gate selection.");
             return;
         };
@@ -184,7 +184,7 @@ pub fn try_gate_jump(
             _ => {
                 // Multiple active gates: show choice, wait for player input.
                 state.gate_awaiting_choice = true;
-                state.chosen_gate = None;
+                state.chosen_gate_id = None;
                 state.gate_choices = active.iter().map(|g| g.to.clone()).collect();
                 log.log(format!(
                     "Multiple gates open: press 1-{} to choose destination.",
@@ -291,6 +291,7 @@ pub fn hyperspace_tick(
         };
         location.galaxy_coord = state.dest_coord;
         state.jump_count = state.jump_count.wrapping_add(1);
+        state.chosen_gate_id = None;
         state.active = false;
         deliberation.active = None;
         for e in &visuals {
@@ -389,6 +390,7 @@ pub fn self_jump(
         state.dest_biome = Biome::DeepSpace;
         state.dest_is_charted = false;
         state.dest_coord = Some(coord);
+        state.jump_count = state.jump_count.wrapping_add(1);
         state.anomaly_fired = true;
         state.pilot = "Boris".into();
         state.timer = Timer::from_seconds(TRANSIT_SECS, TimerMode::Once);
@@ -539,7 +541,7 @@ pub fn gate_selection_input(
                 .map(|s| s.display_name.as_str())
                 .unwrap_or(&choices[i].0)
                 .to_string();
-            state.chosen_gate = Some(i);
+            state.chosen_gate_id = Some(choices[i].clone());
             state.gate_awaiting_choice = false;
             log.log(format!("Gate selected: {name}."));
             return;

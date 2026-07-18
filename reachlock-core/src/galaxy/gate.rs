@@ -44,6 +44,7 @@ impl GateNetwork {
     }
 
     /// Find a specific gate by origin and index.
+    #[allow(dead_code)]
     pub fn gate_by_index(&self, from: &SystemId, index: usize) -> Option<&Gate> {
         self.outgoing(from).into_iter().nth(index)
     }

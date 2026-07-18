@@ -3,6 +3,21 @@ use serde::{Deserialize, Serialize};
 use crate::seed::types::Seed;
 use crate::universe::tier::UniverseTier;
 
+/// FNV-1a hash of a (coord, universe) pair — the single derivation shared
+/// by both `deep_space_seed` and `coord_hash`. Any change to this function
+/// would break the frozen protocol; it is only extracted to avoid duplicating
+/// the loop across the two public functions.
+fn coord_fnv1a(coord: &GalaxyCoord, universe: UniverseTier) -> u64 {
+    let mut h = 0xCBF2_9CE4_8422_2325u64;
+    for v in [coord.x, coord.y, coord.z, universe as u8 as i64] {
+        for b in v.to_le_bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01B3);
+        }
+    }
+    h
+}
+
 /// 3D galactic coordinate. Attached to every system (charted and uncharted)
 /// for distance calculations and `deep_space_seed` derivation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -28,14 +43,7 @@ impl GalaxyCoord {
     /// Stable hash string for uncharted system ids: `uncharted_{hex}` where
     /// hex is the FNV-1a hash of the packed coordinates + the universe tier.
     pub fn coord_hash(&self, universe: UniverseTier) -> String {
-        let mut h = 0xCBF2_9CE4_8422_2325u64;
-        for v in [self.x, self.y, self.z, universe as u8 as i64] {
-            for b in v.to_le_bytes() {
-                h ^= b as u64;
-                h = h.wrapping_mul(0x0000_0100_0000_01B3);
-            }
-        }
-        format!("{:016x}", h)
+        format!("{:016x}", coord_fnv1a(self, universe))
     }
 }
 
@@ -48,14 +56,7 @@ impl GalaxyCoord {
 /// allowed range (≤2^53) without any single host having prior knowledge of what
 /// a coordinate resolves to.
 pub fn deep_space_seed(coord: GalaxyCoord, universe: UniverseTier) -> Seed {
-    let mut h = 0xCBF2_9CE4_8422_2325u64;
-    for v in [coord.x, coord.y, coord.z, universe as u8 as i64] {
-        for b in v.to_le_bytes() {
-            h ^= b as u64;
-            h = h.wrapping_mul(0x0000_0100_0000_01B3);
-        }
-    }
-    Seed::new(h)
+    Seed::new(coord_fnv1a(&coord, universe))
 }
 
 /// Distance (in galaxy units) beyond which the fidelity gradient switches to
