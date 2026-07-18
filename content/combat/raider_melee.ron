@@ -1,0 +1,17 @@
+// Raider (melee) — the derelict's rank-and-file. Fast, aggressive, closes to
+// blade range and trades. Telegraphs are short but readable; a dodge through
+// the light swing punishes the recovery tail. All ticks at the 10 Hz combat
+// rate; all fixed-point (1024 = 1.0). See content/schemas/hostile.schema.json.
+HostileArchetype(
+    id: "raider_melee",
+    display_name: "Raider",
+    hp: 8192,
+    speed: 256,
+    light_attack: (startup_ticks: 8, active_ticks: 4, recovery_ticks: 12, damage: 1024, range: 2048),
+    heavy_attack: (startup_ticks: 16, active_ticks: 6, recovery_ticks: 20, damage: 2048, range: 2560),
+    block: (active_ticks: 20, cooldown_ticks: 30, parry_ticks: 4),
+    dodge: (i_frame_ticks: 8, recovery_ticks: 12, distance: 3072),
+    chase_radius: 8192,
+    disengage_radius: 16000,
+    flee_hp_frac: 256,
+)

@@ -1,0 +1,19 @@
+// Raider boss ("the Quartermaster") — the mini-boss holding the cargo hold.
+// Twice a raider's hull (hp 16384) and fearless (flee_hp_frac 0). Phase 2 is
+// emergent, not scripted: the state machine commits to heavy swings once the
+// boss drops below half HP, and this heavy is *faster* than a mook's (shorter
+// startup, wider reach) — the fight speeds up exactly when you've earned the
+// opening. Fixed-point, 10 Hz ticks.
+HostileArchetype(
+    id: "raider_boss",
+    display_name: "The Quartermaster",
+    hp: 16384,
+    speed: 288,
+    light_attack: (startup_ticks: 8, active_ticks: 5, recovery_ticks: 12, damage: 1536, range: 2560),
+    heavy_attack: (startup_ticks: 12, active_ticks: 8, recovery_ticks: 16, damage: 3072, range: 3584),
+    block: (active_ticks: 24, cooldown_ticks: 20, parry_ticks: 5),
+    dodge: (i_frame_ticks: 8, recovery_ticks: 10, distance: 3584),
+    chase_radius: 10240,
+    disengage_radius: 22000,
+    flee_hp_frac: 0,
+)
