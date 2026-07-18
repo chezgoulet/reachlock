@@ -17,6 +17,7 @@
 //! never silently mis-deserializes an old settings file.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
@@ -69,6 +70,7 @@ impl Default for AudioSettings {
 pub struct VideoSettings {
     #[serde(default)]
     pub fullscreen: bool,
+    /// Pixel dimensions. `(0, 0)` means "use the native display resolution".
     #[serde(default)]
     pub resolution: (u32, u32),
     #[serde(default = "default_true")]
@@ -249,48 +251,12 @@ impl Settings {
     pub fn with_defaults() -> Self {
         Settings {
             version: default_version(),
-            audio: AudioSettings {
-                master_volume: default_master(),
-                music_volume: default_one(),
-                sfx_volume: default_one(),
-                voice_volume: default_one(),
-                mute_when_unfocused: default_true(),
-            },
-            video: VideoSettings {
-                fullscreen: false,
-                resolution: (0, 0),
-                vsync: default_true(),
-                render_scale: default_one(),
-                ui_scale: default_one(),
-                show_fps: default_true(),
-            },
-            controls: ControlSettings {
-                keybinds: InputAction::default_keybinds(),
-                mouse_sensitivity: default_one(),
-                invert_y: false,
-                controller_deadzone: default_deadzone(),
-            },
-            gameplay: GameplaySettings {
-                aim_assist: default_true(),
-                auto_dock: default_true(),
-                show_tutorial_hints: default_true(),
-                combat_log_verbosity: default_verbosity(),
-                auto_save_interval_secs: default_autosave(),
-            },
-            accessibility: AccessibilitySettings {
-                colorblind_mode: ColorblindMode::None,
-                text_scale: default_one(),
-                high_contrast_ui: default_true(),
-                screen_shake: default_one(),
-                subtitles: default_true(),
-                subtitle_size: default_one(),
-                hold_for_interact: false,
-            },
-            network: NetworkSettings {
-                server_url: default_server(),
-                auto_connect: false,
-                show_latency: default_true(),
-            },
+            audio: AudioSettings::default(),
+            video: VideoSettings::default(),
+            controls: ControlSettings::default(),
+            gameplay: GameplaySettings::default(),
+            accessibility: AccessibilitySettings::default(),
+            network: NetworkSettings::default(),
         }
     }
 }
@@ -301,6 +267,10 @@ impl Default for Settings {
     }
 }
 
+/// Lazily-computed default keybind map, built once and reused across all
+/// `Settings::key()` lookups that miss the user's bindings.
+static DEFAULT_KEYBINDS: OnceLock<HashMap<InputAction, KeyBind>> = OnceLock::new();
+
 impl Settings {
     /// Look up the currently-bound `KeyCode` for an action, falling back to the
     /// registry default if the settings file somehow omitted it (never panics).
@@ -309,7 +279,12 @@ impl Settings {
             .keybinds
             .get(&action)
             .map(|b| b.0)
-            .or_else(|| InputAction::default_keybinds().get(&action).map(|b| b.0))
+            .or_else(|| {
+                DEFAULT_KEYBINDS
+                    .get_or_init(InputAction::default_keybinds)
+                    .get(&action)
+                    .map(|b| b.0)
+            })
             .unwrap_or(KeyCode::KeyF)
     }
 
@@ -369,12 +344,15 @@ pub enum InputAction {
 
     // Editor (S17/S18)
     EditorConfirm,
+    /// Reserved — exit an editor operation without saving.
     EditorCancel,
     EditorCursorUp,
     EditorCursorDown,
     EditorCursorLeft,
     EditorCursorRight,
+    /// Reserved — cycle to the next item in an editor palette.
     EditorCycleNext,
+    /// Reserved — cycle to the previous item in an editor palette.
     EditorCyclePrev,
     EditorTabNext,
     EditorRotate,
@@ -635,9 +613,67 @@ impl KeyBind {
             Digit7 => "Digit7",
             Digit8 => "Digit8",
             Digit9 => "Digit9",
+            F1 => "F1",
+            F2 => "F2",
+            F3 => "F3",
+            F4 => "F4",
             F5 => "F5",
+            F6 => "F6",
+            F7 => "F7",
+            F8 => "F8",
             F9 => "F9",
-            _ => "KeyF",
+            F10 => "F10",
+            F11 => "F11",
+            F12 => "F12",
+            AltLeft => "AltLeft",
+            AltRight => "AltRight",
+            SuperLeft => "SuperLeft",
+            SuperRight => "SuperRight",
+            CapsLock => "CapsLock",
+            ContextMenu => "ContextMenu",
+            Delete => "Delete",
+            End => "End",
+            Home => "Home",
+            Insert => "Insert",
+            PageDown => "PageDown",
+            PageUp => "PageUp",
+            NumLock => "NumLock",
+            ScrollLock => "ScrollLock",
+            Pause => "Pause",
+            PrintScreen => "PrintScreen",
+            Fn => "Fn",
+            Backquote => "Backquote",
+            BracketLeft => "BracketLeft",
+            BracketRight => "BracketRight",
+            Comma => "Comma",
+            Equal => "Equal",
+            Minus => "Minus",
+            Period => "Period",
+            Quote => "Quote",
+            Semicolon => "Semicolon",
+            Slash => "Slash",
+            Numpad0 => "Numpad0",
+            Numpad1 => "Numpad1",
+            Numpad2 => "Numpad2",
+            Numpad3 => "Numpad3",
+            Numpad4 => "Numpad4",
+            Numpad5 => "Numpad5",
+            Numpad6 => "Numpad6",
+            Numpad7 => "Numpad7",
+            Numpad8 => "Numpad8",
+            Numpad9 => "Numpad9",
+            NumpadAdd => "NumpadAdd",
+            NumpadSubtract => "NumpadSubtract",
+            NumpadMultiply => "NumpadMultiply",
+            NumpadDivide => "NumpadDivide",
+            NumpadDecimal => "NumpadDecimal",
+            NumpadEnter => "NumpadEnter",
+            NumpadComma => "NumpadComma",
+            NumpadEqual => "NumpadEqual",
+            kc => {
+                warn!("KeyBind::name: unknown KeyCode variant {kc:?}, serializing as KeyF");
+                "KeyF"
+            }
         }
     }
 
@@ -689,9 +725,67 @@ impl KeyBind {
             "Digit7" => Digit7,
             "Digit8" => Digit8,
             "Digit9" => Digit9,
+            "F1" => F1,
+            "F2" => F2,
+            "F3" => F3,
+            "F4" => F4,
             "F5" => F5,
+            "F6" => F6,
+            "F7" => F7,
+            "F8" => F8,
             "F9" => F9,
-            _ => KeyF,
+            "F10" => F10,
+            "F11" => F11,
+            "F12" => F12,
+            "AltLeft" => AltLeft,
+            "AltRight" => AltRight,
+            "SuperLeft" => SuperLeft,
+            "SuperRight" => SuperRight,
+            "CapsLock" => CapsLock,
+            "ContextMenu" => ContextMenu,
+            "Delete" => Delete,
+            "End" => End,
+            "Home" => Home,
+            "Insert" => Insert,
+            "PageDown" => PageDown,
+            "PageUp" => PageUp,
+            "NumLock" => NumLock,
+            "ScrollLock" => ScrollLock,
+            "Pause" => Pause,
+            "PrintScreen" => PrintScreen,
+            "Fn" => Fn,
+            "Backquote" => Backquote,
+            "BracketLeft" => BracketLeft,
+            "BracketRight" => BracketRight,
+            "Comma" => Comma,
+            "Equal" => Equal,
+            "Minus" => Minus,
+            "Period" => Period,
+            "Quote" => Quote,
+            "Semicolon" => Semicolon,
+            "Slash" => Slash,
+            "Numpad0" => Numpad0,
+            "Numpad1" => Numpad1,
+            "Numpad2" => Numpad2,
+            "Numpad3" => Numpad3,
+            "Numpad4" => Numpad4,
+            "Numpad5" => Numpad5,
+            "Numpad6" => Numpad6,
+            "Numpad7" => Numpad7,
+            "Numpad8" => Numpad8,
+            "Numpad9" => Numpad9,
+            "NumpadAdd" => NumpadAdd,
+            "NumpadSubtract" => NumpadSubtract,
+            "NumpadMultiply" => NumpadMultiply,
+            "NumpadDivide" => NumpadDivide,
+            "NumpadDecimal" => NumpadDecimal,
+            "NumpadEnter" => NumpadEnter,
+            "NumpadComma" => NumpadComma,
+            "NumpadEqual" => NumpadEqual,
+            s => {
+                warn!("KeyBind::from_name: unknown key string \"{s}\", falling back to KeyF");
+                KeyF
+            }
         }
     }
 
@@ -744,8 +838,63 @@ impl KeyBind {
             Digit7 => "7",
             Digit8 => "8",
             Digit9 => "9",
+            F1 => "F1",
+            F2 => "F2",
+            F3 => "F3",
+            F4 => "F4",
             F5 => "F5",
+            F6 => "F6",
+            F7 => "F7",
+            F8 => "F8",
             F9 => "F9",
+            F10 => "F10",
+            F11 => "F11",
+            F12 => "F12",
+            AltLeft => "LAlt",
+            AltRight => "RAlt",
+            SuperLeft => "LSuper",
+            SuperRight => "RSuper",
+            CapsLock => "Caps",
+            ContextMenu => "Menu",
+            Delete => "Del",
+            End => "End",
+            Home => "Home",
+            Insert => "Ins",
+            PageDown => "PgDn",
+            PageUp => "PgUp",
+            NumLock => "NumLk",
+            ScrollLock => "Scrlk",
+            Pause => "Pause",
+            PrintScreen => "PrtSc",
+            Fn => "Fn",
+            Backquote => "`",
+            BracketLeft => "[",
+            BracketRight => "]",
+            Comma => ",",
+            Equal => "=",
+            Minus => "-",
+            Period => ".",
+            Quote => "'",
+            Semicolon => ";",
+            Slash => "/",
+            Numpad0 => "Num0",
+            Numpad1 => "Num1",
+            Numpad2 => "Num2",
+            Numpad3 => "Num3",
+            Numpad4 => "Num4",
+            Numpad5 => "Num5",
+            Numpad6 => "Num6",
+            Numpad7 => "Num7",
+            Numpad8 => "Num8",
+            Numpad9 => "Num9",
+            NumpadAdd => "Num+",
+            NumpadSubtract => "Num−",
+            NumpadMultiply => "Num×",
+            NumpadDivide => "Num÷",
+            NumpadDecimal => "Num.",
+            NumpadEnter => "NumEnt",
+            NumpadComma => "Num,",
+            NumpadEqual => "Num=",
             _ => "?",
         };
         s.to_string()
@@ -765,11 +914,16 @@ pub fn load_settings() -> Settings {
         Ok(text) => match ron::from_str::<Settings>(&text) {
             Ok(s) => s,
             Err(e) => {
-                warn!("settings corrupt, using defaults: {e}");
+                warn!("settings.ron corrupt, using defaults: {e}");
                 Settings::default()
             }
         },
-        Err(_) => Settings::default(),
+        Err(e) => {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                warn!("settings load failed ({e}); using defaults");
+            }
+            Settings::default()
+        }
     }
 }
 

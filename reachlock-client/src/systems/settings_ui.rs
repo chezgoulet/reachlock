@@ -209,20 +209,18 @@ pub fn settings_ui_system(
     };
 
     // Drain keyboard events every frame (even when closed) so they don't pile
-    // up unread in the event buffer.
-    let pressed: Vec<KeyCode> = key_events
-        .read()
-        .filter(|e| e.state.is_pressed())
-        .map(|e| e.key_code)
-        .collect();
-    let typed: Vec<String> = key_events
-        .read()
-        .filter(|e| e.state.is_pressed())
-        .filter_map(|e| match &e.logical_key {
-            Key::Character(s) => Some(s.to_string()),
-            _ => None,
-        })
-        .collect();
+    // up unread in the event buffer. Single read() pass populates both pressed
+    // and typed vecs — a second .read() would get an empty iterator.
+    let mut pressed: Vec<KeyCode> = Vec::with_capacity(8);
+    let mut typed: Vec<String> = Vec::with_capacity(8);
+    for e in key_events.read() {
+        if e.state.is_pressed() {
+            pressed.push(e.key_code);
+            if let Key::Character(s) = &e.logical_key {
+                typed.push(s.to_string());
+            }
+        }
+    }
 
     if !state.open {
         return;
@@ -294,7 +292,7 @@ pub fn settings_ui_system(
         if *kc == KeyCode::ArrowUp {
             row = row.saturating_sub(1);
         } else if *kc == KeyCode::ArrowDown {
-            row = (row + 1).min(tab.row_count() - 1);
+            row = row.saturating_add(1).min(tab.row_count() - 1);
         }
     }
     state.row = row;
@@ -529,7 +527,7 @@ fn adjust_u32(v: &mut u32, kc: KeyCode, lo: u32, hi: u32) {
     if kc == KeyCode::KeyA {
         *v = v.saturating_sub(1).max(lo);
     } else if kc == KeyCode::KeyD {
-        *v = (*v + 1).min(hi);
+        *v = v.saturating_add(1).min(hi);
     }
 }
 

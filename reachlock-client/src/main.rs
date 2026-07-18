@@ -282,6 +282,7 @@ fn main() {
             Update,
             (
                 combat::cycle_target,
+                combat::cycle_target_reverse,
                 combat::power_quick_keys,
                 combat::pop_chaff,
             )

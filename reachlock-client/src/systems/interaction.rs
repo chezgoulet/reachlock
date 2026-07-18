@@ -201,8 +201,12 @@ pub fn try_interact(
                 settings.key_display(InputAction::Interact)
             ));
             prompt.target = Some(pos);
-            if keys.just_pressed(settings.key(InputAction::Interact)) && *panel == ActivePanel::None
-            {
+            let interact_pressed = if settings.accessibility.hold_for_interact {
+                keys.pressed(settings.key(InputAction::Interact))
+            } else {
+                keys.just_pressed(settings.key(InputAction::Interact))
+            };
+            if interact_pressed && *panel == ActivePanel::None {
                 match kind {
                     // Mode transitions — no panel, the world changes.
                     InteractKind::Board => {

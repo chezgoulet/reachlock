@@ -710,6 +710,31 @@ pub fn cycle_target(
     });
 }
 
+/// `Shift+R` (or whichever key is bound to `CycleTargetReverse`) cycles the
+/// targeted subsystem in the opposite direction: drive → sensors → weapons →
+/// engines → center mass.
+pub fn cycle_target_reverse(
+    keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
+    mut targeting: ResMut<PlayerTargeting>,
+    mut log: ResMut<ShipLog>,
+) {
+    if !keys.just_pressed(settings.key(InputAction::CycleTargetReverse)) {
+        return;
+    }
+    targeting.subsystem = match targeting.subsystem {
+        None => Some(SubsystemKind::Drive),
+        Some(SubsystemKind::Drive) => Some(SubsystemKind::Sensors),
+        Some(SubsystemKind::Sensors) => Some(SubsystemKind::Weapons),
+        Some(SubsystemKind::Weapons) => Some(SubsystemKind::Engines),
+        Some(SubsystemKind::Engines) => None,
+    };
+    log.log(match targeting.subsystem {
+        Some(kind) => format!("Targeting: {}.", kind.label()),
+        None => "Targeting: center mass.".into(),
+    });
+}
+
 /// In-flight power split on quick keys (spec §22): Up/Down pick a system
 /// (weapons/shields/engines), Left/Right move a notch, all within the same
 /// budget the OnBoard power console manages. Sensors keep whatever the

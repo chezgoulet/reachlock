@@ -14,6 +14,7 @@ use reachlock_core::economy::GoodId;
 use reachlock_core::generator::station::StationKind;
 use reachlock_core::sim::UniverseState;
 
+use crate::settings::Settings;
 use crate::states::CurrentLocation;
 use crate::systems::ticker::UniverseTicker;
 
@@ -153,18 +154,18 @@ pub fn load_player() -> Option<(PlayerInventory, CurrentLocation)> {
     Some((file.inventory, loc))
 }
 
-/// Autosave throttle: writes the save every `INTERVAL` of *real* time so a
+/// Autosave throttle: writes the save every interval of *real* time so a
 /// quit mid-session preserves progress without hammering the disk each frame.
+/// The interval is read from `settings.gameplay.auto_save_interval_secs`.
 #[derive(Resource, Default)]
 pub struct SaveTimer(pub f32);
-
-const INTERVAL: f32 = 5.0;
 
 /// Accumulate real time and autosave on the interval. Runs in all `InGame`
 /// modes (wired in `main.rs`). Offline-safe: `save_player` never panics.
 #[allow(clippy::too_many_arguments)]
 pub fn autosave_system(
     time: Res<Time<Real>>,
+    settings: Res<Settings>,
     inv: Res<PlayerInventory>,
     loc: Res<CurrentLocation>,
     mut timer: ResMut<SaveTimer>,
@@ -173,8 +174,9 @@ pub fn autosave_system(
     shipcfg: Res<crate::systems::shipeditor::ShipConfig>,
     interior_cfg: Res<crate::systems::shipeditor::InteriorConfig>,
 ) {
+    let interval = settings.gameplay.auto_save_interval_secs as f32;
     timer.0 += time.delta_secs();
-    if timer.0 >= INTERVAL {
+    if timer.0 >= interval {
         timer.0 = 0.0;
         save_player(
             &inv,
