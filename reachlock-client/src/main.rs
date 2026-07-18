@@ -18,8 +18,8 @@ use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     combat, comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions,
-    hud, interaction, interior, inventory, jump, market, menu, mode, network, onboard, pause,
-    reticle, sensors, setup, ship, shipeditor, soul, ticker,
+    galaxy_map, hud, interaction, interior, inventory, jump, market, menu, mode, network, onboard,
+    pause, reticle, sensors, setup, ship, shipeditor, soul, ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -86,10 +86,13 @@ fn main() {
         .init_non_send_resource::<network::NetworkClient>()
         .init_resource::<network::ReconnectBackoff>()
         .init_resource::<network::SeedState>()
-        // S06: mode machine resources. Seed the first system from the
-        // canonical seed so a fresh launch loads the authored starting system.
+        // S06/S21: mode machine resources. The player starts in Aethon,
+        // the Compact's seat — the gate network's default origin.
         .insert_resource(CurrentLocation {
-            system_seed: systems::setup::SYSTEM_SEED,
+            system_seed: 16843009,
+            system_id: reachlock_core::seed::types::SystemId("aethon".into()),
+            system_biome: reachlock_core::seed::types::Biome::Core,
+            system_fidelity: reachlock_core::generator::system::Fidelity::Full,
             ..default()
         })
         .init_resource::<SceneRegistry>()
@@ -119,6 +122,7 @@ fn main() {
         .init_resource::<factions::ReputationPanelVisible>()
         // S09: live jump/transit bookkeeping + sensors.
         .init_resource::<jump::TransitState>()
+        .init_resource::<jump::FtlRoute>()
         .init_resource::<sensors::MapOverlayState>()
         // S09b: cross-mode command bus — OnBoard consoles (gunner/scanner/
         // miner/power) write it, the flight systems read it (spec §22).
@@ -216,7 +220,13 @@ fn main() {
                 docking::try_dock,
                 docking::leave_helm,
                 jump::try_gate_jump,
+                jump::gate_selection_input,
+                jump::gate_choice_overlay,
                 jump::self_jump,
+                galaxy_map::galaxy_map_toggle,
+                galaxy_map::galaxy_map_click,
+                galaxy_map::galaxy_map_cancel_ftl,
+                galaxy_map::render_galaxy_map,
             )
                 .run_if(in_spaceflight),
         )

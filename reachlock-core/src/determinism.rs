@@ -511,6 +511,33 @@ pub fn manifest() -> Manifest {
             seed,
             checksum: h.finish(),
         });
+
+        // S21: deep_space_seed is frozen protocol (joining derive_seed).
+        // Test three distinct coords per seed so any FNV-1a derivation drift
+        // across platforms is caught.
+        for coord in &[
+            crate::galaxy::GalaxyCoord { x: 0, y: 0, z: 0 },
+            crate::galaxy::GalaxyCoord {
+                x: 1000,
+                y: 2000,
+                z: 3000,
+            },
+            crate::galaxy::GalaxyCoord {
+                x: -500,
+                y: 8000,
+                z: -12000,
+            },
+        ] {
+            entries.push(Entry {
+                generator: format!("deep_space_seed_{}_{}_{}", coord.x, coord.y, coord.z),
+                seed,
+                checksum: crate::galaxy::deep_space_seed(
+                    *coord,
+                    crate::universe::tier::UniverseTier::Classic,
+                )
+                .value(),
+            });
+        }
     }
 
     Manifest {
@@ -522,7 +549,8 @@ pub fn manifest() -> Manifest {
         //     (S17 and S19 both bumped 5->6 on their branches; the merge
         //     carries both entry sets, so the merged manifest is v7.)
         // v8: added S18 ship_interior (interior realization) golden entry.
-        version: 8,
+        // v9: added S21 deep_space_seed (frozen protocol, like derive_seed).
+        version: 9,
         entries,
     }
 }

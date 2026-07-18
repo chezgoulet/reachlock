@@ -1,0 +1,8 @@
+ChartedSystem(
+    id: "earth",
+    display_name: "Earth",
+    position: (x: 1200, y: 0, z: -600),
+    biome: Derelict,
+    seed: 84215045,
+    description: "The cradle of humanity, lost. The Earth Remnant controls the gate and permits no transit. Signals from the inner system tell of a functioning but hostile society — remnants of the old秩序的, guarding what remains.",
+)

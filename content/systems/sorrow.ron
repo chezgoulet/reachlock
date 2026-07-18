@@ -1,0 +1,8 @@
+ChartedSystem(
+    id: "sorrow",
+    display_name: "Sorrow",
+    position: (x: 800, y: 50, z: -400),
+    biome: Derelict,
+    seed: 67372036,
+    description: "Once a thriving colony, Sorrow fell to plague and neglect during the Exodus. Its stations are ghost towns. The gate to Earth is blockaded by the Earth Remnant, who consider this system a quarantine zone.",
+)

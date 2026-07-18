@@ -1,0 +1,8 @@
+ChartedSystem(
+    id: "cadence",
+    display_name: "Cadence",
+    position: (x: 350, y: -150, z: 100),
+    biome: Frontier,
+    seed: 50529027,
+    description: "The trading heart of the inner frontier. Independent merchants, Corp Charter factors, and Compact trade envoys rub shoulders in Cadence's bustling orbital freeports.",
+)

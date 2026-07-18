@@ -1,18 +1,23 @@
-//! Authored content index (spec §10, Loader deliverable): at startup, read
-//! every `.ron` under `content/` into a Bevy resource so `setup::spawn_world`
-//! can resolve authored overrides. The bridge stays plain-data-only — this
-//! module is the only content-aware piece on the client side; everything it
-//! produces is a `Vec<ContentFile>` the same generators already understand.
+use std::collections::HashMap;
 
 use bevy::prelude::*;
 use reachlock_core::content::ContentFile;
+use reachlock_core::galaxy::{ChartedSystem, GateNetwork};
 
 /// The local override index (spec §10, "Loader reads `content/` from disk
 /// at startup (local mode)"). Empty on wasm — there is no filesystem to
 /// read; server distribution of overrides is S23's problem.
+///
+/// S21 adds two typed sub-indices for the galaxy module: charted systems
+/// and the gate network, loaded as plain structs from `content/systems/`
+/// and `content/gate_network/`.
 #[derive(Resource, Default)]
 pub struct ContentIndex {
     pub files: Vec<ContentFile>,
+    /// S21: authored charted systems, keyed by system id.
+    pub charted_systems: HashMap<String, ChartedSystem>,
+    /// S21: the authored gate network (single file: `core_region.ron`).
+    pub gate_network: Option<GateNetwork>,
 }
 
 impl ContentIndex {
@@ -45,8 +50,58 @@ pub fn load_content_index(mut commands: Commands) {
     } else {
         warn!("content index: no content/ directory found at {root:?}; index is empty");
     }
-    info!("content index: loaded {} authored file(s)", files.len());
-    commands.insert_resource(ContentIndex { files });
+    // S21: load charted systems and gate network as plain (non-ContentFile)
+    // structs, matching the pattern from S20's hostile combat content.
+    let charted_systems = load_typed(root.join("systems"), "system", |s: &ChartedSystem| {
+        s.id.clone()
+    });
+    let gate_network =
+        load_typed::<GateNetwork, _>(root.join("gate_network"), "gate_network", |_| {
+            "core_region".into()
+        })
+        .into_iter()
+        .next()
+        .map(|(_, n)| n);
+    info!(
+        "content index: loaded {} authored file(s), {} charted system(s)",
+        files.len(),
+        charted_systems.len()
+    );
+    commands.insert_resource(ContentIndex {
+        files,
+        charted_systems,
+        gate_network,
+    });
+}
+
+/// Parse every `.ron` in `dir` into `T`, keyed by `key`. Missing dir → empty
+/// map; a bad file is logged and skipped (one typo shouldn't blank the set).
+#[cfg(not(target_arch = "wasm32"))]
+fn load_typed<T, K>(dir: std::path::PathBuf, label: &str, key: K) -> HashMap<String, T>
+where
+    T: serde::de::DeserializeOwned,
+    K: Fn(&T) -> String,
+{
+    let mut out = HashMap::new();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "ron") {
+            continue;
+        }
+        match std::fs::read_to_string(&path) {
+            Ok(text) => match ron::from_str::<T>(&text) {
+                Ok(value) => {
+                    out.insert(key(&value), value);
+                }
+                Err(err) => warn!("content index: bad {label} {}: {err}", path.display()),
+            },
+            Err(err) => warn!("content index: failed to read {}: {err}", path.display()),
+        }
+    }
+    out
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -58,7 +113,12 @@ fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if path.file_name().is_some_and(|n| n == FIXTURES_DIR) {
+            // Skip the S21 typed-content directories (they're plain structs
+            // parsed by `load_typed`, not ContentFile envelopes).
+            if path
+                .file_name()
+                .is_some_and(|n| n == FIXTURES_DIR || n == "systems" || n == "gate_network")
+            {
                 continue;
             }
             walk(&path, out);

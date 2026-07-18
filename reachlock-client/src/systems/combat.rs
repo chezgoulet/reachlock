@@ -25,7 +25,7 @@ use reachlock_core::contract::{
     types::{Action, Comparison, Condition, Contract, LlmConfig, Rule, Trigger},
 };
 use reachlock_core::generator::hull::HullHandling;
-use reachlock_core::generator::system::{generate_system, Fidelity};
+use reachlock_core::generator::system::generate_system;
 use reachlock_core::generator::FixedVec2;
 use reachlock_core::util::rng::{Fixed, SeededRng};
 
@@ -33,7 +33,6 @@ use crate::bridge;
 use crate::states::{CurrentLocation, GameMode, ModeScope};
 use crate::systems::contract::{Deliberation, DeliberationState, ShipLog};
 use crate::systems::sensors::Contact;
-use crate::systems::setup::SYSTEM_BIOME;
 use crate::systems::ship::{
     FlightFeel, PlayerShip, Projectile, ShipCommand, ShipSystems, POWER_BUDGET, POWER_MAX_NOTCH,
 };
@@ -177,7 +176,7 @@ pub fn spawn_encounters(
     spawned.seed = Some(seed);
     reinforced.0.clear();
 
-    let system = generate_system(seed, SYSTEM_BIOME, Fidelity::Full);
+    let system = generate_system(seed, location.system_biome, location.system_fidelity);
     let spawns = generate_encounters(seed, &system);
     let tier = reachlock_core::combat::encounter::threat_tier(&system);
     if spawns.is_empty() {
