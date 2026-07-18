@@ -618,9 +618,9 @@ pub fn manifest() -> Manifest {
         //     (S17 and S19 both bumped 5->6 on their branches; the merge
         //     carries both entry sets, so the merged manifest is v7.)
         // v8: added S18 ship_interior (interior realization) golden entry.
-        // v9: added S21 deep_space_seed (frozen protocol, like derive_seed).
-        // v9 also: added S20 combat_humanoid (landed combat state machine) golden.
-        version: 9,
+        // v9: added S21 deep_space_seed (frozen protocol) and S20 combat_humanoid.
+        // v10: added S20 hostile_locations to GeneratedSystem (system POIs).
+        version: 10,
         entries,
     }
 }

@@ -23,15 +23,18 @@ use reachlock_core::combat::{
     HumanoidIntent, HumanoidSenses, HumanoidState,
 };
 use reachlock_core::generator::FixedVec2;
+use reachlock_core::item::types::StatKey;
 use reachlock_core::util::rng::Fixed;
 
 use crate::settings::{InputAction, Settings};
 use crate::states::{CurrentLocation, GameMode, ModeScope};
 use crate::systems::content_index::ContentIndex;
 use crate::systems::contract::ShipLog;
+use crate::systems::docking::HostileDockable;
 use crate::systems::interior::Figure;
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::mode::PlayerAvatar;
+use crate::systems::setup::BeaconPulse;
 
 // --- tuning (presentation scale; core keeps raw fixed-point stat units) ------
 
@@ -60,23 +63,49 @@ const DODGE_LUNGE: f32 = 22.0;
 /// Parry window at the front of a raised guard (ticks).
 const PLAYER_PARRY_TICKS: u32 = 2;
 
-/// The player's melee profile (equip-slot integration with S17 `ItemRef` is a
-/// follow-up — `PlayerInventory` has no weapon slot yet). Ranges are in core
-/// fixed units like the archetypes.
-const PLAYER_LIGHT: AttackWindow = AttackWindow {
+/// Bare-hand melee profile — the fallback when nothing is equipped. Stats
+/// are upgraded by whatever weapon the player carries in
+/// [`PlayerInventory::equipped_weapon`].
+const FIST_LIGHT: AttackWindow = AttackWindow {
     startup_ticks: 2,
     active_ticks: 2,
     recovery_ticks: 4,
     damage: 1300,
     range: 2600,
 };
-const PLAYER_HEAVY: AttackWindow = AttackWindow {
+const FIST_HEAVY: AttackWindow = AttackWindow {
     startup_ticks: 5,
     active_ticks: 3,
     recovery_ticks: 8,
     damage: 2800,
     range: 3000,
 };
+
+/// Resolve the player's effective melee AttackWindows from their equipped
+/// weapon, or fall back to fists.
+fn player_windows(inv: &PlayerInventory) -> (AttackWindow, AttackWindow) {
+    match &inv.equipped_weapon {
+        Some((_, stats)) => {
+            let whole =
+                |key: StatKey| -> i64 { stats.0.get(&key).copied().unwrap_or(1024).max(1) / 1024 };
+            let dmg = whole(StatKey::Damage).max(1);
+            let rng = whole(StatKey::Range).max(1);
+            (
+                AttackWindow {
+                    damage: dmg,
+                    range: rng,
+                    ..FIST_LIGHT
+                },
+                AttackWindow {
+                    damage: dmg * 2,
+                    range: rng + 512,
+                    ..FIST_HEAVY
+                },
+            )
+        }
+        None => (FIST_LIGHT, FIST_HEAVY),
+    }
+}
 
 /// Explosive barrel starting HP, its blast radius, and blast damage.
 const BARREL_HP: i64 = 1200;
@@ -487,13 +516,15 @@ pub fn step_landed_enemies(
     mut commands: Commands,
     tick: Res<LandedTick>,
     mut state: ResMut<LandedCombatState>,
+    inventory: Res<PlayerInventory>,
     avatar: Query<&Transform, (With<PlayerAvatar>, Without<HostileMarker>)>,
     mut hostiles: Query<(Entity, &mut Combatant, &mut Transform), With<HostileMarker>>,
 ) {
     if !tick.fired {
         return;
     }
-    advance_player_timers(&mut state);
+    let (light, heavy) = player_windows(&inventory);
+    advance_player_timers(&mut state, light, heavy);
 
     let Ok(ptx) = avatar.single() else {
         return;
@@ -593,7 +624,7 @@ fn apply_intent_movement(c: &mut Combatant, tx: &mut Transform, intent: Humanoid
 
 /// Advance the player's own tick timers: stamina regen, block hold, dodge
 /// i-frames, and swing progression. Consumes the pending input flags.
-fn advance_player_timers(state: &mut LandedCombatState) {
+fn advance_player_timers(state: &mut LandedCombatState, light: AttackWindow, heavy: AttackWindow) {
     state.player_stamina = (state.player_stamina + STAMINA_REGEN).min(state.player_stamina_max);
 
     // Block is a hold; it can't overlap a dodge or an in-progress swing.
@@ -630,9 +661,9 @@ fn advance_player_timers(state: &mut LandedCombatState) {
     // Attack start (light/heavy), when idle and not mid-dodge.
     if !state.attacking && !state.is_dodging {
         if state.pending_heavy {
-            start_player_attack(state, true);
+            start_player_attack(state, heavy, true);
         } else if state.pending_light {
-            start_player_attack(state, false);
+            start_player_attack(state, light, false);
         }
     }
     state.pending_light = false;
@@ -649,8 +680,7 @@ fn advance_player_timers(state: &mut LandedCombatState) {
     }
 }
 
-fn start_player_attack(state: &mut LandedCombatState, heavy: bool) {
-    let win = if heavy { PLAYER_HEAVY } else { PLAYER_LIGHT };
+fn start_player_attack(state: &mut LandedCombatState, win: AttackWindow, heavy: bool) {
     state.attacking = true;
     state.player_attack_heavy = heavy;
     state.attack_timer = 0;
@@ -667,6 +697,7 @@ fn start_player_attack(state: &mut LandedCombatState, heavy: bool) {
 pub fn apply_landed_hits(
     tick: Res<LandedTick>,
     mut state: ResMut<LandedCombatState>,
+    inventory: Res<PlayerInventory>,
     mut log: ResMut<ShipLog>,
     avatar: Query<(&Transform, &Figure), (With<PlayerAvatar>, Without<HostileMarker>)>,
     mut hostiles: Query<(Entity, &Transform, &mut Combatant), With<HostileMarker>>,
@@ -679,6 +710,7 @@ pub fn apply_landed_hits(
     let Ok((ptx, figure)) = avatar.single() else {
         return;
     };
+    let (player_light, player_heavy) = player_windows(&inventory);
     let player = ptx.translation.truncate();
     let player_i = (player.x as i64, player.y as i64);
 
@@ -739,9 +771,9 @@ pub fn apply_landed_hits(
         return;
     }
     let win = if state.player_attack_heavy {
-        PLAYER_HEAVY
+        player_heavy
     } else {
-        PLAYER_LIGHT
+        player_light
     };
     if state.player_swing_connected || !win.is_active(state.attack_timer) {
         return;
@@ -1045,6 +1077,50 @@ pub fn step_props(
         commands.entity(entity).despawn();
         inventory.credits += CRATE_LOOT_CREDITS;
         log.log(format!("Cracked a crate (+{CRATE_LOOT_CREDITS} cr)."));
+    }
+}
+
+// --- optional polish: derelict tumble + beacon pulse -----------------------
+
+/// Slow derelict rotation (0.15 rad/s around Y) giving a dead-ship drift
+/// feel in the flight scene. Runs in SpaceFlight alongside the other
+/// per-frame Update systems.
+pub fn tumble_derelicts(
+    time: Res<Time>,
+    mut derelicts: Query<&mut Transform, (With<HostileDockable>, Without<Combatant>)>,
+) {
+    for mut t in &mut derelicts {
+        t.rotate_y(time.delta_secs() * 0.15);
+    }
+}
+
+/// Pulsing beacon rings on derelict markers: emissive intensity oscillates
+/// with a slow sine (the classic "distress beacon" rhythm). Throttled to ~4
+/// Hz so the asset store doesn't churn on per-frame material clones.
+pub fn pulse_beacons(
+    time: Res<Time>,
+    mut timer: Local<f32>,
+    derelicts: Query<(&Children, &BeaconPulse), With<HostileDockable>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    rings: Query<&MeshMaterial3d<StandardMaterial>>,
+) {
+    *timer += time.delta_secs();
+    if *timer < 0.25 {
+        return;
+    }
+    *timer = 0.0;
+    let t = time.elapsed_secs();
+    for (children, pulse) in &derelicts {
+        let phase = t * 2.0 + pulse.phase;
+        let mult = (phase.sin() * 0.3) + 0.7;
+        for i in 0..children.len() {
+            let child = children[i];
+            if let Ok(mat_handle) = rings.get(child) {
+                if let Some(mat) = materials.get_mut(mat_handle) {
+                    mat.emissive = LinearRgba::rgb(8.0 * mult, 1.5 * mult, 0.3 * mult);
+                }
+            }
+        }
     }
 }
 

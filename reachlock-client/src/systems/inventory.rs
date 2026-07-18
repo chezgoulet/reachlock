@@ -14,6 +14,8 @@ use reachlock_core::economy::GoodId;
 use reachlock_core::generator::station::StationKind;
 use reachlock_core::sim::UniverseState;
 
+use reachlock_core::item::types::{ItemStats, MeleeWeapon};
+
 use crate::settings::Settings;
 use crate::states::CurrentLocation;
 use crate::systems::ticker::UniverseTicker;
@@ -25,6 +27,9 @@ pub struct PlayerInventory {
     pub credits: i64,
     pub capacity: u32,
     pub cargo: BTreeMap<GoodId, u32>,
+    /// S20: the melee weapon carried into landed combat. `None` → fists.
+    #[serde(default)]
+    pub equipped_weapon: Option<(MeleeWeapon, ItemStats)>,
 }
 
 impl PlayerInventory {

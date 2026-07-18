@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use reachlock_core::combat::{HostileArchetype, HostileLocation};
 use reachlock_core::content::ContentFile;
 use reachlock_core::galaxy::{ChartedSystem, GateNetwork};
 

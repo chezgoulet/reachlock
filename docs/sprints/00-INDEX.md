@@ -52,10 +52,11 @@ A sprint may start when its listed dependencies are merged.
 | 7 | S30 | Agent tooling — CI gate, codex CLI, auto-generated context | — (standalone) |
 | 7 | S31 | Game settings & preferences — keybinds, audio/video, accessibility | — (infrastructure) |
 
-Phase-4 polish (economy balancing, audio pass, UI pass, beta) is deliberately
-NOT pre-cut into sprints: those briefs get written against real systems once
-the systems exist. Colonization (spec §17) waits for a live MMO — cut it as
-its own sprint after S23 ships.
+Phase-4 polish (economy balancing, audio pass, UI pass, beta) was deliberately
+NOT pre-cut into sprints — these briefs get written against real systems once
+the systems exist. S48 (Procedural Audio Engine) is the first sprint cut from
+this phase. Colonization (spec §17) waits for a live MMO — cut it as its own
+sprint after S23 ships.
 
 ### Wave 8 — LLM Gameplay
 
@@ -88,6 +89,15 @@ feel like worlds.
 | S45 | Ship room upgrades — widgets, repurposing, power budget, tiered progression | S18, S05, S44 |
 | S46 | Mission engine — context-aware mission generation from economy/politics/state | S10, S11, S40, S42 |
 | S47 | Planet scale & culture — cities, language, customs, architecture, coherent cultures | S04, S11 |
+
+### Wave 10 — Audio & Polish
+
+The first Phase-4 sprint. These briefs are written against the real systems
+as they exist after S47, not against design intent.
+
+| Sprint | Title | Depends on |
+|---|---|---|
+| S48 | Procedural audio engine (fundsp) — real-time seeded music, theme riffing, authored overrides | S01, S05, S06, S09 |
 
 ## Fleet playbook (read before starting any sprint)
 

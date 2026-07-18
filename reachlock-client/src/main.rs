@@ -273,6 +273,7 @@ fn main() {
             (
                 ship::control,
                 docking::try_dock,
+                docking::try_board_hostile,
                 docking::leave_helm,
                 jump::try_gate_jump,
                 jump::gate_selection_input,
@@ -282,6 +283,8 @@ fn main() {
                 galaxy_map::galaxy_map_click,
                 galaxy_map::galaxy_map_cancel_ftl,
                 galaxy_map::render_galaxy_map,
+                landed_combat::tumble_derelicts,
+                landed_combat::pulse_beacons,
             )
                 .run_if(in_spaceflight),
         )
