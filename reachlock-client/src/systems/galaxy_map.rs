@@ -1,12 +1,15 @@
-//! Galaxy map (S21): an overlay screen showing charted systems, gate edges,
-//! the player's current system, and discovered deep-space systems. Toggled
-//! with G in the flight scene. Read-only in S21 — FTL to coordinates and
-//! gate selection are separate UI panels.
+//! Galaxy map (S21): an overlay screen showing charted systems and gate edges
+//! in the gate network. Toggled with G in the flight scene. Left-click on
+//! empty space to set an FTL route target, then press J to jump to deep space
+//! at those coordinates.
 
 use bevy::prelude::*;
 
+use reachlock_core::galaxy::GalaxyCoord;
+
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::content_index::ContentIndex;
+use crate::systems::jump::FtlRoute;
 
 /// Marker for the galaxy map overlay entity.
 #[derive(Component)]
@@ -41,47 +44,123 @@ pub fn galaxy_map_toggle(
     }
 }
 
-/// Render the galaxy map: charted system nodes, gate edges, player position.
+/// Hand-compiled projection parameters for screen ↔ galaxy coord conversion.
+struct MapProjection {
+    min_x: i64,
+    min_y: i64,
+    scale: f32,
+    center_x: f32,
+    center_y: f32,
+}
+
+impl MapProjection {
+    fn compute(content: &ContentIndex) -> Option<Self> {
+        let positions: Vec<_> = content
+            .charted_systems
+            .values()
+            .map(|s| s.position)
+            .collect();
+        if positions.is_empty() {
+            return None;
+        }
+        let min_x = positions.iter().map(|p| p.x).min().unwrap_or(-2000);
+        let max_x = positions.iter().map(|p| p.x).max().unwrap_or(2000);
+        let min_y = positions.iter().map(|p| p.y).min().unwrap_or(-2000);
+        let max_y = positions.iter().map(|p| p.y).max().unwrap_or(2000);
+        let span_x = (max_x - min_x).max(1) as f32;
+        let span_y = (max_y - min_y).max(1) as f32;
+        let scale = 600.0 / span_x.max(span_y);
+        Some(MapProjection {
+            min_x,
+            min_y,
+            scale,
+            center_x: 960.0,
+            center_y: 540.0,
+        })
+    }
+
+    fn to_screen(&self, x: i64, y: i64) -> Vec2 {
+        Vec2::new(
+            self.center_x + (x - self.min_x) as f32 * self.scale,
+            self.center_y - (y - self.min_y) as f32 * self.scale,
+        )
+    }
+
+    fn screen_to_coord(&self, pos: Vec2) -> GalaxyCoord {
+        GalaxyCoord {
+            x: ((pos.x - self.center_x) / self.scale) as i64 + self.min_x,
+            y: self.min_y - ((pos.y - self.center_y) / self.scale) as i64,
+            z: 0,
+        }
+    }
+
+    fn screen_dist(&self, screen: Vec2, coord: GalaxyCoord) -> f32 {
+        let sp = self.to_screen(coord.x, coord.y);
+        (screen - sp).length()
+    }
+}
+
+/// Left-click on empty space in the galaxy map to set an FTL route target.
+pub fn galaxy_map_click(
+    buttons: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    content: Res<ContentIndex>,
+    overlay: Query<&Node, With<GalaxyMapOverlay>>,
+    mut ftl: ResMut<FtlRoute>,
+) {
+    if overlay.single().is_err() || !buttons.just_pressed(MouseButton::Left) {
+        return;
+    }
+    let Some(proj) = MapProjection::compute(&content) else {
+        return;
+    };
+    let Ok(w) = windows.single() else { return };
+    let cursor = w.cursor_position().unwrap_or_default();
+    let coord = proj.screen_to_coord(cursor);
+
+    // Don't set FTL target if clicking on a charted system (within 12px).
+    let near_system = content
+        .charted_systems
+        .values()
+        .any(|s| proj.screen_dist(cursor, s.position) < 12.0);
+    if !near_system {
+        ftl.coord = Some(coord);
+    }
+}
+
+/// Cancel the FTL route with right-click or X key.
+pub fn galaxy_map_cancel_ftl(
+    keys: Res<ButtonInput<KeyCode>>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    overlay: Query<&Node, With<GalaxyMapOverlay>>,
+    mut ftl: ResMut<FtlRoute>,
+) {
+    if overlay.single().is_err() {
+        return;
+    }
+    if keys.just_pressed(KeyCode::KeyX) || buttons.just_pressed(MouseButton::Right) {
+        ftl.coord = None;
+    }
+}
+
+/// Render the galaxy map: charted system nodes, gate edges, player position,
+/// and the FTL route target (if set).
 pub fn render_galaxy_map(
+    time: Res<Time>,
     content: Res<ContentIndex>,
     location: Res<CurrentLocation>,
+    ftl: Res<FtlRoute>,
     overlay: Query<&Node, With<GalaxyMapOverlay>>,
     mut gizmos: Gizmos,
 ) {
     if overlay.single().is_err() {
         return;
     }
-    // Only render if the gate network and charted systems are loaded.
     let Some(network) = content.gate_network.as_ref() else {
         return;
     };
-    if content.charted_systems.is_empty() {
+    let Some(proj) = MapProjection::compute(&content) else {
         return;
-    }
-
-    // Map coordinate bounds for centering. Charted systems range from
-    // earth (-1200?) to fringe (1100?) — normalize to a viewport.
-    let all_positions: Vec<_> = content
-        .charted_systems
-        .values()
-        .map(|s| s.position)
-        .collect();
-    let min_x = all_positions.iter().map(|p| p.x).min().unwrap_or(-2000);
-    let max_x = all_positions.iter().map(|p| p.x).max().unwrap_or(2000);
-    let min_y = all_positions.iter().map(|p| p.y).min().unwrap_or(-2000);
-    let max_y = all_positions.iter().map(|p| p.y).max().unwrap_or(2000);
-    let span_x = (max_x - min_x).max(1) as f32;
-    let span_y = (max_y - min_y).max(1) as f32;
-
-    let center_x = 960.0; // half of 1920
-    let center_y = 540.0; // half of 1080
-    let scale = 600.0 / span_x.max(span_y); // fit within ~600px
-
-    let to_screen = |x: i64, y: i64| -> Vec2 {
-        Vec2::new(
-            center_x + (x - min_x) as f32 * scale,
-            center_y - (y - min_y) as f32 * scale, // y-axis inverted
-        )
     };
 
     // Draw gate edges first (behind nodes).
@@ -92,8 +171,8 @@ pub fn render_galaxy_map(
         let Some(to_sys) = content.charted_systems.get(&gate.to.0) else {
             continue;
         };
-        let from_pos = to_screen(from_sys.position.x, from_sys.position.y);
-        let to_pos = to_screen(to_sys.position.x, to_sys.position.y);
+        let from_pos = proj.to_screen(from_sys.position.x, from_sys.position.y);
+        let to_pos = proj.to_screen(to_sys.position.x, to_sys.position.y);
         let color = match gate.status {
             reachlock_core::galaxy::GateStatus::Active => Color::srgb(0.3, 0.8, 0.3),
             reachlock_core::galaxy::GateStatus::Blockaded => Color::srgb(0.9, 0.2, 0.2),
@@ -106,7 +185,7 @@ pub fn render_galaxy_map(
 
     // Draw charted system nodes.
     for system in content.charted_systems.values() {
-        let pos = to_screen(system.position.x, system.position.y);
+        let pos = proj.to_screen(system.position.x, system.position.y);
         let is_current = location.system_id.0 == system.id;
         let color = if is_current {
             Color::srgb(0.2, 0.8, 1.0)
@@ -114,5 +193,13 @@ pub fn render_galaxy_map(
             Color::srgb(0.6, 0.6, 0.8)
         };
         gizmos.circle_2d(pos, if is_current { 8.0 } else { 5.0 }, color);
+    }
+
+    // Draw FTL route target marker (pulsing orange circle).
+    if let Some(coord) = ftl.coord {
+        let pos = proj.to_screen(coord.x, coord.y);
+        let pulse = time.elapsed_secs().sin().abs() * 3.0 + 4.0;
+        gizmos.circle_2d(pos, pulse, Color::srgb(1.0, 0.6, 0.0));
+        gizmos.circle_2d(pos, pulse + 6.0, Color::srgba(1.0, 0.6, 0.0, 0.3));
     }
 }

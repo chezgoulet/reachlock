@@ -122,6 +122,7 @@ fn main() {
         .init_resource::<factions::ReputationPanelVisible>()
         // S09: live jump/transit bookkeeping + sensors.
         .init_resource::<jump::TransitState>()
+        .init_resource::<jump::FtlRoute>()
         .init_resource::<sensors::MapOverlayState>()
         // S09b: cross-mode command bus — OnBoard consoles (gunner/scanner/
         // miner/power) write it, the flight systems read it (spec §22).
@@ -219,8 +220,12 @@ fn main() {
                 docking::try_dock,
                 docking::leave_helm,
                 jump::try_gate_jump,
+                jump::gate_selection_input,
+                jump::gate_choice_overlay,
                 jump::self_jump,
                 galaxy_map::galaxy_map_toggle,
+                galaxy_map::galaxy_map_click,
+                galaxy_map::galaxy_map_cancel_ftl,
                 galaxy_map::render_galaxy_map,
             )
                 .run_if(in_spaceflight),
