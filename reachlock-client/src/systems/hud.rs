@@ -336,6 +336,9 @@ pub fn update_hud_panels(
     ticker: Res<UniverseTicker>,
     dialogue: Res<crate::systems::dialogue::DialogueSession>,
     souls: Res<crate::systems::soul::SoulRegistry>,
+    editor_state: Res<crate::systems::shipeditor::ShipEditorState>,
+    shipcfg: Res<crate::systems::shipeditor::ShipConfig>,
+    content: Res<crate::systems::content_index::ContentIndex>,
     npcs: Query<&Npc>,
     mut texts: ParamSet<(
         Query<&mut Text, With<DialoguePanel>>,
@@ -378,6 +381,14 @@ pub fn update_hud_panels(
                 &market_state,
                 &ticker.state.economy,
                 &ticker.state.factions,
+            ),
+            // S17: the exterior editor shares the market's panel surface.
+            ActivePanel::ShipExterior => crate::systems::shipeditor::editor_panel_text(
+                &editor_state,
+                &shipcfg,
+                &inventory,
+                &content,
+                &ticker,
             ),
             _ => String::new(),
         };

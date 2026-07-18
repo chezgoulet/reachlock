@@ -54,6 +54,12 @@ pub enum ValidationError {
     DialogueGraphProblem {
         problem: String,
     },
+    /// S17: a hull frame reuses an id within one namespace (slot / zone /
+    /// decal slot) — configs reference these by id, so they must be unique.
+    DuplicateFrameId {
+        namespace: &'static str,
+        id: String,
+    },
 }
 
 impl std::fmt::Display for ValidationError {
@@ -103,6 +109,9 @@ impl std::fmt::Display for ValidationError {
             ),
             ValidationError::DialogueGraphProblem { problem } => {
                 write!(f, "dialogue graph: {problem}")
+            }
+            ValidationError::DuplicateFrameId { namespace, id } => {
+                write!(f, "hull frame: duplicate {namespace} id {id:?}")
             }
         }
     }
@@ -188,6 +197,22 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
                     errors.push(ValidationError::DialogueGraphProblem { problem });
                 }
             }
+        }
+        ContentPayload::HullFrame(frame) => {
+            let mut check_unique = |namespace: &'static str, ids: Vec<&String>| {
+                let mut seen = std::collections::BTreeSet::new();
+                for id in ids {
+                    if !seen.insert(id.clone()) {
+                        errors.push(ValidationError::DuplicateFrameId {
+                            namespace,
+                            id: id.clone(),
+                        });
+                    }
+                }
+            };
+            check_unique("slot", frame.slots.iter().map(|s| &s.id).collect());
+            check_unique("zone", frame.zones.iter().map(|z| &z.id).collect());
+            check_unique("decal slot", frame.decal_slots.iter().collect());
         }
     }
 
@@ -375,6 +400,61 @@ mod tests {
         // The error message names the offending door, per the acceptance
         // gate: "exit 1, names the door".
         assert!(errors[0].to_string().contains('7'));
+    }
+
+    #[test]
+    fn duplicate_frame_slot_id_is_rejected() {
+        use crate::editor::exterior::HullFrame;
+        use crate::generator::hull::HullClass;
+
+        let mut frame = HullFrame::reference(HullClass::Corvette);
+        let dup = frame.slots[0].clone();
+        frame.slots.push(dup);
+        let file = ContentFile {
+            id: "frame_corvette".into(),
+            display_name: "Corvette Frame".into(),
+            asset_type: AssetType::HullFrame,
+            seed: 1,
+            universe: "all".into(),
+            priority: Priority::Curated,
+            expires_at: None,
+            payload: ContentPayload::HullFrame(frame),
+        };
+        let errors = validate_content(&file);
+        assert_eq!(errors.len(), 1);
+        match &errors[0] {
+            ValidationError::DuplicateFrameId { namespace, id } => {
+                assert_eq!(*namespace, "slot");
+                assert_eq!(id, "nose");
+            }
+            other => panic!("expected DuplicateFrameId, got {other:?}"),
+        }
+        // The message names the offending id (CLI rule: name the field).
+        assert!(errors[0].to_string().contains("nose"));
+    }
+
+    #[test]
+    fn well_formed_frame_passes() {
+        use crate::editor::exterior::HullFrame;
+        use crate::generator::hull::HullClass;
+
+        for class in [
+            HullClass::Shuttle,
+            HullClass::Corvette,
+            HullClass::Freighter,
+        ] {
+            let file = ContentFile {
+                id: "frame".into(),
+                display_name: "Frame".into(),
+                asset_type: AssetType::HullFrame,
+                seed: 1,
+                universe: "all".into(),
+                priority: Priority::Curated,
+                expires_at: None,
+                payload: ContentPayload::HullFrame(HullFrame::reference(class)),
+            };
+            assert!(validate_content(&file).is_empty(), "{class:?}");
+        }
     }
 
     #[test]

@@ -12,6 +12,7 @@ pub mod crisis;
 pub mod determinism;
 pub mod dialogue;
 pub mod economy;
+pub mod editor;
 pub mod faction;
 pub mod generator;
 pub mod item;

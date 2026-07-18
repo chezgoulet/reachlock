@@ -16,9 +16,11 @@ use reachlock_core::util::rng::Fixed;
 
 use crate::states::{CurrentLocation, GameMode};
 
-/// Seed for the player ship's handling profile. Independent of the interior
-/// layout seed; both are "the ship you fly", S17 will unify them.
-const PLAYER_HULL_SEED: u64 = 0x5EED_0001;
+/// Seed for the player ship's default handling profile, and the seed the
+/// S17 exterior editor's default `HullConfiguration` composes from —
+/// applying a config replaces the `for_class` call below with the config's
+/// derived handling (`ShipConfig::handling`).
+pub const PLAYER_HULL_SEED: u64 = 0x5EED_0001;
 
 /// Max power notches per subsystem, and the total budget the power console may
 /// distribute across weapons/engines/sensors (spec §22 power management).
@@ -283,6 +285,7 @@ pub fn control(
     mut systems: ResMut<ShipSystems>,
     command: Res<ShipCommand>,
     fires: Res<crate::systems::crisis::ShipFires>,
+    shipcfg: Res<crate::systems::shipeditor::ShipConfig>,
     mut feel: ResMut<FlightFeel>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
     mut query: Query<(&Transform, &mut Velocity, &mut ExternalForce), With<PlayerShip>>,
@@ -311,7 +314,11 @@ pub fn control(
         return;
     }
 
-    let h = HullHandling::for_class(PLAYER_HULL_SEED, HullClass::Corvette);
+    // S17: an applied exterior config carries its own derived handling
+    // (engine model + plating mass); the class default is the fallback.
+    let h = shipcfg
+        .handling
+        .unwrap_or_else(|| HullHandling::for_class(PLAYER_HULL_SEED, HullClass::Corvette));
     // Engine power routes into how hard the hull thrusts and turns — scaled
     // by engineering's system state (S16B: a burned reactor room limps).
     let engine_mult = (0.5 + 0.25 * command.power_engines as f32)

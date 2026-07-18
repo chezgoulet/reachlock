@@ -72,6 +72,7 @@ pub fn enter_spaceflight(
     mut audio_sources: ResMut<Assets<AudioSource>>,
     asset_server: Res<AssetServer>,
     content_index: Res<ContentIndex>,
+    shipcfg: Res<crate::systems::shipeditor::ShipConfig>,
     location: ResMut<CurrentLocation>,
     mut registry: ResMut<SceneRegistry>,
     ship: Query<Entity, With<PlayerShip>>,
@@ -138,6 +139,7 @@ pub fn enter_spaceflight(
             &asset_server,
             &palette,
             &content_index,
+            &shipcfg,
             seed,
         );
     }
@@ -193,8 +195,10 @@ pub fn enter_spaceflight(
     registry.space_alive = true;
 }
 
-/// The player's ship. Priority: authored GLTF (`SHIP_GLTF`) → authored hull
-/// mesh (content override) → generated corvette, extruded to a 3D solid.
+/// The player's ship. Priority: S17 applied exterior config (composed
+/// through the SAME `compose_hull` the editor preview renders — the S17
+/// gotcha) → authored GLTF (`SHIP_GLTF`) → authored hull mesh (content
+/// override) → generated corvette, extruded to a 3D solid.
 /// NOT tagged `ModeScope`: the ship persists across the mode loop.
 #[allow(clippy::too_many_arguments)]
 fn spawn_player_ship(
@@ -204,27 +208,38 @@ fn spawn_player_ship(
     asset_server: &AssetServer,
     palette: &Palette,
     content_index: &ContentIndex,
+    shipcfg: &crate::systems::shipeditor::ShipConfig,
     seed: u64,
 ) {
+    // S17: a configured exterior replaces the stock hull entirely — mesh
+    // and paint both come from the composed config.
+    let configured = shipcfg.config.as_ref().map(|config| {
+        let frame = crate::systems::shipeditor::frame_for(content_index, &config.hull_id);
+        reachlock_core::editor::exterior::compose_hull(config, &frame)
+    });
+
     let params = SeedParams {
         object_id: PLAYER_HULL_ID.into(),
         universe: UniverseTier::Classic,
         now: 0,
     };
-    let hull = match resolve(&content_index.files, &params) {
-        Resolved::Authored(file) => match file.payload {
-            ContentPayload::Hull(mesh) => mesh,
-            other => {
-                warn!(
-                    "content override for {PLAYER_HULL_ID} is not a hull payload \
+    let hull = match &configured {
+        Some(composed) => composed.mesh.clone(),
+        None => match resolve(&content_index.files, &params) {
+            Resolved::Authored(file) => match file.payload {
+                ContentPayload::Hull(mesh) => mesh,
+                other => {
+                    warn!(
+                        "content override for {PLAYER_HULL_ID} is not a hull payload \
                          ({other:?}); falling back to the generated corvette"
-                );
+                    );
+                    generator::hull::generate_hull_class(seed ^ 0x51119, HullClass::Corvette)
+                }
+            },
+            Resolved::Procedural => {
                 generator::hull::generate_hull_class(seed ^ 0x51119, HullClass::Corvette)
             }
         },
-        Resolved::Procedural => {
-            generator::hull::generate_hull_class(seed ^ 0x51119, HullClass::Corvette)
-        }
     };
 
     let collider_radius = bounding_radius(&hull);
@@ -250,7 +265,20 @@ fn spawn_player_ship(
             max: 1024,
         },
     ));
-    if let Some(path) = SHIP_GLTF {
+    if let Some(composed) = &configured {
+        // S17: the configured exterior, extruded to a solid — silhouette
+        // and attachments straight from `compose_hull`, painted with the
+        // resolved primary (paint slots resolved at render, per spec §19).
+        ship.insert((
+            Mesh3d(meshes.add(bridge::mesh3d_from_generated(
+                &composed.mesh,
+                collider_radius * 0.35,
+            ))),
+            MeshMaterial3d(materials.add(bridge::standard_material_from_palette(
+                composed.paint.primary,
+            ))),
+        ));
+    } else if let Some(path) = SHIP_GLTF {
         // Authored models are assumed exported nose-forward (-Z), wings in
         // the XZ plane.
         let scene = asset_server.load(GltfAssetLabel::Scene(0).from_asset(path));

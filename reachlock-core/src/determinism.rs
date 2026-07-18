@@ -216,6 +216,69 @@ pub fn manifest() -> Manifest {
                 biome: "frontier".into(),
             })),
         });
+        // S17 — exterior composition over a fixture config: reference
+        // corvette frame, one kinetic hardpoint, a tier-4 engine, plated
+        // nose. Hashes the composed mesh, the resolved paint, and the
+        // derived handling so drift in any of the three is caught.
+        {
+            use crate::editor::exterior;
+            let frame = exterior::HullFrame::reference(generator::hull::HullClass::Corvette);
+            let item_ref = |item_type: item::ItemType, tier: u8| {
+                exterior::ItemRef(item::ItemSeed {
+                    seed: seed ^ 0x17,
+                    item_type,
+                    tier,
+                    faction: "compact".into(),
+                    biome: "frontier".into(),
+                })
+            };
+            let config = exterior::HullConfiguration {
+                hull_id: "frame_corvette".into(),
+                seed,
+                hardpoints: vec![exterior::Hardpoint {
+                    slot_id: "nose".into(),
+                    item: item_ref(
+                        item::ItemFamily::KineticWeapon.representative_item_type(),
+                        3,
+                    ),
+                    size_class: exterior::SizeClass::Small,
+                }],
+                engine: item_ref(item::ItemType::Equipment(item::EquipmentKind::Engine), 4),
+                plating: vec![exterior::ArmorSegment {
+                    zone_id: "nose".into(),
+                    mass: 8 * 1024,
+                }],
+                paint: exterior::PaintScheme::default(),
+                decals: vec![],
+            };
+            let composed = exterior::compose_hull(&config, &frame);
+            let h = exterior::handling(&config, &frame);
+            let mut hasher = Hasher::new();
+            hasher.write_i64(hash_mesh(&composed.mesh) as i64);
+            for c in [
+                composed.paint.primary,
+                composed.paint.secondary,
+                composed.paint.accent,
+            ] {
+                hasher.write(&[c.r, c.g, c.b, c.a]);
+            }
+            for v in [
+                h.mass,
+                h.thrust,
+                h.turn_rate,
+                h.drift_damping,
+                h.boost_mult,
+                h.fuel_burn,
+            ] {
+                hasher.write_i64(v);
+            }
+            entries.push(Entry {
+                generator: "hull_config".into(),
+                seed,
+                checksum: hasher.finish(),
+            });
+        }
+
         // S10 — economy engine. Hash the starter catalogue plus a seeded,
         // ticked `EconomyState` so any drift in price/tick math is caught
         // cross-platform (iron rule #3: new generator ⇒ golden entry).
@@ -374,7 +437,8 @@ pub fn manifest() -> Manifest {
         // v3: added S06 hull_interior (ship interior layout) generator.
         // v4: added S10 economy engine golden entries.
         // v5: added S11 faction engine golden entries.
-        version: 5,
+        // v6: added S17 hull_config (exterior composition) golden entry.
+        version: 6,
         entries,
     }
 }

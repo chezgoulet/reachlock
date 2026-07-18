@@ -1,11 +1,15 @@
 //! Ship hull generation: seed → closed polygon mesh.
 
+use serde::{Deserialize, Serialize};
+
 use super::{FixedVec2, GeneratedMesh};
 use crate::util::rng::{Fixed, SeededRng};
 use crate::util::trig::{icos, isin};
 
-/// Ship size class. Scales the hull radius band.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Ship size class. Scales the hull radius band. Serde (snake_case) because
+/// S17's authored hull frames name their class in `.ron` content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum HullClass {
     Shuttle,
     Freighter,

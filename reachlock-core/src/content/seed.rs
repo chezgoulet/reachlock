@@ -64,6 +64,19 @@ mod tests {
             content_seed("frontier-01", "sorrow_station"),
             golden::SORROW_STATION
         );
+        // S17 hull frames (content/hulls/*_frame.ron).
+        assert_eq!(
+            content_seed("frontier-01", "frame_shuttle"),
+            golden::FRAME_SHUTTLE
+        );
+        assert_eq!(
+            content_seed("frontier-01", "frame_corvette"),
+            golden::FRAME_CORVETTE
+        );
+        assert_eq!(
+            content_seed("frontier-01", "frame_freighter"),
+            golden::FRAME_FREIGHTER
+        );
     }
 
     mod golden {
@@ -71,5 +84,8 @@ mod tests {
         // authored `.ron` files pin their `seed` field against these.
         pub const LOUP_GAROU: u64 = 5_335_717_113_362_242;
         pub const SORROW_STATION: u64 = 4_218_130_448_322_139;
+        pub const FRAME_SHUTTLE: u64 = 3_839_905_796_271_938;
+        pub const FRAME_CORVETTE: u64 = 7_681_152_800_107_288;
+        pub const FRAME_FREIGHTER: u64 = 360_261_647_605_794;
     }
 }

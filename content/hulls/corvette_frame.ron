@@ -1,0 +1,38 @@
+(
+    id: "frame_corvette",
+    display_name: "Class-J Corvette Frame",
+    asset_type: hull_frame,
+    seed: 7681152800107288,
+    universe: "all",
+    priority: curated,
+    payload: hull_frame((
+        class: corvette,
+        slots: [
+            (
+                id: "nose",
+                position: (x: 34816, y: 0),
+                size_class: small,
+            ),
+            (
+                id: "wing_port",
+                position: (x: -6144, y: 28672),
+                size_class: small,
+            ),
+            (
+                id: "wing_starboard",
+                position: (x: -6144, y: -28672),
+                size_class: medium,
+            ),
+        ],
+        engine_mount: (x: -38912, y: 0),
+        zones: [
+            (id: "nose"),
+            (id: "port"),
+            (id: "starboard"),
+        ],
+        decal_slots: [
+            "nose",
+            "tail",
+        ],
+    )),
+)

@@ -66,6 +66,10 @@ pub struct SaveFile {
     /// secrets) keyed by soul id. Authored soul files stay immutable.
     #[serde(default)]
     pub souls: BTreeMap<String, reachlock_core::soul::SoulState>,
+    /// S17: the applied exterior configuration (spec §19). `None` = the
+    /// stock Loup-Garou. The frozen core contract, stored as-is.
+    #[serde(default)]
+    pub hull_config: Option<reachlock_core::editor::exterior::HullConfiguration>,
 }
 
 const SAVE_PATH: &str = "save/player.ron";
@@ -93,6 +97,7 @@ pub fn save_player(
     loc: &CurrentLocation,
     universe: Option<&UniverseState>,
     souls: &BTreeMap<String, reachlock_core::soul::SoulState>,
+    hull_config: Option<&reachlock_core::editor::exterior::HullConfiguration>,
 ) {
     let snapshot = LocationSnapshot {
         system_seed: loc.system_seed,
@@ -109,6 +114,7 @@ pub fn save_player(
         universe: universe.cloned(),
         saved_at_epoch_secs: epoch_secs(),
         souls: souls.clone(),
+        hull_config: hull_config.cloned(),
     };
     match ron::to_string(&file) {
         Ok(text) => {
@@ -156,11 +162,18 @@ pub fn autosave_system(
     mut timer: ResMut<SaveTimer>,
     ticker: Option<Res<UniverseTicker>>,
     souls: Res<crate::systems::soul::SoulRegistry>,
+    shipcfg: Res<crate::systems::shipeditor::ShipConfig>,
 ) {
     timer.0 += time.delta_secs();
     if timer.0 >= INTERVAL {
         timer.0 = 0.0;
-        save_player(&inv, &loc, ticker.as_ref().map(|t| &t.state), &souls.states);
+        save_player(
+            &inv,
+            &loc,
+            ticker.as_ref().map(|t| &t.state),
+            &souls.states,
+            shipcfg.config.as_ref(),
+        );
     }
 }
 
@@ -174,6 +187,8 @@ pub fn load_save(
     mut loc: ResMut<CurrentLocation>,
     mut ticker: ResMut<UniverseTicker>,
     mut souls: ResMut<crate::systems::soul::SoulRegistry>,
+    mut shipcfg: ResMut<crate::systems::shipeditor::ShipConfig>,
+    content: Res<crate::systems::content_index::ContentIndex>,
 ) {
     if let Some((i, l)) = load_player() {
         *inv = i;
@@ -194,6 +209,11 @@ pub fn load_save(
             // (runs chained before this system). Authored files stay put.
             for (id, state) in file.souls {
                 souls.states.insert(id, state);
+            }
+            // S17: restore the applied exterior config; handling re-derives
+            // from the config + frame (never stored — it's derived data).
+            if let Some(config) = file.hull_config {
+                shipcfg.set(config, &content);
             }
         }
     }

@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::contract::types::Contract;
+use crate::editor::exterior::HullFrame;
 use crate::generator::{GeneratedLayout, GeneratedMesh};
 use crate::soul::types::SoulFile;
 use crate::universe::tier::UniverseTier;
@@ -22,6 +23,10 @@ pub enum AssetType {
     Contract,
     /// S13: an NPC soul (spec §15) — the pipeline's fourth content type.
     Soul,
+    /// S17: an exterior hull frame (spec §19) — slot layout, engine mount,
+    /// plating zones. Protocol revision: adding this variant extended the
+    /// envelope's wire vocabulary (iron rule #4, noted in the S17 PR).
+    HullFrame,
 }
 
 /// A non-player character placed in a station interior. `room_index` points
@@ -57,6 +62,9 @@ pub enum ContentPayload {
     /// order of magnitude bigger than the other variants, and serde treats
     /// the box as transparent.
     Soul(Box<SoulFile>),
+    /// S17: a hull frame's structural constants (spec §19). The exterior
+    /// editor composes a `HullConfiguration` against exactly this data.
+    HullFrame(HullFrame),
 }
 
 /// The content envelope (spec §10, "Freeze first" list: id, display_name,
@@ -190,6 +198,38 @@ mod tests {
         );
         assert!(text.contains("room_index"));
         // Defaulted field stays round-trippable with the same bytes.
+        let back: ContentFile = ron::from_str(&text).unwrap();
+        assert_eq!(file, back);
+    }
+
+    /// S17: hull-frame payloads lock their serialized form the same way —
+    /// `content/hulls/*_frame.ron` files depend on these field names.
+    #[test]
+    fn hull_frame_serialized_form_is_locked() {
+        use crate::editor::exterior::HullFrame;
+        use crate::generator::hull::HullClass;
+
+        let file = ContentFile {
+            id: "frame_corvette".into(),
+            display_name: "Corvette Frame".into(),
+            asset_type: AssetType::HullFrame,
+            seed: 7_681_152_800_107_288,
+            universe: "all".into(),
+            priority: Priority::Curated,
+            expires_at: None,
+            payload: ContentPayload::HullFrame(HullFrame::reference(HullClass::Corvette)),
+        };
+        let text = ron::to_string(&file).unwrap();
+        for field in [
+            "hull_frame",
+            "slots",
+            "engine_mount",
+            "zones",
+            "decal_slots",
+            "size_class",
+        ] {
+            assert!(text.contains(field), "missing {field} in: {text}");
+        }
         let back: ContentFile = ron::from_str(&text).unwrap();
         assert_eq!(file, back);
     }

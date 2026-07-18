@@ -1,0 +1,26 @@
+(
+    id: "frame_shuttle",
+    display_name: "Skiff-Pattern Shuttle Frame",
+    asset_type: hull_frame,
+    seed: 3839905796271938,
+    universe: "all",
+    priority: curated,
+    payload: hull_frame((
+        class: shuttle,
+        slots: [
+            (
+                id: "chin",
+                position: (x: 20480, y: 0),
+                size_class: small,
+            ),
+        ],
+        engine_mount: (x: -26624, y: 0),
+        zones: [
+            (id: "nose"),
+            (id: "belly"),
+        ],
+        decal_slots: [
+            "tail",
+        ],
+    )),
+)
