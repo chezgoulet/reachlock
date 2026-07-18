@@ -26,7 +26,6 @@ use reachlock_core::generator::system::{
     generate_system, AsteroidField, Fidelity, Orbit, StationSlot,
 };
 use reachlock_core::generator::{self, FixedVec2, GeneratedMesh};
-use reachlock_core::seed::types::Biome;
 use reachlock_core::universe::tier::UniverseTier;
 use reachlock_core::util::color::{generate_palette, Palette};
 use reachlock_core::util::rng::{Fixed, SeededRng};
@@ -41,7 +40,6 @@ use crate::systems::ship::{PlayerShip, ShipSystems};
 use crate::systems::starfield;
 
 pub const SYSTEM_SEED: u64 = 0x5EED_0001;
-pub const SYSTEM_BIOME: Biome = Biome::Frontier;
 
 /// Object id the authored Loup-Garou hull (`content/hulls/loup_garou.ron`)
 /// overrides (spec §10 acceptance demo).
@@ -105,17 +103,27 @@ pub fn enter_spaceflight(
 
     let seed = location.system_seed;
     let palette = generate_palette(seed);
-    let system = generate_system(seed, SYSTEM_BIOME, Fidelity::Full);
+    let biome = location.system_biome;
+    let fidelity = location.system_fidelity;
+    let system = generate_system(seed, biome, fidelity);
 
     // 3D lighting: a keylight plus soft ambient so hulls read without textures.
     commands.insert_resource(GlobalAmbientLight {
         color: bridge::color_from_palette(palette.accent),
-        brightness: 220.0,
+        brightness: if matches!(fidelity, Fidelity::Sparse) {
+            120.0
+        } else {
+            220.0
+        },
         ..default()
     });
     commands.spawn((
         DirectionalLight {
-            illuminance: 6_000.0,
+            illuminance: if matches!(fidelity, Fidelity::Sparse) {
+                3_000.0
+            } else {
+                6_000.0
+            },
             ..default()
         },
         Transform::from_xyz(400.0, 800.0, 300.0).looking_at(Vec3::ZERO, Vec3::Y),

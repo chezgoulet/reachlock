@@ -1,17 +1,9 @@
-//! Online-mode network systems (S02): connect on entering Playing, poll the
-//! transport every frame (never block — iron rule #5), and route protocol
-//! messages into the contract/HUD layers. Every system here early-outs on
-//! `NetMode::Offline` (iron rule #3) — offline play is completely untouched.
-//!
-//! // S02 TODO(integrator): `systems::setup::spawn_world` hardcodes
-//! // `SYSTEM_SEED` and has no `SystemId`/multi-system registry yet. This
-//! // module stands in `spike_system_id()` below for the one system the
-//! // spike renders, and — on a canonical seed that differs from ours —
-//! // only *logs* the "Synchronizing system data…" beat and the adoption;
-//! // it does not yet despawn/regenerate the scene. When setup.rs grows a
-//! // real per-system seed, wire `SeedState::adopted` (set in
-//! // `poll_network` below) to a "regenerate this system from this seed"
-//! // entry point there, gated on `seed != SYSTEM_SEED`.
+//! Online-mode network systems (S02, extended S21): connect on entering
+//! Playing, poll the transport every frame (never block), and route protocol
+//! messages. On connect, the current system id is read from
+//! `CurrentLocation::system_id` rather than a hardcoded spike. Multi-system
+//! support via the gate network: every transit sets the destination id on
+//! CurrentLocation before discovery fires.
 
 use std::time::Duration;
 
@@ -21,8 +13,8 @@ use reachlock_core::seed::types::{Seed, SystemId};
 
 use crate::net::{handshake_url, ConnectionState, NetMode, NetOutbox, TransportEvent, WsTransport};
 use crate::settings::Settings;
+use crate::states::CurrentLocation;
 use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog};
-use crate::systems::setup::SYSTEM_SEED;
 use crate::systems::ship::ShipSystems;
 use crate::systems::ticker::UniverseTicker;
 
@@ -71,16 +63,12 @@ impl ReconnectBackoff {
 }
 
 /// Discovery/adoption state for the system currently rendered (spec §4).
+/// `current_system` is set from `CurrentLocation::system_id` on connect
+/// and updated whenever the player arrives in a new system.
 #[derive(Resource, Default)]
 pub struct SeedState {
     pub current_system: Option<SystemId>,
     pub adopted: Option<Seed>,
-}
-
-/// Placeholder system id for the spike's single hardcoded scene — see the
-/// `S02 TODO(integrator)` note at the top of this file.
-fn spike_system_id() -> SystemId {
-    SystemId(format!("spike-{SYSTEM_SEED:x}"))
 }
 
 /// OnEnter(Playing), online mode only: opens the socket. The handshake
@@ -133,6 +121,7 @@ pub fn poll_network(
     mut conn: ResMut<ConnectionState>,
     mut backoff: ResMut<ReconnectBackoff>,
     mut seed_state: ResMut<SeedState>,
+    location: Res<CurrentLocation>,
     mut outbox: ResMut<NetOutbox>,
     mut log: ResMut<ShipLog>,
     mut deliberation: ResMut<DeliberationState>,
@@ -161,12 +150,12 @@ pub fn poll_network(
                 *conn = ConnectionState::Connected;
                 backoff.reset();
                 log.log("Link established.");
-                let system_id = spike_system_id();
+                let system_id = location.system_id.clone();
                 seed_state.current_system = Some(system_id.clone());
                 transport.send(&ClientMessage::SeedDiscover {
                     universe: *universe,
                     system_id,
-                    seed: Seed::new(SYSTEM_SEED),
+                    seed: Seed::new(location.system_seed),
                 });
                 // Pause the local universe ticker — server is authoritative.
                 if let Some(ref mut ticker) = ticker {
