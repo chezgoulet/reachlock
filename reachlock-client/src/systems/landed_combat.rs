@@ -34,7 +34,7 @@ use crate::systems::docking::HostileDockable;
 use crate::systems::interior::Figure;
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::mode::PlayerAvatar;
-use crate::systems::setup::BeaconPulse;
+use crate::systems::setup::{BeaconPulse, BeaconRing};
 
 // --- tuning (presentation scale; core keeps raw fixed-point stat units) ------
 
@@ -83,13 +83,17 @@ const FIST_HEAVY: AttackWindow = AttackWindow {
 
 /// Resolve the player's effective melee AttackWindows from their equipped
 /// weapon, or fall back to fists.
+///
+/// Both `ItemStats` and `AttackWindow` use the same fixed-point scale
+/// (ONE = 1024), so the raw stat value is used directly — no `/ONE`
+/// conversion like space combat's `WeaponStats::from_item_stats`, which
+/// operates in whole units for a different damage model.
 fn player_windows(inv: &PlayerInventory) -> (AttackWindow, AttackWindow) {
     match &inv.equipped_weapon {
         Some((_, stats)) => {
-            let whole =
-                |key: StatKey| -> i64 { stats.0.get(&key).copied().unwrap_or(1024).max(1) / 1024 };
-            let dmg = whole(StatKey::Damage).max(1);
-            let rng = whole(StatKey::Range).max(1);
+            let raw = |key: StatKey| -> i64 { stats.0.get(&key).copied().unwrap_or(1024).max(1) };
+            let dmg = raw(StatKey::Damage);
+            let rng = raw(StatKey::Range);
             (
                 AttackWindow {
                     damage: dmg,
@@ -530,7 +534,7 @@ pub fn step_landed_enemies(
         return;
     };
     let player = ptx.translation.truncate();
-    let living = hostiles.iter().count() as u32;
+    let ally = hostiles.iter().count() as u32; // pre-despawn for ally count (good enough — unused by core anyway)
 
     for (entity, mut c, mut tx) in &mut hostiles {
         if c.hp <= 0 {
@@ -547,25 +551,18 @@ pub fn step_landed_enemies(
         // Reborrow the inner `Combatant`: split-field borrows (needed by
         // `humanoid_step`) don't reach through Bevy's `Mut<T>`.
         let c = c.into_inner();
-        let senses = build_senses(c, self_pos, player, living.saturating_sub(1));
+        let senses = build_senses(c, self_pos, player, ally.saturating_sub(1));
         let intent = humanoid_step(&mut c.state, &mut c.sub_timer, &senses, &c.archetype);
         c.last_intent = intent;
         if c.state != HumanoidState::Attack {
             c.swing_connected = false;
-            if matches!(
-                intent,
-                HumanoidIntent::LightAttack(..) | HumanoidIntent::HeavyAttack(..)
-            ) {
-                // Swing just ended this tick — start the cooldown.
-                c.attack_cooldown = c.archetype.light_attack.recovery_ticks.max(1);
-            }
         }
         apply_intent_movement(c, &mut tx, intent);
         c.took_damage = false;
     }
 
-    // Victory: the last hostile fell. Revive a downed companion and stand down.
-    if living == 0 && state.combat_active {
+    // Victory: the last hostile fell. Recount after the despawn loop.
+    if hostiles.iter().count() == 0 && state.combat_active {
         state.combat_active = false;
     }
 }
@@ -907,7 +904,7 @@ pub fn companion_combat_system(
     let c = c.into_inner();
     // Target the nearest hostile, or follow the player when the room is clear.
     let target = nearest.map(|(_, p, _)| p).unwrap_or(player);
-    let ally_count = hostiles.iter().count() as u32;
+    let ally_count = 1; // the player is the companion's only ally
     let senses = build_senses(c, self_pos, target, ally_count);
     let intent = humanoid_step(&mut c.state, &mut c.sub_timer, &senses, &c.archetype);
     c.last_intent = intent;
@@ -1095,14 +1092,16 @@ pub fn tumble_derelicts(
 }
 
 /// Pulsing beacon rings on derelict markers: emissive intensity oscillates
-/// with a slow sine (the classic "distress beacon" rhythm). Throttled to ~4
-/// Hz so the asset store doesn't churn on per-frame material clones.
+/// with a slow sine (the classic "distress beacon" rhythm). Only child
+/// entities tagged with [`BeaconRing`] are pulsed — the hull, debris, and
+/// dust cloud keep their static materials. Throttled to ~4 Hz so the asset
+/// store doesn't churn on per-frame material clones.
 pub fn pulse_beacons(
     time: Res<Time>,
     mut timer: Local<f32>,
     derelicts: Query<(&Children, &BeaconPulse), With<HostileDockable>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    rings: Query<&MeshMaterial3d<StandardMaterial>>,
+    rings: Query<&MeshMaterial3d<StandardMaterial>, With<BeaconRing>>,
 ) {
     *timer += time.delta_secs();
     if *timer < 0.25 {

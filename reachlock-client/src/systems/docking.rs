@@ -84,13 +84,16 @@ pub struct HostileDockable {
     pub location_id: String,
 }
 
-/// Fly to a hostile marker and board it. Runs after station docking (stations
-/// have priority). Sets `hostile_location_id` on `CurrentLocation` so the
-/// existing `spawn_landed_enemies` system arms combat on Enter(Landed).
+/// Fly to a hostile marker and board it. Stations have priority — if any
+/// station is within dock range, boarding is skipped. Sets
+/// `hostile_location_id` on `CurrentLocation` so the existing
+/// `spawn_landed_enemies` system arms combat on Enter(Landed).
+#[allow(clippy::too_many_arguments)]
 pub fn try_board_hostile(
     keys: Res<ButtonInput<KeyCode>>,
     settings: Res<Settings>,
     ship: Query<&Transform, With<PlayerShip>>,
+    stations: Query<&Transform, With<Dockable>>,
     hostiles: Query<(&Transform, &HostileDockable)>,
     mut next: ResMut<NextState<GameMode>>,
     mut location: ResMut<CurrentLocation>,
@@ -103,6 +106,12 @@ pub fn try_board_hostile(
     let Ok(ship) = ship.single() else {
         return;
     };
+    // Stations have priority: skip if any station is close enough to dock.
+    for st in &stations {
+        if ship.translation.distance(st.translation) <= DOCK_RADIUS {
+            return;
+        }
+    }
     for (ht, hd) in &hostiles {
         let d = ship.translation.distance(ht.translation);
         if d <= DOCK_RADIUS {

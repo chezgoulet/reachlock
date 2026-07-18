@@ -663,6 +663,12 @@ pub struct BeaconPulse {
     pub phase: f32,
 }
 
+/// Tags a child mesh (torus ring) whose emissive should pulse with the
+/// derelict's beacon rhythm. Only entities with this component get their
+/// emissive overwritten by `pulse_beacons`.
+#[derive(Component)]
+pub struct BeaconRing;
+
 /// Spawn a polished derelict wreck in the flight scene — a boardable hostile
 /// location marker. Composition: generated Freighter hull (damaged, dark-rust
 /// material) + crossed beacon rings (red-orange emissive torii creating a 3D
@@ -734,12 +740,14 @@ fn spawn_derelict_marker(
             ));
             // Beacon ring A — tilted on X
             parent.spawn((
+                BeaconRing,
                 Mesh3d(beacon_mesh.clone()),
                 MeshMaterial3d(beacon_mat.clone()),
                 Transform::from_rotation(Quat::from_rotation_x(0.8)),
             ));
             // Beacon ring B — tilted on Z, crossed with A
             parent.spawn((
+                BeaconRing,
                 Mesh3d(beacon_mesh.clone()),
                 MeshMaterial3d(beacon_mat.clone()),
                 Transform::from_rotation(Quat::from_rotation_z(0.8)),
