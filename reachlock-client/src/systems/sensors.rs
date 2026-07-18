@@ -7,6 +7,7 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
+use crate::settings::{InputAction, Settings};
 use crate::states::{GameMode, ModeScope};
 use crate::systems::docking::Dockable;
 use crate::systems::setup::Gate;
@@ -171,11 +172,12 @@ fn contact_kind_name(
 /// Toggle the system-map overlay on `M`.
 pub fn system_map(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mut state: ResMut<MapOverlayState>,
     mut commands: Commands,
     overlay: Query<Entity, With<MapOverlay>>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyM) {
+    if !keys.just_pressed(settings.key(InputAction::OpenMap)) {
         return;
     }
     if let Ok(e) = overlay.single() {

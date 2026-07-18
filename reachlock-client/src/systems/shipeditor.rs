@@ -26,6 +26,7 @@ use reachlock_core::generator::hull::{HullClass, HullHandling};
 use reachlock_core::generator::RoomKind;
 use reachlock_core::item::{ItemSeed, ItemType};
 
+use crate::settings::{InputAction, Settings};
 use crate::states::{CurrentLocation, GameMode, ModeScope};
 use crate::systems::comms::CommFeed;
 use crate::systems::content_index::ContentIndex;
@@ -303,6 +304,7 @@ fn decal_choices(ticker: &UniverseTicker) -> Vec<(String, String)> {
 #[allow(clippy::too_many_arguments)]
 pub fn editor_system(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     panel: Res<ActivePanel>,
     mut state: ResMut<ShipEditorState>,
     mut shipcfg: ResMut<ShipConfig>,
@@ -335,7 +337,7 @@ pub fn editor_system(
     let baseline = shipcfg.config.clone().unwrap_or_else(default_config);
     let frame = frame_for(&content, &state.draft.as_ref().unwrap().hull_id);
 
-    if keys.just_pressed(KeyCode::Tab) {
+    if keys.just_pressed(settings.key(InputAction::EditorTabNext)) {
         let i = TABS.iter().position(|t| *t == state.tab).unwrap_or(0);
         state.tab = TABS[(i + 1) % TABS.len()];
         state.sel = 0;
@@ -349,16 +351,16 @@ pub fn editor_system(
         EditorTab::Plating => frame.zones.len().max(1),
         EditorTab::Decals => frame.decal_slots.len().max(1),
     };
-    if keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp) {
+    if keys.just_pressed(settings.key(InputAction::EditorCursorUp)) {
         state.sel = (state.sel + rows - 1) % rows;
     }
-    if keys.just_pressed(KeyCode::KeyS) || keys.just_pressed(KeyCode::ArrowDown) {
+    if keys.just_pressed(settings.key(InputAction::EditorCursorDown)) {
         state.sel = (state.sel + 1) % rows;
     }
 
-    let step: i64 = if keys.just_pressed(KeyCode::KeyD) || keys.just_pressed(KeyCode::ArrowRight) {
+    let step: i64 = if keys.just_pressed(settings.key(InputAction::EditorCursorRight)) {
         1
-    } else if keys.just_pressed(KeyCode::KeyA) || keys.just_pressed(KeyCode::ArrowLeft) {
+    } else if keys.just_pressed(settings.key(InputAction::EditorCursorLeft)) {
         -1
     } else {
         0
@@ -373,7 +375,7 @@ pub fn editor_system(
         state.status.clear();
     }
 
-    if keys.just_pressed(KeyCode::Enter) {
+    if keys.just_pressed(settings.key(InputAction::EditorConfirm)) {
         let draft = state.draft.as_ref().unwrap().clone();
         let cost = refit_cost(&baseline, &draft);
         if cost == 0 {
@@ -953,6 +955,7 @@ fn room_at_cursor(
 #[allow(clippy::too_many_arguments)]
 pub fn interior_editor_system(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     panel: Res<ActivePanel>,
     mut state: ResMut<InteriorEditorState>,
     mut interior_cfg: ResMut<InteriorConfig>,
@@ -992,7 +995,7 @@ pub fn interior_editor_system(
 
     let bounds = frame_for(&content, &state.draft.as_ref().unwrap().hull_id).grid_bounds;
 
-    if keys.just_pressed(KeyCode::Tab) {
+    if keys.just_pressed(settings.key(InputAction::EditorTabNext)) {
         let i = INTERIOR_TABS
             .iter()
             .position(|t| *t == state.tab)
@@ -1004,16 +1007,16 @@ pub fn interior_editor_system(
 
     // Arrow keys: the grid cursor (integer cells, clamped to the frame).
     let mut cursor = state.cursor;
-    if keys.just_pressed(KeyCode::ArrowUp) {
+    if keys.just_pressed(settings.key(InputAction::EditorCursorUp)) {
         cursor.1 = (cursor.1 + 1).min(bounds.1.saturating_sub(1));
     }
-    if keys.just_pressed(KeyCode::ArrowDown) {
+    if keys.just_pressed(settings.key(InputAction::EditorCursorDown)) {
         cursor.1 = cursor.1.saturating_sub(1);
     }
-    if keys.just_pressed(KeyCode::ArrowRight) {
+    if keys.just_pressed(settings.key(InputAction::EditorCursorRight)) {
         cursor.0 = (cursor.0 + 1).min(bounds.0.saturating_sub(1));
     }
-    if keys.just_pressed(KeyCode::ArrowLeft) {
+    if keys.just_pressed(settings.key(InputAction::EditorCursorLeft)) {
         cursor.0 = cursor.0.saturating_sub(1);
     }
     if cursor != state.cursor {
@@ -1022,9 +1025,9 @@ pub fn interior_editor_system(
     }
 
     // A/D: cycle the palette row for the active tab.
-    let step: i64 = if keys.just_pressed(KeyCode::KeyD) {
+    let step: i64 = if keys.just_pressed(settings.key(InputAction::EditorCursorRight)) {
         1
-    } else if keys.just_pressed(KeyCode::KeyA) {
+    } else if keys.just_pressed(settings.key(InputAction::EditorCursorLeft)) {
         -1
     } else {
         0
@@ -1042,7 +1045,9 @@ pub fn interior_editor_system(
     }
 
     // E: rotate the next placement a quarter-turn.
-    if keys.just_pressed(KeyCode::KeyE) && state.tab == InteriorTab::Templates {
+    if keys.just_pressed(settings.key(InputAction::EditorRotate))
+        && state.tab == InteriorTab::Templates
+    {
         state.rotation = (state.rotation + 1) % 4;
         state.dirty = true;
         state.status.clear();
@@ -1050,7 +1055,7 @@ pub fn interior_editor_system(
 
     // Enter: place (Templates), toggle furniture (Furniture), re-route
     // (Corridors).
-    if keys.just_pressed(KeyCode::Enter) {
+    if keys.just_pressed(settings.key(InputAction::EditorConfirm)) {
         let sel = state.sel;
         let tab = state.tab;
         let rotation = state.rotation;
@@ -1120,7 +1125,7 @@ pub fn interior_editor_system(
 
     // Backspace: remove the room under the cursor (furniture indices
     // shift down past the removed room).
-    if keys.just_pressed(KeyCode::Backspace) {
+    if keys.just_pressed(settings.key(InputAction::EditorDelete)) {
         let cursor = state.cursor;
         let draft = state.draft.as_mut().unwrap();
         if let Some(index) = room_at_cursor(draft, &templates, cursor) {
@@ -1138,7 +1143,7 @@ pub fn interior_editor_system(
     }
 
     // Space: apply.
-    if keys.just_pressed(KeyCode::Space) {
+    if keys.just_pressed(settings.key(InputAction::Brake)) {
         let draft = state.draft.as_ref().unwrap().clone();
         match realize(&draft, &templates, bounds) {
             Err(e) => state.status = format!("cannot apply: {e}"),

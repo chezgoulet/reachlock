@@ -13,6 +13,7 @@ use reachlock_core::economy::{
 };
 use reachlock_core::faction::{tariff as faction_tariff, FactionState};
 
+use crate::settings::{InputAction, Settings};
 use crate::states::CurrentLocation;
 use crate::systems::interaction::ActivePanel;
 use crate::systems::inventory::{save_player, PlayerInventory};
@@ -47,6 +48,7 @@ pub fn market_table(economy: &EconomyState, station: &str) -> PriceTable {
 #[allow(clippy::too_many_arguments)]
 pub fn market_system(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mut inv: ResMut<PlayerInventory>,
     loc: Res<CurrentLocation>,
     panel: Res<ActivePanel>,
@@ -65,10 +67,14 @@ pub fn market_system(
         return;
     }
 
-    let up = keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp);
-    let down = keys.just_pressed(KeyCode::KeyS) || keys.just_pressed(KeyCode::ArrowDown);
-    let left = keys.just_pressed(KeyCode::KeyA) || keys.just_pressed(KeyCode::ArrowLeft);
-    let right = keys.just_pressed(KeyCode::KeyD) || keys.just_pressed(KeyCode::ArrowRight);
+    let up = keys.just_pressed(settings.key(InputAction::ThrustForward))
+        || keys.just_pressed(settings.key(InputAction::EditorCursorUp));
+    let down = keys.just_pressed(settings.key(InputAction::ThrustBackward))
+        || keys.just_pressed(settings.key(InputAction::EditorCursorDown));
+    let left = keys.just_pressed(settings.key(InputAction::StrafeLeft))
+        || keys.just_pressed(settings.key(InputAction::EditorCursorLeft));
+    let right = keys.just_pressed(settings.key(InputAction::StrafeRight))
+        || keys.just_pressed(settings.key(InputAction::EditorCursorRight));
 
     if up {
         state.sel = state.sel.wrapping_sub(1) % count;
@@ -90,7 +96,7 @@ pub fn market_system(
     let buy_quote = ticker.state.economy.stations[&loc.station_id].buy_price(&good, tariff_num);
     let sell_quote = ticker.state.economy.stations[&loc.station_id].sell_price(&good, tariff_num);
 
-    if keys.just_pressed(KeyCode::KeyB) {
+    if keys.just_pressed(settings.key(InputAction::OpenCrewRoster)) {
         let held = inv.cargo.get(&good).copied().unwrap_or(0);
         if inv.can_hold(state.qty) && can_buy(inv.credits, buy_quote, state.qty) {
             let (credits, _held) = apply_buy(inv.credits, held, buy_quote, state.qty);
@@ -109,7 +115,7 @@ pub fn market_system(
             );
         }
     }
-    if keys.just_pressed(KeyCode::KeyN) {
+    if keys.just_pressed(settings.key(InputAction::OpenMissionBoard)) {
         let held = inv.cargo.get(&good).copied().unwrap_or(0);
         if can_sell(held, state.qty) {
             let (credits, left) = apply_sell(inv.credits, held, sell_quote, state.qty);

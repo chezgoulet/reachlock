@@ -14,6 +14,7 @@ use bevy_rapier3d::prelude::*;
 use reachlock_core::generator::hull::{HullClass, HullHandling};
 use reachlock_core::util::rng::Fixed;
 
+use crate::settings::{InputAction, Settings};
 use crate::states::{CurrentLocation, GameMode};
 
 /// Seed for the player ship's default handling profile, and the seed the
@@ -292,6 +293,7 @@ pub fn bank_angle(rotation: Quat) -> f32 {
 pub fn control(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
+    settings: Res<Settings>,
     mut systems: ResMut<ShipSystems>,
     command: Res<ShipCommand>,
     fires: Res<crate::systems::crisis::ShipFires>,
@@ -335,8 +337,12 @@ pub fn control(
         * fires.effectiveness(reachlock_core::generator::RoomKind::Reactor);
 
     let has_fuel = systems.fuel.0 > 0;
-    let thrust_key = keys.pressed(KeyCode::Space);
-    let boost = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    // S31: forward thrust is bound to `Brake` (default Space) so the flight
+    // stick honors rebindable keys; the retro/decelerate assist keeps the raw
+    // Ctrl modifiers (an intentionally non-registry fine-control, like the
+    // brief's reserved slots).
+    let thrust_key = keys.pressed(settings.key(InputAction::Brake));
+    let boost = keys.pressed(settings.key(InputAction::Boost));
     let brake = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
     systems.thrusting = thrust_key && has_fuel;
     feel.boost_blend = approach(
@@ -354,34 +360,34 @@ pub fn control(
     let mut raw_pitch = 0.0;
     let mut raw_yaw = 0.0;
     let mut raw_roll = 0.0;
-    if keys.pressed(KeyCode::KeyW) {
+    if keys.pressed(settings.key(InputAction::ThrustForward)) {
         raw_pitch -= 1.0;
     }
-    if keys.pressed(KeyCode::KeyS) {
+    if keys.pressed(settings.key(InputAction::ThrustBackward)) {
         raw_pitch += 1.0;
     }
-    if keys.pressed(KeyCode::KeyA) {
+    if keys.pressed(settings.key(InputAction::StrafeLeft)) {
         raw_yaw += 1.0;
     }
-    if keys.pressed(KeyCode::KeyD) {
+    if keys.pressed(settings.key(InputAction::StrafeRight)) {
         raw_yaw -= 1.0;
     }
-    if keys.pressed(KeyCode::KeyQ) {
+    if keys.pressed(settings.key(InputAction::RollLeft)) {
         raw_roll += 1.0;
     }
-    if keys.pressed(KeyCode::KeyE) {
+    if keys.pressed(settings.key(InputAction::RollRight)) {
         raw_roll -= 1.0;
     }
 
     // Double-tap Q/E: barrel roll. One full 360° spin; steering stays live.
-    if keys.just_pressed(KeyCode::KeyQ) {
+    if keys.just_pressed(settings.key(InputAction::RollLeft)) {
         if feel.tap_left <= BARREL_WINDOW && feel.barrel == 0.0 {
             feel.barrel = std::f32::consts::TAU;
             log.log("Barrel roll!");
         }
         feel.tap_left = 0.0;
     }
-    if keys.just_pressed(KeyCode::KeyE) {
+    if keys.just_pressed(settings.key(InputAction::RollRight)) {
         if feel.tap_right <= BARREL_WINDOW && feel.barrel == 0.0 {
             feel.barrel = -std::f32::consts::TAU;
             log.log("Barrel roll!");
@@ -484,6 +490,8 @@ pub fn control(
     feel.speed = speed;
 
     // X injects the anomaly: something the player's rules don't cover.
+    // (Anomaly injection is intentionally not in the keybind registry — it's a
+    // debug/emergent surface, not a configured control.)
     if keys.just_pressed(KeyCode::KeyX) {
         systems.unknown_signal = true;
     }
@@ -494,13 +502,14 @@ pub fn control(
 /// borrow doesn't collide with the read in `control`.
 pub fn request_scan_from_key(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mode: Res<State<GameMode>>,
     view: Res<crate::systems::onboard::ActiveStationView>,
     mut command: ResMut<ShipCommand>,
 ) {
     let at_a_scanner = *mode == GameMode::SpaceFlight
         || view.0 == Some(crate::systems::onboard::StationView::Scanner);
-    if at_a_scanner && keys.just_pressed(KeyCode::KeyT) {
+    if at_a_scanner && keys.just_pressed(settings.key(InputAction::OpenComms)) {
         command.scan_pulse = true;
     }
 }
@@ -512,6 +521,7 @@ pub fn request_scan_from_key(
 /// up vector holds still during a barrel roll so the ship spins, not the world.
 pub fn camera_follow(
     time: Res<Time>,
+    settings: Res<Settings>,
     mut feel: ResMut<FlightFeel>,
     ship: Query<&Transform, (With<PlayerShip>, Without<SpaceCamera>)>,
     mut camera: Query<(&mut Transform, &mut Projection), With<SpaceCamera>>,
@@ -547,11 +557,12 @@ pub fn camera_follow(
     let desired = Transform::from_translation(camera.translation).looking_at(look, feel.cam_up);
     camera.rotation = camera.rotation.slerp(desired.rotation, t);
 
-    // Hit shake: decaying screen-space jitter fed by `collisions`.
+    // Hit shake: decaying screen-space jitter fed by `collisions`. Scaled by
+    // the accessibility screen-shake preference (0 = off, 1 = full).
     if feel.shake > 0.001 {
         let e = time.elapsed_secs();
-        let jitter =
-            camera.rotation * (Vec3::new((e * 47.0).sin(), (e * 53.0).cos(), 0.0) * feel.shake);
+        let amp = feel.shake * settings.accessibility.screen_shake;
+        let jitter = camera.rotation * (Vec3::new((e * 47.0).sin(), (e * 53.0).cos(), 0.0) * amp);
         camera.translation += jitter;
         feel.shake *= (-7.0 * dt).exp();
     } else {
@@ -841,6 +852,7 @@ pub fn respawn_ship(
 pub fn fire_weapons(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mode: Res<State<GameMode>>,
     view: Res<crate::systems::onboard::ActiveStationView>,
     mut commands: Commands,
@@ -858,7 +870,7 @@ pub fn fire_weapons(
     // the crew at the live gunner console (S09d station views).
     let at_a_trigger = *mode == GameMode::SpaceFlight
         || view.0 == Some(crate::systems::onboard::StationView::Gunner);
-    if !at_a_trigger || !keys.pressed(KeyCode::KeyF) {
+    if !at_a_trigger || !keys.pressed(settings.key(InputAction::FireWeapons)) {
         return;
     }
     let Ok((ship, collider)) = ship.single() else {
@@ -866,7 +878,7 @@ pub fn fire_weapons(
     };
     if !command.weapons_armed || command.power_weapons == 0 {
         // Only nag on the initial press, not every held frame.
-        if keys.just_pressed(KeyCode::KeyF) {
+        if keys.just_pressed(settings.key(InputAction::FireWeapons)) {
             log.log("Weapons offline — arm at the gunner console and route power.");
         }
         return;
@@ -875,7 +887,7 @@ pub fn fire_weapons(
     // bridge fires slow (Damaged) or not at all (Disabled) until repaired.
     let weapons_eff = fires.effectiveness(reachlock_core::generator::RoomKind::Bridge);
     if weapons_eff < 0.5 {
-        if keys.just_pressed(KeyCode::KeyF) {
+        if keys.just_pressed(settings.key(InputAction::FireWeapons)) {
             log.log("Fire control is DOWN — repair it at the gunner console.");
         }
         return;
@@ -966,6 +978,7 @@ pub fn step_projectiles(
 pub fn mining_beam(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mode: Res<State<GameMode>>,
     view: Res<crate::systems::onboard::ActiveStationView>,
     mut commands: Commands,
@@ -982,7 +995,9 @@ pub fn mining_beam(
     // The beam runs from the helm or the live miner console (S09d).
     let at_the_rig = *mode == GameMode::SpaceFlight
         || view.0 == Some(crate::systems::onboard::StationView::Miner);
-    let active = at_the_rig && keys.pressed(KeyCode::KeyG) && command.mining_enabled;
+    let active = at_the_rig
+        && keys.pressed(settings.key(InputAction::FireMissile))
+        && command.mining_enabled;
     // Rebuild the beam each frame so it tracks the hull.
     for e in &beams {
         commands.entity(e).despawn();

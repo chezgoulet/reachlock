@@ -7,6 +7,7 @@
 use bevy::prelude::*;
 
 use crate::net::{ConnectionState, NetMode};
+use crate::settings::{HelpTextCache, Settings};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::interaction::{ActivePanel, InteractionPrompt, Npc};
@@ -54,16 +55,18 @@ pub struct HelpText;
 #[derive(Component)]
 pub struct PromptText;
 
-const HELP_FLIGHT: &str =
-    "W/S pitch · A/D yaw · Q/E roll (double-tap: barrel roll) · Space thrust · \
-     Shift boost · Ctrl brake · F fire · R target subsystem · C chaff · arrows power · \
-     G mine · T scan · M map · Enter dock/jump · J self-jump · \
-     B stand up · X anomaly · Esc pause";
-const HELP_INTERIOR: &str = "WASD walk · E interact (board at the ship, disembark at the airlock, \
-     fly from the pilot seat; in flight the gunner/scanner/miner consoles go live) · L launch · \
-     F refuel (docked) · Esc pause";
+// S31: help strings are rebuilt from settings (see `HelpTextCache`), not
+// hardcoded here — these statics are gone. The HUD reads the cache below.
 
-pub fn spawn_hud(mut commands: Commands) {
+/// Rebuild the help-text cache whenever the keybind settings change (spec S31
+/// §6). Cheap: runs only on a `Settings` mutation, not every frame.
+pub fn refresh_help_cache(settings: Res<Settings>, mut cache: ResMut<HelpTextCache>) {
+    if settings.is_changed() {
+        *cache = HelpTextCache::rebuild(&settings);
+    }
+}
+
+pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
     commands.spawn((
         FuelReadout,
         Text::new("FUEL 100%"),
@@ -156,7 +159,7 @@ pub fn spawn_hud(mut commands: Commands) {
     ));
     commands.spawn((
         HelpText,
-        Text::new(HELP_FLIGHT),
+        Text::new(HelpTextCache::rebuild(&settings).flight),
         TextFont {
             font_size: 12.0,
             ..default()
@@ -231,6 +234,8 @@ pub fn update_hud_status(
     deliberation: Res<DeliberationState>,
     net_mode: Res<NetMode>,
     conn: Res<ConnectionState>,
+    cache: Res<HelpTextCache>,
+    pause_sel: Res<crate::systems::pause::PauseSelection>,
     mut texts: ParamSet<(
         Query<&mut Text, With<FuelReadout>>,
         Query<&mut Text, With<LocationBanner>>,
@@ -307,14 +312,21 @@ pub fn update_hud_status(
     }
     if let Ok(mut text) = texts.p5().single_mut() {
         **text = match **mode {
-            GameMode::Paused => "⏸ PAUSED\n\nEsc to resume".to_string(),
+            GameMode::Paused => {
+                let sel = *pause_sel == crate::systems::pause::PauseSelection::Resume;
+                let resume = if sel { "> " } else { "  " };
+                let settings = if !sel { "> " } else { "  " };
+                format!(
+                    "⏸ PAUSED\n\n{resume}Resume\n{settings}Settings\n\nTab select · Enter activate · Esc resume"
+                )
+            }
             _ => String::new(),
         };
     }
     if let Ok(mut text) = texts.p6().single_mut() {
         let help = match **mode {
-            GameMode::SpaceFlight => HELP_FLIGHT,
-            GameMode::Landed | GameMode::OnBoard => HELP_INTERIOR,
+            GameMode::SpaceFlight => cache.flight.as_str(),
+            GameMode::Landed | GameMode::OnBoard => cache.interior.as_str(),
             _ => "", // transition beats/pause: no bindings to advertise
         };
         if **text != help {

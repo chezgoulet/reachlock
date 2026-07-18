@@ -4,6 +4,7 @@
 
 use bevy::prelude::*;
 
+use crate::settings::{InputAction, Settings};
 use crate::systems::ticker::UniverseTicker;
 
 /// Toggle for the reputation panel.
@@ -21,9 +22,10 @@ pub struct FactionBanner;
 /// Toggle the reputation panel on P key press.
 pub fn reputation_panel_toggle(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
     mut visible: ResMut<ReputationPanelVisible>,
 ) {
-    if keys.just_pressed(KeyCode::KeyP) {
+    if keys.just_pressed(settings.key(InputAction::OpenCrewRoster)) {
         visible.0 = !visible.0;
     }
 }

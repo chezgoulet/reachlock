@@ -15,7 +15,10 @@
 //! across mode switches so its transform survives the full loop. Every other
 //! scene entity is `ModeScope(GameMode::SpaceFlight)` and torn down on exit.
 
+use crate::settings::Settings;
+use bevy::audio::Volume;
 use bevy::prelude::*;
+use bevy::window::{MonitorSelection, VideoModeSelection};
 use bevy_rapier3d::prelude::*;
 use reachlock_core::content::{resolve, ContentPayload, Resolved, SeedParams};
 use reachlock_core::generator::hull::HullClass;
@@ -75,6 +78,7 @@ pub fn enter_spaceflight(
     mut registry: ResMut<SceneRegistry>,
     ship: Query<Entity, With<PlayerShip>>,
     mode_entities: Query<(Entity, &ModeScope)>,
+    settings: Res<Settings>,
 ) {
     if registry.scene == Some(GameMode::SpaceFlight) {
         return; // came back from pause; scene already present
@@ -192,8 +196,13 @@ pub fn enter_spaceflight(
 
     if ship.is_empty() {
         let music = generator::generate_music(seed, generator::Mood::Calm, 8);
-        commands.spawn(AudioPlayer(
-            audio_sources.add(bridge::audio_from_generated(&music)),
+        let gain = settings.audio.master_volume * settings.audio.music_volume;
+        commands.spawn((
+            AudioPlayer(audio_sources.add(bridge::audio_from_generated(&music))),
+            PlaybackSettings {
+                volume: Volume::Linear(gain),
+                ..Default::default()
+            },
         ));
         commands.insert_resource(ShipSystems::default());
         commands.insert_resource(KnownContacts::default());
@@ -647,4 +656,28 @@ fn bounding_radius(mesh: &GeneratedMesh) -> f32 {
         .map(|v| v.x.to_f32().abs().max(v.y.to_f32().abs()))
         .fold(0.0_f32, f32::max)
         .max(2.0)
+}
+
+/// Apply the persisted Video settings to the primary window. Called once at
+/// startup; runtime changes to video settings take effect on the next launch
+/// (Bevy's window is created before resources are available).
+pub fn apply_video_settings(mut windows: Query<&mut Window>, settings: Res<Settings>) {
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
+    let v = &settings.video;
+    window.mode = if v.fullscreen {
+        bevy::window::WindowMode::Fullscreen(MonitorSelection::Primary, VideoModeSelection::Current)
+    } else {
+        bevy::window::WindowMode::Windowed
+    };
+    window
+        .resolution
+        .set(v.resolution.0 as f32, v.resolution.1 as f32);
+    window.present_mode = if v.vsync {
+        bevy::window::PresentMode::AutoVsync
+    } else {
+        bevy::window::PresentMode::AutoNoVsync
+    };
+    window.resolution.set_scale_factor(v.render_scale);
 }
