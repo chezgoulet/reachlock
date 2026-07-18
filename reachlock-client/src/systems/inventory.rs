@@ -41,12 +41,31 @@ impl PlayerInventory {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LocationSnapshot {
     pub system_seed: u64,
+    /// S21: system id in the gate network (e.g. "aethon") or uncharted hash.
+    #[serde(default)]
+    pub system_id: String,
+    /// S21: system biome as serialized string.
+    #[serde(default = "default_biome_str")]
+    pub system_biome: String,
+    /// S21: generation fidelity ("full" or "sparse").
+    #[serde(default = "default_fidelity_str")]
+    pub system_fidelity: String,
+    /// S21: optional galactic coordinate serialized as [x, y, z].
+    #[serde(default)]
+    pub galaxy_coord: Option<[i64; 3]>,
     pub station_id: String,
     pub is_docked: bool,
     pub display_name: String,
     pub station_seed: u64,
     pub station_kind: Option<StationKind>,
     pub station_position: [f32; 2],
+}
+
+fn default_biome_str() -> String {
+    "core".into()
+}
+fn default_fidelity_str() -> String {
+    "full".into()
 }
 
 /// On-disk save shape.
@@ -105,8 +124,29 @@ pub fn save_player(
     hull_config: Option<&reachlock_core::editor::exterior::HullConfiguration>,
     interior_layout: Option<&reachlock_core::editor::interior::ShipInteriorLayout>,
 ) {
+    let gc = loc.galaxy_coord.map(|c| [c.x, c.y, c.z]);
+    fn biome_str(b: reachlock_core::seed::types::Biome) -> &'static str {
+        use reachlock_core::seed::types::Biome;
+        match b {
+            Biome::Core => "core",
+            Biome::Frontier => "frontier",
+            Biome::Nebula => "nebula",
+            Biome::Derelict => "derelict",
+            Biome::DeepSpace => "deep_space",
+        }
+    }
+    fn fidelity_str(f: reachlock_core::generator::system::Fidelity) -> &'static str {
+        match f {
+            reachlock_core::generator::system::Fidelity::Full => "full",
+            _ => "sparse",
+        }
+    }
     let snapshot = LocationSnapshot {
         system_seed: loc.system_seed,
+        system_id: loc.system_id.0.clone(),
+        system_biome: biome_str(loc.system_biome).to_string(),
+        system_fidelity: fidelity_str(loc.system_fidelity).to_string(),
+        galaxy_coord: gc,
         station_id: loc.station_id.clone(),
         is_docked: loc.is_docked,
         display_name: loc.display_name.clone(),
@@ -141,14 +181,40 @@ pub fn save_player(
 pub fn load_player() -> Option<(PlayerInventory, CurrentLocation)> {
     let text = std::fs::read_to_string(SAVE_PATH).ok()?;
     let file: SaveFile = ron::from_str(&text).ok()?;
-    let loc = file.location.map(|s| CurrentLocation {
-        system_seed: s.system_seed,
-        station_id: s.station_id,
-        is_docked: s.is_docked,
-        display_name: s.display_name,
-        station_position: Vec2::new(s.station_position[0], s.station_position[1]),
-        station_seed: s.station_seed,
-        station_kind: s.station_kind,
+    let loc = file.location.map(|s| {
+        use reachlock_core::generator::system::Fidelity;
+        use reachlock_core::seed::types::Biome;
+        fn parse_biome(s: &str) -> Biome {
+            match s {
+                "core" => Biome::Core,
+                "frontier" => Biome::Frontier,
+                "nebula" => Biome::Nebula,
+                "derelict" => Biome::Derelict,
+                "deep_space" => Biome::DeepSpace,
+                _ => Biome::Frontier,
+            }
+        }
+        fn parse_fidelity(s: &str) -> Fidelity {
+            match s {
+                "sparse" => Fidelity::Sparse,
+                _ => Fidelity::Full,
+            }
+        }
+        CurrentLocation {
+            system_seed: s.system_seed,
+            system_id: reachlock_core::seed::types::SystemId(s.system_id),
+            system_biome: parse_biome(&s.system_biome),
+            system_fidelity: parse_fidelity(&s.system_fidelity),
+            galaxy_coord: s
+                .galaxy_coord
+                .map(|[x, y, z]| reachlock_core::galaxy::GalaxyCoord { x, y, z }),
+            station_id: s.station_id,
+            is_docked: s.is_docked,
+            display_name: s.display_name,
+            station_position: Vec2::new(s.station_position[0], s.station_position[1]),
+            station_seed: s.station_seed,
+            station_kind: s.station_kind,
+        }
     })?;
     Some((file.inventory, loc))
 }

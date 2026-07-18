@@ -1,0 +1,8 @@
+ChartedSystem(
+    id: "fringe_b",
+    display_name: "Fringe Station Beta",
+    position: (x: 1100, y: 100, z: 200),
+    biome: Frontier,
+    seed: 134744072,
+    description: "The outermost charted system. Beyond Fringe Beta the gate network ends, and only FTL drives can push further. The station here is a converted freighter — the last port of call before the deep black.",
+)

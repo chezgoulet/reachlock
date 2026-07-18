@@ -14,10 +14,11 @@ use reachlock_core::generator::transit::{
     SELF_JUMP_BURN,
 };
 use reachlock_core::network::ClientMessage;
-use reachlock_core::seed::types::{Seed, SystemId};
+use reachlock_core::seed::types::{Biome, Seed, SystemId};
 
 use crate::net::{NetMode, NetOutbox};
 use crate::states::{CurrentLocation, GameMode, SceneRegistry};
+use crate::systems::content_index::ContentIndex;
 use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::setup::Gate;
@@ -40,12 +41,22 @@ pub struct TransitState {
     pub active: bool,
     pub timer: Timer,
     pub dest_seed: u64,
+    /// S21: destination system id in the gate network or uncharted hash.
+    pub dest_system_id: SystemId,
+    /// S21: destination system biome.
+    pub dest_biome: Biome,
+    /// S21: whether the destination is a charted gate transit or deep space.
+    pub dest_is_charted: bool,
     pub jump_count: u64,
     pub anomaly_fired: bool,
     /// Who runs the crossing: Boris for gate transits (the cryo-pilot
     /// contract), Prudence for programmed self-jumps (SHIPS.md §3 — the
     /// synthetic crew has the ship while the humans sleep).
     pub pilot: String,
+    /// S21: which gate index the player chose (when a system has multiple).
+    /// `None` means auto-select the first active gate.
+    #[allow(dead_code)]
+    pub chosen_gate: Option<usize>,
 }
 
 impl Default for TransitState {
@@ -54,9 +65,13 @@ impl Default for TransitState {
             active: false,
             timer: Timer::default(),
             dest_seed: 0,
+            dest_system_id: SystemId(String::new()),
+            dest_biome: Biome::Frontier,
+            dest_is_charted: true,
             jump_count: 0,
             anomaly_fired: false,
             pilot: "Boris".into(),
+            chosen_gate: None,
         }
     }
 }
@@ -66,12 +81,16 @@ impl Default for TransitState {
 pub struct TransitVisual;
 
 /// ENTER near a gate → engage the jump drive (Hyperspace mode).
+/// Reads the gate network from the content index to determine the
+/// destination system. Blockaded/Restricted/destroyed gates refuse transit.
+#[allow(clippy::too_many_arguments)]
 pub fn try_gate_jump(
     keys: Res<ButtonInput<KeyCode>>,
     ship: Query<&Transform, With<PlayerShip>>,
     gates: Query<&Transform, With<Gate>>,
     mut state: ResMut<TransitState>,
     location: Res<CurrentLocation>,
+    content: Res<ContentIndex>,
     mut next: ResMut<NextState<GameMode>>,
     mut log: ResMut<ShipLog>,
 ) {
@@ -87,14 +106,68 @@ pub fn try_gate_jump(
     if !near || !keys.just_pressed(KeyCode::Enter) {
         return;
     }
+
+    // Look up the gate network for the current system.
+    let Some(network) = content.gate_network.as_ref() else {
+        log.log("No gate network loaded — cannot transit.");
+        return;
+    };
+    let gates = network.outgoing(&location.system_id);
+    if gates.is_empty() {
+        log.log(format!(
+            "No outgoing gates from {} — cannot transit.",
+            location.system_id.0
+        ));
+        return;
+    }
+    // Auto-select the first active gate (multi-gate UI comes in a follow-up).
+    let gate = match gates
+        .iter()
+        .find(|g| matches!(g.status, reachlock_core::galaxy::GateStatus::Active))
+    {
+        Some(g) => g,
+        None => {
+            if let Some(blocked) = gates
+                .iter()
+                .find(|g| !matches!(g.status, reachlock_core::galaxy::GateStatus::Active))
+            {
+                let reason = match blocked.status {
+                    reachlock_core::galaxy::GateStatus::Blockaded => {
+                        "sealed by the controlling faction"
+                    }
+                    reachlock_core::galaxy::GateStatus::Restricted => "access restricted",
+                    reachlock_core::galaxy::GateStatus::Contested => "contested — combat zone",
+                    reachlock_core::galaxy::GateStatus::Destroyed => "gate destroyed",
+                    _ => "unavailable",
+                };
+                log.log(format!("Gate to {} is {}.", blocked.to.0, reason));
+            } else {
+                log.log("No available gate for transit.");
+            }
+            return;
+        }
+    };
+    let dest_id = &gate.to;
+    let dest_system = content.charted_systems.get(&dest_id.0);
+    let dest_seed = dest_system.map(|s| s.seed).unwrap_or_else(|| {
+        // Fallback: if the charted system isn't loaded, derive from the id.
+        transit_destination(location.system_seed, state.jump_count)
+    });
+    let dest_biome = dest_system.map(|s| s.biome).unwrap_or(Biome::Frontier);
+
     state.active = true;
     state.anomaly_fired = false;
-    state.dest_seed = transit_destination(location.system_seed, state.jump_count);
+    state.dest_seed = dest_seed;
+    state.dest_system_id = dest_id.clone();
+    state.dest_biome = dest_biome;
+    state.dest_is_charted = true;
     state.timer = Timer::from_seconds(TRANSIT_SECS, TimerMode::Once);
     state.pilot = "Boris".into();
     log.log(format!(
-        "Gate transit engaged → system {:#x} (stable window; crew stays awake)",
-        state.dest_seed
+        "Gate transit engaged → {} (stable window; crew stays awake)",
+        dest_system
+            .map(|s| s.display_name.as_str())
+            .unwrap_or(&dest_id.0)
     ));
     next.set(GameMode::Hyperspace);
 }
@@ -162,6 +235,13 @@ pub fn hyperspace_tick(
     if state.timer.is_finished() {
         // Wake: regenerate the world into the destination system.
         location.system_seed = state.dest_seed;
+        location.system_id = state.dest_system_id.clone();
+        location.system_biome = state.dest_biome;
+        location.system_fidelity = if state.dest_is_charted {
+            reachlock_core::generator::system::Fidelity::Full
+        } else {
+            reachlock_core::generator::system::Fidelity::Sparse
+        };
         state.jump_count = state.jump_count.wrapping_add(1);
         state.active = false;
         deliberation.active = None;
@@ -172,8 +252,8 @@ pub fn hyperspace_tick(
         // the transition back to SpaceFlight below) does NOT early-return and
         // actually rebuilds the world from `location.system_seed`.
         registry.scene = None;
-        // S02 integration: discover the destination seed with the server.
-        let dest_id = SystemId(format!("spike-{:x}", location.system_seed));
+        // S21 integration: discover the destination seed with the server.
+        let dest_id = location.system_id.clone();
         match &*mode {
             NetMode::Online { universe, .. } => {
                 outbox.push(ClientMessage::SeedDiscover {
@@ -182,12 +262,12 @@ pub fn hyperspace_tick(
                     seed: Seed::new(location.system_seed),
                 });
                 log.log(format!(
-                    "Arrived — synchronizing system {:#x}…",
-                    location.system_seed
+                    "Arrived at {} — synchronizing…",
+                    location.system_id.0
                 ));
             }
             NetMode::Offline => {
-                log.log(format!("Arrived in system {:#x}", location.system_seed));
+                log.log(format!("Arrived at {}.", location.system_id.0));
             }
         }
         // SHIPS.md §3 step 4: a cryo transit wakes the sleepers in the
