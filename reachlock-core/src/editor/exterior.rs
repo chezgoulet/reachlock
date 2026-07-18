@@ -174,6 +174,18 @@ pub struct HullFrame {
     pub engine_mount: FixedVec2,
     pub zones: Vec<ArmorZone>,
     pub decal_slots: Vec<String>,
+    /// S18: interior placement area in cells (spec §19: "Hull class
+    /// determines available grid area"). Defaulted so pre-S18 authored
+    /// frames keep deserializing — an additive protocol revision (iron
+    /// rule #4), noted in the S18 PR.
+    #[serde(default = "default_grid_bounds")]
+    pub grid_bounds: (u8, u8),
+}
+
+/// The corvette-class placement area — the fallback for frames authored
+/// before `grid_bounds` existed.
+fn default_grid_bounds() -> (u8, u8) {
+    (16, 12)
 }
 
 impl HullFrame {
@@ -198,6 +210,7 @@ impl HullFrame {
                 engine_mount: v(-24, 0),
                 zones: vec![zone("nose"), zone("belly")],
                 decal_slots: vec!["tail".into()],
+                grid_bounds: (10, 8),
             },
             HullClass::Freighter => HullFrame {
                 class,
@@ -213,6 +226,7 @@ impl HullFrame {
                     zone("stern"),
                 ],
                 decal_slots: vec!["bow".into(), "flank".into()],
+                grid_bounds: (22, 16),
             },
             // Corvette is the player default; Station/Rock frames exist so
             // `reference` is total, but nothing edits them today.
@@ -226,6 +240,7 @@ impl HullFrame {
                 engine_mount: v(-36, 0),
                 zones: vec![zone("nose"), zone("port"), zone("starboard")],
                 decal_slots: vec!["nose".into(), "tail".into()],
+                grid_bounds: default_grid_bounds(),
             },
         }
     }

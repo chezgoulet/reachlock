@@ -339,6 +339,8 @@ pub fn update_hud_panels(
     souls: Res<crate::systems::soul::SoulRegistry>,
     editor_state: Res<crate::systems::shipeditor::ShipEditorState>,
     shipcfg: Res<crate::systems::shipeditor::ShipConfig>,
+    interior_editor_state: Res<crate::systems::shipeditor::InteriorEditorState>,
+    interior_cfg: Res<crate::systems::shipeditor::InteriorConfig>,
     content: Res<crate::systems::content_index::ContentIndex>,
     npcs: Query<&Npc>,
     mut texts: ParamSet<(
@@ -390,6 +392,13 @@ pub fn update_hud_panels(
                 &inventory,
                 &content,
                 &ticker,
+            ),
+            // S18: the interior editor shares the same panel surface.
+            ActivePanel::ShipInterior => crate::systems::shipeditor::interior_panel_text(
+                &interior_editor_state,
+                &interior_cfg,
+                &inventory,
+                &content,
             ),
             _ => String::new(),
         };

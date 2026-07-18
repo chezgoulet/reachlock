@@ -4,3 +4,4 @@
 //! contracts in these modules.
 
 pub mod exterior;
+pub mod interior;

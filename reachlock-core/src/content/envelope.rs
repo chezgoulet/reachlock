@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::contract::types::Contract;
 use crate::editor::exterior::HullFrame;
+use crate::editor::interior::RoomTemplate;
 use crate::generator::{GeneratedLayout, GeneratedMesh};
 use crate::soul::types::SoulFile;
 use crate::universe::tier::UniverseTier;
@@ -27,6 +28,11 @@ pub enum AssetType {
     /// plating zones. Protocol revision: adding this variant extended the
     /// envelope's wire vocabulary (iron rule #4, noted in the S17 PR).
     HullFrame,
+    /// S18: a room template set (spec §19) — one file carries the whole
+    /// authored list (`content/hulls/room_templates.ron`), since templates
+    /// only mean anything as a set the interior editor picks from. Protocol
+    /// revision noted in the S18 PR.
+    RoomTemplates,
 }
 
 /// A non-player character placed in a station interior. `room_index` points
@@ -65,6 +71,10 @@ pub enum ContentPayload {
     /// S17: a hull frame's structural constants (spec §19). The exterior
     /// editor composes a `HullConfiguration` against exactly this data.
     HullFrame(HullFrame),
+    /// S18: the authored room template set (spec §19). The interior editor
+    /// places these; `editor::interior::realize` turns placements into the
+    /// walkable layout.
+    RoomTemplates(Vec<RoomTemplate>),
 }
 
 /// The content envelope (spec §10, "Freeze first" list: id, display_name,
@@ -227,6 +237,41 @@ mod tests {
             "zones",
             "decal_slots",
             "size_class",
+            // S18: interior placement area — an additive frame revision.
+            "grid_bounds",
+        ] {
+            assert!(text.contains(field), "missing {field} in: {text}");
+        }
+        let back: ContentFile = ron::from_str(&text).unwrap();
+        assert_eq!(file, back);
+    }
+
+    /// S18: room-template payloads lock their serialized form the same way
+    /// — `content/hulls/room_templates.ron` depends on these field names.
+    #[test]
+    fn room_templates_serialized_form_is_locked() {
+        use crate::editor::interior::RoomTemplate;
+
+        let file = ContentFile {
+            id: "room_templates".into(),
+            display_name: "Room Templates".into(),
+            asset_type: AssetType::RoomTemplates,
+            seed: 4_912_338_771_002_441,
+            universe: "all".into(),
+            priority: Priority::Curated,
+            expires_at: None,
+            payload: ContentPayload::RoomTemplates(RoomTemplate::reference_set()),
+        };
+        let text = ron::to_string(&file).unwrap();
+        for field in [
+            "room_templates",
+            "kind",
+            "label",
+            "width",
+            "height",
+            "required_systems",
+            "furniture_slots",
+            "adjacent_pairs",
         ] {
             assert!(text.contains(field), "missing {field} in: {text}");
         }

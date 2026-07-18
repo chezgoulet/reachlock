@@ -54,6 +54,7 @@ pub fn market_system(
     mut ticker: ResMut<UniverseTicker>,
     souls: Res<crate::systems::soul::SoulRegistry>,
     shipcfg: Res<crate::systems::shipeditor::ShipConfig>,
+    interior_cfg: Res<crate::systems::shipeditor::InteriorConfig>,
 ) {
     if *panel != ActivePanel::Market {
         return;
@@ -104,6 +105,7 @@ pub fn market_system(
                 Some(&ticker.state),
                 &souls.states,
                 shipcfg.config.as_ref(),
+                interior_cfg.layout.as_ref(),
             );
         }
     }
@@ -126,6 +128,7 @@ pub fn market_system(
                 Some(&ticker.state),
                 &souls.states,
                 shipcfg.config.as_ref(),
+                interior_cfg.layout.as_ref(),
             );
         }
     }

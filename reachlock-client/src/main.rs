@@ -108,6 +108,11 @@ fn main() {
         // editor's live state. Must exist before Startup: load_save reads it.
         .init_resource::<shipeditor::ShipConfig>()
         .init_resource::<shipeditor::ShipEditorState>()
+        // S18: the applied interior layout (restored by load_save) + the
+        // interior editor's live state. Must exist before Startup: load_save
+        // reads it; enter_interior realizes it on boarding.
+        .init_resource::<shipeditor::InteriorConfig>()
+        .init_resource::<shipeditor::InteriorEditorState>()
         // S12: the one universe — economy + factions + news, advanced by the
         // ticker. Built before Startup so load_save can restore into it.
         .init_resource::<ticker::UniverseTicker>()
@@ -331,6 +336,18 @@ fn main() {
         .add_systems(
             Update,
             (shipeditor::editor_system, shipeditor::editor_preview)
+                .chain()
+                .run_if(in_any_interior),
+        )
+        // S18: the interior editor (interior-refit terminal panel) + its 2D
+        // grid preview. Same interior-only run condition and chained
+        // dirty-flag pattern as the exterior editor.
+        .add_systems(
+            Update,
+            (
+                shipeditor::interior_editor_system,
+                shipeditor::interior_editor_preview,
+            )
                 .chain()
                 .run_if(in_any_interior),
         )

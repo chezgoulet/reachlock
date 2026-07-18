@@ -99,6 +99,17 @@
                 "type": "string"
               },
               "description": "Decal slot ids, unique within the frame (Decal.slot_id references them)"
+            },
+            "grid_bounds": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 255
+              },
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "S18: interior placement area in cells [width, height]; optional (defaults to the corvette 16x12)"
             }
           }
         }

@@ -70,6 +70,11 @@ pub struct SaveFile {
     /// stock Loup-Garou. The frozen core contract, stored as-is.
     #[serde(default)]
     pub hull_config: Option<reachlock_core::editor::exterior::HullConfiguration>,
+    /// S18: the applied interior placement (spec §19). `None` = the
+    /// authored Loup-Garou deck plan. The frozen core contract, stored
+    /// as-is; On-Board realizes it on boarding.
+    #[serde(default)]
+    pub interior_layout: Option<reachlock_core::editor::interior::ShipInteriorLayout>,
 }
 
 const SAVE_PATH: &str = "save/player.ron";
@@ -98,6 +103,7 @@ pub fn save_player(
     universe: Option<&UniverseState>,
     souls: &BTreeMap<String, reachlock_core::soul::SoulState>,
     hull_config: Option<&reachlock_core::editor::exterior::HullConfiguration>,
+    interior_layout: Option<&reachlock_core::editor::interior::ShipInteriorLayout>,
 ) {
     let snapshot = LocationSnapshot {
         system_seed: loc.system_seed,
@@ -115,6 +121,7 @@ pub fn save_player(
         saved_at_epoch_secs: epoch_secs(),
         souls: souls.clone(),
         hull_config: hull_config.cloned(),
+        interior_layout: interior_layout.cloned(),
     };
     match ron::to_string(&file) {
         Ok(text) => {
@@ -155,6 +162,7 @@ const INTERVAL: f32 = 5.0;
 
 /// Accumulate real time and autosave on the interval. Runs in all `InGame`
 /// modes (wired in `main.rs`). Offline-safe: `save_player` never panics.
+#[allow(clippy::too_many_arguments)]
 pub fn autosave_system(
     time: Res<Time<Real>>,
     inv: Res<PlayerInventory>,
@@ -163,6 +171,7 @@ pub fn autosave_system(
     ticker: Option<Res<UniverseTicker>>,
     souls: Res<crate::systems::soul::SoulRegistry>,
     shipcfg: Res<crate::systems::shipeditor::ShipConfig>,
+    interior_cfg: Res<crate::systems::shipeditor::InteriorConfig>,
 ) {
     timer.0 += time.delta_secs();
     if timer.0 >= INTERVAL {
@@ -173,6 +182,7 @@ pub fn autosave_system(
             ticker.as_ref().map(|t| &t.state),
             &souls.states,
             shipcfg.config.as_ref(),
+            interior_cfg.layout.as_ref(),
         );
     }
 }
@@ -188,6 +198,7 @@ pub fn load_save(
     mut ticker: ResMut<UniverseTicker>,
     mut souls: ResMut<crate::systems::soul::SoulRegistry>,
     mut shipcfg: ResMut<crate::systems::shipeditor::ShipConfig>,
+    mut interior_cfg: ResMut<crate::systems::shipeditor::InteriorConfig>,
     content: Res<crate::systems::content_index::ContentIndex>,
 ) {
     if let Some((i, l)) = load_player() {
@@ -214,6 +225,11 @@ pub fn load_save(
             // from the config + frame (never stored — it's derived data).
             if let Some(config) = file.hull_config {
                 shipcfg.set(config, &content);
+            }
+            // S18: restore the applied interior layout; the realized
+            // walkable layout re-derives on boarding (never stored).
+            if let Some(layout) = file.interior_layout {
+                interior_cfg.layout = Some(layout);
             }
         }
     }
