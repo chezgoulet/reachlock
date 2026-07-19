@@ -17,7 +17,7 @@ clippy:
 
 # Launch the game (native).
 run:
-	cargo run -p reachlock-client
+	WINIT_UNIX_BACKEND=x11 cargo run -p reachlock-client
 
 # Launch with Bevy's `debug` feature so ECS errors (e.g. B0001 query
 # conflicts) print real component/system names instead of a placeholder.

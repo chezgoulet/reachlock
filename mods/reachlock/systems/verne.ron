@@ -2,7 +2,7 @@ ChartedSystem(
     id: "verne",
     display_name: "Verne",
     position: (x: 400, y: 100, z: -200),
-    biome: Frontier,
+    biome: frontier,
     seed: 33686018,
     description: "A Compact research outpost on the inner frontier. Verne's university station hosts xeno-archaeologists and jump-field theorists. The gate to the Veil is restricted to accredited personnel.",
 )

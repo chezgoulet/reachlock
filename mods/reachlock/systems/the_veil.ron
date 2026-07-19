@@ -2,7 +2,7 @@ ChartedSystem(
     id: "the_veil",
     display_name: "The Veil",
     position: (x: 600, y: 300, z: -500),
-    biome: Nebula,
+    biome: nebula,
     seed: 101058054,
     description: "A turbulent nebula system at the edge of Compact space. The Compact maintains a restricted scientific expedition here, studying the nebula's effect on jump-field propagation. Unauthorized transit is refused.",
 )

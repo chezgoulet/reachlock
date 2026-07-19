@@ -2,7 +2,7 @@ ChartedSystem(
     id: "fringe_a",
     display_name: "Fringe Station Alpha",
     position: (x: 900, y: -200, z: 300),
-    biome: Frontier,
+    biome: frontier,
     seed: 117901063,
     description: "The first of two fringe outposts marking the edge of charted space. Beyond this system lie only uncharted voids. Fringe A hosts a small refueling station and a motley population of prospectors and exiles.",
 )
