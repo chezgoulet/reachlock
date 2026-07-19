@@ -3,16 +3,24 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use reachlock_core::content::ContentFile;
 use reachlock_core::galaxy::{ChartedSystem, GateNetwork};
+use reachlock_core::mod_manifest::{resolve_load_order, ModManifest};
 
-/// The local override index (spec §10, "Loader reads `content/` from disk
+/// The local override index (spec §10, "Loader reads `mods/` from disk
 /// at startup (local mode)"). Empty on wasm — there is no filesystem to
 /// read; server distribution of overrides is S23's problem.
 ///
-/// S20 adds typed sub-indices for landed-combat content; S21 adds galaxy
-/// content. All loaded as plain structs from subdirectories of `content/`.
+/// S22: the loader scans `mods/*/mod.manifest.ron`, resolves load order
+/// (topological sort + load_order field), and aggregates typed content
+/// from each mod directory. Last-loaded mod wins on collisions.
 #[derive(Resource, Default)]
 pub struct ContentIndex {
     pub files: Vec<ContentFile>,
+    /// All loaded mod manifests, keyed by mod id.
+    #[allow(dead_code)]
+    pub mod_manifests: HashMap<String, ModManifest>,
+    /// Resolved load order: mod ids in the order they should be consulted.
+    #[allow(dead_code)]
+    pub load_order: Vec<String>,
     /// S20 enemy/companion archetypes, keyed by `HostileArchetype::id`.
     pub hostile_archetypes: HashMap<String, reachlock_core::combat::HostileArchetype>,
     /// S20 authored hostile interiors, keyed by `HostileLocation::id`.
@@ -24,10 +32,6 @@ pub struct ContentIndex {
 }
 
 impl ContentIndex {
-    /// Find an authored station payload by its pinned seed (S07: the docked
-    /// station's `station_seed` is the authored file's `seed`). Returns the
-    /// station file if present, so `interior::enter_interior` can use its
-    /// authored layout + `npc_spawns` instead of regenerating.
     pub fn find_station_by_seed(&self, seed: u64) -> Option<&ContentFile> {
         self.files
             .iter()
@@ -35,41 +39,103 @@ impl ContentIndex {
     }
 }
 
-/// Directory under `content/` that holds test fixtures, not real authored
-/// assets (spec §10 deliverable: "skip `content/_fixtures/`").
-#[cfg(not(target_arch = "wasm32"))]
+/// Directory that holds test fixtures, not real authored assets.
 const FIXTURES_DIR: &str = "_fixtures";
 
-/// Native loader: walks `content/` from the working directory, parsing each
-/// `.ron` file into a `ContentFile`. Files that fail to parse are logged and
-/// skipped rather than aborting startup — one bad authored file shouldn't
-/// take down the whole index.
+/// Native loader: walks `mods/` from the working directory, discovering
+/// mod manifests and their authored content.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_content_index(mut commands: Commands) {
-    let mut files = Vec::new();
-    let root = std::path::Path::new("content");
-    if root.is_dir() {
-        walk(root, &mut files);
-    } else {
-        warn!("content index: no content/ directory found at {root:?}; index is empty");
+    let root = std::path::Path::new("mods");
+    if !root.is_dir() {
+        warn!("content index: no mods/ directory found at {root:?}; index is empty");
+        commands.insert_resource(ContentIndex::default());
+        return;
     }
-    // S20/S21: typed content loaded as plain structs (not ContentFile envelope).
-    let hostile_archetypes = load_typed::<reachlock_core::combat::HostileArchetype, _>(
-        root.join("combat"), "archetype", |a| a.id.clone());
-    let hostile_locations = load_typed::<reachlock_core::combat::HostileLocation, _>(
-        root.join("locations"), "location", |l| l.id.clone());
-    let charted_systems = load_typed(root.join("systems"), "system", |s: &ChartedSystem| {
-        s.id.clone()
-    });
-    let gate_network =
-        load_typed::<GateNetwork, _>(root.join("gate_network"), "gate_network", |_| {
-            "core_region".into()
-        })
-        .into_iter()
-        .next()
-        .map(|(_, n)| n);
+
+    // Phase 1: discover mod manifests.
+    let mut manifests: HashMap<String, ModManifest> = HashMap::new();
+    if let Ok(entries) = std::fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let mod_dir = entry.path();
+            if !mod_dir.is_dir() {
+                continue;
+            }
+            let manifest_path = mod_dir.join("mod.manifest.ron");
+            if manifest_path.exists() {
+                match std::fs::read_to_string(&manifest_path) {
+                    Ok(text) => match ron::from_str::<ModManifest>(&text) {
+                        Ok(m) => {
+                            manifests.insert(m.id.clone(), m);
+                        }
+                        Err(err) => warn!(
+                            "content index: bad manifest {}: {err}",
+                            manifest_path.display()
+                        ),
+                    },
+                    Err(err) => warn!(
+                        "content index: failed to read manifest {}: {err}",
+                        manifest_path.display()
+                    ),
+                }
+            }
+        }
+    }
+
+    // Phase 2: resolve load order.
+    let all_manifests: Vec<ModManifest> = manifests.values().cloned().collect();
+    let load_order = match resolve_load_order(&all_manifests) {
+        Ok(order) => order,
+        Err(err) => {
+            warn!("content index: mod load order error: {err:?}");
+            // Fall back to alphabetical.
+            let mut ids: Vec<String> = manifests.keys().cloned().collect();
+            ids.sort();
+            ids
+        }
+    };
+
+    // Phase 3: load typed content from each mod in load order.
+    let mut hostile_archetypes: HashMap<String, reachlock_core::combat::HostileArchetype> =
+        HashMap::new();
+    let mut hostile_locations: HashMap<String, reachlock_core::combat::HostileLocation> =
+        HashMap::new();
+    let mut charted_systems: HashMap<String, ChartedSystem> = HashMap::new();
+    let mut gate_network: Option<GateNetwork> = None;
+
+    for mod_id in &load_order {
+        let mod_dir = root.join(mod_id);
+        // load_typed inserts into the maps — last mod wins collisions.
+        load_typed_into(
+            &mod_dir.join("combat"),
+            &mut hostile_archetypes,
+            |a: &reachlock_core::combat::HostileArchetype| a.id.clone(),
+        );
+        load_typed_into(
+            &mod_dir.join("locations"),
+            &mut hostile_locations,
+            |l: &reachlock_core::combat::HostileLocation| l.id.clone(),
+        );
+        load_typed_into(
+            &mod_dir.join("systems"),
+            &mut charted_systems,
+            |s: &ChartedSystem| s.id.clone(),
+        );
+        // Gate network: only one file per mod, last mod loaded wins.
+        let gn_map: HashMap<String, GateNetwork> =
+            load_typed(&mod_dir.join("gate_network"), |_| "core".to_string());
+        if let Some((_, gn)) = gn_map.into_iter().next() {
+            gate_network = Some(gn);
+        }
+    }
+
+    // Phase 4: walk for ContentFile envelopes (skip typed dirs and manifest).
+    let mut files = Vec::new();
+    walk(root, &mut files);
+
     info!(
-        "content index: loaded {} authored file(s), {} archetype(s), {} location(s), {} system(s)",
+        "content index: {} mod(s), {} file(s), {} archetype(s), {} location(s), {} system(s)",
+        manifests.len(),
         files.len(),
         hostile_archetypes.len(),
         hostile_locations.len(),
@@ -77,6 +143,8 @@ pub fn load_content_index(mut commands: Commands) {
     );
     commands.insert_resource(ContentIndex {
         files,
+        mod_manifests: manifests,
+        load_order,
         hostile_archetypes,
         hostile_locations,
         charted_systems,
@@ -84,17 +152,16 @@ pub fn load_content_index(mut commands: Commands) {
     });
 }
 
-/// Parse every `.ron` in `dir` into `T`, keyed by `key`. Missing dir → empty
-/// map; a bad file is logged and skipped (one typo shouldn't blank the set).
+/// Parse every `.ron` in `dir` into a HashMap<T> keyed by a function.
 #[cfg(not(target_arch = "wasm32"))]
-fn load_typed<T, K>(dir: std::path::PathBuf, label: &str, key: K) -> HashMap<String, T>
+fn load_typed<T, K>(dir: &std::path::Path, key: K) -> HashMap<String, T>
 where
     T: serde::de::DeserializeOwned,
     K: Fn(&T) -> String,
 {
     let mut out = HashMap::new();
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return out; // no such directory: nothing authored yet
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return out;
     };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -106,12 +173,25 @@ where
                 Ok(value) => {
                     out.insert(key(&value), value);
                 }
-                Err(err) => warn!("content index: bad {label} {}: {err}", path.display()),
+                Err(err) => warn!("content index: failed to parse {}: {err}", path.display()),
             },
             Err(err) => warn!("content index: failed to read {}: {err}", path.display()),
         }
     }
     out
+}
+
+/// Like `load_typed` but merges into an existing map (last-wins).
+#[cfg(not(target_arch = "wasm32"))]
+fn load_typed_into<T, K>(dir: &std::path::Path, out: &mut HashMap<String, T>, key: K)
+where
+    T: serde::de::DeserializeOwned,
+    K: Fn(&T) -> String,
+{
+    let items = load_typed(dir, key);
+    for (k, v) in items {
+        out.insert(k, v);
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -123,13 +203,26 @@ fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            // Skip typed-content dirs parsed by `load_typed` (not ContentFile).
-            let skip = [FIXTURES_DIR, "combat", "locations", "systems", "gate_network"];
-            if path.file_name().is_some_and(|n| skip.contains(&n.to_str().unwrap_or(""))) {
+            // Skip typed-content dirs and fixtures.
+            let skip = [
+                FIXTURES_DIR,
+                "combat",
+                "locations",
+                "systems",
+                "gate_network",
+            ];
+            if path
+                .file_name()
+                .is_some_and(|n| skip.contains(&n.to_str().unwrap_or("")))
+            {
                 continue;
             }
             walk(&path, out);
         } else if path.extension().is_some_and(|e| e == "ron") {
+            // Skip mod manifest files — they're parsed separately.
+            if path.file_name().is_some_and(|n| n == "mod.manifest.ron") {
+                continue;
+            }
             match std::fs::read_to_string(&path) {
                 Ok(text) => match ron::from_str::<ContentFile>(&text) {
                     Ok(file) => out.push(file),
@@ -144,8 +237,7 @@ fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
 }
 
 /// Wasm loader: no filesystem access, so the index starts (and stays)
-/// empty. Server distribution of overrides (S23) is what fills this in on
-/// wasm eventually.
+/// empty. Server distribution of overrides (S23) is what fills this in.
 #[cfg(target_arch = "wasm32")]
 pub fn load_content_index(mut commands: Commands) {
     commands.insert_resource(ContentIndex::default());

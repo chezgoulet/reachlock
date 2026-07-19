@@ -590,13 +590,13 @@ pub fn load_faction_catalog() -> FactionCatalog {
     ron::from_str(FACTION_CATALOG_RON).expect("embedded canon.ron")
 }
 
-const FACTION_CATALOG_RON: &str = include_str!("../../content/factions/canon.ron");
+const FACTION_CATALOG_RON: &str = include_str!("../../mods/reachlock/factions/canon.ron");
 
 /// Load the canon storylines from the embedded RON.
 pub fn load_storylines() -> Vec<Storyline> {
     ron::from_str(STORYLINES_RON).expect("embedded storylines.ron")
 }
-const STORYLINES_RON: &str = include_str!("../../content/storylines/compact_arc.ron");
+const STORYLINES_RON: &str = include_str!("../../mods/reachlock/storylines/compact_arc.ron");
 
 // ───────────────────────────── Tick (spec §21) ─────────────────────────
 

@@ -544,7 +544,7 @@ pub fn load_goods_catalog() -> GoodsCatalog {
 
 /// Authored goods catalogue, embedded so the client and server ship identical
 /// reference data without a filesystem dependency (also wasm-safe).
-const GOODS_CATALOG_RON: &str = include_str!("../../content/economy/goods.ron");
+const GOODS_CATALOG_RON: &str = include_str!("../../mods/reachlock/economy/goods.ron");
 
 #[cfg(test)]
 mod tests {

@@ -18,6 +18,7 @@ pub mod faction;
 pub mod galaxy;
 pub mod generator;
 pub mod item;
+pub mod mod_manifest;
 pub mod network;
 pub mod seed;
 pub mod sim;

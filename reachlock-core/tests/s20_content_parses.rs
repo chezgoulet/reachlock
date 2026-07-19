@@ -1,6 +1,6 @@
 use reachlock_core::combat::{HostileArchetype, HostileLocation};
 fn content(rel: &str) -> String {
-    let p = format!("{}/../content/{}", env!("CARGO_MANIFEST_DIR"), rel);
+    let p = format!("{}/../mods/reachlock/{}", env!("CARGO_MANIFEST_DIR"), rel);
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {p}: {e}"))
 }
 #[test]

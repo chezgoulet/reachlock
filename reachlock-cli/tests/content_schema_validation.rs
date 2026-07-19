@@ -16,7 +16,7 @@ fn load_file(path: &str) -> ContentFile {
 
 #[test]
 fn all_committed_hull_files_pass_schema() {
-    let content = load_file("content/hulls/loup_garou.ron");
+    let content = load_file("mods/reachlock/hulls/loup_garou.ron");
     let _json = serde_json::to_value(&content).expect("JSON serialization");
 
     // Just check that it serializes without error
@@ -27,7 +27,7 @@ fn all_committed_hull_files_pass_schema() {
 
 #[test]
 fn all_committed_station_files_pass_schema() {
-    let content = load_file("content/stations/sorrow_station.ron");
+    let content = load_file("mods/reachlock/stations/sorrow_station.ron");
     let _json = serde_json::to_value(&content).expect("JSON serialization");
 
     assert_eq!(content.id, "sorrow_station");
@@ -38,7 +38,7 @@ fn all_committed_station_files_pass_schema() {
 fn dangling_door_fixture_parses_and_passes_schema() {
     // The dangling_door fixture has a structural defect (door to non-existent room),
     // but it should pass schema validation
-    let content = load_file("content/_fixtures/dangling_door.ron");
+    let content = load_file("mods/reachlock/_fixtures/dangling_door.ron");
     let json = serde_json::to_value(&content).expect("JSON serialization");
 
     assert_eq!(content.id, "broken_station");
@@ -73,7 +73,7 @@ fn schema_rejects_misspelled_envelope_field() {
     });
 
     // Load the schema manually to verify it rejects the typo
-    let schema_text = include_str!("../../content/schemas/hull.schema.json");
+    let schema_text = include_str!("../../mods/reachlock/schemas/hull.schema.json");
     let schema = serde_json::from_str::<serde_json::Value>(schema_text).expect("parsing schema");
 
     // This should fail because additionalProperties: false and display_name is required
@@ -106,7 +106,7 @@ fn schema_accepts_optional_expires_at_field() {
         }
     });
 
-    let schema_text = include_str!("../../content/schemas/hull.schema.json");
+    let schema_text = include_str!("../../mods/reachlock/schemas/hull.schema.json");
     let schema = serde_json::from_str::<serde_json::Value>(schema_text).expect("parsing schema");
 
     assert!(
@@ -140,7 +140,7 @@ fn schema_rejects_seed_out_of_range() {
     let hull_invalid_seed: serde_json::Value =
         serde_json::from_str(json_str).expect("parsing JSON");
 
-    let schema_text = include_str!("../../content/schemas/hull.schema.json");
+    let schema_text = include_str!("../../mods/reachlock/schemas/hull.schema.json");
     let schema = serde_json::from_str::<serde_json::Value>(schema_text).expect("parsing schema");
 
     assert!(
@@ -185,7 +185,7 @@ fn station_schema_validates_room_kinds() {
         }
     });
 
-    let schema_text = include_str!("../../content/schemas/station.schema.json");
+    let schema_text = include_str!("../../mods/reachlock/schemas/station.schema.json");
     let schema = serde_json::from_str::<serde_json::Value>(schema_text).expect("parsing schema");
 
     assert!(
@@ -229,7 +229,7 @@ fn station_schema_rejects_invalid_room_kind() {
         }
     });
 
-    let schema_text = include_str!("../../content/schemas/station.schema.json");
+    let schema_text = include_str!("../../mods/reachlock/schemas/station.schema.json");
     let schema = serde_json::from_str::<serde_json::Value>(schema_text).expect("parsing schema");
 
     assert!(
