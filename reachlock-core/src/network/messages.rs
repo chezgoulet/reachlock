@@ -16,6 +16,19 @@ use crate::universe::tier::UniverseTier;
 /// a clear error instead of serde noise.
 pub const PROTOCOL_VERSION: u32 = 3;
 
+/// S26: wraps a `ServerMessage` with an optional `trace_id` field that old
+/// clients (which don't know about this field) ignore via serde's default
+/// unknown field behavior. Used for serialization only — the server never
+/// deserializes `ServerMessage` from the client.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ServerEnvelope<'a> {
+    #[serde(flatten)]
+    pub message: &'a ServerMessage,
+    /// Trace-id for debugging. Old clients ignore unknown JSON fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
