@@ -1,11 +1,13 @@
 //! Character Sprite Viewer (handoff §16): preview and pin character looks.
 //! Renders the core `generate_character_sprite()` layers (body, outfit,
 //! hair) composited at 4× nearest-neighbour, with a 4-direction × 2-frame
-//! walk-cycle approximation. Colors and styles derive from the seed — the
-//! generator is a pure function of (seed, species), so "Randomize" rolls a
-//! new seed. Pinning saves a `CharacterLook` RON under `save/`.
+//! walk-cycle approximation. The generator takes a `CharacterLookConfig`,
+//! so every property (hair style/color, skin, shirt, pants, jacket, robot
+//! chassis/visor) has its own control. Pinning saves the full look RON.
 
-use reachlock_core::generator::sprite::{generate_character_sprite, CharacterSprite};
+use reachlock_core::generator::sprite::{
+    generate_character_sprite, CharacterLookConfig, HAIR_STYLE_COUNT,
+};
 use reachlock_core::soul::types::Species;
 use reachlock_core::util::rng::SeededRng;
 
@@ -17,6 +19,11 @@ const SPECIES: [Species; 5] = [
     Species::Robot,
     Species::Voidborn,
     Species::Xenotype,
+];
+
+/// The seven hair styles, in generator-index order (0 = Bald).
+const HAIR_STYLES: [&str; HAIR_STYLE_COUNT as usize] = [
+    "Bald", "Short", "Buzz", "Long", "Locs", "Bun", "Crest",
 ];
 
 fn species_name(s: Species) -> &'static str {
@@ -42,17 +49,27 @@ fn generator_species(s: Species) -> &'static str {
     }
 }
 
-/// The pinned look — species + seed IS the look (the generator is pure).
+/// The pinned look — species + seed + every overridden property.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CharacterLook {
     species: String,
     seed: u64,
     palette_key: String,
+    hair_style: Option<u8>,
+    hair_color: Option<[u8; 3]>,
+    skin_color: Option<[u8; 3]>,
+    shirt_color: Option<[u8; 3]>,
+    pants_color: Option<[u8; 3]>,
+    jacket_enabled: Option<bool>,
+    jacket_color: Option<[u8; 3]>,
+    chassis_color: Option<[u8; 3]>,
+    visor_color: Option<[u8; 3]>,
 }
 
 pub struct CharacterSpriteViewer {
     species: Species,
     seed: u64,
+    config: CharacterLookConfig,
     texture: Option<egui::TextureHandle>,
     palette_key: String,
     dirty: bool,
@@ -60,7 +77,7 @@ pub struct CharacterSpriteViewer {
 }
 
 /// Composite the three RGBA layers (body under outfit under hair).
-fn composite(sprite: &CharacterSprite) -> egui::ColorImage {
+fn composite(sprite: &reachlock_core::generator::sprite::CharacterSprite) -> egui::ColorImage {
     let w = sprite.body_layer.width as usize;
     let h = sprite.body_layer.height as usize;
     let mut out = sprite.body_layer.pixels.clone();
@@ -74,11 +91,31 @@ fn composite(sprite: &CharacterSprite) -> egui::ColorImage {
     egui::ColorImage::from_rgba_unmultiplied([w, h], &out)
 }
 
+/// A labelled RGB triple of drag values plus a color swatch.
+fn color_control(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
+    ui.horizontal(|ui| {
+        ui.label(label);
+        ui.add(egui::DragValue::new(&mut color[0]).range(0..=255).prefix("R"));
+        ui.add(egui::DragValue::new(&mut color[1]).range(0..=255).prefix("G"));
+        ui.add(egui::DragValue::new(&mut color[2]).range(0..=255).prefix("B"));
+        let c = egui::Color32::from_rgb(color[0], color[1], color[2]);
+        let mut srgba = [color[0], color[1], color[2], 255u8];
+        ui.color_edit_button_srgba_unmultiplied(&mut srgba);
+        if srgba[0..3] != *color {
+            color[0] = srgba[0];
+            color[1] = srgba[1];
+            color[2] = srgba[2];
+        }
+        let _ = c;
+    });
+}
+
 impl CharacterSpriteViewer {
     fn new() -> Self {
         CharacterSpriteViewer {
             species: Species::Human,
             seed: 42,
+            config: CharacterLookConfig::seed_derived("Human"),
             texture: None,
             palette_key: String::new(),
             dirty: true,
@@ -86,8 +123,13 @@ impl CharacterSpriteViewer {
         }
     }
 
+    fn sync_config(&mut self) {
+        self.config.species = generator_species(self.species).to_string();
+    }
+
     fn regenerate(&mut self, ctx: &egui::Context) {
-        let sprite = generate_character_sprite(self.seed, generator_species(self.species));
+        self.sync_config();
+        let sprite = generate_character_sprite(self.seed, &self.config);
         self.palette_key = sprite.palette_key.clone();
         self.texture = Some(ctx.load_texture(
             "character_sprite_preview",
@@ -95,6 +137,66 @@ impl CharacterSpriteViewer {
             egui::TextureOptions::NEAREST,
         ));
         self.dirty = false;
+    }
+
+    fn randomize(&mut self) {
+        let mut rng = SeededRng::new(self.seed ^ 0x5EED_F00F);
+        self.seed = rng.next_u64() & 0x001F_FFFF_FFFF_FFFF;
+        self.config.hair_style = Some((rng.next_u64() % HAIR_STYLE_COUNT as u64) as u8);
+        self.config.hair_color = Some([
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+        ]);
+        self.config.skin_color = Some([
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+        ]);
+        self.config.shirt_color = Some([
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+        ]);
+        self.config.pants_color = Some([
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+        ]);
+        self.config.jacket_enabled = Some(rng.next_u64().is_multiple_of(2));
+        self.config.jacket_color = Some([
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+        ]);
+        self.config.chassis_color = Some([
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+        ]);
+        self.config.visor_color = Some([
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+            rng.next_below(256) as u8,
+        ]);
+        self.dirty = true;
+    }
+
+    fn pinned_look(&self) -> CharacterLook {
+        CharacterLook {
+            species: species_name(self.species).into(),
+            seed: self.seed,
+            palette_key: self.palette_key.clone(),
+            hair_style: self.config.hair_style,
+            hair_color: self.config.hair_color,
+            skin_color: self.config.skin_color,
+            shirt_color: self.config.shirt_color,
+            pants_color: self.config.pants_color,
+            jacket_enabled: self.config.jacket_enabled,
+            jacket_color: self.config.jacket_color,
+            chassis_color: self.config.chassis_color,
+            visor_color: self.config.visor_color,
+        }
     }
 }
 
@@ -118,19 +220,24 @@ impl Editor for CharacterSpriteViewer {
             .find(|s| species_name(*s) == look.species)
             .unwrap_or(Species::Human);
         self.seed = look.seed;
+        self.config = CharacterLookConfig {
+            species: generator_species(self.species).to_string(),
+            hair_style: look.hair_style,
+            hair_color: look.hair_color,
+            skin_color: look.skin_color,
+            shirt_color: look.shirt_color,
+            pants_color: look.pants_color,
+            jacket_enabled: look.jacket_enabled,
+            jacket_color: look.jacket_color,
+            chassis_color: look.chassis_color,
+            visor_color: look.visor_color,
+        };
         self.dirty = true;
         Ok(())
     }
 
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        crate::io::write_ron(
-            path,
-            &CharacterLook {
-                species: species_name(self.species).into(),
-                seed: self.seed,
-                palette_key: self.palette_key.clone(),
-            },
-        )
+        crate::io::write_ron(path, &self.pinned_look())
     }
 
     fn validate(&self) -> Vec<String> {
@@ -142,9 +249,11 @@ impl Editor for CharacterSpriteViewer {
             self.regenerate(ctx);
         }
 
+        let is_robot = self.species == Species::Robot;
+
         egui::SidePanel::left("sprite_controls")
             .resizable(true)
-            .default_width(250.0)
+            .default_width(280.0)
             .show(ctx, |ui| {
                 ui.heading("Character Look");
                 ui.separator();
@@ -160,11 +269,95 @@ impl Editor for CharacterSpriteViewer {
                             }
                         }
                     });
-                if self.species == Species::Robot {
-                    ui.small("Robot: no hair or skin tone — chassis colors derive from the seed.");
+
+                ui.separator();
+                // Hair style cycler.
+                let idx = self.config.hair_style.unwrap_or(0) as usize % HAIR_STYLES.len();
+                ui.horizontal(|ui| {
+                    ui.label("Hair:");
+                    if ui.button("◀").clicked() {
+                        let cur = self.config.hair_style.unwrap_or(0) as i32;
+                        let next = if cur <= 0 {
+                            HAIR_STYLE_COUNT as i32 - 1
+                        } else {
+                            cur - 1
+                        };
+                        self.config.hair_style = Some(next as u8);
+                        self.dirty = true;
+                    }
+                    ui.label(HAIR_STYLES[idx]);
+                    if ui.button("▶").clicked() {
+                        let cur = self.config.hair_style.unwrap_or(0) as u32;
+                        let next = (cur + 1) % HAIR_STYLE_COUNT as u32;
+                        self.config.hair_style = Some(next as u8);
+                        self.dirty = true;
+                    }
+                });
+
+                if is_robot {
+                    ui.small("Robot: chassis + visor replace hair/skin tones.");
+                    ui.separator();
+                    let mut chassis = self
+                        .config
+                        .chassis_color
+                        .unwrap_or([120, 120, 130]);
+                    color_control(ui, "Chassis", &mut chassis);
+                    if self.config.chassis_color != Some(chassis) {
+                        self.config.chassis_color = Some(chassis);
+                        self.dirty = true;
+                    }
+                    let mut visor = self.config.visor_color.unwrap_or([80, 200, 255]);
+                    color_control(ui, "Visor", &mut visor);
+                    if self.config.visor_color != Some(visor) {
+                        self.config.visor_color = Some(visor);
+                        self.dirty = true;
+                    }
                 } else {
-                    ui.small("Hair style, hair/skin/outfit colors all derive from the seed.");
+                    let mut hair = self.config.hair_color.unwrap_or([40, 30, 20]);
+                    color_control(ui, "Hair", &mut hair);
+                    if self.config.hair_color != Some(hair) {
+                        self.config.hair_color = Some(hair);
+                        self.dirty = true;
+                    }
+                    let mut skin = self.config.skin_color.unwrap_or([200, 170, 150]);
+                    color_control(ui, "Skin", &mut skin);
+                    if self.config.skin_color != Some(skin) {
+                        self.config.skin_color = Some(skin);
+                        self.dirty = true;
+                    }
                 }
+
+                ui.separator();
+                let mut shirt = self.config.shirt_color.unwrap_or([160, 40, 40]);
+                color_control(ui, "Shirt", &mut shirt);
+                if self.config.shirt_color != Some(shirt) {
+                    self.config.shirt_color = Some(shirt);
+                    self.dirty = true;
+                }
+                let mut pants = self.config.pants_color.unwrap_or([40, 40, 40]);
+                color_control(ui, "Pants", &mut pants);
+                if self.config.pants_color != Some(pants) {
+                    self.config.pants_color = Some(pants);
+                    self.dirty = true;
+                }
+
+                ui.separator();
+                let enabled = self.config.jacket_enabled.unwrap_or(false);
+                let mut new_enabled = enabled;
+                ui.checkbox(&mut new_enabled, "Jacket");
+                if new_enabled != enabled {
+                    self.config.jacket_enabled = Some(new_enabled);
+                    self.dirty = true;
+                }
+                if new_enabled {
+                    let mut jacket = self.config.jacket_color.unwrap_or([200, 40, 40]);
+                    color_control(ui, "Jacket", &mut jacket);
+                    if self.config.jacket_color != Some(jacket) {
+                        self.config.jacket_color = Some(jacket);
+                        self.dirty = true;
+                    }
+                }
+
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.label("Seed:");
@@ -178,18 +371,18 @@ impl Editor for CharacterSpriteViewer {
                         self.dirty = true;
                     }
                 });
-                if ui.button("Randomize").clicked() {
-                    let mut rng = SeededRng::new(self.seed ^ 0x5EED_F00F);
-                    self.seed = rng.next_u64() & 0x001F_FFFF_FFFF_FFFF;
-                    self.dirty = true;
-                }
-                if ui.button("Re-roll Seed").clicked() {
-                    self.seed = (self.seed + 1) & 0x001F_FFFF_FFFF_FFFF;
-                    self.dirty = true;
-                }
+                ui.horizontal(|ui| {
+                    if ui.button("Randomize").clicked() {
+                        self.randomize();
+                    }
+                    if ui.button("Re-roll Seed").clicked() {
+                        self.seed = (self.seed + 1) & 0x001F_FFFF_FFFF_FFFF;
+                        self.dirty = true;
+                    }
+                });
                 ui.separator();
                 ui.label(format!("Palette key: {}", self.palette_key));
-                if ui.button("Pin Seed").clicked() {
+                if ui.button("Pin Look").clicked() {
                     let dir = std::path::Path::new("save");
                     let result = std::fs::create_dir_all(dir)
                         .map_err(|e| e.to_string())
@@ -243,10 +436,14 @@ impl Editor for CharacterSpriteViewer {
                         });
                 }
                 ui.add_space(8.0);
+                let style = self.config.hair_style.map(|s| HAIR_STYLES
+                    [s as usize % HAIR_STYLES.len()])
+                    .unwrap_or("Seed-derived");
                 ui.label(format!(
-                    "{} — seed {}",
+                    "{} — seed {} — hair: {}",
                     species_name(self.species),
-                    self.seed
+                    self.seed,
+                    style
                 ));
             });
         });
@@ -254,6 +451,8 @@ impl Editor for CharacterSpriteViewer {
 
     fn generate_from_seed(&mut self, seed: u64) {
         self.seed = seed & 0x001F_FFFF_FFFF_FFFF;
+        // A fresh seed means a fully procedural look.
+        self.config = CharacterLookConfig::seed_derived(generator_species(self.species));
         self.dirty = true;
     }
 }
