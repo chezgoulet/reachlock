@@ -3,4 +3,4 @@
 
 pub mod messages;
 
-pub use messages::{ClientMessage, ServerMessage};
+pub use messages::{ClientMessage, ServerMessage, PROTOCOL_VERSION};

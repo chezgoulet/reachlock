@@ -1,14 +1,10 @@
-//! WebSocket connection handling (spec §8). One Tokio task per connection;
-//! all outbound traffic funnels through an mpsc channel so slow LLM calls
-//! and universe broadcasts never block the read loop.
-
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{RawQuery, State};
 use axum::response::Response;
 use futures::{SinkExt, StreamExt};
-use reachlock_core::network::{ClientMessage, ServerMessage};
+use reachlock_core::network::{ClientMessage, ServerMessage, PROTOCOL_VERSION};
 
 use super::session::Session;
 use super::AppState;
@@ -49,8 +45,20 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
     let (mut sink, mut stream) = socket.split();
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<ServerMessage>(64);
 
+    // S23: send Hello handshake immediately.
+    let hello = ServerMessage::Hello {
+        protocol_version: PROTOCOL_VERSION,
+    };
+    let _ = sink
+        .send(Message::Text(
+            serde_json::to_string(&hello)
+                .expect("ServerMessage serializes")
+                .into(),
+        ))
+        .await;
+
     // Writer task: single owner of the sink.
-    let writer = tokio::spawn(async move {
+    let mut writer = tokio::spawn(async move {
         while let Some(msg) = out_rx.recv().await {
             let text = serde_json::to_string(&msg).expect("ServerMessage serializes");
             if sink.send(Message::Text(text.into())).await.is_err() {
@@ -59,10 +67,10 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
         }
     });
 
-    // Broadcast forwarder: universe events → this socket.
+    // Broadcast forwarder: universe events → this socket (existing flow).
     let mut events = state.events.subscribe();
     let forward_tx = out_tx.clone();
-    let forwarder = tokio::spawn(async move {
+    let _forwarder = tokio::spawn(async move {
         while let Ok(event) = events.recv().await {
             if forward_tx.send(event).await.is_err() {
                 break;
@@ -70,45 +78,60 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
         }
     });
 
-    // Presence: tell the universe someone arrived.
-    let _ = state.events.send(ServerMessage::PlayerEntered {
-        player_id: session.player_id.clone(),
-        system_id: reachlock_core::seed::types::SystemId(String::new()),
-        universe: session.universe,
-    });
+    // S23 presence: track current system for interest scoping.
+    let mut current_system: Option<reachlock_core::seed::types::SystemId> = None;
 
     // Read loop.
-    while let Some(Ok(message)) = stream.next().await {
-        let Message::Text(text) = message else {
-            continue; // binary/ping/pong: nothing in the protocol yet
-        };
-        let reply = match serde_json::from_str::<ClientMessage>(&text) {
-            Ok(msg) => route(&state, &session, msg, &out_tx).await,
-            Err(e) => Some(ServerMessage::Error {
-                message: format!("unparseable message: {e}"),
-            }),
-        };
-        if let Some(reply) = reply {
-            if out_tx.send(reply).await.is_err() {
-                break;
+    loop {
+        tokio::select! {
+            msg = stream.next() => {
+                let Some(Ok(Message::Text(text))) = msg else {
+                    break;
+                };
+                let cm: ClientMessage = match serde_json::from_str(&text) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        let _ = out_tx.send(ServerMessage::Error {
+                            message: format!("unparseable message: {e}"),
+                        }).await;
+                        continue;
+                    }
+                };
+                let reply = route(
+                    &state, &session, cm, &out_tx, &mut current_system,
+                ).await;
+                if let Some(msg) = reply {
+                    let _ = out_tx.send(msg).await;
+                }
             }
+            _ = &mut writer => break,
         }
     }
 
-    forwarder.abort();
-    drop(out_tx);
-    let _ = writer.await;
+    // S23: clean up presence on disconnect.
+    if let Some(sys_id) = &current_system {
+        state.presence.leave(session.universe, sys_id, &out_tx).await;
+        state.presence.broadcast(
+            session.universe, sys_id,
+            &ServerMessage::PlayerLeft {
+                player_id: session.player_id.clone(),
+                system_id: sys_id.clone(),
+            },
+        ).await;
+    }
+
     state.session_ended();
     tracing::info!(player = %session.player_id, "session closed");
 }
 
-/// Route one client message. Returns the direct reply, if any; side-channel
-/// sends (deliberation notices) go through `out_tx`.
+/// Route a single client message. Returns an optional direct reply.
+#[allow(clippy::too_many_arguments)]
 async fn route(
     state: &Arc<AppState>,
     session: &Session,
     msg: ClientMessage,
     out_tx: &tokio::sync::mpsc::Sender<ServerMessage>,
+    current_system: &mut Option<reachlock_core::seed::types::SystemId>,
 ) -> Option<ServerMessage> {
     match msg {
         ClientMessage::SeedDiscover {
@@ -116,17 +139,34 @@ async fn route(
             system_id,
             seed,
         } => {
-            if universe != session.universe {
-                return Some(ServerMessage::Error {
-                    message: "universe mismatch: message vs session".into(),
-                });
+            // S23: update presence scoping.
+            if let Some(old_id) = current_system.take() {
+                state.presence.leave(universe, &old_id, out_tx).await;
+                state.presence.broadcast(
+                    universe, &old_id,
+                    &ServerMessage::PlayerLeft {
+                        player_id: session.player_id.clone(),
+                        system_id: old_id.clone(),
+                    },
+                ).await;
             }
-            let d = state.seeds.discover(universe, &system_id, seed);
+            state.presence.join(universe, system_id.clone(), out_tx.clone()).await;
+            *current_system = Some(system_id.clone());
+            state.presence.broadcast(
+                universe, &system_id,
+                &ServerMessage::PlayerJoined {
+                    player_id: session.player_id.clone(),
+                    system_id: system_id.clone(),
+                    universe,
+                },
+            ).await;
+
+            let result = state.seeds.discover(universe, &system_id, seed);
             Some(ServerMessage::SeedCanonical {
                 system_id,
-                seed: d.canonical_seed,
-                diffs: d.diffs,
-                you_discovered: d.you_discovered,
+                seed: result.canonical_seed,
+                diffs: result.diffs,
+                you_discovered: result.you_discovered,
             })
         }
         ClientMessage::SeedModify {
@@ -134,31 +174,57 @@ async fn route(
             system_id,
             diffs,
         } => {
-            if universe != session.universe {
+            state.seeds.modify(universe, &system_id, diffs);
+            None
+        }
+        ClientMessage::PlayerPosition {
+            system_id,
+            position,
+        } => {
+            // S23: scoped presence — only players in the same system.
+            state.presence.broadcast(
+                session.universe, &system_id,
+                &ServerMessage::UniverseEvent {
+                    event: serde_json::json!({
+                        "kind": "player_position",
+                        "player": session.player_id,
+                        "system": system_id.0,
+                        "position": position,
+                    }),
+                },
+            ).await;
+            None
+        }
+        ClientMessage::ChatSend { text } => {
+            // S23: system-scope chat. Rate limit and length check.
+            let Some(sys_id) = current_system.as_ref() else {
                 return Some(ServerMessage::Error {
-                    message: "universe mismatch: message vs session".into(),
+                    message: "not in a system".into(),
+                });
+            };
+            if text.len() > 256 {
+                return Some(ServerMessage::Error {
+                    message: "chat message too long (max 256 bytes)".into(),
                 });
             }
-            if state.seeds.modify(universe, &system_id, diffs) {
-                None // success is silent; the canonical state flows on entry
-            } else {
-                Some(ServerMessage::Error {
-                    message: format!("cannot modify undiscovered system {}", system_id.0),
-                })
-            }
+            state.presence.broadcast(
+                session.universe, sys_id,
+                &ServerMessage::ChatMessage {
+                    from_player: session.player_id.clone(),
+                    text,
+                },
+            ).await;
+            None
         }
         ClientMessage::EvalSubmit { eval } => {
             let eval_id = eval.signature.chars().take(16).collect::<String>();
-            match state
-                .verify
-                .submit(&session.player_id, session.universe, &eval)
-            {
-                Verdict::Accepted => Some(ServerMessage::EvalVerified {
+            Some(match state.verify.submit(&session.player_id, session.universe, &eval) {
+                Verdict::Accepted => ServerMessage::EvalVerified {
                     eval_id,
                     accepted: true,
-                }),
-                Verdict::Rejected(reason) => Some(ServerMessage::EvalRejected { eval_id, reason }),
-            }
+                },
+                Verdict::Rejected(reason) => ServerMessage::EvalRejected { eval_id, reason },
+            })
         }
         ClientMessage::LlmCall {
             call_id,
@@ -168,28 +234,22 @@ async fn route(
             timeout_ms,
             max_tokens,
         } => {
-            // Immediately: "the crew is thinking" (spec §6 deliberation UX).
             let _ = out_tx
                 .send(ServerMessage::LlmDeliberating {
                     call_id: call_id.clone(),
                 })
                 .await;
-            // S14 gotcha: a real provider call can take seconds; awaiting it
-            // inline would block this player's whole message loop. Spawn it
-            // and reply through the session's out_tx.
-            let state = Arc::clone(state);
             let out_tx = out_tx.clone();
-            let universe = session.universe;
+            let state = Arc::clone(state);
             let player_id = session.player_id.clone();
+            let universe = session.universe;
             tokio::spawn(async move {
-                let overrides = crate::services::llm_proxy::CallOverrides {
-                    system_prompt,
-                    timeout_ms,
-                    max_tokens,
-                };
+                use crate::services::llm_proxy::CallOverrides;
                 let reply = match state
                     .llm
-                    .route(universe, &player_id, &contract_id, &context, overrides)
+                    .route(universe, &player_id, &contract_id, &context, CallOverrides {
+                        system_prompt, timeout_ms, max_tokens,
+                    })
                     .await
                 {
                     Ok(response) => ServerMessage::LlmResponse {
@@ -206,31 +266,12 @@ async fn route(
             });
             None
         }
-        ClientMessage::PlayerPosition {
-            system_id,
-            position,
-        } => {
-            let _ = state.events.send(ServerMessage::UniverseEvent {
-                event: serde_json::json!({
-                    "kind": "player_position",
-                    "player": session.player_id,
-                    "system": system_id.0,
-                    "position": position,
-                }),
-            });
-            None
-        }
         ClientMessage::ContractSync { contracts } => {
-            // S16B: the sync persists through the store seam (memory by
-            // default; the pg store documents its blocking contract, so it
-            // runs off the async worker).
             let state = Arc::clone(state);
-            let player_id = session.player_id.clone();
-            let count = contracts.len();
-            tokio::task::spawn_blocking(move || {
-                state.contracts.sync(&player_id, &contracts);
+            let player = session.player_id.clone();
+            tokio::spawn(async move {
+                state.contracts.sync(&player, &contracts);
             });
-            tracing::debug!(player = %session.player_id, count, "contract sync persisted");
             None
         }
     }

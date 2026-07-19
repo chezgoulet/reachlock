@@ -20,7 +20,8 @@ use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     combat, comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions,
     galaxy_map, hud, interaction, interior, inventory, jump, landed_combat, market, menu, mode,
-    network, onboard, pause, reticle, sensors, settings_ui, setup, ship, shipeditor, soul, ticker,
+    network, onboard, pause, presence, reticle, sensors, settings_ui, setup, ship, shipeditor, soul,
+    ticker,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -87,6 +88,9 @@ fn main() {
         .init_non_send_resource::<network::NetworkClient>()
         .init_resource::<network::ReconnectBackoff>()
         .init_resource::<network::SeedState>()
+        // S23: presence (position sending, remote ships) and chat feed.
+        .init_resource::<presence::PresenceEvents>()
+        .init_resource::<presence::ChatFeed>()
         // S06/S21: mode machine resources. The player starts in Aethon,
         // the Compact's seat — the gate network's default origin.
         .insert_resource(CurrentLocation {
@@ -285,6 +289,9 @@ fn main() {
                 galaxy_map::render_galaxy_map,
                 landed_combat::tumble_derelicts,
                 landed_combat::pulse_beacons,
+                presence::send_player_position,
+                presence::handle_presence_events,
+                presence::ease_remote_ships,
             )
                 .run_if(in_spaceflight),
         )

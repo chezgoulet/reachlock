@@ -44,11 +44,11 @@ mod tests {
         assert!(outbox.is_empty());
         outbox.push(ClientMessage::PlayerPosition {
             system_id: SystemId("a".into()),
-            position: [1, 2],
+            position: [1, 2, 0],
         });
         outbox.push(ClientMessage::PlayerPosition {
             system_id: SystemId("b".into()),
-            position: [3, 4],
+            position: [3, 4, 0],
         });
         assert_eq!(outbox.len(), 2);
         let drained: Vec<_> = outbox.drain().collect();
