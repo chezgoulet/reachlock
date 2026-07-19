@@ -34,3 +34,20 @@ debug = false
 [profile.dev]
 opt-level = 1
 debug = false
+
+# S24: release build profile for distribution (web + native).
+# opt-level = "z" favors size over speed for smaller WASM downloads.
+# rapier physics is excluded from "z" because it has historically produced
+# pathological compile times with size optimization (S24 brief gotcha).
+[profile.release]
+opt-level = "z"
+lto = "thin"
+strip = true
+codegen-units = 1
+debug = false
+
+[profile.release.package.rapier3d]
+opt-level = 3
+
+[profile.release.package.rapier2d]
+opt-level = 3

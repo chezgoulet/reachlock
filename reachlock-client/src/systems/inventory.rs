@@ -5,7 +5,6 @@
 //! snapshot stores a plain tuple for position.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -102,7 +101,6 @@ pub struct SaveFile {
     pub interior_layout: Option<reachlock_core::editor::interior::ShipInteriorLayout>,
 }
 
-const SAVE_PATH: &str = "save/player.ron";
 
 /// Seconds since the Unix epoch, or `None` where the platform has no wall
 /// clock (`SystemTime::now` panics on wasm32-unknown-unknown).
@@ -170,14 +168,7 @@ pub fn save_player(
         interior_layout: interior_layout.cloned(),
     };
     match ron::to_string(&file) {
-        Ok(text) => {
-            if let Some(parent) = Path::new(SAVE_PATH).parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            if let Err(e) = std::fs::write(SAVE_PATH, text) {
-                warn!("save_player: could not write {SAVE_PATH}: {e}");
-            }
-        }
+        Ok(text) => crate::save_backend::write_save(&text),
         Err(e) => warn!("save_player: serialize failed: {e}"),
     }
 }
@@ -185,7 +176,7 @@ pub fn save_player(
 /// Load a prior save, if present and parseable. Returns the inventory and the
 /// location to restore. `None` means a fresh start (no file / corrupt).
 pub fn load_player() -> Option<(PlayerInventory, CurrentLocation)> {
-    let text = std::fs::read_to_string(SAVE_PATH).ok()?;
+    let text = crate::save_backend::read_save()?;
     let file: SaveFile = ron::from_str(&text).ok()?;
     let loc = file.location.map(|s| {
         use reachlock_core::generator::system::Fidelity;
@@ -281,7 +272,7 @@ pub fn load_save(
         *inv = i;
         *loc = l;
     }
-    if let Ok(text) = std::fs::read_to_string(SAVE_PATH) {
+    if let Some(text) = crate::save_backend::read_save() {
         if let Ok(file) = ron::from_str::<SaveFile>(&text) {
             // Restore universe from save (if present), catch up elapsed ticks.
             if let Some(saved) = file.universe {

@@ -1,0 +1,52 @@
+# ReachLock CI — run on every PR and push to testing.
+name: Check
+on:
+  push:
+    branches: [testing]
+  pull_request:
+    branches: [testing]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Test (all)
+        run: cargo test --workspace
+
+      - name: WASM dev build (spike gate)
+        run: cargo build -p reachlock-client --target wasm32-unknown-unknown
+
+      # S24: size budget gate — print compressed wasm size from the dev build.
+      # The release build is not run on every PR (too expensive); the dev build
+      # size is a proxy. The budget is set high enough that only egregious bloat
+      # triggers it.
+      - name: WASM size check
+        run: |
+          WASM="target/wasm32-unknown-unknown/debug/reachlock-client.wasm"
+          BUDGET_FILE="SIZE_BUDGET"
+          if [ -f "$WASM" ]; then
+            SIZE=$(wc -c < "$WASM")
+            echo "wasm (debug): $SIZE bytes"
+            if [ -f "$BUDGET_FILE" ]; then
+              BUDGET=$(cat "$BUDGET_FILE")
+              if [ "$SIZE" -gt "$BUDGET" ]; then
+                echo "WASM size $SIZE exceeds budget $BUDGET"
+                exit 1
+              fi
+            fi
+          fi

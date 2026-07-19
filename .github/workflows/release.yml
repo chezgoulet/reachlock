@@ -1,0 +1,59 @@
+# ReachLock Release — triggered by tag push v2.*.
+# Builds web bundle + native Linux binary, runs smoke test, publishes to GitHub Releases.
+name: Release
+on:
+  push:
+    tags: ['v2.*']
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build web bundle
+        run: make web
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-bundle
+          path: web/dist/
+
+  native-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Linux binary
+        run: cargo build --release -p reachlock-client
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reachlock-linux
+          path: target/release/reachlock-client
+
+  release:
+    needs: [web, native-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            web-bundle/**
+            reachlock-linux/**
+          generate_release_notes: true

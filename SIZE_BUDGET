@@ -1,0 +1,5 @@
+120000000
+# ReachLock WASM size budget (bytes).
+# This is the dev-profile debug WASM size limit.
+# Measure the release build and adjust this value accordingly.
+# To raise: commit a new number here and explain the increase in the PR.

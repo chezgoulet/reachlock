@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ReachLock v2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+             color: #888; font-size: 18px; z-index: 10; text-align: center; }
+  #progress { display: block; margin-top: 12px; width: 200px; height: 4px;
+              background: #222; border-radius: 2px; overflow: hidden; }
+  #progress::after { content: ''; display: block; width: 0%; height: 100%;
+                     background: #4a9; transition: width 0.3s; }
+  #panic { display: none; position: fixed; top: 0; left: 0; right: 0;
+           background: #c33; color: #fff; padding: 12px 16px; font-size: 14px; z-index: 20; }
+  #audio-hint { display: none; position: fixed; bottom: 24px; left: 50%;
+                transform: translateX(-50%); color: #666; font-size: 12px; z-index: 10; }
+</style>
+</head>
+<body>
+<canvas id="bevy"></canvas>
+<div id="loading">
+  Loading ReachLock…<span id="progress"></span>
+</div>
+<div id="panic">Something went wrong. Refresh the page to try again.</div>
+<div id="audio-hint">Click or press Enter to enable audio</div>
+<script type="module">
+  // Extract the wasm-bindgen version from the generated JS (imported below).
+  // The game starts only after a user gesture to satisfy browser autoplay policy.
+  const loading = document.getElementById('loading');
+  const panic = document.getElementById('panic');
+  const progress = document.getElementById('progress');
+  const audioHint = document.getElementById('audio-hint');
+
+  function start() {
+    import('./reachlock-client.js').then(init => {
+      loading.style.display = 'none';
+      audioHint.style.display = 'none';
+      init.default().catch(() => {
+        panic.style.display = 'block';
+      });
+    }).catch(() => {
+      panic.style.display = 'block';
+    });
+  }
+
+  // Gate audio behind a user gesture (ENTER key or any click/touch).
+  audioHint.style.display = 'block';
+  const gate = () => { document.removeEventListener('keydown', gate); document.removeEventListener('click', gate); start(); };
+  document.addEventListener('keydown', gate);
+  document.addEventListener('click', gate);
+
+  // Show panic on any unhandled rejection (e.g. instantiation failure).
+  window.addEventListener('unhandledrejection', () => { panic.style.display = 'block'; });
+</script>
+</body>
+</html>
