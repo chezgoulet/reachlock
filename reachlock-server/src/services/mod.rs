@@ -1,12 +1,14 @@
 pub mod auth;
 pub mod byok;
 pub mod contracts;
+pub mod cost;
 pub mod eval;
 pub mod health;
 pub mod limiter;
 pub mod llm_proxy;
 pub mod metrics;
 pub mod providers;
+pub mod quota;
 pub mod seed;
 pub mod tick;
 pub mod verify;

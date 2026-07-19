@@ -16,15 +16,19 @@
 //! Every failure becomes a clean `llm.failed { reason }` — the proxy never
 //! hangs a session (hard cap [`providers::SERVER_TIMEOUT_CAP`]).
 
+use std::sync::Arc;
+
 use reachlock_core::universe::rules::inference_grant;
 use reachlock_core::universe::UniverseTier;
 
 use super::byok::{ByokError, ByokService};
+use super::cost::{estimate_cost, estimate_token_count, CostStore, MemoryCostStore};
 use super::limiter::{MemoryRateLimiter, RateLimiter};
 use super::metrics::LatencyHistogram;
 use super::providers::{
     AnyProvider, InferenceRequest, OllamaNative, OpenAiCompat, Provider, ProviderError, Stub,
 };
+use super::quota::{MemoryQuotaManager, QuotaManager, QuotaStatus};
 
 /// Default per-call budget when the wire carries no override (S16B added
 /// `system_prompt`/`timeout_ms`/`max_tokens` to `llm.call`; absent fields
@@ -80,6 +84,12 @@ pub struct LlmService {
     pub byok: ByokService,
     limiter: Box<dyn RateLimiter>,
     pub metrics: LatencyHistogram,
+    /// S27: cost tracking for every LLM call.
+    pub costs: Arc<dyn CostStore>,
+    /// S27: per-player quota management.
+    pub quota: Arc<dyn QuotaManager>,
+    /// S27: per-provider health tracking.
+    pub health: std::sync::Mutex<super::cost::ProviderHealth>,
 }
 
 impl Default for LlmService {
@@ -116,6 +126,9 @@ impl LlmService {
             byok: ByokService::default(),
             limiter: Box::new(MemoryRateLimiter::default()),
             metrics: LatencyHistogram::default(),
+            costs: Arc::new(MemoryCostStore::default()),
+            quota: Arc::new(MemoryQuotaManager::default()),
+            health: std::sync::Mutex::new(super::cost::ProviderHealth::default()),
         }
     }
 
@@ -135,6 +148,9 @@ impl LlmService {
             },
             limiter,
             metrics: LatencyHistogram::default(),
+            costs: Arc::new(MemoryCostStore::default()),
+            quota: Arc::new(MemoryQuotaManager::default()),
+            health: std::sync::Mutex::new(super::cost::ProviderHealth::default()),
         }
     }
 
@@ -156,17 +172,35 @@ impl LlmService {
             tracing::info!(player = %player_id, ?tier, "llm call rate-limited");
             return Err(LlmError::RateLimited);
         }
+        // S27: quota check — reject if exhausted, inject fatigue if soft limit.
+        match self.quota.check(player_id, tier) {
+            QuotaStatus::Exhausted => return Err(LlmError::Failed("quota_exhausted")),
+            QuotaStatus::Fatigued { .. } => { /* fatigue injected below */ }
+            QuotaStatus::Normal => {}
+        }
+
+        let mut system_prompt = overrides.system_prompt.unwrap_or_else(|| {
+            format!(
+                "You are the deliberation engine for ship contract '{contract_id}' \
+                 in the game REACHLOCK. Decide the crew's next action from the \
+                 context object."
+            )
+        });
+        // S27: inject fatigue message at soft quota limit.
+        if let QuotaStatus::Fatigued { ref message } = self.quota.check(player_id, tier) {
+            system_prompt.push_str(&format!("\n\n[CREW STATUS: {message}]"));
+        }
+        let max_tokens = overrides.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS);
+        let max_tokens = if matches!(self.quota.check(player_id, tier), QuotaStatus::Fatigued { .. }) {
+            (max_tokens / 2).max(1)
+        } else {
+            max_tokens.min(2048)
+        };
 
         let request = InferenceRequest {
-            system_prompt: overrides.system_prompt.unwrap_or_else(|| {
-                format!(
-                    "You are the deliberation engine for ship contract '{contract_id}' \
-                     in the game REACHLOCK. Decide the crew's next action from the \
-                     context object."
-                )
-            }),
+            system_prompt,
             context_json: context.clone(),
-            max_tokens: overrides.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS).min(2048),
+            max_tokens,
             timeout: overrides
                 .timeout_ms
                 .map(|ms| std::time::Duration::from_millis(ms as u64))
@@ -195,7 +229,35 @@ impl LlmService {
             },
         };
         let latency = started.elapsed().as_millis() as u64;
-        self.metrics.record(latency, result.is_err());
+        let success = result.is_err();
+        self.metrics.record(latency, success);
+
+        // S27: record cost and track provider health.
+        self.quota.record_call(player_id, tier);
+        let (prompt_tokens, completion_tokens) = match &result {
+            Ok(r) => {
+                let total = estimate_token_count(&r.action) + estimate_token_count(&r.reasoning);
+                (total / 2, total - total / 2)
+            }
+            Err(_) => (0, 0),
+        };
+        let cost = estimate_cost(if tier == UniverseTier::FairPlay { "fairplay" } else { "spectrum" }, prompt_tokens, completion_tokens);
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+        self.costs.record(super::cost::LlmCallRecord {
+            timestamp: format!("{ts}"),
+            player_id: player_id.to_string(),
+            universe: tier,
+            provider: format!("{tier:?}"),
+            model: format!("{tier:?}"),
+            contract_id: contract_id.to_string(),
+            latency_ms: latency,
+            prompt_tokens,
+            completion_tokens,
+            estimated_cost_micros: cost,
+            success: !success,
+        });
+        if let Ok(ref mut h) = self.health.try_lock() { h.record(!success); }
 
         match result {
             Ok(response) => {
