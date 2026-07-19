@@ -321,6 +321,10 @@ pub fn poll_network(
                     }
                 }
             }
+            TransportEvent::Message(ServerMessage::SystemNotice { message }) => {
+                // S28: subscription notice (grace period, etc.).
+                log.log(format!("System notice: {message}"));
+            }
             TransportEvent::Message(ServerMessage::Error { message }) => {
                 log.log(format!("Server error: {message}"));
             }
