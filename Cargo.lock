@@ -6980,9 +6980,11 @@ dependencies = [
  "egui",
  "jsonschema 0.21.0",
  "reachlock-core",
+ "reqwest 0.12.28",
  "ron",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

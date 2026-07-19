@@ -96,6 +96,18 @@ pub trait Editor {
     fn validate(&self) -> Vec<String>;
     fn ui(&mut self, ctx: &egui::Context);
     fn generate_from_seed(&mut self, seed: u64);
+
+    /// Populate editor fields from AI-generated JSON (handoff §Phase 2.5).
+    /// Editors that store their data as a plain serde core struct implement
+    /// this; editors wrapping data in a `ContentFile` envelope fall back to
+    /// this default and report that direct AI population isn't wired yet.
+    fn apply_ai_json(&mut self, _value: &serde_json::Value) -> Result<(), String> {
+        Err(
+            "This editor stores data in a content envelope — AI population isn't wired yet. \
+             Use procedural generation instead."
+                .into(),
+        )
+    }
 }
 
 pub struct EditorRegistry(HashMap<ContentType, fn() -> Box<dyn Editor>>);

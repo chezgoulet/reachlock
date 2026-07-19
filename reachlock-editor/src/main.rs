@@ -1,14 +1,22 @@
+mod ai;
 mod app;
 mod browser;
 pub mod editors;
 mod io;
 mod preview;
+mod schema;
 mod seed_workflow;
+mod settings_window;
+
+use std::sync::mpsc::channel;
+use std::sync::Arc;
 
 use app::{build_default_registry, ContentType, Editor, EditorRegistry};
 use browser::ContentBrowser;
 use preview::PreviewPanel;
+use schema::SchemaCache;
 use seed_workflow::SeedWorkflow;
+use settings_window::AiSettingsWindow;
 
 struct EditorApp {
     registry: EditorRegistry,
@@ -16,6 +24,12 @@ struct EditorApp {
     browser: ContentBrowser,
     seed_workflow: SeedWorkflow,
     preview: PreviewPanel,
+    ai_settings: AiSettingsWindow,
+    ai_prompt: String,
+    ai_running: bool,
+    ai_status: Arc<std::sync::Mutex<String>>,
+    ai_result_rx: Option<std::sync::mpsc::Receiver<ai::AiGenOutcome>>,
+    schemas: SchemaCache,
     status_text: String,
     active_tab: Option<usize>,
     show_browser: bool,
@@ -36,6 +50,12 @@ impl Default for EditorApp {
             browser: ContentBrowser::new(),
             seed_workflow: SeedWorkflow::new(),
             preview: PreviewPanel::new(),
+            ai_settings: AiSettingsWindow::load(),
+            ai_prompt: String::new(),
+            ai_running: false,
+            ai_status: Arc::new(std::sync::Mutex::new(String::new())),
+            ai_result_rx: None,
+            schemas: SchemaCache::load_all(),
             status_text: "Ready".into(),
             active_tab: None,
             show_browser: true,
@@ -65,6 +85,50 @@ impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if let Some((name, ct)) = self.browser_content_trigger.take() {
             self.open_new_editor(&name, ct);
+        }
+
+        // Poll the background AI generation thread.
+        if let Some(rx) = &self.ai_result_rx {
+            if let Ok(outcome) = rx.try_recv() {
+                self.ai_running = false;
+                self.ai_result_rx = None;
+                match outcome {
+                    ai::AiGenOutcome::Ok { ct, result } => {
+                        let mut applied = false;
+                        if let Some(idx) = self.active_tab {
+                            if let Some(open) = self.open_editors.get_mut(idx) {
+                                if open.editor.content_type() == ct {
+                                    match open.editor.apply_ai_json(&result.json_value) {
+                                        Ok(_) => {
+                                            applied = true;
+                                            if !result.warnings.is_empty() {
+                                                *self.ai_status.lock().unwrap() = format!(
+                                                    "Applied with {} schema warning(s).",
+                                                    result.warnings.len()
+                                                );
+                                            } else {
+                                                *self.ai_status.lock().unwrap() =
+                                                    "AI content applied.".into();
+                                            }
+                                        }
+                                        Err(e) => {
+                                            *self.ai_status.lock().unwrap() =
+                                                format!("Applied parse failed: {e}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if !applied {
+                            *self.ai_status.lock().unwrap() =
+                                "Generation returned, but the active editor changed.".into();
+                        }
+                    }
+                    ai::AiGenOutcome::Err(e) => {
+                        *self.ai_status.lock().unwrap() = format!("AI error: {e}");
+                    }
+                }
+            }
         }
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
@@ -128,6 +192,14 @@ impl eframe::App for EditorApp {
                     }
                     ui.close_menu();
                 });
+
+                ui.menu_button("AI", |ui| {
+                    if ui.button("AI Settings…").clicked() {
+                        self.ai_settings.open = true;
+                        ui.close_menu();
+                    }
+                    ui.label("Generate from the bar below the seed panel.");
+                });
             });
         });
 
@@ -158,6 +230,82 @@ impl eframe::App for EditorApp {
         egui::TopBottomPanel::top("seed_panel").show(ctx, |ui| {
             self.seed_workflow.ui(ui);
         });
+
+        // AI generation bar (handoff §Phase 2.5).
+        egui::TopBottomPanel::top("ai_bar")
+            .resizable(false)
+            .show_separator_line(true)
+            .show(ctx, |ui| {
+                let active_ct = self.active_tab.and_then(|idx| {
+                    self.open_editors.get(idx).map(|o| o.editor.content_type())
+                });
+                ui.horizontal(|ui| {
+                    ui.label("AI:");
+                    ui.text_edit_multiline(&mut self.ai_prompt);
+
+                    let has_schema = match active_ct {
+                        Some(ct) => self.schemas.has(&ct),
+                        None => false,
+                    };
+
+                    let can_generate = active_ct.is_some()
+                        && has_schema
+                        && !self.ai_prompt.trim().is_empty()
+                        && !self.ai_running;
+
+                    let btn = if self.ai_running {
+                        "Generating…"
+                    } else {
+                        "Generate"
+                    };
+                    if ui.add_enabled(can_generate, egui::Button::new(btn)).clicked() {
+                        let ct = active_ct.expect("guarded by can_generate");
+                        self.ai_running = true;
+                        *self.ai_status.lock().unwrap() =
+                            format!("Generating {ct:?} content…");
+                        let cfg = self.ai_settings.config().clone();
+                        let prompt = self.ai_prompt.trim().to_string();
+                        let (tx, rx) = channel();
+                        self.ai_result_rx = Some(rx);
+                        std::thread::spawn(move || {
+                            let schemas = SchemaCache::load_all();
+                            let rt = tokio::runtime::Builder::new_multi_thread()
+                                .enable_all()
+                                .build()
+                                .unwrap();
+                            let outcome = rt.block_on(async {
+                                match ai::generate_content(&cfg, ct, &schemas, &prompt).await {
+                                    Ok(result) => ai::AiGenOutcome::Ok { ct, result },
+                                    Err(e) => ai::AiGenOutcome::Err(e),
+                                }
+                            });
+                            let _ = tx.send(outcome);
+                        });
+                    }
+
+                    if ui.button("Clear").clicked() {
+                        self.ai_prompt.clear();
+                    }
+                });
+                ui.horizontal(|ui| {
+                    let status = self.ai_status.lock().unwrap().clone();
+                    ui.label(&status);
+                    if let Some(ct) = active_ct {
+                        if !self.schemas.has(&ct) {
+                            ui.colored_label(
+                                egui::Color32::YELLOW,
+                                "No schema for this type — AI generation unavailable.",
+                            );
+                        } else if matches!(ct, ContentType::ItemBrowser | ContentType::SpriteViewer)
+                        {
+                            ui.colored_label(
+                                egui::Color32::YELLOW,
+                                "Previewers have no AI target.",
+                            );
+                        }
+                    }
+                });
+            });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.open_editors.is_empty() {
@@ -225,6 +373,8 @@ impl eframe::App for EditorApp {
             .show(ctx, |ui| {
                 self.preview.ui(ctx, ui);
             });
+
+        self.ai_settings.show(ctx);
 
         ctx.request_repaint();
     }
