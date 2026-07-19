@@ -50,7 +50,11 @@ web-sys = { version = "0.3", features = [
     "AudioParam", "AudioDestinationNode",
     "Window", "console",
     "MessageEvent",
+    "RtcIceCandidate", "RtcSessionDescription",
+    "Event", "EventTarget",
 ] }
+# S29: js-sys types (Array, Function) for web-sys configuration.
+js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

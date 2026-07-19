@@ -6161,6 +6161,7 @@ dependencies = [
  "cpal",
  "crossbeam-channel",
  "ewebsock",
+ "js-sys",
  "log",
  "opus",
  "reachlock-core",

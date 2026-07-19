@@ -303,9 +303,14 @@ pub fn audio_feed_voice(
     _manager: Res<VoiceManager>,
     _commands: Commands,
     _audio_sources: ResMut<Assets<AudioSource>>,
-    _remote_ships: Query<(Entity, &RemoteShip, &GlobalTransform)>,
+    remote_ships: Query<(Entity, &RemoteShip, &GlobalTransform)>,
     _settings: Res<Settings>,
 ) {
+    // Update PannerNode positions from RemoteShip transforms (spatial audio).
+    for (_, ship, tx) in &remote_ships {
+        let p = tx.translation();
+        voice_wasm::update_spatial_position(&ship.player_id, p.x as f64, p.y as f64, p.z as f64);
+    }
 }
 
 // ---------------------------------------------------------------------------
