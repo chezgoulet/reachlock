@@ -10,6 +10,7 @@ pub mod docking;
 pub mod factions;
 pub mod galaxy_map;
 pub mod hud;
+pub mod presence;
 pub mod interaction;
 pub mod interior;
 pub mod inventory;

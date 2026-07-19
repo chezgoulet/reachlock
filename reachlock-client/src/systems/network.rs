@@ -15,6 +15,7 @@ use crate::net::{handshake_url, ConnectionState, NetMode, NetOutbox, TransportEv
 use crate::settings::Settings;
 use crate::states::CurrentLocation;
 use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog};
+use crate::systems::presence::PresenceEvents;
 use crate::systems::ship::ShipSystems;
 use crate::systems::ticker::UniverseTicker;
 
@@ -131,6 +132,7 @@ pub fn poll_network(
     mut souls: ResMut<crate::systems::soul::SoulRegistry>,
     mut dialogue: ResMut<crate::systems::dialogue::DialogueSession>,
     mut feed: ResMut<crate::systems::comms::CommFeed>,
+    mut presence: ResMut<PresenceEvents>,
 ) {
     let NetMode::Online { universe, .. } = &*mode else {
         return;
@@ -283,16 +285,14 @@ pub fn poll_network(
                 // S23: protocol version verified by the server; client ignores
                 // for now — we trust the server sent the right version.
             }
-            TransportEvent::Message(ServerMessage::PlayerJoined { .. }) => {
-                // S23: remote player entered this system — will spawn a ship
-                // in a follow-up.
+            TransportEvent::Message(ServerMessage::PlayerJoined { player_id, .. }) => {
+                presence.joined.push(player_id);
             }
-            TransportEvent::Message(ServerMessage::PlayerLeft { .. }) => {
-                // S23: remote player left — will despawn in a follow-up.
+            TransportEvent::Message(ServerMessage::PlayerLeft { player_id, .. }) => {
+                presence.left.push(player_id);
             }
-            TransportEvent::Message(ServerMessage::ChatMessage { .. }) => {
-                // S23: chat message from another player — will show in chat
-                // panel (follow-up).
+            TransportEvent::Message(ServerMessage::ChatMessage { from_player, text }) => {
+                presence.chat_messages.push((from_player, text));
             }
             TransportEvent::Message(ServerMessage::ContentUpdate { .. }) => {
                 // S23: content overrides changed — will re-fetch on next
