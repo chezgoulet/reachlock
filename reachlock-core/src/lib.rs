@@ -25,3 +25,5 @@ pub mod sim;
 pub mod soul;
 pub mod universe;
 pub mod util;
+
+pub use util::{Fixed, SeededRng};

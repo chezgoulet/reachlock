@@ -6,19 +6,35 @@
 //! structs to Bevy assets; authored content deserializes into the same
 //! structs (spec §10 — the bridge doesn't know the difference).
 
+pub mod contract;
+pub mod economy;
+pub mod enemy;
+pub mod faction;
 pub mod hull;
+pub mod location;
 pub mod music;
 pub mod planet;
 pub mod ship;
+pub mod soul;
+pub mod sprite;
 pub mod station;
+pub mod storyline;
 pub mod system;
 pub mod transit;
 pub mod ui;
 
+pub use contract::generate_contract;
+pub use economy::generate_economy_catalog;
+pub use enemy::generate_enemy;
+pub use faction::generate_faction;
 pub use hull::{generate_hull, generate_hull_class};
+pub use location::generate_location;
 pub use music::{generate_music, generate_tone, Mood};
 pub use planet::generate_planet;
+pub use soul::generate_soul;
+pub use sprite::generate_character_sprite;
 pub use station::generate_station;
+pub use storyline::generate_storyline;
 pub use system::{generate_starfield, generate_system, HostileLocationKind, HostileLocationSlot};
 pub use transit::{anomaly_rolls, malfunction_roll, transit_destination};
 pub use ui::generate_ui_panel;
