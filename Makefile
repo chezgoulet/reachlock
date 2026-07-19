@@ -16,11 +16,18 @@ clippy:
 	cargo clippy --workspace -- -D warnings
 
 # Launch the game (native).
+# FIXME(winit-0.30.13): WAYLAND_DISPLAY= forces X11/XWayland to avoid
+# a panic at winit/src/platform_impl/linux/wayland/window/state.rs:694
+# where self.size.width is 0 because the Wayland compositor never sent a
+# configure event. Remove the WAYLAND_DISPLAY= and WINIT_UNIX_BACKEND=
+# overrides when bevy/winit upgrades past 0.30.13 (the built-in
+# WINIT_UNIX_BACKEND=x11 alone is not sufficient on this system).
 run:
 	WAYLAND_DISPLAY= WINIT_UNIX_BACKEND=x11 cargo run -p reachlock-client
 
 # Launch with Bevy's `debug` feature so ECS errors (e.g. B0001 query
 # conflicts) print real component/system names instead of a placeholder.
+# Same Wayland workaround as `run`.
 run-debug:
 	WAYLAND_DISPLAY= WINIT_UNIX_BACKEND=x11 cargo run -p reachlock-client --features debug-names
 

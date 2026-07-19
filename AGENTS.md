@@ -40,6 +40,7 @@ REACHLOCK is a procedurally-generated spacefaring MMO being rebuilt from scratch
 
 ## Gotcha Ledger (from the index — don't re-learn these)
 
+- winit 0.30.13 on Wayland: panics at `state.rs:694` with `NonZeroU32::new(self.size.width).unwrap()` when the compositor doesn't send a configure event before first render. Workaround: `WAYLAND_DISPLAY= WINIT_UNIX_BACKEND=x11` in Makefile `run` target. Remove when bevy's winit dep bumps past 0.30.13.
 - bevy 0.18: mesh types import from `bevy::mesh::`, not `bevy::render::mesh::`. `Timer::finished` is now `is_finished`. `RapierPhysicsPlugin::<()>` (unit generic, not `NoUserData`).
 - Rust raw strings: `r#"…"#` dies on SVG/hex color literals containing `"#` — use `r##"…"##`.
 - `contract::engine::Outcome` borrows the contract; own the verdict (clone what you need) before mutating the runtime that holds it.
