@@ -163,6 +163,9 @@ pub enum ServerMessage {
         password: String,
         ttl_secs: u32,
     },
+    /// S28: system notice (subscription grace period, server messages).
+    #[serde(rename = "system.notice")]
+    SystemNotice { message: String },
 }
 
 /// S29: WebRTC signaling payload carried by `voice.signal` messages.
@@ -365,6 +368,17 @@ mod tests {
         assert_eq!(json["type"], "turn.config");
         assert_eq!(json["url"], "turn:relay.example.com:3478");
         assert_eq!(json["ttl_secs"], 86400);
+    }
+
+    #[test]
+    fn system_notice_wire_tag() {
+        let msg = ServerMessage::SystemNotice {
+            message: "Payment past due.".into(),
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "system.notice");
+        assert_eq!(json["message"], "Payment past due.");
     }
 
     #[test]

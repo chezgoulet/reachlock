@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use reachlock_core::network::ServerMessage;
@@ -28,6 +29,7 @@ use crate::services::health::HealthAggregator;
 use crate::services::llm_proxy::LlmService;
 use crate::services::seed::{MemorySeedStore, SeedStore};
 use crate::services::verify::VerifyService;
+use crate::services::billing::{MemorySubscriptionStore, SubscriptionStore, StripeWebhook, SubscriptionStatus, create_checkout_session, create_portal_session, verify_stripe_webhook};
 use crate::services::voice::VoiceRegistry;
 
 /// A map from (universe, system_id) to session message senders in that scope.
@@ -111,6 +113,8 @@ pub struct AppState {
     pub health: std::sync::Arc<HealthAggregator>,
     /// When true, the WS handshake demands a token minted by `/auth/dev`.
     pub auth_required: bool,
+    /// S28: subscription entitlements and offline token store.
+    pub billing: Box<dyn SubscriptionStore>,
     connected: AtomicUsize,
     /// S29: voice chat room registry.
     pub voice: VoiceRegistry,
@@ -137,6 +141,7 @@ impl AppState {
             auth_required: config.auth_required,
             connected: AtomicUsize::new(0),
             voice: VoiceRegistry::default(),
+            billing: Box::new(MemorySubscriptionStore::default()),
         }
     }
 
@@ -161,6 +166,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auth/dev", post(auth_dev))
         .route("/byok", post(byok_register))
         .route("/ws", any(handler::upgrade))
+        // S28: Stripe webhook (no auth — signed by Stripe).
+        .route("/stripe/webhook", post(stripe_webhook_handler))
+        // S28: billing endpoints (bearer token auth).
+        .route("/billing/checkout", post(billing_checkout))
+        .route("/billing/portal", post(billing_portal))
+        .route("/billing/entitlement-token", post(billing_entitlement_token))
         .merge(admin_routes)
         .with_state(state)
 }
@@ -224,4 +235,160 @@ async fn auth_dev(
         universe: req.universe,
     });
     Json(DevLoginResponse { token, player_id })
+}
+
+// ---------------------------------------------------------------------------
+// S28: Stripe webhook handler
+// ---------------------------------------------------------------------------
+
+/// `POST /stripe/webhook` — Stripe event subscription updates.
+async fn stripe_webhook_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> (axum::http::StatusCode, &'static str) {
+    let webhook_secret = match std::env::var("REACHLOCK_STRIPE_WEBHOOK_SECRET") {
+        Ok(s) => s,
+        Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "stripe not configured"),
+    };
+    let sig_header = match headers
+        .get("stripe-signature")
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(h) => h,
+        None => return (StatusCode::BAD_REQUEST, "missing stripe-signature header"),
+    };
+
+    let event_id = match verify_stripe_webhook(&body, sig_header, &webhook_secret) {
+        Ok(id) => id,
+        Err(e) => return (StatusCode::BAD_REQUEST, e),
+    };
+
+    if state.billing.is_webhook_processed(&event_id) {
+        return (StatusCode::OK, "already processed");
+    }
+    state.billing.mark_webhook_processed(&event_id);
+
+    // Parse event and update entitlement
+    let event: StripeWebhook = match serde_json::from_slice(&body) {
+        Ok(e) => e,
+        Err(_) => return (StatusCode::BAD_REQUEST, "unparseable webhook"),
+    };
+
+    let sub_obj = &event.data.object;
+    let metadata = sub_obj.metadata.as_ref();
+    let player_id = metadata.and_then(|m| m.get("player_id"));
+    let tier_str = metadata.and_then(|m| m.get("universe_tier"));
+
+    let (player_id, tier) = match (player_id, tier_str) {
+        (Some(pid), Some(t)) => (pid.clone(), t.clone()),
+        _ => return (StatusCode::OK, "no player metadata — ignored"),
+    };
+
+    let tier_parsed: UniverseTier = match tier.parse() {
+        Ok(t) => t,
+        Err(_) => return (StatusCode::OK, "unknown tier in metadata"),
+    };
+
+    let status = sub_obj
+        .status
+        .as_deref()
+        .map(SubscriptionStatus::from_stripe)
+        .unwrap_or(SubscriptionStatus::Incomplete);
+
+    let period_end = sub_obj
+        .current_period_end
+        .map(|ts| chrono::DateTime::from_timestamp(ts, 0).unwrap_or_default())
+        .unwrap_or_else(chrono::Utc::now);
+
+    use crate::services::billing::PlayerSubscription;
+    state.billing.upsert(PlayerSubscription {
+        player_id: player_id.clone(),
+        stripe_customer_id: sub_obj.customer.clone(),
+        tier: tier_parsed,
+        status,
+        current_period_end: period_end,
+        created_at: chrono::Utc::now(),
+    });
+
+    (StatusCode::OK, "ok")
+}
+
+// ---------------------------------------------------------------------------
+// S28: Billing API endpoints
+// ---------------------------------------------------------------------------
+
+/// Authenticate a bearer token from the Authorization header.
+fn resolve_bearer_token<'a>(headers: &'a axum::http::HeaderMap, state: &'a AppState) -> Option<&'a str> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .and_then(|token| {
+            state.sessions.resolve(token).map(|info| {
+                // Leak the player_id — the caller can clone it.
+                Box::leak(Box::new(info.player_id.clone())) as &str
+            })
+        })
+}
+
+/// Helper: extract bearer token, return 401 if missing.
+macro_rules! require_auth {
+    ($headers:expr, $state:expr) => {
+        match resolve_bearer_token($headers, $state) {
+            Some(pid) => pid.to_owned(),
+            None => return Err((
+                axum::http::StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthorized"})),
+            )),
+        }
+    };
+}
+
+/// `POST /billing/checkout` — create a Stripe Checkout session URL.
+async fn billing_checkout(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    let player_id = require_auth!(&headers, &state);
+    let tier_str = body["universe_tier"].as_str().unwrap_or("fairplay");
+    let tier: UniverseTier = tier_str.parse().map_err(|_| {
+        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "bad tier"})))
+    })?;
+
+    match create_checkout_session(&player_id, tier).await {
+        Ok(url) => Ok(Json(serde_json::json!({"url": url}))),
+        Err(e) => Err((StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"error": e})))),
+    }
+}
+
+/// `POST /billing/portal` — create a Stripe Customer Portal session.
+async fn billing_portal(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    let player_id = require_auth!(&headers, &state);
+    let sub = state.billing.get(&player_id).ok_or((
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({"error": "no_subscription"})),
+    ))?;
+    match create_portal_session(&sub.stripe_customer_id).await {
+        Ok(url) => Ok(Json(serde_json::json!({"url": url}))),
+        Err(e) => Err((StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"error": e})))),
+    }
+}
+
+/// `POST /billing/entitlement-token` — mint an offline entitlement token (30 days).
+async fn billing_entitlement_token(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    let player_id = require_auth!(&headers, &state);
+    let sub = state.billing.get(&player_id).ok_or((
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({"error": "no_subscription"})),
+    ))?;
+    let token = crate::services::billing::mint_offline_token(&player_id, sub.tier);
+    Ok(Json(serde_json::to_value(&token).unwrap_or_default()))
 }

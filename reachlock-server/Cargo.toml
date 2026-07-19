@@ -33,6 +33,11 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json", "chro
 uuid = { version = "1", features = ["v7"] }
 prometheus = { version = "0.13", features = [] }
 sha256 = "1"
+# S28: HMAC-SHA256 for offline entitlement tokens + Stripe webhook verification.
+sha2 = "0.10"
+hex = "0.4"
+# S28: DateTime types for subscription periods.
+chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 tokio-tungstenite = "0.26"

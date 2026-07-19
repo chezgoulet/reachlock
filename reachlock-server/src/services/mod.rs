@@ -14,4 +14,5 @@ pub mod tick;
 pub mod verify;
 pub mod voice;
 pub mod audit;
+pub mod billing;
 pub mod degradation;
