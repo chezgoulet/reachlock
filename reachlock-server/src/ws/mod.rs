@@ -30,6 +30,7 @@ use crate::services::llm_proxy::LlmService;
 use crate::services::seed::{MemorySeedStore, SeedStore};
 use crate::services::verify::VerifyService;
 use crate::services::billing::{MemorySubscriptionStore, SubscriptionStore, StripeWebhook, SubscriptionStatus, create_checkout_session, create_portal_session, verify_stripe_webhook};
+use crate::services::content::ContentService;
 use crate::services::voice::VoiceRegistry;
 
 /// A map from (universe, system_id) to session message senders in that scope.
@@ -118,6 +119,8 @@ pub struct AppState {
     connected: AtomicUsize,
     /// S29: voice chat room registry.
     pub voice: VoiceRegistry,
+    /// Authored content distribution for wasm clients (spec §10).
+    pub content: ContentService,
 }
 
 impl AppState {
@@ -142,6 +145,12 @@ impl AppState {
             connected: AtomicUsize::new(0),
             voice: VoiceRegistry::default(),
             billing: Box::new(MemorySubscriptionStore::default()),
+            // Content distribution reads `mods/` from the working directory
+            // (same source the native client loads). Override with
+            // REACHLOCK_MODS_DIR if the server runs elsewhere.
+            content: ContentService::new(
+                std::env::var("REACHLOCK_MODS_DIR").unwrap_or_else(|_| "mods".to_string()),
+            ),
         }
     }
 
@@ -319,16 +328,13 @@ async fn stripe_webhook_handler(
 // ---------------------------------------------------------------------------
 
 /// Authenticate a bearer token from the Authorization header.
-fn resolve_bearer_token<'a>(headers: &'a axum::http::HeaderMap, state: &'a AppState) -> Option<&'a str> {
+fn resolve_bearer_token(headers: &axum::http::HeaderMap, state: &AppState) -> Option<String> {
     headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .and_then(|token| {
-            state.sessions.resolve(token).map(|info| {
-                // Leak the player_id — the caller can clone it.
-                Box::leak(Box::new(info.player_id.clone())) as &str
-            })
+            state.sessions.resolve(token).map(|info| info.player_id.clone())
         })
 }
 
@@ -336,7 +342,7 @@ fn resolve_bearer_token<'a>(headers: &'a axum::http::HeaderMap, state: &'a AppSt
 macro_rules! require_auth {
     ($headers:expr, $state:expr) => {
         match resolve_bearer_token($headers, $state) {
-            Some(pid) => pid.to_owned(),
+            Some(pid) => pid,
             None => return Err((
                 axum::http::StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({"error": "unauthorized"})),
@@ -389,6 +395,12 @@ async fn billing_entitlement_token(
         StatusCode::NOT_FOUND,
         Json(serde_json::json!({"error": "no_subscription"})),
     ))?;
-    let token = crate::services::billing::mint_offline_token(&player_id, sub.tier);
+    let token = match crate::services::billing::mint_offline_token(&player_id, sub.tier) {
+        Ok(t) => t,
+        Err(e) => return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": e})),
+        )),
+    };
     Ok(Json(serde_json::to_value(&token).unwrap_or_default()))
 }

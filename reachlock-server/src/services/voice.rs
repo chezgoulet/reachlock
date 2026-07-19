@@ -94,7 +94,7 @@ impl VoiceRegistry {
             .expect("HMAC key");
         mac.update(username.as_bytes());
         let password = base64::engine::general_purpose::STANDARD
-            .encode(&mac.finalize().into_bytes());
+            .encode(mac.finalize().into_bytes());
         Some((url, username, password, 86_400))
     }
 }

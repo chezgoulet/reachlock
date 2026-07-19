@@ -125,7 +125,6 @@ pub struct ChatFeed {
     pub messages: VecDeque<ChatEntry>,
 }
 
-#[allow(dead_code)]
 pub struct ChatEntry {
     pub from_player: String,
     pub text: String,

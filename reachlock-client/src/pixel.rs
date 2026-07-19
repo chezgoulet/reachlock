@@ -268,13 +268,16 @@ pub fn threshold_sprite(base: Color, accent: Color) -> Image {
 
 /// What kind of being a figure is. Changes how the painter renders it —
 /// androids get alloy skin, lit eyes, and a faceplate seam; a robot (BOR-IS)
-/// is a boxy chassis with a sensor visor, unmistakably not a person in a suit
+/// is a boxy chassis with a sensor visor; voidborn have elongated, desaturated
+/// proportions; xenotypes are squat creatures with wide-set features
 /// (docs/LORE.md §V).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BodyKind {
     Human,
     Android,
     Robot,
+    Voidborn,
+    Xenotype,
 }
 
 /// Hair silhouette — the main variety layer for station crowds. Crew get
@@ -339,6 +342,8 @@ impl Look {
             Hair::Bun,
         ];
         let android = n.below(10) == 0;
+        let voidborn = !android && n.below(20) == 0;
+        let xenotype = !android && !voidborn && n.below(20) == 0;
         let jacket = if n.below(3) == 0 {
             Some(Color::srgb(
                 0.20 + n.below(35) as f32 / 100.0,
@@ -351,11 +356,17 @@ impl Look {
         Look {
             skin: if android {
                 Color::srgb(0.62, 0.66, 0.72)
+            } else if voidborn {
+                Color::srgb(0.55, 0.60, 0.78)
+            } else if xenotype {
+                Color::srgb(0.48, 0.62, 0.42)
             } else {
                 skins[n.below(skins.len() as u64) as usize]
             },
-            hair: if android {
+            hair: if android || voidborn {
                 glows[n.below(glows.len() as u64) as usize]
+            } else if xenotype {
+                Color::srgb(0.20, 0.30, 0.18)
             } else {
                 hairs[n.below(hairs.len() as u64) as usize]
             },
@@ -366,13 +377,17 @@ impl Look {
             ),
             pants: Color::srgb(0.22, 0.22, 0.30),
             jacket,
-            hair_style: if android && n.below(2) == 0 {
+            hair_style: if (android && n.below(2) == 0) || voidborn || xenotype {
                 Hair::Bald
             } else {
                 styles[n.below(styles.len() as u64) as usize]
             },
             body: if android {
                 BodyKind::Android
+            } else if voidborn {
+                BodyKind::Voidborn
+            } else if xenotype {
+                BodyKind::Xenotype
             } else {
                 BodyKind::Human
             },
@@ -590,13 +605,25 @@ fn paint_hair(px: &mut Px, dir: usize, style: Hair, hair: Rgba) {
 }
 
 /// 16×26 character in SNES-JRPG proportions: oversized head, layered torso,
-/// short legs. `frame` 1 is mid-stride. Robots take their own painter.
+/// short legs. `frame` 1 is mid-stride. Robots, voidborn, and xenotypes take
+/// their own painters.
 fn paint_character(dir: usize, frame: usize, look: Look) -> Px {
     if look.body == BodyKind::Robot {
         return paint_robot(dir, frame, look);
     }
+    if look.body == BodyKind::Voidborn {
+        return paint_voidborn(dir, frame, look);
+    }
+    if look.body == BodyKind::Xenotype {
+        return paint_xenotype(dir, frame, look);
+    }
+    paint_humanoid(dir, frame, look)
+}
+
+/// Human/android base painter. Android skin is alloy and the eyes glow.
+fn paint_humanoid(dir: usize, frame: usize, look: Look) -> Px {
     if dir == DIR_RIGHT {
-        return paint_character(DIR_LEFT, frame, look).mirrored();
+        return paint_humanoid(DIR_LEFT, frame, look).mirrored();
     }
     let skin = rgba(look.skin);
     let hair = rgba(look.hair);
@@ -679,6 +706,165 @@ fn paint_character(dir: usize, frame: usize, look: Look) -> Px {
             px.rect(4, 24 - lift, 3, 2, boots);
             px.rect(9, 19 + lift, 3, 5 - lift, pants);
             px.rect(9, 24, 3, 2, boots);
+        }
+    }
+
+    px.outline();
+    px
+}
+
+/// 16×26 voidborn: elongated, desaturated humanoid with luminous eyes and a
+/// faint aura halo. Space-dwelling; no planetary ecosystem.
+fn paint_voidborn(dir: usize, frame: usize, look: Look) -> Px {
+    if dir == DIR_RIGHT {
+        return paint_voidborn(DIR_LEFT, frame, look).mirrored();
+    }
+    let skin = rgba(look.skin);
+    let glow = rgba(look.hair);
+    let robe = rgba(look.shirt);
+    let pants = rgba(look.pants);
+    let boots = shade(pants, 0.6);
+    let mut px = Px::new(16, 26);
+
+    // Aura halo behind the head.
+    px.rect(4, 0, 8, 2, shade(glow, 1.4));
+    // Elongated head (rows 1..11).
+    px.rect(4, 1, 8, 10, skin);
+    px.rect(3, 4, 10, 5, skin);
+    match dir {
+        DIR_UP => {}
+        DIR_DOWN => {
+            px.set(5, 7, glow);
+            px.set(6, 7, glow);
+            px.set(9, 7, glow);
+            px.set(10, 7, glow);
+        }
+        _ => {
+            px.set(5, 7, glow);
+            px.set(4, 8, shade(skin, 0.9));
+        }
+    }
+
+    // Long flowing robe torso (rows 11..20) instead of jacket splits.
+    let sway = if frame == 1 { 1 } else { 0 };
+    match dir {
+        DIR_LEFT => {
+            // Profile: one visible edge panel + a single leading arm.
+            px.rect(3, 11, 10, 9, robe);
+            px.rect(3, 11, 1, 9, shade(robe, 0.85));
+            px.rect(6 - sway * 2, 12, 2, 6, robe);
+            px.set(6 - sway * 2, 18, skin);
+        }
+        _ => {
+            px.rect(3, 11, 10, 9, robe);
+            px.rect(3, 11, 1, 9, shade(robe, 0.85));
+            px.rect(12, 11, 1, 9, shade(robe, 0.85));
+            // Sleeve arms.
+            px.rect(2, 12 + sway, 1, 6, robe);
+            px.rect(13, 13 - sway, 1, 6, robe);
+            px.set(2, 18 + sway, skin);
+            px.set(13, 19 - sway, skin);
+        }
+    }
+
+    // Legs mostly hidden by robe; small boots peek out.
+    match dir {
+        DIR_LEFT => {
+            if frame == 0 {
+                px.rect(6, 20, 4, 4, pants);
+                px.rect(6, 24, 4, 2, boots);
+            } else {
+                px.rect(5, 20, 3, 4, pants);
+                px.rect(5, 24, 3, 2, boots);
+                px.rect(9, 20, 3, 3, pants);
+                px.rect(9, 23, 3, 2, boots);
+            }
+        }
+        _ => {
+            let lift = if frame == 1 { 1 } else { 0 };
+            px.rect(4, 20, 3, 4 - lift, pants);
+            px.rect(4, 24 - lift, 3, 2, boots);
+            px.rect(9, 20 + lift, 3, 4 - lift, pants);
+            px.rect(9, 24, 3, 2, boots);
+        }
+    }
+
+    px.outline();
+    px
+}
+
+/// 16×26 xenotype: squat, wide-set planetary creature with four eyes and a
+/// broad stance. Part of its home ecosystem.
+fn paint_xenotype(dir: usize, frame: usize, look: Look) -> Px {
+    if dir == DIR_RIGHT {
+        return paint_xenotype(DIR_LEFT, frame, look).mirrored();
+    }
+    let skin = rgba(look.skin);
+    let eye = rgba(look.hair);
+    let hide = rgba(look.shirt);
+    let pants = rgba(look.pants);
+    let mut px = Px::new(16, 26);
+
+    // Broad low head (rows 3..12), wider than tall.
+    px.rect(2, 3, 12, 9, skin);
+    px.rect(1, 5, 14, 5, skin);
+    match dir {
+        DIR_UP => {}
+        DIR_DOWN => {
+            // Four wide-set eyes.
+            px.set(4, 7, eye);
+            px.set(6, 7, eye);
+            px.set(9, 7, eye);
+            px.set(11, 7, eye);
+        }
+        _ => {
+            px.set(4, 7, eye);
+            px.set(3, 8, shade(skin, 0.9));
+        }
+    }
+
+    // Broad torso (rows 12..20) with mottled hide markings.
+    let sway = if frame == 1 { 1 } else { 0 };
+    match dir {
+        DIR_LEFT => {
+            // Profile: one visible edge panel + a single leading arm.
+            px.rect(2, 12, 12, 8, hide);
+            px.rect(2, 12, 1, 8, shade(hide, 0.85));
+            px.rect(5, 14, 2, 2, shade(hide, 1.15));
+            px.rect(4 - sway, 13, 2, 5, hide);
+        }
+        _ => {
+            px.rect(2, 12, 12, 8, hide);
+            px.rect(2, 12, 1, 8, shade(hide, 0.85));
+            px.rect(13, 12, 1, 8, shade(hide, 0.85));
+            px.rect(5, 14, 2, 2, shade(hide, 1.15));
+            px.rect(9, 16, 2, 2, shade(hide, 1.15));
+            // Stubby arms.
+            px.rect(1, 13 + sway, 1, 5, hide);
+            px.rect(14, 14 - sway, 1, 5, hide);
+        }
+    }
+
+    // Wide squat legs (rows 20..26).
+    match dir {
+        DIR_LEFT => {
+            if frame == 0 {
+                px.rect(3, 20, 5, 5, pants);
+                px.rect(3, 24, 5, 2, shade(pants, 0.7));
+                px.rect(8, 20, 5, 5, pants);
+                px.rect(8, 24, 5, 2, shade(pants, 0.7));
+            } else {
+                px.rect(2, 20, 4, 5, pants);
+                px.rect(8, 20, 5, 4, pants);
+                px.rect(8, 23, 5, 2, shade(pants, 0.7));
+            }
+        }
+        _ => {
+            let lift = if frame == 1 { 1 } else { 0 };
+            px.rect(3, 20, 5, 5 - lift, pants);
+            px.rect(3, 24 - lift, 5, 2, shade(pants, 0.7));
+            px.rect(8, 20 + lift, 5, 5 - lift, pants);
+            px.rect(8, 24, 5, 2, shade(pants, 0.7));
         }
     }
 

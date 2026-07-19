@@ -47,7 +47,6 @@ pub struct CrewMember {
 
 /// The ship's crew. Persists in the save; the sprites don't.
 #[derive(Resource, Default, Clone, Debug)]
-#[allow(dead_code)]
 pub struct CrewRoster {
     pub members: Vec<CrewMember>,
 }
@@ -60,7 +59,6 @@ impl CrewRoster {
     /// engineering (Tove), Bridge = cockpit (Prudence, Risc at ops),
     /// Quarters = med bay side (Doc Keene), Bar = galley (Bardo plays
     /// there), Hangar = EVA prep (Boris).
-    #[allow(dead_code)]
     pub fn default_crew() -> Self {
         let member = |id: &str, name: &str, role, duty_room| CrewMember {
             id: id.into(),

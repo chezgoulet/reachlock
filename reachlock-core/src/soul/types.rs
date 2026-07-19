@@ -10,14 +10,23 @@ use serde::{Deserialize, Serialize};
 use crate::contract::types::Condition;
 
 /// What kind of body carries this soul. Mirrors the client's `BodyKind`
-/// (zero-g movement) and the lore: humans, androids, robots — no aliens
-/// exist in this universe.
+/// (zero-g movement). Five canonical species:
+///
+/// - Human: includes cybernetically enhanced humans. The baseline.
+/// - Android: any synthetic humanoid.
+/// - Robot: industrial or non-humanoid synthetics.
+/// - Voidborn: space-dwelling creatures, mystical beings tied to Predecessor
+///   lore and special events. Not bound to any planetary ecosystem.
+/// - Xenotype: creatures bound to and part of a planet's ecosystem.
+///   The galaxy's planetary life.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Species {
     Human,
     Android,
     Robot,
+    Voidborn,
+    Xenotype,
 }
 
 /// How a soul talks. Consumed by S16's context assembly; inert data here.

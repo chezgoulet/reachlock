@@ -37,6 +37,40 @@ impl ContentIndex {
             .iter()
             .find(|f| f.asset_type == reachlock_core::content::AssetType::Station && f.seed == seed)
     }
+
+    /// Merge a server-pushed `content.sync` payload into the index (spec §10,
+    /// offline-first: the server *adds*, it never replaces the local loader).
+    /// Last-write-wins on id collisions within the typed maps. Used by wasm
+    /// clients, which have no filesystem to load `mods/` from.
+    pub fn merge_sync(&mut self, sync: ContentSyncPayload) {
+        for file in sync.files {
+            self.files.push(file);
+        }
+        // `ContentSyncPayload` carries the typed maps pre-keyed by id, so the
+        // values are already `(String, T)` pairs.
+        for (id, a) in sync.hostile_archetypes {
+            self.hostile_archetypes.insert(id, a);
+        }
+        for (id, l) in sync.hostile_locations {
+            self.hostile_locations.insert(id, l);
+        }
+        for (id, s) in sync.charted_systems {
+            self.charted_systems.insert(id, s);
+        }
+        if sync.gate_network.is_some() {
+            self.gate_network = sync.gate_network;
+        }
+    }
+}
+
+/// Wire-shaped payload for `ServerMessage::ContentSync`, flattened for the
+/// client so `network.rs` doesn't need to name every field inline.
+pub struct ContentSyncPayload {
+    pub files: Vec<ContentFile>,
+    pub hostile_archetypes: HashMap<String, reachlock_core::combat::HostileArchetype>,
+    pub hostile_locations: HashMap<String, reachlock_core::combat::HostileLocation>,
+    pub charted_systems: HashMap<String, reachlock_core::galaxy::ChartedSystem>,
+    pub gate_network: Option<reachlock_core::galaxy::GateNetwork>,
 }
 
 /// Directory that holds test fixtures, not real authored assets.

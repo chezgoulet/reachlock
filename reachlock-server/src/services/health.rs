@@ -1,4 +1,3 @@
-#![allow(unused_imports)]
 //! S26 health checking: trait, aggregator, and per-backend implementations.
 
 use std::sync::Arc;

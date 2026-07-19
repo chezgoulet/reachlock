@@ -69,7 +69,10 @@ pub fn arm_jump(
     plan.player_in_pod = false;
     // Every biological body gets the same order: pods, now.
     for member in roster.members.iter_mut() {
-        if pixel::crew_look(&member.id).body == BodyKind::Human {
+        let body = pixel::crew_look(&member.id).body;
+        // Humans and xenotypes are biological and need cryo; androids, robots,
+        // and voidborn are not biological life that the crossing harms.
+        if body == BodyKind::Human || body == BodyKind::Xenotype {
             member.order = Some(reachlock_core::generator::RoomKind::Cryo);
         }
     }
@@ -138,10 +141,11 @@ pub fn jump_clock(
         return;
     }
 
-    // Human crew outside the cryo chamber cross awake — ruined, not erased.
+    // Human and xenotype crew outside the cryo chamber cross awake — ruined,
+    // not erased. Androids, robots, and voidborn are unaffected.
     for member in &roster.members {
         let body = pixel::crew_look(&member.id).body;
-        if body == BodyKind::Human
+        if (body == BodyKind::Human || body == BodyKind::Xenotype)
             && member.current_room != reachlock_core::generator::RoomKind::Cryo
         {
             log.log(format!(

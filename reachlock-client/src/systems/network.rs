@@ -14,6 +14,9 @@ use reachlock_core::seed::types::{Seed, SystemId};
 use crate::net::{handshake_url, ConnectionState, NetMode, NetOutbox, TransportEvent, WsTransport};
 use crate::settings::Settings;
 use crate::states::CurrentLocation;
+#[cfg(target_arch = "wasm32")]
+use crate::systems::content_index::{ContentIndex, ContentSyncPayload};
+use bevy::ecs::system::SystemParam;
 use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog};
 use crate::systems::presence::PresenceEvents;
 use crate::systems::ship::ShipSystems;
@@ -31,6 +34,17 @@ use crate::systems::voice;
 #[derive(Default)]
 pub struct NetworkClient {
     transport: Option<WsTransport>,
+}
+
+/// Server-pushed state the network system folds into the world: the content
+/// index (wasm content distribution, wasm-only) and presence events (S23).
+/// Bundled into one `SystemParam` to keep `poll_network` under Bevy's 16-arg
+/// limit.
+#[derive(SystemParam)]
+pub struct IncomingState<'w> {
+    #[cfg(target_arch = "wasm32")]
+    pub content: ResMut<'w, ContentIndex>,
+    pub presence: ResMut<'w, PresenceEvents>,
 }
 
 /// Exponential-ish reconnect backoff (1s, 2s, 4s, 8s, 16s, capped at 30s).
@@ -133,7 +147,7 @@ pub fn poll_network(
     mut souls: ResMut<crate::systems::soul::SoulRegistry>,
     mut dialogue: ResMut<crate::systems::dialogue::DialogueSession>,
     mut feed: ResMut<crate::systems::comms::CommFeed>,
-    mut presence: ResMut<PresenceEvents>,
+    mut incoming: IncomingState,
 ) {
     let NetMode::Online { universe, .. } = &*mode else {
         return;
@@ -159,6 +173,13 @@ pub fn poll_network(
                     universe: *universe,
                     system_id,
                     seed: Seed::new(location.system_seed),
+                });
+                // WASM content distribution: wasm clients have no filesystem,
+                // so they ask the server for authored content over the wire.
+                // Native clients load `mods/` from disk and skip this.
+                #[cfg(target_arch = "wasm32")]
+                transport.send(&ClientMessage::RequestContent {
+                    universe: *universe,
                 });
                 // Pause the local universe ticker — server is authoritative.
                 if let Some(ref mut ticker) = ticker {
@@ -287,17 +308,55 @@ pub fn poll_network(
                 outbox.push(ClientMessage::RequestTurnConfig);
             }
             TransportEvent::Message(ServerMessage::PlayerJoined { player_id, .. }) => {
-                presence.joined.push(player_id);
+                incoming.presence.joined.push(player_id);
             }
             TransportEvent::Message(ServerMessage::PlayerLeft { player_id, .. }) => {
-                presence.left.push(player_id);
+                incoming.presence.left.push(player_id);
             }
             TransportEvent::Message(ServerMessage::ChatMessage { from_player, text }) => {
-                presence.chat_messages.push((from_player, text));
+                incoming.presence.chat_messages.push((from_player, text));
             }
             TransportEvent::Message(ServerMessage::ContentUpdate { .. }) => {
-                // S23: content overrides changed — will re-fetch on next
-                // system entry (follow-up).
+                // S23: content overrides changed — wasm clients re-fetch the
+                // full sync from the server (the server adds, never replaces).
+                #[cfg(target_arch = "wasm32")]
+                transport.send(&ClientMessage::RequestContent {
+                    universe: *universe,
+                });
+            }
+            #[cfg(target_arch = "wasm32")]
+            TransportEvent::Message(ServerMessage::ContentSync {
+                universe: _,
+                files,
+                hostile_archetypes,
+                hostile_locations,
+                charted_systems,
+                gate_network,
+            }) => {
+                // WASM content distribution: merge the server-pushed content
+                // into the index (offline-first — server adds, never replaces).
+                incoming.content.merge_sync(ContentSyncPayload {
+                    files,
+                    hostile_archetypes: hostile_archetypes
+                        .into_iter()
+                        .map(|a| (a.id.clone(), a))
+                        .collect(),
+                    hostile_locations: hostile_locations
+                        .into_iter()
+                        .map(|l| (l.id.clone(), l))
+                        .collect(),
+                    charted_systems: charted_systems
+                        .into_iter()
+                        .map(|s| (s.id.clone(), s))
+                        .collect(),
+                    gate_network,
+                });
+                log.log("Received authored content from server.");
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            TransportEvent::Message(ServerMessage::ContentSync { .. }) => {
+                // Native clients load `mods/` from disk; ignore the server's
+                // sync (the server still sends it to every client).
             }
             TransportEvent::Message(ServerMessage::VoiceSignal { from_player, signal }) => {
                 voice::push_signal(from_player, signal);

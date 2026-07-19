@@ -80,17 +80,17 @@ pub struct VoiceManager {
 #[cfg(not(target_arch = "wasm32"))]
 impl VoiceManager {
     pub fn new_native(
-        cmd_tx: crossbeam_channel::Sender<voice_native::VoiceCommand>,
+        cmd_tx: Option<crossbeam_channel::Sender<voice_native::VoiceCommand>>,
         evt_rx: crossbeam_channel::Receiver<voice_native::VoiceEvent>,
         handle: std::thread::JoinHandle<()>,
-        mic_tx: voice_native::MicSender,
+        mic_tx: Option<voice_native::MicSender>,
     ) -> Self {
         VoiceManager {
-            cmd_tx: Some(cmd_tx),
+            cmd_tx,
             evt_rx,
             pcm_buffers: Mutex::new(HashMap::new()),
             thread_handle: Mutex::new(Some(handle)),
-            mic_tx: Some(mic_tx),
+            mic_tx,
         }
     }
 }
@@ -385,19 +385,34 @@ pub fn mic_cycle_system(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn start_voice_thread(
     mut commands: Commands,
-    mic_devices: Option<Res<MicDevices>>,
+    _mic_devices: Option<Res<MicDevices>>,
     settings: Res<Settings>,
 ) {
     let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded();
     let (evt_tx, evt_rx) = crossbeam_channel::unbounded();
     let (mic_tx, mic_rx) = crossbeam_channel::unbounded();
 
-    // Start cpal mic capture.
     let preferred = settings.audio.voice_input_device.as_deref();
     start_mic_capture(preferred, mic_tx.clone());
 
-    let handle = voice_native::spawn_voice_thread(cmd_rx, evt_tx, mic_rx);
-    commands.insert_resource(VoiceManager::new_native(cmd_tx, evt_rx, handle, mic_tx));
+    match voice_native::spawn_voice_thread(cmd_rx, evt_tx, mic_rx) {
+        Ok(handle) => {
+            commands.insert_resource(VoiceManager::new_native(
+                Some(cmd_tx), evt_rx, handle, Some(mic_tx),
+            ));
+        }
+        Err(e) => {
+            log::warn!("voice: voice thread failed to start — voice disabled: {e}");
+            commands.insert_resource(VoiceManager::new_native(
+                None, evt_rx, voice_native_placeholder_handle(), None,
+            ));
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn voice_native_placeholder_handle() -> std::thread::JoinHandle<()> {
+    std::thread::spawn(|| {})
 }
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -68,7 +68,6 @@ pub enum GameMode {
     /// persists, the space scene is swapped for the cryo tunnel; rapier is
     /// paused via the S06 pattern. Added in S09 (deliberately absent from
     /// S06's first cut).
-    #[allow(dead_code)]
     Hyperspace,
 }
 

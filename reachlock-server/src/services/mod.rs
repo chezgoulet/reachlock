@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod byok;
 pub mod contracts;
+pub mod content;
 pub mod cost;
 pub mod eval;
 pub mod health;
