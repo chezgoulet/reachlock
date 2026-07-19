@@ -8,6 +8,8 @@
 
 use serde_json::Value;
 
+use reachlock_core::content::envelope::{ContentFile, ContentPayload};
+
 use crate::app::ContentType;
 use crate::schema::SchemaCache;
 
@@ -86,11 +88,14 @@ fn type_context(ct: &ContentType) -> &'static str {
              visible in the galaxy map."
         }
         ContentType::Soul => {
-            "An NPC character. Species: Human (cybernetically enhanced), Android \
-             (synthetic humanoid), Robot (non-humanoid machine), Voidborn (space-dwelling, \
-             mystical, Predecessor-lore), Xenotype (planet-bound ecosystem creature). Each has \
-             personality traits, an emotional state, memories, relationships, secrets, goals, \
-             and optional branching dialogue."
+            "An NPC character wrapped in a ContentFile envelope. The JSON must include the \
+             envelope fields: id (string), display_name (string), asset_type (the string \
+             \"soul\"), seed (integer), universe (\"all\"), priority (one of: procedural, \
+             curated, event, authoritative), and payload.soul (the soul object). Species: Human \
+             (cybernetically enhanced), Android (synthetic humanoid), Robot (non-humanoid \
+             machine), Voidborn (space-dwelling, mystical, Predecessor-lore), Xenotype \
+             (planet-bound ecosystem creature). Each has personality traits, an emotional state, \
+             memories, relationships, secrets, goals, and optional branching dialogue."
         }
         ContentType::Faction => {
             "A political faction. Has a doctrine (Military/Economic/Diplomatic/Expansionist), \
@@ -108,8 +113,12 @@ fn type_context(ct: &ContentType) -> &'static str {
              chase/disengage radii, and flee threshold."
         }
         ContentType::Station => {
-            "A space station with an exterior hull mesh, an interior layout of rooms connected \
-             by doors, and NPC spawns with dialogue lines."
+            "A space station wrapped in a ContentFile envelope. The JSON must include the \
+             envelope fields: id (string), display_name (string), asset_type (the string \
+             \"station\"), seed (integer), universe (\"all\"), priority (one of: procedural, \
+             curated, event, authoritative), and payload.station (with exterior, layout, and \
+             npc_spawns). An exterior hull mesh, an interior layout of rooms connected by doors, \
+             and NPC spawns with dialogue lines."
         }
         ContentType::Location => {
             "A hostile interior location (derelict ship, bunker, space station). Contains rooms \
@@ -121,9 +130,13 @@ fn type_context(ct: &ContentType) -> &'static str {
              contraband flag."
         }
         ContentType::Contract => {
-            "An automated contract evaluated by the game engine. Has a trigger (Timer, Event, \
-             StateChange, or Manual), prioritized rules with conditions (Always, Compare, All, \
-             Any, Not), actions, and optional LLM fallback authority."
+            "An automated contract wrapped in a ContentFile envelope. The JSON must include the \
+             envelope fields: id (string), display_name (string), asset_type (the string \
+             \"contract\"), seed (integer), universe (\"all\"), priority (one of: procedural, \
+             curated, event, authoritative), and payload.contract (the contract object). A \
+             contract has a trigger (Timer, Event, StateChange, or Manual), prioritized rules \
+             with conditions (Always, Compare, All, Any, Not), actions, and optional LLM \
+             fallback authority."
         }
         ContentType::Storyline => {
             "A faction's narrative arc. Contains chapters with triggers (TickAfter, \
@@ -136,10 +149,18 @@ fn type_context(ct: &ContentType) -> &'static str {
              Range, FireRate, ShieldHp, etc."
         }
         ContentType::HullMesh => {
-            "A hand-crafted ship hull: a polygon mesh with vertices and triangle indices."
+            "A hull configuration (how a hull is outfitted against a frame), NOT a raw mesh. \
+             Fields: hull_id (string, references a frame), seed (integer), hardpoints (array of \
+             {slot_id, item (ItemSeed), size_class (Small|Medium|Large)}), engine (ItemSeed), \
+             plating (array of {zone_id, mass}), paint (primary|secondary|accent each one of \
+             primary|accent|structure), decals (array of {slot_id, decal_id})."
         }
         ContentType::RoomTemplates => {
-            "A set of room templates for ship interiors. Each template has a kind (Cockpit, \
+            "A set of room templates for ship interiors, wrapped in a ContentFile envelope. The \
+             JSON must include the envelope fields: id (string), display_name (string), \
+             asset_type (the string \"room_templates\"), seed (integer), universe (\"all\"), \
+             priority (one of: procedural, curated, event, authoritative), and \
+             payload.room_templates (an array of templates). Each template has a kind (Cockpit, \
              MedBay, Reactor, etc.), dimensions, required systems, furniture slots, and \
              adjacency bonus pairs."
         }
@@ -210,6 +231,19 @@ fn regex_extract(text: &str) -> Option<String> {
     let after = &text[start + 7..];
     let end = after.find("```")?;
     Some(after[..end].trim().to_string())
+}
+
+/// When a schema describes a `ContentFile` envelope but the editor works with
+/// the bare inner type, deserialize the envelope and extract the inner
+/// payload as a JSON value. Returns `None` if `value` isn't a valid envelope
+/// or the variant tag doesn't match.
+pub fn extract_inner_from_envelope(value: &Value, tag: &str) -> Option<Value> {
+    let cf: ContentFile = serde_json::from_value(value.clone()).ok()?;
+    match (tag, cf.payload) {
+        ("soul", ContentPayload::Soul(s)) => serde_json::to_value(*s).ok(),
+        ("contract", ContentPayload::Contract(c)) => serde_json::to_value(c).ok(),
+        _ => None,
+    }
 }
 
 /// Character-level bracket matching for `{`/`}` or `[`/`]`.

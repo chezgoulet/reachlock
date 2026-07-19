@@ -1063,12 +1063,22 @@ impl Editor for SoulEditor {
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
-        let soul: SoulFile = serde_json::from_value(value.clone())
-            .map_err(|e| format!("soul file: {e}"))?;
+        // The soul schema describes a ContentFile envelope; some models emit
+        // the envelope, others the bare SoulFile. Accept both.
+        let inner = match serde_json::from_value::<SoulFile>(value.clone()) {
+            Ok(soul) => soul,
+            Err(_) => {
+                let extracted = super::super::ai::extract_inner_from_envelope(value, "soul").ok_or_else(|| {
+                    "response was neither a bare soul nor a ContentFile envelope".to_string()
+                })?;
+                serde_json::from_value::<SoulFile>(extracted)
+                    .map_err(|e| format!("soul file: {e}"))?
+            }
+        };
         if let Some(entry) = self.entries.get_mut(self.selected) {
-            entry.soul = soul;
+            entry.soul = inner;
         } else {
-            self.entries.push(Entry { soul, path: None });
+            self.entries.push(Entry { soul: inner, path: None });
             self.selected = self.entries.len() - 1;
         }
         self.has_changes = true;

@@ -534,6 +534,22 @@ impl Editor for StationEditor {
         }
         self.has_changes = true;
     }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        let file: ContentFile = serde_json::from_value(value.clone())
+            .map_err(|e| format!("station content file: {e}"))?;
+        if !matches!(file.payload, ContentPayload::Station { .. }) {
+            return Err("response payload is not a station".into());
+        }
+        if let Some(entry) = self.entries.get_mut(self.selected) {
+            entry.file = file;
+        } else {
+            self.entries.push(Entry { file, path: None });
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        Ok(())
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {

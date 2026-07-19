@@ -344,6 +344,18 @@ impl Editor for RoomTemplatesEditor {
         self.selected = 0;
         self.has_changes = true;
     }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        let file: ContentFile = serde_json::from_value(value.clone())
+            .map_err(|e| format!("room templates content file: {e}"))?;
+        if !matches!(file.payload, ContentPayload::RoomTemplates(_)) {
+            return Err("response payload is not a room template set".into());
+        }
+        self.file = file;
+        self.selected = 0;
+        self.has_changes = true;
+        Ok(())
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {

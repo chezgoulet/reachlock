@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Item Seed (S05 Item Generator)",
+  "description": "A seed for a procedurally-generated equipment item. Items are seed-deterministic: the same ItemSeed always yields the same item, stats, and icon. Loaded from mods/reachlock/items/*.ron into reachlock_core::item::types::ItemSeed. item_type is a nested enum where EVERY level uses snake_case: top level one of equipment|consumable|component|implant|cosmetic, each wrapping its own kind enum in snake_case (e.g. {\"equipment\": {\"weapon\": {\"kinetic\": \"cannon\"}}}, {\"consumable\": \"medkit\"}, {\"component\": \"hull_plating\"}).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["seed", "item_type", "tier", "faction", "biome"],
+  "properties": {
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Canonical seed (<= 2^53 so it survives JSON float round-trip)"
+    },
+    "item_type": {
+      "type": "object",
+      "description": "Nested enum: one top-level key (Equipment|Consumable|Component|Implant|Cosmetic) wrapping its kind. Examples: {\"Equipment\": {\"Weapon\": {\"Kinetic\": \"Cannon\"}}}, {\"Consumable\": \"Medkit\"}, {\"Component\": \"HullPlating\"}",
+      "minProperties": 1,
+      "maxProperties": 1
+    },
+    "tier": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Item tier 1-10"
+    },
+    "faction": {
+      "type": "string",
+      "description": "Owning/flavoring faction id, e.g. \"compact\", \"isc\", \"corp_charter\", \"the_reach\", or empty"
+    },
+    "biome": {
+      "type": "string",
+      "description": "Originating biome flavor, e.g. \"void\", \"ocean\", \"desert\", or empty"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Trade Good (S07 Economy)",
+  "description": "A single trade good in the ReachLock economy. The editor edits individual goods; a catalog wraps them in a GoodsCatalog { version, goods } keyed by id. Loaded from mods/reachlock/economy/goods.ron into reachlock_core::economy::Good.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "base_price", "mass", "category"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable id, e.g. \"water\". Also the map key in GoodsCatalog"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human label for market UI"
+    },
+    "base_price": {
+      "type": "integer",
+      "description": "Reference mid-price in credits (the base every quote pivots on)"
+    },
+    "mass": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Mass per unit in arbitrary cargo units (drives cargo capacity, S08)"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["Consumable", "Fuel", "Material", "Manufactured", "Medical", "Luxury", "Contraband"],
+      "description": "Coarse bucket for UI grouping / legality rules"
+    },
+    "contraband": {
+      "type": "boolean",
+      "description": "Whether selling it to a core-lawful station is a crime (S11+)"
+    }
+  }
+}

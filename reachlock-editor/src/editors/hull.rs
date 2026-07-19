@@ -125,7 +125,7 @@ impl Editor for HullEditor {
     }
 
     fn content_type(&self) -> ContentType {
-        ContentType::HullFrame
+        ContentType::HullMesh
     }
 
     fn has_unsaved_changes(&self) -> bool {
@@ -269,6 +269,14 @@ impl Editor for HullEditor {
     fn generate_from_seed(&mut self, seed: u64) {
         self.config = Self::generate_config_from_seed(seed, self.frame.class);
         self.has_changes = true;
+    }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        let config: HullConfiguration = serde_json::from_value(value.clone())
+            .map_err(|e| format!("hull configuration: {e}"))?;
+        self.config = config;
+        self.has_changes = true;
+        Ok(())
     }
 }
 
