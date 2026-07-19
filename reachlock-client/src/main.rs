@@ -22,7 +22,7 @@ use systems::{
     combat, comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions,
     galaxy_map, hud, interaction, interior, inventory, jump, landed_combat, market, menu, mode,
     network, onboard, pause, presence, reticle, sensors, settings_ui, setup, ship, shipeditor, soul,
-    ticker,
+    ticker, voice,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -95,6 +95,8 @@ fn main() {
         // S23: presence (position sending, remote ships) and chat feed.
         .init_resource::<presence::PresenceEvents>()
         .init_resource::<presence::ChatFeed>()
+        // S29: voice signaling buffer (decoupled from network polling).
+        .init_resource::<voice::VoiceSignalBuffer>()
         // S06/S21: mode machine resources. The player starts in Aethon,
         // the Compact's seat — the gate network's default origin.
         .insert_resource(CurrentLocation {
@@ -217,6 +219,8 @@ fn main() {
                 comms::spawn_comm_hud,
                 combat::spawn_combat_hud,
                 network::connect_on_enter_playing,
+                #[cfg(not(target_arch = "wasm32"))]
+                voice::start_voice_thread,
                 factions::spawn_reputation_panel,
                 factions::spawn_faction_banner,
             ),
@@ -443,29 +447,24 @@ fn main() {
                 .run_if(in_any_interior),
         )
         // --- All InGame modes (contracts keep evaluating everywhere) ---
-        // Split into two `add_systems` groups: Bevy's tuple arity for
-        // `run_if` is capped, so 8 systems go in two 4-tuples sharing
-        // the same run condition.
+        .add_systems(Update, contract::evaluate_contracts.run_if(in_state(AppState::InGame)))
+        .add_systems(Update, contract::tick_deliberation.run_if(in_state(AppState::InGame)))
+        .add_systems(Update, network::poll_network.run_if(in_state(AppState::InGame)))
+        .add_systems(Update, network::reconnect_backoff.run_if(in_state(AppState::InGame)))
+        .add_systems(Update, ticker::tick_universe.run_if(in_state(AppState::InGame)))
+        .add_systems(Update, factions::reputation_panel_toggle.run_if(in_state(AppState::InGame)))
+        .add_systems(Update, soul::soul_ship_damage_events.run_if(in_state(AppState::InGame)))
+        .add_systems(Update, cryojump::jump_clock.run_if(in_state(AppState::InGame)))
+        .add_systems(Update, cryojump::pod_stasis.run_if(in_state(AppState::InGame)))
+        .add_systems(Update, comms::tick_comms.run_if(in_state(AppState::InGame)))
+        .add_systems(Update, comms::comm_bubbles.run_if(in_state(AppState::InGame)))
+        // S29: voice processing (signaling + audio feed + PTT).
         .add_systems(
             Update,
             (
-                contract::evaluate_contracts,
-                contract::tick_deliberation,
-                network::poll_network,
-                network::reconnect_backoff,
-                ticker::tick_universe,
-                factions::reputation_panel_toggle,
-                // S13: the world writes to the crew's souls (ship damage →
-                // mood shifts, logged). Runs everywhere InGame — the hull
-                // doesn't care which deck you're standing on.
-                soul::soul_ship_damage_events,
-                // S09e: the jump clock runs wherever you are — that's the
-                // point. The pod doesn't care which console you're at.
-                cryojump::jump_clock,
-                cryojump::pod_stasis,
-                // S16B: comm lines age on the HUD; bubbles follow speakers.
-                comms::tick_comms,
-                comms::comm_bubbles,
+                voice::process_voice_signals,
+                voice::audio_feed_voice,
+                voice::ptt_system,
             )
                 .run_if(in_state(AppState::InGame)),
         )

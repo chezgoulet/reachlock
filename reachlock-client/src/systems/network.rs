@@ -18,6 +18,7 @@ use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog
 use crate::systems::presence::PresenceEvents;
 use crate::systems::ship::ShipSystems;
 use crate::systems::ticker::UniverseTicker;
+use crate::systems::voice;
 
 /// Owns the live socket, if any. `None` whenever offline, still connecting
 /// via backoff, or between "dropped" and "reconnected".
@@ -298,9 +299,8 @@ pub fn poll_network(
                 // S23: content overrides changed — will re-fetch on next
                 // system entry (follow-up).
             }
-            TransportEvent::Message(ServerMessage::VoiceSignal { .. }) => {
-                // S29: voice signaling relay — will be handled by the
-                // WebRTC API layer in a follow-up.
+            TransportEvent::Message(ServerMessage::VoiceSignal { from_player, signal }) => {
+                voice::push_signal(from_player, signal);
             }
             TransportEvent::Message(ServerMessage::UniverseEvent { event }) => {
                 // Online mode: the server is the tick authority. An

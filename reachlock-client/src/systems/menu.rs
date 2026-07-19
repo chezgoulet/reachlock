@@ -1,6 +1,7 @@
 //! Main menu: title card with a selectable Launch / Settings option. The seed
 //! IS the game — show it. Settings opens the S31 settings panel.
 
+use bevy::audio::SpatialListener;
 use bevy::prelude::*;
 use bevy::ui::IsDefaultUiCamera;
 
@@ -36,6 +37,7 @@ pub fn spawn_menu(mut commands: Commands) {
             ..default()
         },
         SpaceCamera,
+        SpatialListener::default(),
         Transform::from_xyz(0.0, 60.0, 160.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
     commands.spawn((

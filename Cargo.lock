@@ -6137,15 +6137,19 @@ dependencies = [
  "bevy_ecs",
  "bevy_prototype_lyon",
  "bevy_rapier3d",
+ "crossbeam-channel",
  "ewebsock",
  "log",
  "reachlock-core",
  "reachlock-server",
+ "ringbuf",
  "ron",
  "serde",
  "serde_json",
  "tokio",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
  "webrtc",
 ]
 
@@ -6403,6 +6407,17 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "ringbuf"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe47b720588c8702e34b5979cb3271a8b1842c7cb6f57408efa70c779363488c"
+dependencies = [
+ "crossbeam-utils",
+ "portable-atomic",
+ "portable-atomic-util",
 ]
 
 [[package]]

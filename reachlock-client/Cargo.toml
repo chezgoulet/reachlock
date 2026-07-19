@@ -33,11 +33,33 @@ ewebsock = { version = "0.8", default-features = false, features = ["tls"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
+# S29: browser WebRTC APIs + audio context for WASM voice chat.
+web-sys = { version = "0.3", features = [
+    "RtcPeerConnection", "RtcConfiguration", "RtcIceServer",
+    "RtcIceCandidateInit", "RtcSessionDescriptionInit",
+    "RtcSdpType", "RtcTrackEvent",
+    "MediaStream", "MediaStreamTrack", "MediaStreamConstraints",
+    "MediaDeviceInfo", "MediaDevices", "Navigator",
+    "AudioContext", "GainNode", "PannerNode",
+    "AudioBufferSourceNode", "AudioBuffer",
+    "Window", "console",
+] }
+wasm-bindgen-futures = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # S29: WebRTC peer connection for native voice chat. The wasm32 target uses
 # the browser's built-in RTCPeerConnection via web_sys instead.
 webrtc = "0.11"
+# S29: Opus audio codec would go here but requires cmake.
+# After S29, install cmake + libopus-dev, then uncomment.
+# opus = "0.3"
+# S29: lock-free SPSC ring buffer for decoded PCM samples between the WebRTC
+# background thread and the Bevy audio feed system.
+ringbuf = "0.4"
+# S29: tokio async runtime for webrtc-rs on the background thread.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }
+# S29: message channel between Bevy main thread and the WebRTC background thread.
+crossbeam-channel = "0.5"
 
 [features]
 # `debug-names` forwards to Bevy's `debug` feature, which makes bevy_ecs carry
