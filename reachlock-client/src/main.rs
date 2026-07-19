@@ -7,6 +7,7 @@
 mod bridge;
 mod net;
 mod pixel;
+mod save_backend;
 mod settings;
 mod states;
 mod systems;
@@ -61,6 +62,9 @@ fn space_live(mode: Option<Res<State<GameMode>>>, registry: Res<SceneRegistry>) 
 }
 
 fn main() {
+    // S24: platform-appropriate save backend (filesystem native, localStorage WASM).
+    save_backend::init_save_backend();
+
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {

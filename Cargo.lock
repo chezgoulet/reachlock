@@ -5673,12 +5673,14 @@ dependencies = [
  "bevy_prototype_lyon",
  "bevy_rapier3d",
  "ewebsock",
+ "log",
  "reachlock-core",
  "reachlock-server",
  "ron",
  "serde",
  "serde_json",
  "tokio",
+ "wasm-bindgen",
 ]
 
 [[package]]
