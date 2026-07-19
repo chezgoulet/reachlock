@@ -30,4 +30,5 @@ pub mod ship;
 pub mod shipeditor;
 pub mod soul;
 pub mod starfield;
+pub mod voice;
 pub mod ticker;
