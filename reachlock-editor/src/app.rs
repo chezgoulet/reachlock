@@ -12,6 +12,10 @@ pub enum ContentType {
     Storyline,
     Item,
     EnemyArchetype,
+    ChartedSystem,
+    HullMesh,
+    RoomTemplates,
+    GateNetwork,
 }
 
 impl ContentType {
@@ -27,6 +31,10 @@ impl ContentType {
             ContentType::Storyline,
             ContentType::Item,
             ContentType::EnemyArchetype,
+            ContentType::ChartedSystem,
+            ContentType::HullMesh,
+            ContentType::RoomTemplates,
+            ContentType::GateNetwork,
         ]
     }
 
@@ -42,6 +50,10 @@ impl ContentType {
             ContentType::Storyline => "Storyline",
             ContentType::Item => "Item",
             ContentType::EnemyArchetype => "Enemy Archetype",
+            ContentType::ChartedSystem => "Charted System",
+            ContentType::HullMesh => "Hull Mesh",
+            ContentType::RoomTemplates => "Room Templates",
+            ContentType::GateNetwork => "Gate Network",
         }
     }
 
@@ -57,6 +69,10 @@ impl ContentType {
             ContentType::Storyline => "storylines",
             ContentType::Item => "items",
             ContentType::EnemyArchetype => "enemies",
+            ContentType::ChartedSystem => "systems",
+            ContentType::HullMesh => "hulls",
+            ContentType::RoomTemplates => "hulls",
+            ContentType::GateNetwork => "gate_network",
         }
     }
 }
@@ -90,13 +106,17 @@ impl EditorRegistry {
 
 pub fn build_default_registry() -> EditorRegistry {
     let mut r = EditorRegistry::new();
-    r.register(ContentType::HullFrame, crate::editors::hull::create_editor);
+    r.register(
+        ContentType::HullFrame,
+        crate::editors::hull_frame::create_editor,
+    );
     r.register(ContentType::Station, crate::editors::station::create_editor);
     r.register(ContentType::Location, crate::editors::location::create_editor);
     r.register(ContentType::Soul, crate::editors::soul::create_editor);
-    r.register(ContentType::Contract, || {
-        crate::editors::dialogue::create_editor()
-    });
+    r.register(
+        ContentType::Contract,
+        crate::editors::contract::create_editor,
+    );
     r.register(ContentType::Faction, crate::editors::faction::create_editor);
     r.register(
         ContentType::EconomyGoods,
@@ -110,6 +130,22 @@ pub fn build_default_registry() -> EditorRegistry {
     r.register(
         ContentType::EnemyArchetype,
         crate::editors::enemy::create_editor,
+    );
+    r.register(
+        ContentType::ChartedSystem,
+        crate::editors::charted_system::create_editor,
+    );
+    r.register(
+        ContentType::HullMesh,
+        crate::editors::hull_mesh::create_editor,
+    );
+    r.register(
+        ContentType::RoomTemplates,
+        crate::editors::room_templates::create_editor,
+    );
+    r.register(
+        ContentType::GateNetwork,
+        crate::editors::gate_network::create_editor,
     );
     r
 }

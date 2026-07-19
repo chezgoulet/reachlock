@@ -26,6 +26,10 @@ pub fn validate_content(content_type: &ContentType, value: &serde_json::Value) -
         ContentType::Storyline => "storyline",
         ContentType::Item => "item",
         ContentType::EnemyArchetype => "enemy_archetype",
+        ContentType::ChartedSystem => "charted_system",
+        ContentType::HullMesh => "hull",
+        ContentType::RoomTemplates => "room_template",
+        ContentType::GateNetwork => "gate_network",
     };
 
     let schema_json = match std::fs::read_to_string(format!(

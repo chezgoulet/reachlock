@@ -192,28 +192,36 @@ pub struct EntitlementToken {
 }
 
 /// Signature format: HMAC-SHA256(key, "player_id|tier|expires_timestamp")
-fn sign_entitlement(player_id: &str, tier: &UniverseTier, expires: &DateTime<Utc>) -> String {
+fn server_secret() -> Result<String, &'static str> {
     let key = std::env::var("REACHLOCK_SERVER_SECRET")
-        .unwrap_or_default();
+        .map_err(|_| "server_secret_not_configured")?;
+    if key.is_empty() {
+        return Err("server_secret_not_configured");
+    }
+    Ok(key)
+}
+
+fn sign_entitlement(player_id: &str, tier: &UniverseTier, expires: &DateTime<Utc>) -> Result<String, &'static str> {
+    let key = server_secret()?;
     let msg = format!("{player_id}|{tier:?}|{}", expires.timestamp());
     let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes())
         .expect("HMAC key");
     mac.update(msg.as_bytes());
-    hex::encode(mac.finalize().into_bytes())
+    Ok(hex::encode(mac.finalize().into_bytes()))
 }
 
 /// Mint a 30-day offline token.
-pub fn mint_offline_token(player_id: &str, tier: UniverseTier) -> EntitlementToken {
+pub fn mint_offline_token(player_id: &str, tier: UniverseTier) -> Result<EntitlementToken, &'static str> {
     let now = Utc::now();
     let expires = now + chrono::TimeDelta::days(30);
-    let signature = sign_entitlement(player_id, &tier, &expires);
-    EntitlementToken {
+    let signature = sign_entitlement(player_id, &tier, &expires)?;
+    Ok(EntitlementToken {
         player_id: player_id.to_owned(),
         tier,
         issued: now,
         expires,
         signature,
-    }
+    })
 }
 
 /// Verify an offline token. Returns `Ok(entitlement)` on success or `Err(reason)`.
@@ -222,7 +230,8 @@ pub fn verify_offline_token(token: &EntitlementToken) -> Result<TierEntitlement,
     if now > token.expires {
         return Err("token_expired".into());
     }
-    let expected = sign_entitlement(&token.player_id, &token.tier, &token.expires);
+    let expected = sign_entitlement(&token.player_id, &token.tier, &token.expires)
+        .map_err(|e| format!("{e}"))?;
     if token.signature != expected {
         return Err("invalid_signature".into());
     }
@@ -257,7 +266,9 @@ pub fn verify_stripe_webhook(
         return Err("bad_stripe_signature_format");
     }
 
-    let signed_payload = format!("{timestamp}.{}", std::str::from_utf8(payload).unwrap_or(""));
+    let payload_str = std::str::from_utf8(payload)
+        .map_err(|_| "bad_stripe_payload_utf8")?;
+    let signed_payload = format!("{timestamp}.{payload_str}");
     let mut mac = Hmac::<Sha256>::new_from_slice(webhook_secret.as_bytes())
         .map_err(|_| "bad_webhook_secret")?;
     mac.update(signed_payload.as_bytes());

@@ -44,3 +44,18 @@ __pycache__/
 
 # Runtime saves (S16B: the dev save was churning in every playtest commit)
 save/
+
+# Secrets and keys — never commit
+.env
+.env.*
+*.pem
+*.key
+*.crt
+credentials.*
+secrets.*
+
+# Runtime data
+data/
+
+# Logs
+*.log

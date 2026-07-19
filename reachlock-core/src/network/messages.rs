@@ -7,14 +7,17 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::content::ContentFile;
 use crate::contract::signature::SignedEvaluation;
 use crate::contract::types::Contract;
+use crate::combat::{HostileArchetype, HostileLocation};
+use crate::galaxy::{ChartedSystem, GateNetwork};
 use crate::seed::types::{Seed, SystemId};
 use crate::universe::tier::UniverseTier;
 
 /// S23/S29: bump when adding/removing message variants so mismatched clients get
 /// a clear error instead of serde noise.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 /// S26: wraps a `ServerMessage` with an optional `trace_id` field that old
 /// clients (which don't know about this field) ignore via serde's default
@@ -82,6 +85,12 @@ pub enum ClientMessage {
     /// S29: request TURN server credentials from the server.
     #[serde(rename = "turn.request")]
     RequestTurnConfig,
+    /// WASM content distribution: a wasm client has no filesystem, so it asks
+    /// the server to push the authored content for a universe over the wire.
+    #[serde(rename = "content.request")]
+    RequestContent {
+        universe: UniverseTier,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -166,6 +175,19 @@ pub enum ServerMessage {
     /// S28: system notice (subscription grace period, server messages).
     #[serde(rename = "system.notice")]
     SystemNotice { message: String },
+    /// WASM content distribution: server pushes authored content for a
+    /// universe to a client that has no local filesystem. The client merges
+    /// this into its `ContentIndex` (spec §10, offline-first: the server adds,
+    /// it never replaces the local-mode loader).
+    #[serde(rename = "content.sync")]
+    ContentSync {
+        universe: UniverseTier,
+        files: Vec<ContentFile>,
+        hostile_archetypes: Vec<HostileArchetype>,
+        hostile_locations: Vec<HostileLocation>,
+        charted_systems: Vec<ChartedSystem>,
+        gate_network: Option<GateNetwork>,
+    },
 }
 
 /// S29: WebRTC signaling payload carried by `voice.signal` messages.
@@ -215,8 +237,8 @@ mod tests {
     }
 
     #[test]
-    fn protocol_version_is_three() {
-        assert_eq!(PROTOCOL_VERSION, 3);
+    fn protocol_version_is_four() {
+        assert_eq!(PROTOCOL_VERSION, 4);
     }
 
     #[test]
@@ -385,5 +407,37 @@ mod tests {
     fn unknown_type_is_an_error_not_a_panic() {
         let result = serde_json::from_str::<ClientMessage>(r#"{"type":"warp.core.breach"}"#);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn request_content_wire_tag() {
+        let msg = ClientMessage::RequestContent {
+            universe: UniverseTier::Classic,
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "content.request");
+        assert_eq!(json["universe"], "classic");
+    }
+
+    #[test]
+    fn content_sync_wire_tag_and_round_trip() {
+        let msg = ServerMessage::ContentSync {
+            universe: UniverseTier::Classic,
+            files: vec![],
+            hostile_archetypes: vec![],
+            hostile_locations: vec![],
+            charted_systems: vec![],
+            gate_network: None,
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "content.sync");
+        assert_eq!(json["universe"], "classic");
+        assert_eq!(json["files"], serde_json::json!([]));
+        assert_eq!(
+            serde_json::from_str::<ServerMessage>(&serde_json::to_string(&msg).unwrap()).unwrap(),
+            msg
+        );
     }
 }

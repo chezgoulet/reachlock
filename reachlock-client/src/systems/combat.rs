@@ -576,7 +576,10 @@ pub fn combat_hits(
                             match state {
                                 SubsystemState::Damaged => "DAMAGED",
                                 SubsystemState::Disabled => "DISABLED",
-                                SubsystemState::Nominal => unreachable!(),
+                                SubsystemState::Nominal => {
+                                    log::warn!("combat: nominal subsystem reached damage path — skipping");
+                                    continue;
+                                }
                             }
                         ));
                     }

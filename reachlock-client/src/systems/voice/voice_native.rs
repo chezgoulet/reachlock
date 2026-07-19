@@ -42,7 +42,7 @@ pub fn spawn_voice_thread(
     cmd_rx: Receiver<VoiceCommand>,
     evt_rx: Sender<VoiceEvent>,
     mic_rx: MicReceiver,
-) -> std::thread::JoinHandle<()> {
+) -> Result<std::thread::JoinHandle<()>, String> {
     std::thread::Builder::new()
         .name("reachlock-voice".into())
         .spawn(move || {
@@ -50,7 +50,7 @@ pub fn spawn_voice_thread(
                 .expect("failed to create tokio runtime for voice thread");
             rt.block_on(voice_loop(cmd_rx, evt_rx, mic_rx));
         })
-        .expect("failed to spawn voice thread")
+        .map_err(|e| format!("voice thread spawn failed: {e}"))
 }
 
 async fn voice_loop(

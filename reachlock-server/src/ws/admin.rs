@@ -24,14 +24,31 @@ pub fn admin_routes() -> Router<Arc<AppState>> {
         .route("/admin/audit", get(admin_audit_log))
 }
 
+/// The admin key, cached from the environment at first call. `None` means the
+/// `REACHLOCK_ADMIN_KEY` env var is missing *and* a call has already been made
+/// — admin access is permanently disabled. `Some("")` is treated the same as
+/// `None` to prevent the empty-string bypass (SHA-256 of "" is a known
+/// constant).
+fn admin_key() -> Option<String> {
+    use std::sync::OnceLock;
+    static KEY: OnceLock<Option<String>> = OnceLock::new();
+    KEY.get_or_init(|| {
+        let key = std::env::var("REACHLOCK_ADMIN_KEY").ok()?;
+        if key.is_empty() { None } else { Some(key) }
+    })
+    .clone()
+}
+
 /// Extract the admin token from the Authorization header and verify it.
-fn verify_admin(headers: &axum::http::HeaderMap, expected: &str) -> Result<&'static str, StatusCode> {
+/// Returns `Err(StatusCode::UNAUTHORIZED)` if the admin key is not configured
+/// or if the provided token does not match.
+fn verify_admin(headers: &axum::http::HeaderMap) -> Result<&'static str, StatusCode> {
+    let expected = admin_key().ok_or(StatusCode::UNAUTHORIZED)?;
     let header = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Admin "))
         .ok_or(StatusCode::UNAUTHORIZED)?;
-    // Constant-time comparison using the hash.
     let provided_hash = sha256::digest(header.as_bytes());
     let expected_hash = sha256::digest(expected.as_bytes());
     if provided_hash != expected_hash {
@@ -45,8 +62,7 @@ async fn admin_get_player(
     headers: axum::http::HeaderMap,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let _key = std::env::var("REACHLOCK_ADMIN_KEY").unwrap_or_default();
-    if let Err(status) = verify_admin(&headers, &_key) {
+    if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
     (StatusCode::OK, Json(serde_json::json!({"player_id": id, "status": "ok"})))
@@ -57,18 +73,19 @@ async fn admin_ban_player(
     headers: axum::http::HeaderMap,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let _key = std::env::var("REACHLOCK_ADMIN_KEY").unwrap_or_default();
-    if let Err(status) = verify_admin(&headers, &_key) {
+    if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
-    // Record in audit log.
+    let key_hash = admin_key()
+        .map(|k| sha256::digest(k.as_bytes()))
+        .unwrap_or_default();
     let entry = crate::services::audit::AuditEntry {
         timestamp: format!("{}", std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()),
         action: "ban".into(),
         target: id.clone(),
         detail: String::new(),
-        admin_key_hash: sha256::digest(_key.as_bytes()),
+        admin_key_hash: key_hash,
     };
     state.audit.record(entry);
     (StatusCode::OK, Json(serde_json::json!({"banned": id})))
@@ -79,8 +96,7 @@ async fn admin_unban_player(
     headers: axum::http::HeaderMap,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let _key = std::env::var("REACHLOCK_ADMIN_KEY").unwrap_or_default();
-    if let Err(status) = verify_admin(&headers, &_key) {
+    if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
     (StatusCode::OK, Json(serde_json::json!({"unbanned": id})))
@@ -90,8 +106,7 @@ async fn admin_list_universes(
     State(_state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let _key = std::env::var("REACHLOCK_ADMIN_KEY").unwrap_or_default();
-    if let Err(status) = verify_admin(&headers, &_key) {
+    if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
     (StatusCode::OK, Json(serde_json::json!({"universes": []})))
@@ -101,8 +116,7 @@ async fn admin_tick_trigger(
     State(_state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let _key = std::env::var("REACHLOCK_ADMIN_KEY").unwrap_or_default();
-    if let Err(status) = verify_admin(&headers, &_key) {
+    if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
     (StatusCode::OK, Json(serde_json::json!({"tick": "triggered"})))
@@ -112,8 +126,7 @@ async fn admin_content_purge(
     State(_state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let _key = std::env::var("REACHLOCK_ADMIN_KEY").unwrap_or_default();
-    if let Err(status) = verify_admin(&headers, &_key) {
+    if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
     (StatusCode::OK, Json(serde_json::json!({"purged": true})))
@@ -124,8 +137,7 @@ async fn admin_audit_log(
     headers: axum::http::HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let _key = std::env::var("REACHLOCK_ADMIN_KEY").unwrap_or_default();
-    if let Err(status) = verify_admin(&headers, &_key) {
+    if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
     let limit: usize = params.get("limit").and_then(|s| s.parse().ok()).unwrap_or(100);

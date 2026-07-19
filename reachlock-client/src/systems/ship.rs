@@ -43,7 +43,6 @@ pub struct Projectile {
     pub life: Timer,
     /// Damage this bolt deals on impact (fixed-point units; shared by the
     /// future S19 enemy projectiles — see `Damager`).
-    #[allow(dead_code)]
     pub damage: i64,
 }
 
@@ -73,7 +72,6 @@ pub struct Damager {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum DamageSource {
     PlayerGun,
     Ram,

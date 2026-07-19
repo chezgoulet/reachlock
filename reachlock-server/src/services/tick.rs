@@ -20,7 +20,18 @@ use tokio::time::MissedTickBehavior;
 use crate::ws::AppState;
 
 /// Path for the authoritative tick snapshot (offline-first parity).
-const SNAPSHOT_PATH: &str = "data/tick/snap.json";
+/// Override via `REACHLOCK_SNAPSHOT_PATH` env var.
+fn snapshot_path() -> &'static std::path::Path {
+    use std::path::PathBuf;
+    use std::sync::OnceLock;
+    static PATH: OnceLock<PathBuf> = OnceLock::new();
+    let s: &PathBuf = PATH.get_or_init(|| {
+        let p = std::env::var("REACHLOCK_SNAPSHOT_PATH")
+            .unwrap_or_else(|_| "data/tick/snap.json".into());
+        PathBuf::from(p)
+    });
+    s.as_path()
+}
 /// Snapshot every N ticks to avoid hammering disk.
 const SNAPSHOT_EVERY: u64 = 10;
 
@@ -29,7 +40,7 @@ pub async fn run(state: Arc<AppState>, interval_secs: u64) {
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     // The canonical universe; a prior snapshot resumes it across restarts.
-    let mut universe = match load_snapshot(Path::new(SNAPSHOT_PATH)) {
+    let mut universe = match load_snapshot(snapshot_path()) {
         Some(saved) => {
             tracing::info!("loaded tick snapshot tick_no={}", saved.tick_no);
             saved
@@ -47,7 +58,7 @@ pub async fn run(state: Arc<AppState>, interval_secs: u64) {
         }
 
         if universe.tick_no.is_multiple_of(SNAPSHOT_EVERY) {
-            if let Err(e) = write_snapshot(&universe, Path::new(SNAPSHOT_PATH)) {
+            if let Err(e) = write_snapshot(&universe, snapshot_path()) {
                 tracing::error!("tick snapshot failed: {e}");
             }
         }

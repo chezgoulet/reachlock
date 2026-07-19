@@ -202,14 +202,15 @@ pub fn apply_event(
     });
     while next.memories.len() > MEMORY_CAP {
         // Evict the lowest-weight memory; among equals the oldest goes.
-        let evict = next
+        if let Some(evict) = next
             .memories
             .iter()
             .enumerate()
             .min_by_key(|(_, m)| (m.emotional_weight, m.timestamp))
             .map(|(i, _)| i)
-            .expect("non-empty above cap");
-        next.memories.remove(evict);
+        {
+            next.memories.remove(evict);
+        }
     }
 
     // 3. Relationships move (clamped into range); the memory that moved
@@ -222,13 +223,17 @@ pub fn apply_event(
         {
             Some(r) => r,
             None => {
-                next.relationships.push(Relationship {
+                let new_rel = Relationship {
                     target_id: target.clone(),
                     trust: 0,
                     familiarity: 0,
                     history: Vec::new(),
-                });
-                next.relationships.last_mut().expect("just pushed")
+                };
+                next.relationships.push(new_rel);
+                match next.relationships.last_mut() {
+                    Some(r) => r,
+                    None => continue,
+                }
             }
         };
         rel.trust = (rel.trust + trust_delta).clamp(-1024, 1024);

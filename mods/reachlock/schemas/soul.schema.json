@@ -25,7 +25,7 @@
           "properties": {
             "id": { "type": "string" },
             "name": { "type": "string" },
-            "species": { "type": "string", "enum": ["human", "android", "robot"] },
+            "species": { "type": "string", "enum": ["human", "android", "robot", "voidborn", "xenotype"] },
             "portrait_id": { "type": "string" },
             "identity": {
               "type": "object",

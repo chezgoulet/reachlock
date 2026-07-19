@@ -384,6 +384,8 @@ impl Dispatch {
                 order: order.to_string(),
             }),
             Species::Human => None,
+            Species::Voidborn => None,
+            Species::Xenotype => None,
         }
     }
 }
@@ -721,6 +723,8 @@ mod tests {
             })
         );
         assert_eq!(dispatch.route(Species::Human, "any"), None);
+        assert_eq!(dispatch.route(Species::Voidborn, "any"), None);
+        assert_eq!(dispatch.route(Species::Xenotype, "any"), None);
 
         // The droid's sensors know something the order doesn't.
         let mut ctx = EvalContext::default();

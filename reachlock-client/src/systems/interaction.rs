@@ -19,7 +19,6 @@ use crate::systems::mode::PlayerAvatar;
 /// What kind of thing you can interact with. Pure data — no behaviour. The
 /// router turns this into an `ActivePanel`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum InteractKind {
     Talk,
     Shop,
@@ -91,7 +90,6 @@ pub struct InteractionPrompt {
 /// Which interaction panel (if any) is currently open. Set by `try_interact`
 /// on `E`; cleared by `pause::toggle_pause` (Esc). Drives the HUD.
 #[derive(Resource, Default, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum ActivePanel {
     #[default]
     None,
