@@ -17,12 +17,12 @@ clippy:
 
 # Launch the game (native).
 run:
-	WINIT_UNIX_BACKEND=x11 cargo run -p reachlock-client
+	WAYLAND_DISPLAY= WINIT_UNIX_BACKEND=x11 cargo run -p reachlock-client
 
 # Launch with Bevy's `debug` feature so ECS errors (e.g. B0001 query
 # conflicts) print real component/system names instead of a placeholder.
 run-debug:
-	cargo run -p reachlock-client --features debug-names
+	WAYLAND_DISPLAY= WINIT_UNIX_BACKEND=x11 cargo run -p reachlock-client --features debug-names
 
 # Launch the ledger server on 127.0.0.1:40711.
 server:
