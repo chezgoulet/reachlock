@@ -16,6 +16,10 @@ pub enum ContentType {
     HullMesh,
     RoomTemplates,
     GateNetwork,
+    /// Phase 2 previewer — nothing persisted; browses generated items live.
+    ItemBrowser,
+    /// Phase 2 previewer — character look explorer over the sprite generator.
+    SpriteViewer,
 }
 
 impl ContentType {
@@ -35,6 +39,8 @@ impl ContentType {
             ContentType::HullMesh,
             ContentType::RoomTemplates,
             ContentType::GateNetwork,
+            ContentType::ItemBrowser,
+            ContentType::SpriteViewer,
         ]
     }
 
@@ -54,6 +60,8 @@ impl ContentType {
             ContentType::HullMesh => "Hull Mesh",
             ContentType::RoomTemplates => "Room Templates",
             ContentType::GateNetwork => "Gate Network",
+            ContentType::ItemBrowser => "Item Browser",
+            ContentType::SpriteViewer => "Sprite Viewer",
         }
     }
 
@@ -73,6 +81,8 @@ impl ContentType {
             ContentType::HullMesh => "hulls",
             ContentType::RoomTemplates => "hulls",
             ContentType::GateNetwork => "gate_network",
+            ContentType::ItemBrowser => "items",
+            ContentType::SpriteViewer => "souls",
         }
     }
 }
@@ -146,6 +156,14 @@ pub fn build_default_registry() -> EditorRegistry {
     r.register(
         ContentType::GateNetwork,
         crate::editors::gate_network::create_editor,
+    );
+    r.register(
+        ContentType::ItemBrowser,
+        crate::editors::item_browser::create_editor,
+    );
+    r.register(
+        ContentType::SpriteViewer,
+        crate::editors::character_sprite::create_editor,
     );
     r
 }

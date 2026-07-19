@@ -231,7 +231,7 @@ pub fn verify_offline_token(token: &EntitlementToken) -> Result<TierEntitlement,
         return Err("token_expired".into());
     }
     let expected = sign_entitlement(&token.player_id, &token.tier, &token.expires)
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     if token.signature != expected {
         return Err("invalid_signature".into());
     }

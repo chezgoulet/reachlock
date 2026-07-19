@@ -1,3 +1,4 @@
+pub mod character_sprite;
 pub mod charted_system;
 pub mod contract;
 pub mod economy;
@@ -12,6 +13,7 @@ pub mod hull;
 pub mod hull_frame;
 pub mod hull_mesh;
 pub mod item;
+pub mod item_browser;
 pub mod room_templates;
 pub mod location;
 pub mod soul;
@@ -45,5 +47,13 @@ pub fn register_all(registry: &mut super::app::EditorRegistry) {
     registry.register(
         super::app::ContentType::GateNetwork,
         gate_network::create_editor,
+    );
+    registry.register(
+        super::app::ContentType::ItemBrowser,
+        item_browser::create_editor,
+    );
+    registry.register(
+        super::app::ContentType::SpriteViewer,
+        character_sprite::create_editor,
     );
 }

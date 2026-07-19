@@ -30,6 +30,10 @@ pub fn validate_content(content_type: &ContentType, value: &serde_json::Value) -
         ContentType::HullMesh => "hull",
         ContentType::RoomTemplates => "room_template",
         ContentType::GateNetwork => "gate_network",
+        // Previewers persist nothing; no schema applies.
+        ContentType::ItemBrowser | ContentType::SpriteViewer => {
+            return Vec::new();
+        }
     };
 
     let schema_json = match std::fs::read_to_string(format!(
