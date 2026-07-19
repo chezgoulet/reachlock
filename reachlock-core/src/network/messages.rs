@@ -12,9 +12,9 @@ use crate::contract::types::Contract;
 use crate::seed::types::{Seed, SystemId};
 use crate::universe::tier::UniverseTier;
 
-/// S23: bump when adding/removing message variants so mismatched clients get
+/// S23/S29: bump when adding/removing message variants so mismatched clients get
 /// a clear error instead of serde noise.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -66,6 +66,9 @@ pub enum ClientMessage {
         target_player: String,
         signal: VoiceSignalPayload,
     },
+    /// S29: request TURN server credentials from the server.
+    #[serde(rename = "turn.request")]
+    RequestTurnConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -139,6 +142,14 @@ pub enum ServerMessage {
         from_player: String,
         signal: VoiceSignalPayload,
     },
+    /// S29: TURN server credentials (time-limited, HMAC-SHA1).
+    #[serde(rename = "turn.config")]
+    TurnConfig {
+        url: String,
+        username: String,
+        password: String,
+        ttl_secs: u32,
+    },
 }
 
 /// S29: WebRTC signaling payload carried by `voice.signal` messages.
@@ -188,19 +199,19 @@ mod tests {
     }
 
     #[test]
-    fn protocol_version_is_two() {
-        assert_eq!(PROTOCOL_VERSION, 2);
+    fn protocol_version_is_three() {
+        assert_eq!(PROTOCOL_VERSION, 3);
     }
 
     #[test]
     fn hello_wire_tag() {
         let msg = ServerMessage::Hello {
-            protocol_version: 2,
+            protocol_version: 3,
         };
         let json: serde_json::Value =
             serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
         assert_eq!(json["type"], "hello");
-        assert_eq!(json["protocol_version"], 2);
+        assert_eq!(json["protocol_version"], 3);
     }
 
     #[test]
@@ -318,6 +329,29 @@ mod tests {
         };
         let s = serde_json::to_string(&full).unwrap();
         assert_eq!(serde_json::from_str::<ClientMessage>(&s).unwrap(), full);
+    }
+
+    #[test]
+    fn request_turn_config_wire_tag() {
+        let msg = ClientMessage::RequestTurnConfig;
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "turn.request");
+    }
+
+    #[test]
+    fn turn_config_wire_tag() {
+        let msg = ServerMessage::TurnConfig {
+            url: "turn:relay.example.com:3478".into(),
+            username: "1234567890:player1".into(),
+            password: "base64hmac==".into(),
+            ttl_secs: 86400,
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "turn.config");
+        assert_eq!(json["url"], "turn:relay.example.com:3478");
+        assert_eq!(json["ttl_secs"], 86400);
     }
 
     #[test]

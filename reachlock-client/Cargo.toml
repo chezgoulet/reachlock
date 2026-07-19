@@ -37,12 +37,19 @@ wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = [
     "RtcPeerConnection", "RtcConfiguration", "RtcIceServer",
     "RtcIceCandidateInit", "RtcSessionDescriptionInit",
-    "RtcSdpType", "RtcTrackEvent",
+    "RtcSdpType", "RtcTrackEvent", "RtcTrackEventInit",
+    "RtcPeerConnectionIceEvent", "RtcPeerConnectionIceEventInit",
+    "RtcDataChannel", "RtcDataChannelInit", "RtcAnswerOptions",
+    "RtcSignalingState", "RtcIceGatheringState", "RtcIceConnectionState",
+    "RtcPeerConnectionState", "RtcRtpSender",
     "MediaStream", "MediaStreamTrack", "MediaStreamConstraints",
-    "MediaDeviceInfo", "MediaDevices", "Navigator",
-    "AudioContext", "GainNode", "PannerNode",
-    "AudioBufferSourceNode", "AudioBuffer",
+    "MediaDeviceInfo", "MediaDevices", "MediaStreamAudioSourceNode",
+    "Navigator",
+    "AudioContext", "BaseAudioContext", "AudioNode",
+    "GainNode", "PannerNode", "PanningModelType", "DistanceModelType",
+    "AudioParam", "AudioDestinationNode",
     "Window", "console",
+    "MessageEvent",
 ] }
 wasm-bindgen-futures = "0.4"
 
@@ -50,9 +57,10 @@ wasm-bindgen-futures = "0.4"
 # S29: WebRTC peer connection for native voice chat. The wasm32 target uses
 # the browser's built-in RTCPeerConnection via web_sys instead.
 webrtc = "0.11"
-# S29: Opus audio codec would go here but requires cmake.
-# After S29, install cmake + libopus-dev, then uncomment.
-# opus = "0.3"
+# S29: Opus audio codec (decode only — encode handled by webrtc-rs codec layer).
+opus = "0.3"
+# S29: microphone input capture on native (already in Cargo.lock from bevy_audio).
+cpal = "0.15"
 # S29: lock-free SPSC ring buffer for decoded PCM samples between the WebRTC
 # background thread and the Bevy audio feed system.
 ringbuf = "0.4"
@@ -60,6 +68,8 @@ ringbuf = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }
 # S29: message channel between Bevy main thread and the WebRTC background thread.
 crossbeam-channel = "0.5"
+# S29: bytes buffer for webrtc Sample (transitively available, declared for direct use).
+bytes = "1"
 
 [features]
 # `debug-names` forwards to Bevy's `debug` feature, which makes bevy_ecs carry

@@ -304,5 +304,20 @@ async fn route(
             });
             None
         }
+        ClientMessage::RequestTurnConfig => {
+            if let Some((url, username, password, ttl_secs)) =
+                crate::services::voice::VoiceRegistry::generate_turn_credentials(&session.player_id)
+            {
+                Some(ServerMessage::TurnConfig {
+                    url,
+                    username,
+                    password,
+                    ttl_secs,
+                })
+            } else {
+                // No TURN configured — it's OK, peers still work via STUN.
+                None
+            }
+        }
     }
 }

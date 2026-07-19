@@ -283,8 +283,8 @@ pub fn poll_network(
                 // S23 (presence/chat) territory — nothing to show yet.
             }
             TransportEvent::Message(ServerMessage::Hello { .. }) => {
-                // S23: protocol version verified by the server; client ignores
-                // for now — we trust the server sent the right version.
+                // S29: request TURN credentials for WebRTC voice.
+                outbox.push(ClientMessage::RequestTurnConfig);
             }
             TransportEvent::Message(ServerMessage::PlayerJoined { player_id, .. }) => {
                 presence.joined.push(player_id);
@@ -301,6 +301,9 @@ pub fn poll_network(
             }
             TransportEvent::Message(ServerMessage::VoiceSignal { from_player, signal }) => {
                 voice::push_signal(from_player, signal);
+            }
+            TransportEvent::Message(ServerMessage::TurnConfig { url, username, password, ttl_secs }) => {
+                voice::push_turn_config(url, username, password, ttl_secs);
             }
             TransportEvent::Message(ServerMessage::UniverseEvent { event }) => {
                 // Online mode: the server is the tick authority. An

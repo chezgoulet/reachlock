@@ -97,6 +97,8 @@ fn main() {
         .init_resource::<presence::ChatFeed>()
         // S29: voice signaling buffer (decoupled from network polling).
         .init_resource::<voice::VoiceSignalBuffer>()
+        // S29: microphone device enumeration (populated at runtime).
+        .init_resource::<voice::MicDevices>()
         // S06/S21: mode machine resources. The player starts in Aethon,
         // the Compact's seat — the gate network's default origin.
         .insert_resource(CurrentLocation {
@@ -191,6 +193,7 @@ fn main() {
                 menu::spawn_menu,
                 sensors::init_blip_assets,
                 setup::apply_video_settings,
+                voice::enumerate_mic_devices,
             ),
         )
         .add_systems(
@@ -465,6 +468,7 @@ fn main() {
                 voice::process_voice_signals,
                 voice::audio_feed_voice,
                 voice::ptt_system,
+                voice::mic_cycle_system,
             )
                 .run_if(in_state(AppState::InGame)),
         )

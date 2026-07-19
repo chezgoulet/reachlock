@@ -92,6 +92,8 @@ pub struct SettingsUiState {
     reset_confirm: bool,
     /// Working copy — changes are previewed live but only persisted on Apply.
     draft: Settings,
+    /// Current mic device display name (updated by sync_settings_panel).
+    mic_device_name: String,
 }
 
 impl Default for SettingsUiState {
@@ -105,6 +107,7 @@ impl Default for SettingsUiState {
             text_edit: None,
             reset_confirm: false,
             draft: Settings::default(),
+            mic_device_name: String::new(),
         }
     }
 }

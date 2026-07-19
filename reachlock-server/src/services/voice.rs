@@ -2,6 +2,11 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use hmac::{Hmac, Mac};
+use sha1::Sha1;
+use base64::Engine as _;
 
 use reachlock_core::network::VoiceSignalPayload;
 use reachlock_core::seed::types::SystemId;
@@ -74,11 +79,23 @@ impl VoiceRegistry {
         Some((target.into(), signal.clone()))
     }
 
-    /// Get TURN server configuration from env vars.
-    pub fn turn_config() -> Option<(String, String)> {
+    /// Generate time-limited TURN credentials from the shared secret.
+    /// Uses the standard TURN REST API format (coturn-compatible):
+    /// `username = "{unix_ts}:{player_id}"`, `password = base64(HMAC-SHA1(secret, username))`.
+    pub fn generate_turn_credentials(player_id: &str) -> Option<(String, String, String, u32)> {
         let url = std::env::var("REACHLOCK_TURN_URL").ok()?;
         let secret = std::env::var("REACHLOCK_TURN_SECRET").ok()?;
-        Some((url, secret))
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let username = format!("{ts}:{player_id}");
+        let mut mac = Hmac::<Sha1>::new_from_slice(secret.as_bytes())
+            .expect("HMAC key");
+        mac.update(username.as_bytes());
+        let password = base64::engine::general_purpose::STANDARD
+            .encode(&mac.finalize().into_bytes());
+        Some((url, username, password, 86_400))
     }
 }
 
