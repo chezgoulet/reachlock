@@ -3,4 +3,4 @@
 
 pub mod messages;
 
-pub use messages::{ClientMessage, ServerMessage, PROTOCOL_VERSION};
+pub use messages::{ClientMessage, ServerMessage, VoiceSignalPayload, PROTOCOL_VERSION};

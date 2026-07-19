@@ -108,8 +108,9 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
         }
     }
 
-    // S23: clean up presence on disconnect.
+    // S23/S29: clean up presence and voice on disconnect.
     if let Some(sys_id) = &current_system {
+        state.voice.leave(sys_id, &session.player_id);
         state.presence.leave(session.universe, sys_id, &out_tx).await;
         state.presence.broadcast(
             session.universe, sys_id,
@@ -139,8 +140,9 @@ async fn route(
             system_id,
             seed,
         } => {
-            // S23: update presence scoping.
+            // S23/S29: update presence and voice scoping.
             if let Some(old_id) = current_system.take() {
+                state.voice.leave(&old_id, &session.player_id);
                 state.presence.leave(universe, &old_id, out_tx).await;
                 state.presence.broadcast(
                     universe, &old_id,
@@ -150,6 +152,7 @@ async fn route(
                     },
                 ).await;
             }
+            state.voice.join(&system_id, &session.player_id);
             state.presence.join(universe, system_id.clone(), out_tx.clone()).await;
             *current_system = Some(system_id.clone());
             state.presence.broadcast(
@@ -214,6 +217,33 @@ async fn route(
                     text,
                 },
             ).await;
+            None
+        }
+        ClientMessage::VoiceSignal {
+            target_player,
+            signal,
+        } => {
+            // S29: relay voice signaling to the target peer.
+            let Some(sys_id) = current_system.as_ref() else {
+                return Some(ServerMessage::Error {
+                    message: "not in a system".into(),
+                });
+            };
+            // Update voice room state and relay.
+            state.voice.join(sys_id, &session.player_id);
+            if let Some((_to, sig)) = state.voice.relay(sys_id, &session.player_id, &target_player, &signal) {
+                // Send VoiceSignal directly to the target's out_tx isn't
+                // possible here — we only have the current session's out_tx.
+                // Instead, broadcast via PresenceManager. The target will
+                // receive it as a scoped message.
+                state.presence.broadcast(
+                    session.universe, sys_id,
+                    &ServerMessage::VoiceSignal {
+                        from_player: session.player_id.clone(),
+                        signal: sig,
+                    },
+                ).await;
+            }
             None
         }
         ClientMessage::EvalSubmit { eval } => {

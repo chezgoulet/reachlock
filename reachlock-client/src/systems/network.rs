@@ -298,6 +298,10 @@ pub fn poll_network(
                 // S23: content overrides changed — will re-fetch on next
                 // system entry (follow-up).
             }
+            TransportEvent::Message(ServerMessage::VoiceSignal { .. }) => {
+                // S29: voice signaling relay — will be handled by the
+                // WebRTC API layer in a follow-up.
+            }
             TransportEvent::Message(ServerMessage::UniverseEvent { event }) => {
                 // Online mode: the server is the tick authority. An
                 // `EconomyTick` marks one authoritative tick — replaying it

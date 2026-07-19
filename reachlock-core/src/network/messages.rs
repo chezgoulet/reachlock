@@ -60,6 +60,12 @@ pub enum ClientMessage {
         /// The message body. Server enforces ≤ 256 bytes.
         text: String,
     },
+    /// S29: voice signaling relay (offer/answer/ICE to a specific peer).
+    #[serde(rename = "voice.signal")]
+    VoiceSignal {
+        target_player: String,
+        signal: VoiceSignalPayload,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -127,6 +133,22 @@ pub enum ServerMessage {
     UniverseEvent { event: Value },
     #[serde(rename = "error")]
     Error { message: String },
+    /// S29: voice signaling relay from another player (offer/answer/ICE).
+    #[serde(rename = "voice.signal")]
+    VoiceSignal {
+        from_player: String,
+        signal: VoiceSignalPayload,
+    },
+}
+
+/// S29: WebRTC signaling payload carried by `voice.signal` messages.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum VoiceSignalPayload {
+    Offer { sdp: String },
+    Answer { sdp: String },
+    IceCandidate { candidate: String, sdp_mid: String, sdp_mline_index: u16 },
+    Hangup,
 }
 
 #[cfg(test)]
@@ -225,6 +247,31 @@ mod tests {
             serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
         assert_eq!(json["type"], "player.joined");
         assert_eq!(json["player_id"], "bob");
+    }
+
+    #[test]
+    fn voice_signal_offer_round_trips() {
+        let offer = VoiceSignalPayload::Offer { sdp: "v=0\no=...".into() };
+        let json = serde_json::to_string(&offer).unwrap();
+        assert!(json.contains("\"offer\""));
+        let back: VoiceSignalPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(offer, back);
+    }
+
+    #[test]
+    fn voice_signal_ice_candidate() {
+        let msg = ClientMessage::VoiceSignal {
+            target_player: "tib".into(),
+            signal: VoiceSignalPayload::IceCandidate {
+                candidate: "candidate:1".into(),
+                sdp_mid: "audio".into(),
+                sdp_mline_index: 0,
+            },
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "voice.signal");
+        assert_eq!(json["signal"]["type"], "ice_candidate");
     }
 
     #[test]
