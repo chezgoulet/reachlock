@@ -52,6 +52,9 @@ pub struct AudioSettings {
     pub voice_volume: f32,
     #[serde(default = "default_true")]
     pub mute_when_unfocused: bool,
+    /// Name of the preferred voice input device. `None` = OS default.
+    #[serde(default)]
+    pub voice_input_device: Option<String>,
 }
 
 impl Default for AudioSettings {
@@ -62,6 +65,7 @@ impl Default for AudioSettings {
             sfx_volume: default_one(),
             voice_volume: default_one(),
             mute_when_unfocused: default_true(),
+            voice_input_device: None,
         }
     }
 }
@@ -375,6 +379,8 @@ pub enum InputAction {
     // Reserved (do not assign defaults that collide; variant exists for S29 /
     // save-management so future sprints don't hardcode literals).
     VoicePushToTalk,
+    /// Cycle to the next available microphone input device.
+    MicCycleDevice,
     QuickSave,
     QuickLoad,
 }
@@ -444,6 +450,7 @@ impl InputAction {
             (ConsoleDigit4, KeyBind(Digit4)),
             // Reserved
             (VoicePushToTalk, KeyBind(KeyV)),
+            (MicCycleDevice, KeyBind(KeyB)),
             (QuickSave, KeyBind(F5)),
             (QuickLoad, KeyBind(F9)),
         ])
@@ -501,6 +508,7 @@ impl InputAction {
             ConsoleDigit3,
             ConsoleDigit4,
             VoicePushToTalk,
+            MicCycleDevice,
             QuickSave,
             QuickLoad,
         ]
@@ -557,6 +565,7 @@ impl InputAction {
             ConsoleDigit3 => "Console 3",
             ConsoleDigit4 => "Console 4",
             VoicePushToTalk => "Voice push-to-talk",
+            MicCycleDevice => "Cycle mic device",
             QuickSave => "Quick save",
             QuickLoad => "Quick load",
         }

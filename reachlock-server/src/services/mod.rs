@@ -9,3 +9,4 @@ pub mod providers;
 pub mod seed;
 pub mod tick;
 pub mod verify;
+pub mod voice;

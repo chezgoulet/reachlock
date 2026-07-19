@@ -24,6 +24,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # S14: BYOK keys encrypted at rest (real crypto, not base64).
 chacha20poly1305 = "0.10"
+# S29: TURN REST API credential generation (HMAC-SHA1 — coturn-compatible).
+hmac = "0.12"
+sha1 = "0.10"
+base64 = "0.22"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json", "chrono", "uuid"], optional = true }
 
 [dev-dependencies]

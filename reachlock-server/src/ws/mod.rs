@@ -25,6 +25,7 @@ use crate::services::contracts::{ContractStore, MemoryContractStore};
 use crate::services::llm_proxy::LlmService;
 use crate::services::seed::{MemorySeedStore, SeedStore};
 use crate::services::verify::VerifyService;
+use crate::services::voice::VoiceRegistry;
 
 /// A map from (universe, system_id) to session message senders in that scope.
 type SystemSenders = HashMap<(UniverseTier, SystemId), Vec<tokio::sync::mpsc::Sender<ServerMessage>>>;
@@ -102,6 +103,8 @@ pub struct AppState {
     /// When true, the WS handshake demands a token minted by `/auth/dev`.
     pub auth_required: bool,
     connected: AtomicUsize,
+    /// S29: voice chat room registry.
+    pub voice: VoiceRegistry,
 }
 
 impl AppState {
@@ -121,6 +124,7 @@ impl AppState {
             presence: PresenceManager::default(),
             auth_required: config.auth_required,
             connected: AtomicUsize::new(0),
+            voice: VoiceRegistry::default(),
         }
     }
 
