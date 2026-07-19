@@ -3,6 +3,7 @@
 //! host-mode client for LAN play).
 
 pub mod config;
+pub mod observability;
 pub mod services;
 pub mod ws;
 

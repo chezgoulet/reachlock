@@ -1,5 +1,6 @@
 //! WebSocket surface: shared state, router, connection handling.
 
+pub mod admin;
 pub mod handler;
 pub mod session;
 
@@ -17,11 +18,13 @@ use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 
 use crate::config::Config;
+use crate::services::audit::{AuditLog, MemoryAuditLog};
 use crate::services::auth::{
     DevLoginRequest, DevLoginResponse, MemorySessionStore, SessionInfo, SessionStore,
 };
 use crate::services::byok::ByokRegistration;
 use crate::services::contracts::{ContractStore, MemoryContractStore};
+use crate::services::health::HealthAggregator;
 use crate::services::llm_proxy::LlmService;
 use crate::services::seed::{MemorySeedStore, SeedStore};
 use crate::services::verify::VerifyService;
@@ -100,6 +103,12 @@ pub struct AppState {
     pub events: broadcast::Sender<ServerMessage>,
     /// S23: per-system presence registry for scoped messages.
     pub presence: PresenceManager,
+    /// S26: audit log of admin actions.
+    pub audit: Box<dyn AuditLog>,
+    /// S26: Prometheus metrics registry.
+    pub prometheus: prometheus::Registry,
+    /// S26: health check aggregator.
+    pub health: std::sync::Arc<HealthAggregator>,
     /// When true, the WS handshake demands a token minted by `/auth/dev`.
     pub auth_required: bool,
     connected: AtomicUsize,
@@ -122,6 +131,9 @@ impl AppState {
             llm: LlmService::from_env(),
             events,
             presence: PresenceManager::default(),
+            audit: Box::new(MemoryAuditLog::default()),
+            prometheus: crate::observability::init_prometheus(),
+            health: std::sync::Arc::new(HealthAggregator::default()),
             auth_required: config.auth_required,
             connected: AtomicUsize::new(0),
             voice: VoiceRegistry::default(),
@@ -142,18 +154,35 @@ impl AppState {
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
+    let admin_routes = admin::admin_routes();
     Router::new()
-        .route("/health", get(|| async { "ok" }))
+        .route("/health", get(health_handler))
+        .route("/metrics", get(metrics_handler))
         .route("/auth/dev", post(auth_dev))
         .route("/byok", post(byok_register))
-        .route("/metrics", get(metrics))
         .route("/ws", any(handler::upgrade))
+        .merge(admin_routes)
         .with_state(state)
 }
 
-/// `GET /metrics` — deliberation latency histogram, Prometheus text format.
-async fn metrics(State(state): State<Arc<AppState>>) -> String {
-    state.llm.metrics.render()
+/// `GET /metrics` — Prometheus text exposition (S26).
+async fn metrics_handler(State(state): State<Arc<AppState>>) -> String {
+    use prometheus::TextEncoder;
+    let encoder = TextEncoder::new();
+    let mut buffer = String::new();
+    encoder.encode_utf8(&state.prometheus.gather(), &mut buffer).unwrap_or_default();
+    buffer
+}
+
+/// S26: aggregate health check across all backends.
+async fn health_handler(State(state): State<Arc<AppState>>) -> (axum::http::StatusCode, Json<serde_json::Value>) {
+    let agg = state.health.aggregate();
+    let code = if agg.status == "ok" {
+        axum::http::StatusCode::OK
+    } else {
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    };
+    (code, Json(serde_json::to_value(&agg).unwrap_or_default()))
 }
 
 /// `POST /byok` — register the caller's own provider endpoint + API key

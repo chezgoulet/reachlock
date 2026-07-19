@@ -29,6 +29,10 @@ hmac = "0.12"
 sha1 = "0.10"
 base64 = "0.22"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json", "chrono", "uuid"], optional = true }
+# S26: TraceId generation (UUIDv7) and Prometheus metrics.
+uuid = { version = "1", features = ["v7"] }
+prometheus = { version = "0.13", features = [] }
+sha256 = "1"
 
 [dev-dependencies]
 tokio-tungstenite = "0.26"
