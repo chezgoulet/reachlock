@@ -279,6 +279,25 @@ pub fn poll_network(
             TransportEvent::Message(ServerMessage::PlayerEntered { .. }) => {
                 // S23 (presence/chat) territory — nothing to show yet.
             }
+            TransportEvent::Message(ServerMessage::Hello { .. }) => {
+                // S23: protocol version verified by the server; client ignores
+                // for now — we trust the server sent the right version.
+            }
+            TransportEvent::Message(ServerMessage::PlayerJoined { .. }) => {
+                // S23: remote player entered this system — will spawn a ship
+                // in a follow-up.
+            }
+            TransportEvent::Message(ServerMessage::PlayerLeft { .. }) => {
+                // S23: remote player left — will despawn in a follow-up.
+            }
+            TransportEvent::Message(ServerMessage::ChatMessage { .. }) => {
+                // S23: chat message from another player — will show in chat
+                // panel (follow-up).
+            }
+            TransportEvent::Message(ServerMessage::ContentUpdate { .. }) => {
+                // S23: content overrides changed — will re-fetch on next
+                // system entry (follow-up).
+            }
             TransportEvent::Message(ServerMessage::UniverseEvent { event }) => {
                 // Online mode: the server is the tick authority. An
                 // `EconomyTick` marks one authoritative tick — replaying it

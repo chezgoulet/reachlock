@@ -3,6 +3,7 @@
 pub mod handler;
 pub mod session;
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -10,7 +11,10 @@ use axum::extract::State;
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use reachlock_core::network::ServerMessage;
+use reachlock_core::seed::types::SystemId;
+use reachlock_core::universe::tier::UniverseTier;
 use tokio::sync::broadcast;
+use tokio::sync::RwLock;
 
 use crate::config::Config;
 use crate::services::auth::{
@@ -22,18 +26,79 @@ use crate::services::llm_proxy::LlmService;
 use crate::services::seed::{MemorySeedStore, SeedStore};
 use crate::services::verify::VerifyService;
 
+/// A map from (universe, system_id) to session message senders in that scope.
+type SystemSenders = HashMap<(UniverseTier, SystemId), Vec<tokio::sync::mpsc::Sender<ServerMessage>>>;
+
+/// S23: per-system presence registry. Holds outgoing message senders for
+/// every session currently in a given (universe, system) pair. Scoped
+/// messages (player position, chat, join/leave) go through this instead of
+/// the global broadcast channel.
+pub struct PresenceManager {
+    by_system: RwLock<SystemSenders>,
+}
+
+impl Default for PresenceManager {
+    fn default() -> Self {
+        PresenceManager {
+            by_system: RwLock::new(HashMap::new()),
+        }
+    }
+}
+
+impl PresenceManager {
+    /// Register a session's sender in a system scope.
+    pub async fn join(
+        &self,
+        universe: UniverseTier,
+        system_id: SystemId,
+        tx: tokio::sync::mpsc::Sender<ServerMessage>,
+    ) {
+        let mut map = self.by_system.write().await;
+        map.entry((universe, system_id)).or_default().push(tx);
+    }
+
+    /// Unregister a session's sender (best-effort — only removes by identity).
+    pub async fn leave(&self, universe: UniverseTier, system_id: &SystemId, tx: &tokio::sync::mpsc::Sender<ServerMessage>) {
+        let mut map = self.by_system.write().await;
+        if let Some(senders) = map.get_mut(&(universe, system_id.clone())) {
+            senders.retain(|s| !s.same_channel(tx));
+            if senders.is_empty() {
+                map.remove(&(universe, system_id.clone()));
+            }
+        }
+    }
+
+    /// Broadcast a message to all sessions in the given (universe, system).
+    pub async fn broadcast(&self, universe: UniverseTier, system_id: &SystemId, msg: &ServerMessage) {
+        let map = self.by_system.read().await;
+        if let Some(senders) = map.get(&(universe, system_id.clone())) {
+            for sender in senders {
+                let _ = sender.send(msg.clone()).await;
+            }
+        }
+    }
+
+    /// Iterate all sessions across all systems (for admin/global operations).
+    pub async fn broadcast_all(&self, msg: &ServerMessage) {
+        let map = self.by_system.read().await;
+        for senders in map.values() {
+            for sender in senders {
+                let _ = sender.send(msg.clone()).await;
+            }
+        }
+    }
+}
+
 pub struct AppState {
     pub seeds: Box<dyn SeedStore>,
     pub sessions: Box<dyn SessionStore>,
     pub verify: VerifyService,
-    /// S16B: server-side contract backup (`contract.sync` persists here —
-    /// memory by default, Postgres via the pg module).
     pub contracts: Box<dyn ContractStore>,
-    /// S14: LLM providers + rate limiting + BYOK + latency telemetry.
     pub llm: LlmService,
-    /// Universe-wide fanout: tick events, presence. Every session forwards
-    /// what it receives from here to its own socket.
+    /// Universe-wide fanout: tick events, presence.
     pub events: broadcast::Sender<ServerMessage>,
+    /// S23: per-system presence registry for scoped messages.
+    pub presence: PresenceManager,
     /// When true, the WS handshake demands a token minted by `/auth/dev`.
     pub auth_required: bool,
     connected: AtomicUsize,
@@ -53,6 +118,7 @@ impl AppState {
             contracts: Box::new(MemoryContractStore::default()),
             llm: LlmService::from_env(),
             events,
+            presence: PresenceManager::default(),
             auth_required: config.auth_required,
             connected: AtomicUsize::new(0),
         }

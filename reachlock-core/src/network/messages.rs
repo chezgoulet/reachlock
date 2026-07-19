@@ -1,5 +1,8 @@
-//! WebSocket message vocabulary (spec §8). The `type` tags on the wire are
-//! part of the protocol — tests below pin them.
+//! WebSocket message vocabulary (spec §8, extended S23). The `type` tags on
+//! the wire are part of the protocol — tests below pin them.
+//!
+//! S23 adds presence, chat, and content-deployment message variants as well
+//! as a `Hello` handshake for protocol version negotiation.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -8,6 +11,10 @@ use crate::contract::signature::SignedEvaluation;
 use crate::contract::types::Contract;
 use crate::seed::types::{Seed, SystemId};
 use crate::universe::tier::UniverseTier;
+
+/// S23: bump when adding/removing message variants so mismatched clients get
+/// a clear error instead of serde noise.
+pub const PROTOCOL_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -33,17 +40,10 @@ pub enum ClientMessage {
         call_id: String,
         contract_id: String,
         context: Value,
-        /// S16B protocol revision (additive; absent = previous behavior):
-        /// the caller's system prompt — dialogue sends the soul's voice
-        /// prompt so the model speaks in character as the TRUE system
-        /// message, not a payload hint.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         system_prompt: Option<String>,
-        /// Contract `LlmConfig` budget: per-call timeout, clamped by the
-        /// server cap. Absent = server default.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         timeout_ms: Option<u32>,
-        /// Contract `LlmConfig` budget: max tokens. Absent = server default.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         max_tokens: Option<u32>,
     },
@@ -51,20 +51,31 @@ pub enum ClientMessage {
     PlayerPosition {
         system_id: SystemId,
         /// Fixed-point coordinates (spec §5 — gameplay values are integers).
-        position: [i64; 2],
+        position: [i64; 3],
+    },
+    /// S23: send a chat message (system-scope for now; direct messages
+    /// use player-scoped chat in a future revision).
+    #[serde(rename = "chat.send")]
+    ChatSend {
+        /// The message body. Server enforces ≤ 256 bytes.
+        text: String,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ServerMessage {
+    /// S23: sent immediately on WS connect. Client must verify its own
+    /// protocol_version matches what the server expects.
+    #[serde(rename = "hello")]
+    Hello {
+        protocol_version: u32,
+    },
     #[serde(rename = "seed.canonical")]
     SeedCanonical {
         system_id: SystemId,
         seed: Seed,
         diffs: Value,
-        /// True when the submitting client was first — its tentative seed
-        /// became canonical.
         you_discovered: bool,
     },
     #[serde(rename = "eval.verified")]
@@ -85,6 +96,31 @@ pub enum ServerMessage {
     PlayerEntered {
         player_id: String,
         system_id: SystemId,
+        universe: UniverseTier,
+    },
+    /// S23: a new player has joined this system — spawn their ship.
+    #[serde(rename = "player.joined")]
+    PlayerJoined {
+        player_id: String,
+        system_id: SystemId,
+        universe: UniverseTier,
+    },
+    /// S23: a player has left the current system (disconnected or jumped).
+    #[serde(rename = "player.left")]
+    PlayerLeft {
+        player_id: String,
+        system_id: SystemId,
+    },
+    /// S23: a chat message from another player in the same system.
+    #[serde(rename = "chat.message")]
+    ChatMessage {
+        from_player: String,
+        text: String,
+    },
+    /// S23: content overrides have changed — re-fetch for the affected
+    /// universe on next system entry.
+    #[serde(rename = "content.update")]
+    ContentUpdate {
         universe: UniverseTier,
     },
     #[serde(rename = "universe.event")]
@@ -114,7 +150,7 @@ mod tests {
     fn round_trip_both_directions() {
         let client = ClientMessage::PlayerPosition {
             system_id: SystemId("s".into()),
-            position: [1024, -2048],
+            position: [1024, -2048, 0],
         };
         let s = serde_json::to_string(&client).unwrap();
         assert_eq!(serde_json::from_str::<ClientMessage>(&s).unwrap(), client);
@@ -127,6 +163,79 @@ mod tests {
         };
         let s = serde_json::to_string(&server).unwrap();
         assert_eq!(serde_json::from_str::<ServerMessage>(&s).unwrap(), server);
+    }
+
+    #[test]
+    fn protocol_version_is_two() {
+        assert_eq!(PROTOCOL_VERSION, 2);
+    }
+
+    #[test]
+    fn hello_wire_tag() {
+        let msg = ServerMessage::Hello {
+            protocol_version: 2,
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "hello");
+        assert_eq!(json["protocol_version"], 2);
+    }
+
+    #[test]
+    fn chat_send_round_trips() {
+        let msg = ClientMessage::ChatSend {
+            text: "hello".into(),
+        };
+        let s = serde_json::to_string(&msg).unwrap();
+        assert!(s.contains("\"chat.send\""));
+        assert!(s.contains("\"hello\""));
+        assert_eq!(serde_json::from_str::<ClientMessage>(&s).unwrap(), msg);
+    }
+
+    #[test]
+    fn chat_message_round_trips() {
+        let msg = ServerMessage::ChatMessage {
+            from_player: "pilot".into(),
+            text: "hi".into(),
+        };
+        let s = serde_json::to_string(&msg).unwrap();
+        assert_eq!(serde_json::from_str::<ServerMessage>(&s).unwrap(), msg);
+    }
+
+    #[test]
+    fn player_left_wire_tag() {
+        let msg = ServerMessage::PlayerLeft {
+            player_id: "alice".into(),
+            system_id: SystemId("s".into()),
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "player.left");
+        assert_eq!(json["player_id"], "alice");
+    }
+
+    #[test]
+    fn player_joined_wire_tag() {
+        let msg = ServerMessage::PlayerJoined {
+            player_id: "bob".into(),
+            system_id: SystemId("aethon".into()),
+            universe: UniverseTier::Classic,
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "player.joined");
+        assert_eq!(json["player_id"], "bob");
+    }
+
+    #[test]
+    fn content_update_wire_tag() {
+        let msg = ServerMessage::ContentUpdate {
+            universe: UniverseTier::Classic,
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "content.update");
+        assert_eq!(json["universe"], "classic");
     }
 
     /// S16B protocol revision: `llm.call` gained optional `system_prompt`,
