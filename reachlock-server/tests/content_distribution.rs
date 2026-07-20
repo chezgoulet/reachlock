@@ -74,7 +74,12 @@ async fn connect_pushes_content_sync_for_session_universe() {
 
     // First message after connect is the Hello handshake.
     let hello = recv_matching(&mut client, |m| matches!(m, ServerMessage::Hello { .. })).await;
-    assert!(matches!(hello, ServerMessage::Hello { protocol_version: 4 }));
+    assert!(matches!(
+        hello,
+        ServerMessage::Hello {
+            protocol_version: 4
+        }
+    ));
 
     // Immediately followed by a ContentSync carrying the repo's authored
     // content (universe "all" applies to every tier).

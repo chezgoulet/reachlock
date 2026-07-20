@@ -101,7 +101,6 @@ pub struct SaveFile {
     pub interior_layout: Option<reachlock_core::editor::interior::ShipInteriorLayout>,
 }
 
-
 /// Seconds since the Unix epoch, or `None` where the platform has no wall
 /// clock (`SystemTime::now` panics on wasm32-unknown-unknown).
 fn epoch_secs() -> Option<u64> {

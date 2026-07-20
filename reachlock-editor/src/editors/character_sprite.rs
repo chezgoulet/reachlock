@@ -22,9 +22,8 @@ const SPECIES: [Species; 5] = [
 ];
 
 /// The seven hair styles, in generator-index order (0 = Bald).
-const HAIR_STYLES: [&str; HAIR_STYLE_COUNT as usize] = [
-    "Bald", "Short", "Buzz", "Long", "Locs", "Bun", "Crest",
-];
+const HAIR_STYLES: [&str; HAIR_STYLE_COUNT as usize] =
+    ["Bald", "Short", "Buzz", "Long", "Locs", "Bun", "Crest"];
 
 fn species_name(s: Species) -> &'static str {
     match s {
@@ -95,9 +94,21 @@ fn composite(sprite: &reachlock_core::generator::sprite::CharacterSprite) -> egu
 fn color_control(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
     ui.horizontal(|ui| {
         ui.label(label);
-        ui.add(egui::DragValue::new(&mut color[0]).range(0..=255).prefix("R"));
-        ui.add(egui::DragValue::new(&mut color[1]).range(0..=255).prefix("G"));
-        ui.add(egui::DragValue::new(&mut color[2]).range(0..=255).prefix("B"));
+        ui.add(
+            egui::DragValue::new(&mut color[0])
+                .range(0..=255)
+                .prefix("R"),
+        );
+        ui.add(
+            egui::DragValue::new(&mut color[1])
+                .range(0..=255)
+                .prefix("G"),
+        );
+        ui.add(
+            egui::DragValue::new(&mut color[2])
+                .range(0..=255)
+                .prefix("B"),
+        );
         let c = egui::Color32::from_rgb(color[0], color[1], color[2]);
         let mut srgba = [color[0], color[1], color[2], 255u8];
         ui.color_edit_button_srgba_unmultiplied(&mut srgba);
@@ -297,10 +308,7 @@ impl Editor for CharacterSpriteViewer {
                 if is_robot {
                     ui.small("Robot: chassis + visor replace hair/skin tones.");
                     ui.separator();
-                    let mut chassis = self
-                        .config
-                        .chassis_color
-                        .unwrap_or([120, 120, 130]);
+                    let mut chassis = self.config.chassis_color.unwrap_or([120, 120, 130]);
                     color_control(ui, "Chassis", &mut chassis);
                     if self.config.chassis_color != Some(chassis) {
                         self.config.chassis_color = Some(chassis);
@@ -430,8 +438,10 @@ impl Editor for CharacterSpriteViewer {
                         });
                 }
                 ui.add_space(8.0);
-                let style = self.config.hair_style.map(|s| HAIR_STYLES
-                    [s as usize % HAIR_STYLES.len()])
+                let style = self
+                    .config
+                    .hair_style
+                    .map(|s| HAIR_STYLES[s as usize % HAIR_STYLES.len()])
                     .unwrap_or("Seed-derived");
                 ui.label(format!(
                     "{} — seed {} — hair: {}",

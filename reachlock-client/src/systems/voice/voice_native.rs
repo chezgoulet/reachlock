@@ -2,8 +2,8 @@
 //! + cpal mic capture + TURN + PTT sender.
 
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,21 +17,50 @@ pub struct TurnCreds {
 }
 
 pub enum VoiceCommand {
-    CreatePeer { player_id: String, sdp: String },
-    SetRemoteAnswer { player_id: String, sdp: String },
-    AddIceCandidate { player_id: String, candidate: String, sdp_mid: String, sdp_mline_index: u16 },
-    ClosePeer { player_id: String },
+    CreatePeer {
+        player_id: String,
+        sdp: String,
+    },
+    SetRemoteAnswer {
+        player_id: String,
+        sdp: String,
+    },
+    AddIceCandidate {
+        player_id: String,
+        candidate: String,
+        sdp_mid: String,
+        sdp_mline_index: u16,
+    },
+    ClosePeer {
+        player_id: String,
+    },
     SetMicActive(bool),
     SetTurnConfig(TurnCreds),
     Shutdown,
 }
 
 pub enum VoiceEvent {
-    LocalAnswer { player_id: String, sdp: String },
-    LocalIceCandidate { player_id: String, candidate: String, sdp_mid: String, sdp_mline_index: u16 },
-    PeerConnected { player_id: String },
-    PeerClosed { player_id: String },
-    AudioFrame { player_id: String, pcm: Vec<f32> },
+    LocalAnswer {
+        player_id: String,
+        sdp: String,
+    },
+    LocalIceCandidate {
+        player_id: String,
+        candidate: String,
+        sdp_mid: String,
+        sdp_mline_index: u16,
+    },
+    PeerConnected {
+        #[allow(dead_code)]
+        player_id: String,
+    },
+    PeerClosed {
+        player_id: String,
+    },
+    AudioFrame {
+        player_id: String,
+        pcm: Vec<f32>,
+    },
 }
 
 /// Crossbeam channel for mic PCM samples (f32 mono, 48 kHz).
@@ -94,7 +123,10 @@ async fn voice_loop(
                     };
                     let pc = match api.new_peer_connection(config).await {
                         Ok(p) => p,
-                        Err(e) => { log::error!("voice: new pc: {e}"); continue; }
+                        Err(e) => {
+                            log::error!("voice: new pc: {e}");
+                            continue;
+                        }
                     };
 
                     let evt = evt_tx.clone();
@@ -102,7 +134,9 @@ async fn voice_loop(
                     pc.on_ice_candidate(Box::new({
                         let evt = evt.clone();
                         let pid = pid.clone();
-                        move |candidate: Option<webrtc::ice_transport::ice_candidate::RTCIceCandidate>| {
+                        move |candidate: Option<
+                            webrtc::ice_transport::ice_candidate::RTCIceCandidate,
+                        >| {
                             if let Some(c) = candidate {
                                 if let Ok(init) = c.to_json() {
                                     let _ = evt.send(VoiceEvent::LocalIceCandidate {
@@ -130,27 +164,23 @@ async fn voice_loop(
                                     let mut dec = opus::Decoder::new(48000, opus::Channels::Mono)
                                         .expect("opus decoder");
                                     let mut pcm = vec![0.0f32; 960];
-                                    loop {
-                                        match track.read_rtp().await {
-                                            Ok((packet, _)) => {
-                                                if packet.payload.is_empty() { continue; }
-                                                match dec.decode_float(
-                                                    &packet.payload, &mut pcm, false,
-                                                ) {
-                                                    Ok(n) => {
-                                                        let _ = evt.send(VoiceEvent::AudioFrame {
-                                                            player_id: pid.clone(),
-                                                            pcm: pcm[..n].to_vec(),
-                                                        });
-                                                    }
-                                                    Err(e) => log::debug!("opus decode: {e}"),
-                                                }
+                                    while let Ok((packet, _)) = track.read_rtp().await {
+                                        if packet.payload.is_empty() {
+                                            continue;
+                                        }
+                                        match dec.decode_float(&packet.payload, &mut pcm, false) {
+                                            Ok(n) => {
+                                                let _ = evt.send(VoiceEvent::AudioFrame {
+                                                    player_id: pid.clone(),
+                                                    pcm: pcm[..n].to_vec(),
+                                                });
                                             }
-                                            Err(_) => break,
+                                            Err(e) => log::debug!("opus decode: {e}"),
                                         }
                                     }
                                 });
-                            }) as Pin<Box<dyn Future<Output = ()> + Send>>
+                            })
+                                as Pin<Box<dyn Future<Output = ()> + Send>>
                         }
                     }));
 
@@ -159,21 +189,28 @@ async fn voice_loop(
                         ..Default::default()
                     };
                     let local_track = Arc::new(TrackLocalStaticSample::new(
-                        codec, "audio".into(), "stream1".into(),
+                        codec,
+                        "audio".into(),
+                        "stream1".into(),
                     ));
                     let _ = pc.add_track(local_track.clone()).await;
                     local_tracks.insert(player_id.clone(), local_track);
 
                     let desc = RTCSessionDescription::offer(sdp).unwrap();
                     if let Err(e) = pc.set_remote_description(desc).await {
-                        log::error!("voice: set_remote_desc: {e}"); continue;
+                        log::error!("voice: set_remote_desc: {e}");
+                        continue;
                     }
                     let answer = match pc.create_answer(None).await {
                         Ok(a) => a,
-                        Err(e) => { log::error!("voice: create_answer: {e}"); continue; }
+                        Err(e) => {
+                            log::error!("voice: create_answer: {e}");
+                            continue;
+                        }
                     };
                     if let Err(e) = pc.set_local_description(answer).await {
-                        log::error!("voice: set_local_desc: {e}"); continue;
+                        log::error!("voice: set_local_desc: {e}");
+                        continue;
                     }
                     if let Some(local) = pc.local_description().await {
                         let _ = evt_tx.send(VoiceEvent::LocalAnswer {
@@ -181,7 +218,9 @@ async fn voice_loop(
                             sdp: local.sdp.clone(),
                         });
                     }
-                    let _ = evt_tx.send(VoiceEvent::PeerConnected { player_id: player_id.clone() });
+                    let _ = evt_tx.send(VoiceEvent::PeerConnected {
+                        player_id: player_id.clone(),
+                    });
                     peers.insert(player_id.clone(), pc);
                 }
 
@@ -194,10 +233,16 @@ async fn voice_loop(
                     }
                 }
 
-                VoiceCommand::AddIceCandidate { player_id, candidate, sdp_mid, sdp_mline_index } => {
+                VoiceCommand::AddIceCandidate {
+                    player_id,
+                    candidate,
+                    sdp_mid,
+                    sdp_mline_index,
+                } => {
                     if let Some(pc) = peers.get(&player_id) {
                         let init = webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
-                            candidate, sdp_mid: Some(sdp_mid),
+                            candidate,
+                            sdp_mid: Some(sdp_mid),
                             sdp_mline_index: Some(sdp_mline_index),
                             username_fragment: None,
                         };
@@ -215,12 +260,18 @@ async fn voice_loop(
                     let _ = evt_tx.send(VoiceEvent::PeerClosed { player_id });
                 }
 
-                VoiceCommand::SetMicActive(active) => { mic_active = active; }
+                VoiceCommand::SetMicActive(active) => {
+                    mic_active = active;
+                }
 
-                VoiceCommand::SetTurnConfig(creds) => { turn_creds = Some(creds); }
+                VoiceCommand::SetTurnConfig(creds) => {
+                    turn_creds = Some(creds);
+                }
 
                 VoiceCommand::Shutdown => {
-                    for (_, pc) in &peers { let _ = pc.close().await; }
+                    for pc in peers.values() {
+                        let _ = pc.close().await;
+                    }
                     break;
                 }
             },
@@ -249,7 +300,7 @@ async fn voice_loop(
                 prev_dropped_packets: 0,
                 prev_padding_packets: 0,
             };
-            for (_, track) in &local_tracks {
+            for track in local_tracks.values() {
                 let _ = track.write_sample(&sample).await;
             }
         }
@@ -266,7 +317,8 @@ fn ice_servers(turn: &Option<TurnCreds>) -> Vec<webrtc::ice_transport::ice_serve
             urls: vec![tc.url.clone()],
             username: tc.username.clone(),
             credential: tc.password.clone(),
-            credential_type: webrtc::ice_transport::ice_credential_type::RTCIceCredentialType::Password,
+            credential_type:
+                webrtc::ice_transport::ice_credential_type::RTCIceCredentialType::Password,
         });
     }
     servers

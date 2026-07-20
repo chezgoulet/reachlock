@@ -17,11 +17,7 @@ pub fn spawn_reconnection_task(health: Arc<HealthAggregator>) {
                     // In a full implementation, this would re-attempt a DB
                     // connection or Redis PING. For now, we re-check the
                     // health aggregator which delegates to registered checks.
-                    tracing::info!(
-                        "degradation check: {} is {:?}",
-                        check.name,
-                        check.status
-                    );
+                    tracing::info!("degradation check: {} is {:?}", check.name, check.status);
                 }
             }
         }

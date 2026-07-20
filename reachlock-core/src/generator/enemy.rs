@@ -17,23 +17,97 @@ fn pick<'a>(rng: &mut SeededRng, table: &'a [&str]) -> &'a str {
 
 fn name_table(class: &str) -> &'static [&'static str] {
     match class {
-        "drone" => &["Shiv", "Stinger", "Needle", "Spark", "Gnat", "Pincer", "Fang", "Razor", "Splinter", "Barb"],
-        "fighter" => &["Reaper", "Viper", "Mantis", "Scorpion", "Wasp", "Hornet", "Raven", "Hawk", "Falcon", "Osprey"],
-        "cruiser" => &["Leviathan", "Behemoth", "Colossus", "Titan", "Goliath", "Hydra", "Kraken", "Juggernaut", "Overlord", "Dreadnought"],
-        "bomber" => &["Hammer", "Boulder", "Anvil", "Crusher", "Meteor", "Comet", "Thumper", "Ram", "Pounder", "Battering"],
-        "carrier" => &["Hive", "Nest", "Swarm", "Brood", "Arkship", "Cradle", "Mother", "Harbor", "Bastion", "Sanctuary"],
+        "drone" => &[
+            "Shiv", "Stinger", "Needle", "Spark", "Gnat", "Pincer", "Fang", "Razor", "Splinter",
+            "Barb",
+        ],
+        "fighter" => &[
+            "Reaper", "Viper", "Mantis", "Scorpion", "Wasp", "Hornet", "Raven", "Hawk", "Falcon",
+            "Osprey",
+        ],
+        "cruiser" => &[
+            "Leviathan",
+            "Behemoth",
+            "Colossus",
+            "Titan",
+            "Goliath",
+            "Hydra",
+            "Kraken",
+            "Juggernaut",
+            "Overlord",
+            "Dreadnought",
+        ],
+        "bomber" => &[
+            "Hammer",
+            "Boulder",
+            "Anvil",
+            "Crusher",
+            "Meteor",
+            "Comet",
+            "Thumper",
+            "Ram",
+            "Pounder",
+            "Battering",
+        ],
+        "carrier" => &[
+            "Hive",
+            "Nest",
+            "Swarm",
+            "Brood",
+            "Arkship",
+            "Cradle",
+            "Mother",
+            "Harbor",
+            "Bastion",
+            "Sanctuary",
+        ],
         _ => &["Marauder", "Raider", "Bandit", "Outlaw", "Predator"],
     }
 }
 
 fn attack_patterns(class: &str) -> &'static [&'static str] {
     match class {
-        "drone" => &["swarm_rush", "hit_and_run", "flanking_pincer", "kamikaze_dive", "harassment_circle"],
-        "fighter" => &["boom_and_zoom", "energy_siphon", "missile_barrage", "jousting_pass", "shield_buster"],
-        "cruiser" => &["broadside_cannon", "turret_covering", "ion_cannon_snipe", "point_defense_wall", "railgun_salvo"],
-        "bomber" => &["torpedo_run", "carpet_bomb", "plasma_drop", "orbital_strike", "cluster_munitions"],
-        "carrier" => &["drone_spam", "boarding_pod", "tractor_trap", "mine_layer", "repair_squadron"],
-        _ => &["wild_fire", "unchained_aggression", "erratic_pursuit", "ambush_tactic"],
+        "drone" => &[
+            "swarm_rush",
+            "hit_and_run",
+            "flanking_pincer",
+            "kamikaze_dive",
+            "harassment_circle",
+        ],
+        "fighter" => &[
+            "boom_and_zoom",
+            "energy_siphon",
+            "missile_barrage",
+            "jousting_pass",
+            "shield_buster",
+        ],
+        "cruiser" => &[
+            "broadside_cannon",
+            "turret_covering",
+            "ion_cannon_snipe",
+            "point_defense_wall",
+            "railgun_salvo",
+        ],
+        "bomber" => &[
+            "torpedo_run",
+            "carpet_bomb",
+            "plasma_drop",
+            "orbital_strike",
+            "cluster_munitions",
+        ],
+        "carrier" => &[
+            "drone_spam",
+            "boarding_pod",
+            "tractor_trap",
+            "mine_layer",
+            "repair_squadron",
+        ],
+        _ => &[
+            "wild_fire",
+            "unchained_aggression",
+            "erratic_pursuit",
+            "ambush_tactic",
+        ],
     }
 }
 
@@ -60,7 +134,13 @@ pub fn generate_enemy(seed: u64, class: &str) -> EnemyArchetype {
     let shield = shield_lo + rng.next_below((shield_hi - shield_lo + 1) as u64) as i64;
     let speed = (speed_lo as i16) + rng.next_below((speed_hi - speed_lo + 1) as u64) as i16;
 
-    EnemyArchetype { name, hull, shield, speed, attack_pattern }
+    EnemyArchetype {
+        name,
+        hull,
+        shield,
+        speed,
+        attack_pattern,
+    }
 }
 
 #[cfg(test)]

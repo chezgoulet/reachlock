@@ -40,7 +40,10 @@ impl HealthAggregator {
             });
         }
         let overall = if checks.iter().any(|c| !matches!(c.status, HealthStatus::Ok)) {
-            if checks.iter().any(|c| matches!(c.status, HealthStatus::Down { .. })) {
+            if checks
+                .iter()
+                .any(|c| matches!(c.status, HealthStatus::Down { .. }))
+            {
                 "down".to_string()
             } else {
                 "degraded".to_string()
@@ -48,7 +51,10 @@ impl HealthAggregator {
         } else {
             "ok".to_string()
         };
-        AggregateHealth { status: overall, checks }
+        AggregateHealth {
+            status: overall,
+            checks,
+        }
     }
 }
 

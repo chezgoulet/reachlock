@@ -7,10 +7,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::combat::{HostileArchetype, HostileLocation};
 use crate::content::ContentFile;
 use crate::contract::signature::SignedEvaluation;
 use crate::contract::types::Contract;
-use crate::combat::{HostileArchetype, HostileLocation};
 use crate::galaxy::{ChartedSystem, GateNetwork};
 use crate::seed::types::{Seed, SystemId};
 use crate::universe::tier::UniverseTier;
@@ -88,9 +88,7 @@ pub enum ClientMessage {
     /// WASM content distribution: a wasm client has no filesystem, so it asks
     /// the server to push the authored content for a universe over the wire.
     #[serde(rename = "content.request")]
-    RequestContent {
-        universe: UniverseTier,
-    },
+    RequestContent { universe: UniverseTier },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -99,9 +97,7 @@ pub enum ServerMessage {
     /// S23: sent immediately on WS connect. Client must verify its own
     /// protocol_version matches what the server expects.
     #[serde(rename = "hello")]
-    Hello {
-        protocol_version: u32,
-    },
+    Hello { protocol_version: u32 },
     #[serde(rename = "seed.canonical")]
     SeedCanonical {
         system_id: SystemId,
@@ -144,16 +140,11 @@ pub enum ServerMessage {
     },
     /// S23: a chat message from another player in the same system.
     #[serde(rename = "chat.message")]
-    ChatMessage {
-        from_player: String,
-        text: String,
-    },
+    ChatMessage { from_player: String, text: String },
     /// S23: content overrides have changed — re-fetch for the affected
     /// universe on next system entry.
     #[serde(rename = "content.update")]
-    ContentUpdate {
-        universe: UniverseTier,
-    },
+    ContentUpdate { universe: UniverseTier },
     #[serde(rename = "universe.event")]
     UniverseEvent { event: Value },
     #[serde(rename = "error")]
@@ -194,9 +185,17 @@ pub enum ServerMessage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum VoiceSignalPayload {
-    Offer { sdp: String },
-    Answer { sdp: String },
-    IceCandidate { candidate: String, sdp_mid: String, sdp_mline_index: u16 },
+    Offer {
+        sdp: String,
+    },
+    Answer {
+        sdp: String,
+    },
+    IceCandidate {
+        candidate: String,
+        sdp_mid: String,
+        sdp_mline_index: u16,
+    },
     Hangup,
 }
 
@@ -300,7 +299,9 @@ mod tests {
 
     #[test]
     fn voice_signal_offer_round_trips() {
-        let offer = VoiceSignalPayload::Offer { sdp: "v=0\no=...".into() };
+        let offer = VoiceSignalPayload::Offer {
+            sdp: "v=0\no=...".into(),
+        };
         let json = serde_json::to_string(&offer).unwrap();
         assert!(json.contains("\"offer\""));
         let back: VoiceSignalPayload = serde_json::from_str(&json).unwrap();

@@ -5,7 +5,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -106,12 +105,18 @@ pub fn handle_offer(player_id: &str, sdp: &str) {
 
     let pc = match web_sys::RtcPeerConnection::new_with_configuration(&build_peer_config()) {
         Ok(p) => p,
-        Err(e) => { log::error!("wasm-voice: new pc: {:?}", e); return; }
+        Err(e) => {
+            log::error!("wasm-voice: new pc: {:?}", e);
+            return;
+        }
     };
 
     let panner = match ctx.create_panner() {
         Ok(p) => p,
-        Err(e) => { log::error!("wasm-voice: create_panner: {:?}", e); return; }
+        Err(e) => {
+            log::error!("wasm-voice: create_panner: {:?}", e);
+            return;
+        }
     };
     panner.set_panning_model(web_sys::PanningModelType::Hrtf);
     panner.set_ref_distance(100.0);
@@ -166,13 +171,16 @@ pub fn handle_offer(player_id: &str, sdp: &str) {
 
     // Store before async answer creation so ICE candidates arriving early can be queued
     PEERS.with(|cell| {
-        cell.borrow_mut().insert(player_id.to_owned(), PeerState {
-            pc: pc.clone(),
-            panner: panner.clone(),
-            pending_candidates: vec![],
-            _on_ice: on_ice,
-            _on_track: on_track,
-        });
+        cell.borrow_mut().insert(
+            player_id.to_owned(),
+            PeerState {
+                pc: pc.clone(),
+                panner: panner.clone(),
+                pending_candidates: vec![],
+                _on_ice: on_ice,
+                _on_track: on_track,
+            },
+        );
     });
 
     // Async: set remote offer → create answer → set local description → relay answer
@@ -182,23 +190,32 @@ pub fn handle_offer(player_id: &str, sdp: &str) {
         let mut offer_init = web_sys::RtcSessionDescriptionInit::new(web_sys::RtcSdpType::Offer);
         offer_init.set_sdp(&sdp_owned);
 
-        let _ = wasm_bindgen_futures::JsFuture::from(pc.set_remote_description(&offer_init)).await.map(|_| ()).map_err(|e| {
-            log::error!("wasm-voice: set_remote_desc: {:?}", e);
-        });
+        let _ = wasm_bindgen_futures::JsFuture::from(pc.set_remote_description(&offer_init))
+            .await
+            .map(|_| ())
+            .map_err(|e| {
+                log::error!("wasm-voice: set_remote_desc: {:?}", e);
+            });
 
         let answer_val = match wasm_bindgen_futures::JsFuture::from(pc.create_answer()).await {
             Ok(v) => v,
-            Err(e) => { log::error!("wasm-voice: create_answer: {:?}", e); return; }
+            Err(e) => {
+                log::error!("wasm-voice: create_answer: {:?}", e);
+                return;
+            }
         };
         let answer_desc: web_sys::RtcSessionDescriptionInit = answer_val.unchecked_into();
         let answer_sdp = answer_desc.get_sdp().unwrap_or_default();
 
-        let _ = wasm_bindgen_futures::JsFuture::from(pc.set_local_description(&answer_desc)).await.map_err(|e| {
-            log::error!("wasm-voice: set_local_desc: {:?}", e);
-        });
+        let _ = wasm_bindgen_futures::JsFuture::from(pc.set_local_description(&answer_desc))
+            .await
+            .map_err(|e| {
+                log::error!("wasm-voice: set_local_desc: {:?}", e);
+            });
 
         PENDING_OUT.with(|cell| {
-            cell.borrow_mut().push((pid, VoiceSignalPayload::Answer { sdp: answer_sdp }));
+            cell.borrow_mut()
+                .push((pid, VoiceSignalPayload::Answer { sdp: answer_sdp }));
         });
     });
 }
@@ -222,11 +239,15 @@ pub fn handle_ice_candidate(player_id: &str, candidate: &str, sdp_mid: &str, sdp
                 let init = web_sys::RtcIceCandidateInit::new(candidate);
                 init.set_sdp_mid(Some(sdp_mid));
                 init.set_sdp_m_line_index(Some(sdp_mline_index));
-                let promise = state.pc.add_ice_candidate_with_opt_rtc_ice_candidate_init(Some(&init));
+                let promise = state
+                    .pc
+                    .add_ice_candidate_with_opt_rtc_ice_candidate_init(Some(&init));
                 let _ = wasm_bindgen_futures::JsFuture::from(promise);
             } else {
                 state.pending_candidates.push((
-                    candidate.to_owned(), sdp_mid.to_owned(), sdp_mline_index,
+                    candidate.to_owned(),
+                    sdp_mid.to_owned(),
+                    sdp_mline_index,
                 ));
             }
         }
@@ -257,13 +278,19 @@ pub fn start_mic() {
 
     let promise = match media_devices.get_user_media_with_constraints(&constraints) {
         Ok(p) => p,
-        Err(e) => { log::error!("wasm-voice: getUserMedia: {:?}", e); return; }
+        Err(e) => {
+            log::error!("wasm-voice: getUserMedia: {:?}", e);
+            return;
+        }
     };
 
     wasm_bindgen_futures::spawn_local(async move {
         let stream_val = match wasm_bindgen_futures::JsFuture::from(promise).await {
             Ok(v) => v,
-            Err(e) => { log::error!("wasm-voice: getUserMedia failed: {:?}", e); return; }
+            Err(e) => {
+                log::error!("wasm-voice: getUserMedia failed: {:?}", e);
+                return;
+            }
         };
         let stream: web_sys::MediaStream = stream_val.into();
         MIC_STREAM.with(|cell| *cell.borrow_mut() = Some(stream.clone()));

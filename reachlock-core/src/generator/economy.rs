@@ -14,23 +14,65 @@ fn pick<'a>(rng: &mut SeededRng, table: &'a [&str]) -> &'a str {
 }
 
 const NAMES: &[&str] = &[
-    "Food Rations", "Water Canisters", "Oxygen Tanks", "Medical Kits",
-    "Fuel Cells", "Plasma Coils", "Conduit Wire", "Circuit Boards",
-    "Structural Alloy", "Reinforced Glass", "Ceramic Plate", "Nano Paste",
-    "Optical Lens", "Sensor Array", "Coolant Fluid", "Lubricant Gel",
-    "Auto-Suture Kit", "Broad-Spectrum Antibiotic", "Nerve Staple",
-    "Starship Battery", "Fusion Core", "Solar Panel", "Thruster Nozzle",
-    "Cargo Container", "Magnetic Clamp", "Tractor Beam Emitter",
-    "Data Crystal", "Encryption Module", "Comm Relay", "Navigation Chart",
-    "Weapon Capacitor", "Shield Emitter", "Targeting Matrix", "Ammo Box",
-    "Chitin Plate", "Xeno Silk", "Alien Seed Pod", "Bio-Luminescent Ink",
-    "Artifact Fragment", "Ancient Cog", "Precursor Key", "Glyph Tablet",
+    "Food Rations",
+    "Water Canisters",
+    "Oxygen Tanks",
+    "Medical Kits",
+    "Fuel Cells",
+    "Plasma Coils",
+    "Conduit Wire",
+    "Circuit Boards",
+    "Structural Alloy",
+    "Reinforced Glass",
+    "Ceramic Plate",
+    "Nano Paste",
+    "Optical Lens",
+    "Sensor Array",
+    "Coolant Fluid",
+    "Lubricant Gel",
+    "Auto-Suture Kit",
+    "Broad-Spectrum Antibiotic",
+    "Nerve Staple",
+    "Starship Battery",
+    "Fusion Core",
+    "Solar Panel",
+    "Thruster Nozzle",
+    "Cargo Container",
+    "Magnetic Clamp",
+    "Tractor Beam Emitter",
+    "Data Crystal",
+    "Encryption Module",
+    "Comm Relay",
+    "Navigation Chart",
+    "Weapon Capacitor",
+    "Shield Emitter",
+    "Targeting Matrix",
+    "Ammo Box",
+    "Chitin Plate",
+    "Xeno Silk",
+    "Alien Seed Pod",
+    "Bio-Luminescent Ink",
+    "Artifact Fragment",
+    "Ancient Cog",
+    "Precursor Key",
+    "Glyph Tablet",
 ];
 
 const CATEGORIES: &[&str] = &[
-    "consumable", "component", "medical", "fuel", "electronic",
-    "structural", "ship_part", "cargo", "weapon", "shield",
-    "data", "organic", "artifact", "xenotech",
+    "consumable",
+    "component",
+    "medical",
+    "fuel",
+    "electronic",
+    "structural",
+    "ship_part",
+    "cargo",
+    "weapon",
+    "shield",
+    "data",
+    "organic",
+    "artifact",
+    "xenotech",
 ];
 
 pub fn generate_economy_catalog(seed: u64) -> Vec<EconomyGood> {
@@ -42,7 +84,11 @@ pub fn generate_economy_catalog(seed: u64) -> Vec<EconomyGood> {
         let name = pick(&mut rng, NAMES).to_string();
         let category = pick(&mut rng, CATEGORIES).to_string();
         let base_price = 10 + rng.next_below(9991) as u32;
-        goods.push(EconomyGood { name, category, base_price });
+        goods.push(EconomyGood {
+            name,
+            category,
+            base_price,
+        });
     }
     goods
 }

@@ -23,19 +23,31 @@ impl QuotaTierConfig {
     pub fn for_tier(universe: UniverseTier) -> Self {
         match universe {
             UniverseTier::Classic => QuotaTierConfig {
-                universe, monthly_call_budget: 0, soft_limit: 0.8, hard_limit: 1.0,
+                universe,
+                monthly_call_budget: 0,
+                soft_limit: 0.8,
+                hard_limit: 1.0,
                 fatigue_message: String::new(),
             },
             UniverseTier::FairPlay => QuotaTierConfig {
-                universe, monthly_call_budget: 1000, soft_limit: 0.8, hard_limit: 1.0,
+                universe,
+                monthly_call_budget: 1000,
+                soft_limit: 0.8,
+                hard_limit: 1.0,
                 fatigue_message: "Your crew is fatigued from intensive deliberation.".into(),
             },
             UniverseTier::Spectrum => QuotaTierConfig {
-                universe, monthly_call_budget: 5000, soft_limit: 0.8, hard_limit: 1.0,
+                universe,
+                monthly_call_budget: 5000,
+                soft_limit: 0.8,
+                hard_limit: 1.0,
                 fatigue_message: "Your crew is fatigued from intensive deliberation.".into(),
             },
             UniverseTier::Byok => QuotaTierConfig {
-                universe, monthly_call_budget: u64::MAX, soft_limit: 1.0, hard_limit: 1.0,
+                universe,
+                monthly_call_budget: u64::MAX,
+                soft_limit: 1.0,
+                hard_limit: 1.0,
                 fatigue_message: String::new(),
             },
         }
@@ -57,30 +69,66 @@ impl MemoryQuotaManager {
     pub fn new() -> Self {
         use UniverseTier::*;
         let configs = vec![Classic, FairPlay, Spectrum, Byok]
-            .into_iter().map(|t| (t, QuotaTierConfig::for_tier(t))).collect();
-        MemoryQuotaManager { counters: Mutex::new(HashMap::new()), configs }
+            .into_iter()
+            .map(|t| (t, QuotaTierConfig::for_tier(t)))
+            .collect();
+        MemoryQuotaManager {
+            counters: Mutex::new(HashMap::new()),
+            configs,
+        }
     }
 }
 
-impl Default for MemoryQuotaManager { fn default() -> Self { Self::new() } }
+impl Default for MemoryQuotaManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl QuotaManager for MemoryQuotaManager {
     fn check(&self, player_id: &str, universe: UniverseTier) -> QuotaStatus {
-        let cfg = match self.configs.get(&universe) { Some(c) => c, None => return QuotaStatus::Normal };
-        if cfg.monthly_call_budget == 0 { return QuotaStatus::Exhausted; }
-        if cfg.monthly_call_budget == u64::MAX { return QuotaStatus::Normal; }
-        let usage = self.counters.lock().unwrap()
-            .get(&format!("{player_id}_{universe:?}")).copied().unwrap_or(0);
+        let cfg = match self.configs.get(&universe) {
+            Some(c) => c,
+            None => return QuotaStatus::Normal,
+        };
+        if cfg.monthly_call_budget == 0 {
+            return QuotaStatus::Exhausted;
+        }
+        if cfg.monthly_call_budget == u64::MAX {
+            return QuotaStatus::Normal;
+        }
+        let usage = self
+            .counters
+            .lock()
+            .unwrap()
+            .get(&format!("{player_id}_{universe:?}"))
+            .copied()
+            .unwrap_or(0);
         let pct = usage as f64 / cfg.monthly_call_budget as f64;
-        if pct >= cfg.hard_limit { QuotaStatus::Exhausted }
-        else if pct >= cfg.soft_limit { QuotaStatus::Fatigued { message: cfg.fatigue_message.clone() } }
-        else { QuotaStatus::Normal }
+        if pct >= cfg.hard_limit {
+            QuotaStatus::Exhausted
+        } else if pct >= cfg.soft_limit {
+            QuotaStatus::Fatigued {
+                message: cfg.fatigue_message.clone(),
+            }
+        } else {
+            QuotaStatus::Normal
+        }
     }
     fn record_call(&self, player_id: &str, universe: UniverseTier) {
-        *self.counters.lock().unwrap()
-            .entry(format!("{player_id}_{universe:?}")).or_insert(0) += 1;
+        *self
+            .counters
+            .lock()
+            .unwrap()
+            .entry(format!("{player_id}_{universe:?}"))
+            .or_insert(0) += 1;
     }
     fn monthly_usage(&self, player_id: &str, universe: UniverseTier) -> u64 {
-        self.counters.lock().unwrap().get(&format!("{player_id}_{universe:?}")).copied().unwrap_or(0)
+        self.counters
+            .lock()
+            .unwrap()
+            .get(&format!("{player_id}_{universe:?}"))
+            .copied()
+            .unwrap_or(0)
     }
 }

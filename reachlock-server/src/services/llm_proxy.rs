@@ -191,7 +191,10 @@ impl LlmService {
             system_prompt.push_str(&format!("\n\n[CREW STATUS: {message}]"));
         }
         let max_tokens = overrides.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS);
-        let max_tokens = if matches!(self.quota.check(player_id, tier), QuotaStatus::Fatigued { .. }) {
+        let max_tokens = if matches!(
+            self.quota.check(player_id, tier),
+            QuotaStatus::Fatigued { .. }
+        ) {
             (max_tokens / 2).max(1)
         } else {
             max_tokens.min(2048)
@@ -241,9 +244,19 @@ impl LlmService {
             }
             Err(_) => (0, 0),
         };
-        let cost = estimate_cost(if tier == UniverseTier::FairPlay { "fairplay" } else { "spectrum" }, prompt_tokens, completion_tokens);
+        let cost = estimate_cost(
+            if tier == UniverseTier::FairPlay {
+                "fairplay"
+            } else {
+                "spectrum"
+            },
+            prompt_tokens,
+            completion_tokens,
+        );
         let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         self.costs.record(super::cost::LlmCallRecord {
             timestamp: format!("{ts}"),
             player_id: player_id.to_string(),
@@ -257,7 +270,9 @@ impl LlmService {
             estimated_cost_micros: cost,
             success: !success,
         });
-        if let Ok(ref mut h) = self.health.try_lock() { h.record(!success); }
+        if let Ok(ref mut h) = self.health.try_lock() {
+            h.record(!success);
+        }
 
         match result {
             Ok(response) => {

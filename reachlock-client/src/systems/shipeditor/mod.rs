@@ -42,13 +42,10 @@ impl ShipConfig {
 // Re-exports for backward compatibility — callers that used
 // `crate::systems::shipeditor::Thing` still compile.
 // ---------------------------------------------------------------------------
-pub use exterior::{
-    default_config, editor_panel_text, editor_preview, editor_system, refit_cost, EditorTab,
-    ExteriorPreview, ShipEditorState,
-};
+pub use exterior::{editor_panel_text, editor_preview, editor_system, ShipEditorState};
 pub use interior::{
-    interior_editor_preview, interior_editor_system, interior_panel_text,
-    templates_for, InteriorConfig, InteriorEditorState,
+    interior_editor_preview, interior_editor_system, interior_panel_text, templates_for,
+    InteriorConfig, InteriorEditorState,
 };
 pub const FRAME_IDS: [(&str, HullClass); 3] = [
     ("frame_shuttle", HullClass::Shuttle),

@@ -26,15 +26,49 @@ const TITLE_TEMPLATES: &[&str] = &[
 ];
 
 const ADJECTIVES: &[&str] = &[
-    "Lost", "Dark", "Silent", "Broken", "Burning", "Frozen", "Crimson",
-    "Fading", "Hollow", "Dying", "Ancient", "Forgotten", "Hidden", "Last",
-    "Shattered", "Bleeding", "Empty", "Final", "Rising", "Fallen",
+    "Lost",
+    "Dark",
+    "Silent",
+    "Broken",
+    "Burning",
+    "Frozen",
+    "Crimson",
+    "Fading",
+    "Hollow",
+    "Dying",
+    "Ancient",
+    "Forgotten",
+    "Hidden",
+    "Last",
+    "Shattered",
+    "Bleeding",
+    "Empty",
+    "Final",
+    "Rising",
+    "Fallen",
 ];
 
 const NOUNS: &[&str] = &[
-    "Signal", "Gate", "Star", "Void", "Colony", "Wreck", "Station",
-    "Gauntlet", "Nexus", "Relic", "Drift", "Core", "Frontier", "Depths",
-    "Expanse", "Harbor", "Ashes", "Covenant", "Threshold", "Pilgrimage",
+    "Signal",
+    "Gate",
+    "Star",
+    "Void",
+    "Colony",
+    "Wreck",
+    "Station",
+    "Gauntlet",
+    "Nexus",
+    "Relic",
+    "Drift",
+    "Core",
+    "Frontier",
+    "Depths",
+    "Expanse",
+    "Harbor",
+    "Ashes",
+    "Covenant",
+    "Threshold",
+    "Pilgrimage",
 ];
 
 const PROLOGUES: &[&str] = &[
@@ -77,9 +111,19 @@ fn chapter_text(rng: &mut SeededRng, chapter_index: u32, chapter_count: u32) -> 
     };
 
     let specific = match rng.next_below(4) {
-        0 => format!(" In system {}, the crew faces a difficult choice.", pick(rng, NOUNS)),
-        1 => format!(" The {}-class ship pushes onward through the void.", pick(rng, ADJECTIVES)),
-        2 => format!(" {} {:04x} is the only clue left behind.", pick(rng, NOUNS), rng.next_u64() & 0xFFFF),
+        0 => format!(
+            " In system {}, the crew faces a difficult choice.",
+            pick(rng, NOUNS)
+        ),
+        1 => format!(
+            " The {}-class ship pushes onward through the void.",
+            pick(rng, ADJECTIVES)
+        ),
+        2 => format!(
+            " {} {:04x} is the only clue left behind.",
+            pick(rng, NOUNS),
+            rng.next_u64() & 0xFFFF
+        ),
         _ => String::new(),
     };
 

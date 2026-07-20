@@ -6,8 +6,8 @@ use std::sync::Arc;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::{Json, Router};
 use axum::routing::{get, post};
+use axum::{Json, Router};
 
 use super::AppState;
 
@@ -34,7 +34,11 @@ fn admin_key() -> Option<String> {
     static KEY: OnceLock<Option<String>> = OnceLock::new();
     KEY.get_or_init(|| {
         let key = std::env::var("REACHLOCK_ADMIN_KEY").ok()?;
-        if key.is_empty() { None } else { Some(key) }
+        if key.is_empty() {
+            None
+        } else {
+            Some(key)
+        }
     })
     .clone()
 }
@@ -65,7 +69,10 @@ async fn admin_get_player(
     if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
-    (StatusCode::OK, Json(serde_json::json!({"player_id": id, "status": "ok"})))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"player_id": id, "status": "ok"})),
+    )
 }
 
 async fn admin_ban_player(
@@ -80,8 +87,13 @@ async fn admin_ban_player(
         .map(|k| sha256::digest(k.as_bytes()))
         .unwrap_or_default();
     let entry = crate::services::audit::AuditEntry {
-        timestamp: format!("{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()),
+        timestamp: format!(
+            "{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+        ),
         action: "ban".into(),
         target: id.clone(),
         detail: String::new(),
@@ -119,7 +131,10 @@ async fn admin_tick_trigger(
     if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
-    (StatusCode::OK, Json(serde_json::json!({"tick": "triggered"})))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"tick": "triggered"})),
+    )
 }
 
 async fn admin_content_purge(
@@ -140,7 +155,10 @@ async fn admin_audit_log(
     if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
-    let limit: usize = params.get("limit").and_then(|s| s.parse().ok()).unwrap_or(100);
+    let limit: usize = params
+        .get("limit")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100);
     let entries = state.audit.recent(limit);
     (StatusCode::OK, Json(serde_json::json!(entries)))
 }

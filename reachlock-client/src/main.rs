@@ -21,8 +21,8 @@ use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     combat, comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions,
     galaxy_map, hud, interaction, interior, inventory, jump, landed_combat, market, menu, mode,
-    network, onboard, pause, presence, reticle, sensors, settings_ui, setup, ship, shipeditor, soul,
-    ticker, voice,
+    network, onboard, pause, presence, reticle, sensors, settings_ui, setup, ship, shipeditor,
+    soul, ticker, voice,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -450,17 +450,47 @@ fn main() {
                 .run_if(in_any_interior),
         )
         // --- All InGame modes (contracts keep evaluating everywhere) ---
-        .add_systems(Update, contract::evaluate_contracts.run_if(in_state(AppState::InGame)))
-        .add_systems(Update, contract::tick_deliberation.run_if(in_state(AppState::InGame)))
-        .add_systems(Update, network::poll_network.run_if(in_state(AppState::InGame)))
-        .add_systems(Update, network::reconnect_backoff.run_if(in_state(AppState::InGame)))
-        .add_systems(Update, ticker::tick_universe.run_if(in_state(AppState::InGame)))
-        .add_systems(Update, factions::reputation_panel_toggle.run_if(in_state(AppState::InGame)))
-        .add_systems(Update, soul::soul_ship_damage_events.run_if(in_state(AppState::InGame)))
-        .add_systems(Update, cryojump::jump_clock.run_if(in_state(AppState::InGame)))
-        .add_systems(Update, cryojump::pod_stasis.run_if(in_state(AppState::InGame)))
+        .add_systems(
+            Update,
+            contract::evaluate_contracts.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            contract::tick_deliberation.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            network::poll_network.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            network::reconnect_backoff.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            ticker::tick_universe.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            factions::reputation_panel_toggle.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            soul::soul_ship_damage_events.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            cryojump::jump_clock.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            cryojump::pod_stasis.run_if(in_state(AppState::InGame)),
+        )
         .add_systems(Update, comms::tick_comms.run_if(in_state(AppState::InGame)))
-        .add_systems(Update, comms::comm_bubbles.run_if(in_state(AppState::InGame)))
+        .add_systems(
+            Update,
+            comms::comm_bubbles.run_if(in_state(AppState::InGame)),
+        )
         // S29: voice processing (signaling + audio feed + PTT).
         .add_systems(
             Update,

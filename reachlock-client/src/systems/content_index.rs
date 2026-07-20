@@ -42,6 +42,7 @@ impl ContentIndex {
     /// offline-first: the server *adds*, it never replaces the local loader).
     /// Last-write-wins on id collisions within the typed maps. Used by wasm
     /// clients, which have no filesystem to load `mods/` from.
+    #[cfg(target_arch = "wasm32")]
     pub fn merge_sync(&mut self, sync: ContentSyncPayload) {
         for file in sync.files {
             self.files.push(file);
@@ -65,6 +66,7 @@ impl ContentIndex {
 
 /// Wire-shaped payload for `ServerMessage::ContentSync`, flattened for the
 /// client so `network.rs` doesn't need to name every field inline.
+#[cfg(target_arch = "wasm32")]
 pub struct ContentSyncPayload {
     pub files: Vec<ContentFile>,
     pub hostile_archetypes: HashMap<String, reachlock_core::combat::HostileArchetype>,

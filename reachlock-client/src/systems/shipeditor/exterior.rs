@@ -5,7 +5,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 
-use reachlock_core::content::{AssetType, ContentPayload};
+use reachlock_core::content::AssetType;
 use reachlock_core::editor::exterior::{
     compose_hull, handling, ArmorSegment, ComposedHull, Decal, Hardpoint, HullConfiguration,
     HullFrame, ItemRef, PaintScheme, PaintSlot,
@@ -20,7 +20,7 @@ use crate::systems::inventory::{save_player, PlayerInventory};
 use crate::systems::ship::PlayerShip;
 use crate::systems::ticker::UniverseTicker;
 
-use super::{frame_for, FRAME_IDS, ShipConfig};
+use super::{frame_for, ShipConfig, FRAME_IDS};
 
 // ---------------------------------------------------------------------------
 // Editor state

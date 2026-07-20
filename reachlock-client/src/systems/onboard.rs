@@ -474,49 +474,6 @@ pub fn onboard_ship_consoles(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn station_views_open_only_on_board_in_flight() {
-        // In flight, undocked, space alive: the three flight consoles open
-        // their live views.
-        for (panel, expect) in [
-            (ActivePanel::Gunner, StationView::Gunner),
-            (ActivePanel::Scanner, StationView::Scanner),
-            (ActivePanel::Miner, StationView::Miner),
-        ] {
-            assert_eq!(
-                station_view(GameMode::OnBoard, &panel, false, true),
-                Some(expect)
-            );
-        }
-    }
-
-    #[test]
-    fn station_views_stay_closed_everywhere_else() {
-        let g = ActivePanel::Gunner;
-        // Docked: config panel only, no live outside to show.
-        assert_eq!(station_view(GameMode::OnBoard, &g, true, true), None);
-        // Space scene torn down (docked boarding path): no view.
-        assert_eq!(station_view(GameMode::OnBoard, &g, false, false), None);
-        // Not on board.
-        assert_eq!(station_view(GameMode::Landed, &g, false, true), None);
-        assert_eq!(station_view(GameMode::SpaceFlight, &g, false, true), None);
-        // Non-flight consoles never open a view.
-        for panel in [
-            ActivePanel::None,
-            ActivePanel::Helm,
-            ActivePanel::Engineering,
-            ActivePanel::Nav,
-            ActivePanel::Power,
-        ] {
-            assert_eq!(station_view(GameMode::OnBoard, &panel, false, true), None);
-        }
-    }
-}
-
 /// Render the open console / order panel and handle its input (take helm,
 /// vent/refill, order a crew member). Kept under Bevy's system-param arity
 /// cap by sharing one pass over all five panels.
@@ -797,6 +754,49 @@ pub fn onboard_panels(
                 }
             }
             _ => **t = String::new(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn station_views_open_only_on_board_in_flight() {
+        // In flight, undocked, space alive: the three flight consoles open
+        // their live views.
+        for (panel, expect) in [
+            (ActivePanel::Gunner, StationView::Gunner),
+            (ActivePanel::Scanner, StationView::Scanner),
+            (ActivePanel::Miner, StationView::Miner),
+        ] {
+            assert_eq!(
+                station_view(GameMode::OnBoard, &panel, false, true),
+                Some(expect)
+            );
+        }
+    }
+
+    #[test]
+    fn station_views_stay_closed_everywhere_else() {
+        let g = ActivePanel::Gunner;
+        // Docked: config panel only, no live outside to show.
+        assert_eq!(station_view(GameMode::OnBoard, &g, true, true), None);
+        // Space scene torn down (docked boarding path): no view.
+        assert_eq!(station_view(GameMode::OnBoard, &g, false, false), None);
+        // Not on board.
+        assert_eq!(station_view(GameMode::Landed, &g, false, true), None);
+        assert_eq!(station_view(GameMode::SpaceFlight, &g, false, true), None);
+        // Non-flight consoles never open a view.
+        for panel in [
+            ActivePanel::None,
+            ActivePanel::Helm,
+            ActivePanel::Engineering,
+            ActivePanel::Nav,
+            ActivePanel::Power,
+        ] {
+            assert_eq!(station_view(GameMode::OnBoard, &panel, false, true), None);
         }
     }
 }

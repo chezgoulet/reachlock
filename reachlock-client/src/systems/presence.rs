@@ -48,7 +48,11 @@ pub fn send_player_position(
     timer.accum = 0.0;
     outbox.push(ClientMessage::PlayerPosition {
         system_id: location.system_id.clone(),
-        position: [ship_tx.translation.x as i64, ship_tx.translation.y as i64, ship_tx.translation.z as i64],
+        position: [
+            ship_tx.translation.x as i64,
+            ship_tx.translation.y as i64,
+            ship_tx.translation.z as i64,
+        ],
     });
 }
 
@@ -78,9 +82,7 @@ pub fn handle_presence_events(
             Mesh3d(mesh),
             MeshMaterial3d(mat),
             Transform::from_xyz(0.0, 0.0, 0.0),
-            RemoteShipEasing {
-                target: Vec3::ZERO,
-            },
+            RemoteShipEasing { target: Vec3::ZERO },
             Visibility::default(),
             ModeScope(GameMode::SpaceFlight),
         ));
@@ -125,6 +127,7 @@ pub struct ChatFeed {
     pub messages: VecDeque<ChatEntry>,
 }
 
+#[allow(dead_code)]
 pub struct ChatEntry {
     pub from_player: String,
     pub text: String,
@@ -137,5 +140,3 @@ pub fn push_chat_message(feed: &mut ChatFeed, from_player: String, text: String)
         feed.messages.pop_front();
     }
 }
-
-

@@ -23,18 +23,22 @@ use crate::services::audit::{AuditLog, MemoryAuditLog};
 use crate::services::auth::{
     DevLoginRequest, DevLoginResponse, MemorySessionStore, SessionInfo, SessionStore,
 };
+use crate::services::billing::{
+    create_checkout_session, create_portal_session, verify_stripe_webhook, MemorySubscriptionStore,
+    StripeWebhook, SubscriptionStatus, SubscriptionStore,
+};
 use crate::services::byok::ByokRegistration;
+use crate::services::content::ContentService;
 use crate::services::contracts::{ContractStore, MemoryContractStore};
 use crate::services::health::HealthAggregator;
 use crate::services::llm_proxy::LlmService;
 use crate::services::seed::{MemorySeedStore, SeedStore};
 use crate::services::verify::VerifyService;
-use crate::services::billing::{MemorySubscriptionStore, SubscriptionStore, StripeWebhook, SubscriptionStatus, create_checkout_session, create_portal_session, verify_stripe_webhook};
-use crate::services::content::ContentService;
 use crate::services::voice::VoiceRegistry;
 
 /// A map from (universe, system_id) to session message senders in that scope.
-type SystemSenders = HashMap<(UniverseTier, SystemId), Vec<tokio::sync::mpsc::Sender<ServerMessage>>>;
+type SystemSenders =
+    HashMap<(UniverseTier, SystemId), Vec<tokio::sync::mpsc::Sender<ServerMessage>>>;
 
 /// S23: per-system presence registry. Holds outgoing message senders for
 /// every session currently in a given (universe, system) pair. Scoped
@@ -65,7 +69,12 @@ impl PresenceManager {
     }
 
     /// Unregister a session's sender (best-effort — only removes by identity).
-    pub async fn leave(&self, universe: UniverseTier, system_id: &SystemId, tx: &tokio::sync::mpsc::Sender<ServerMessage>) {
+    pub async fn leave(
+        &self,
+        universe: UniverseTier,
+        system_id: &SystemId,
+        tx: &tokio::sync::mpsc::Sender<ServerMessage>,
+    ) {
         let mut map = self.by_system.write().await;
         if let Some(senders) = map.get_mut(&(universe, system_id.clone())) {
             senders.retain(|s| !s.same_channel(tx));
@@ -76,7 +85,12 @@ impl PresenceManager {
     }
 
     /// Broadcast a message to all sessions in the given (universe, system).
-    pub async fn broadcast(&self, universe: UniverseTier, system_id: &SystemId, msg: &ServerMessage) {
+    pub async fn broadcast(
+        &self,
+        universe: UniverseTier,
+        system_id: &SystemId,
+        msg: &ServerMessage,
+    ) {
         let map = self.by_system.read().await;
         if let Some(senders) = map.get(&(universe, system_id.clone())) {
             for sender in senders {
@@ -180,7 +194,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         // S28: billing endpoints (bearer token auth).
         .route("/billing/checkout", post(billing_checkout))
         .route("/billing/portal", post(billing_portal))
-        .route("/billing/entitlement-token", post(billing_entitlement_token))
+        .route(
+            "/billing/entitlement-token",
+            post(billing_entitlement_token),
+        )
         .merge(admin_routes)
         .with_state(state)
 }
@@ -190,12 +207,16 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> String {
     use prometheus::TextEncoder;
     let encoder = TextEncoder::new();
     let mut buffer = String::new();
-    encoder.encode_utf8(&state.prometheus.gather(), &mut buffer).unwrap_or_default();
+    encoder
+        .encode_utf8(&state.prometheus.gather(), &mut buffer)
+        .unwrap_or_default();
     buffer
 }
 
 /// S26: aggregate health check across all backends.
-async fn health_handler(State(state): State<Arc<AppState>>) -> (axum::http::StatusCode, Json<serde_json::Value>) {
+async fn health_handler(
+    State(state): State<Arc<AppState>>,
+) -> (axum::http::StatusCode, Json<serde_json::Value>) {
     let agg = state.health.aggregate();
     let code = if agg.status == "ok" {
         axum::http::StatusCode::OK
@@ -334,7 +355,10 @@ fn resolve_bearer_token(headers: &axum::http::HeaderMap, state: &AppState) -> Op
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .and_then(|token| {
-            state.sessions.resolve(token).map(|info| info.player_id.clone())
+            state
+                .sessions
+                .resolve(token)
+                .map(|info| info.player_id.clone())
         })
 }
 
@@ -360,12 +384,18 @@ async fn billing_checkout(
     let player_id = require_auth!(&headers, &state);
     let tier_str = body["universe_tier"].as_str().unwrap_or("fairplay");
     let tier: UniverseTier = tier_str.parse().map_err(|_| {
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "bad tier"})))
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "bad tier"})),
+        )
     })?;
 
     match create_checkout_session(&player_id, tier).await {
         Ok(url) => Ok(Json(serde_json::json!({"url": url}))),
-        Err(e) => Err((StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"error": e})))),
+        Err(e) => Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": e})),
+        )),
     }
 }
 
@@ -381,7 +411,10 @@ async fn billing_portal(
     ))?;
     match create_portal_session(&sub.stripe_customer_id).await {
         Ok(url) => Ok(Json(serde_json::json!({"url": url}))),
-        Err(e) => Err((StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"error": e})))),
+        Err(e) => Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": e})),
+        )),
     }
 }
 
@@ -397,10 +430,12 @@ async fn billing_entitlement_token(
     ))?;
     let token = match crate::services::billing::mint_offline_token(&player_id, sub.tier) {
         Ok(t) => t,
-        Err(e) => return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({"error": e})),
-        )),
+        Err(e) => {
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": e})),
+            ))
+        }
     };
     Ok(Json(serde_json::to_value(&token).unwrap_or_default()))
 }

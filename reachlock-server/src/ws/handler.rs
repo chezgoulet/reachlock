@@ -60,9 +60,7 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
     // WASM content distribution: push authored content for the session's
     // universe over the wire. Native clients read `mods/` from disk, but wasm
     // clients have no filesystem — the server adds, it never replaces.
-    let _ = out_tx
-        .send(state.content.sync_for(session.universe))
-        .await;
+    let _ = out_tx.send(state.content.sync_for(session.universe)).await;
 
     // Writer task: single owner of the sink.
     let mut writer = tokio::spawn(async move {
@@ -118,14 +116,21 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
     // S23/S29: clean up presence and voice on disconnect.
     if let Some(sys_id) = &current_system {
         state.voice.leave(sys_id, &session.player_id);
-        state.presence.leave(session.universe, sys_id, &out_tx).await;
-        state.presence.broadcast(
-            session.universe, sys_id,
-            &ServerMessage::PlayerLeft {
-                player_id: session.player_id.clone(),
-                system_id: sys_id.clone(),
-            },
-        ).await;
+        state
+            .presence
+            .leave(session.universe, sys_id, &out_tx)
+            .await;
+        state
+            .presence
+            .broadcast(
+                session.universe,
+                sys_id,
+                &ServerMessage::PlayerLeft {
+                    player_id: session.player_id.clone(),
+                    system_id: sys_id.clone(),
+                },
+            )
+            .await;
     }
 
     state.session_ended();
@@ -151,25 +156,36 @@ async fn route(
             if let Some(old_id) = current_system.take() {
                 state.voice.leave(&old_id, &session.player_id);
                 state.presence.leave(universe, &old_id, out_tx).await;
-                state.presence.broadcast(
-                    universe, &old_id,
-                    &ServerMessage::PlayerLeft {
-                        player_id: session.player_id.clone(),
-                        system_id: old_id.clone(),
-                    },
-                ).await;
+                state
+                    .presence
+                    .broadcast(
+                        universe,
+                        &old_id,
+                        &ServerMessage::PlayerLeft {
+                            player_id: session.player_id.clone(),
+                            system_id: old_id.clone(),
+                        },
+                    )
+                    .await;
             }
             state.voice.join(&system_id, &session.player_id);
-            state.presence.join(universe, system_id.clone(), out_tx.clone()).await;
+            state
+                .presence
+                .join(universe, system_id.clone(), out_tx.clone())
+                .await;
             *current_system = Some(system_id.clone());
-            state.presence.broadcast(
-                universe, &system_id,
-                &ServerMessage::PlayerJoined {
-                    player_id: session.player_id.clone(),
-                    system_id: system_id.clone(),
+            state
+                .presence
+                .broadcast(
                     universe,
-                },
-            ).await;
+                    &system_id,
+                    &ServerMessage::PlayerJoined {
+                        player_id: session.player_id.clone(),
+                        system_id: system_id.clone(),
+                        universe,
+                    },
+                )
+                .await;
 
             let result = state.seeds.discover(universe, &system_id, seed);
             Some(ServerMessage::SeedCanonical {
@@ -192,17 +208,21 @@ async fn route(
             position,
         } => {
             // S23: scoped presence — only players in the same system.
-            state.presence.broadcast(
-                session.universe, &system_id,
-                &ServerMessage::UniverseEvent {
-                    event: serde_json::json!({
-                        "kind": "player_position",
-                        "player": session.player_id,
-                        "system": system_id.0,
-                        "position": position,
-                    }),
-                },
-            ).await;
+            state
+                .presence
+                .broadcast(
+                    session.universe,
+                    &system_id,
+                    &ServerMessage::UniverseEvent {
+                        event: serde_json::json!({
+                            "kind": "player_position",
+                            "player": session.player_id,
+                            "system": system_id.0,
+                            "position": position,
+                        }),
+                    },
+                )
+                .await;
             None
         }
         ClientMessage::ChatSend { text } => {
@@ -217,13 +237,17 @@ async fn route(
                     message: "chat message too long (max 256 bytes)".into(),
                 });
             }
-            state.presence.broadcast(
-                session.universe, sys_id,
-                &ServerMessage::ChatMessage {
-                    from_player: session.player_id.clone(),
-                    text,
-                },
-            ).await;
+            state
+                .presence
+                .broadcast(
+                    session.universe,
+                    sys_id,
+                    &ServerMessage::ChatMessage {
+                        from_player: session.player_id.clone(),
+                        text,
+                    },
+                )
+                .await;
             None
         }
         ClientMessage::VoiceSignal {
@@ -238,30 +262,43 @@ async fn route(
             };
             // Update voice room state and relay.
             state.voice.join(sys_id, &session.player_id);
-            if let Some((_to, sig)) = state.voice.relay(sys_id, &session.player_id, &target_player, &signal) {
+            if let Some((_to, sig)) =
+                state
+                    .voice
+                    .relay(sys_id, &session.player_id, &target_player, &signal)
+            {
                 // Send VoiceSignal directly to the target's out_tx isn't
                 // possible here — we only have the current session's out_tx.
                 // Instead, broadcast via PresenceManager. The target will
                 // receive it as a scoped message.
-                state.presence.broadcast(
-                    session.universe, sys_id,
-                    &ServerMessage::VoiceSignal {
-                        from_player: session.player_id.clone(),
-                        signal: sig,
-                    },
-                ).await;
+                state
+                    .presence
+                    .broadcast(
+                        session.universe,
+                        sys_id,
+                        &ServerMessage::VoiceSignal {
+                            from_player: session.player_id.clone(),
+                            signal: sig,
+                        },
+                    )
+                    .await;
             }
             None
         }
         ClientMessage::EvalSubmit { eval } => {
             let eval_id = eval.signature.chars().take(16).collect::<String>();
-            Some(match state.verify.submit(&session.player_id, session.universe, &eval) {
-                Verdict::Accepted => ServerMessage::EvalVerified {
-                    eval_id,
-                    accepted: true,
+            Some(
+                match state
+                    .verify
+                    .submit(&session.player_id, session.universe, &eval)
+                {
+                    Verdict::Accepted => ServerMessage::EvalVerified {
+                        eval_id,
+                        accepted: true,
+                    },
+                    Verdict::Rejected(reason) => ServerMessage::EvalRejected { eval_id, reason },
                 },
-                Verdict::Rejected(reason) => ServerMessage::EvalRejected { eval_id, reason },
-            })
+            )
         }
         ClientMessage::LlmCall {
             call_id,
@@ -284,9 +321,17 @@ async fn route(
                 use crate::services::llm_proxy::CallOverrides;
                 let reply = match state
                     .llm
-                    .route(universe, &player_id, &contract_id, &context, CallOverrides {
-                        system_prompt, timeout_ms, max_tokens,
-                    })
+                    .route(
+                        universe,
+                        &player_id,
+                        &contract_id,
+                        &context,
+                        CallOverrides {
+                            system_prompt,
+                            timeout_ms,
+                            max_tokens,
+                        },
+                    )
                     .await
                 {
                     Ok(response) => ServerMessage::LlmResponse {

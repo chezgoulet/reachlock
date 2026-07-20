@@ -124,15 +124,21 @@ fn load_all(root: &Path) -> LoadedContent {
 
     for mod_id in &load_order {
         let mod_dir = root.join(mod_id);
-        load_typed_into(&mod_dir.join("combat"), &mut hostile_archetypes, |a: &HostileArchetype| {
-            a.id.clone()
-        });
-        load_typed_into(&mod_dir.join("locations"), &mut hostile_locations, |l: &HostileLocation| {
-            l.id.clone()
-        });
-        load_typed_into(&mod_dir.join("systems"), &mut charted_systems, |s: &ChartedSystem| {
-            s.id.clone()
-        });
+        load_typed_into(
+            &mod_dir.join("combat"),
+            &mut hostile_archetypes,
+            |a: &HostileArchetype| a.id.clone(),
+        );
+        load_typed_into(
+            &mod_dir.join("locations"),
+            &mut hostile_locations,
+            |l: &HostileLocation| l.id.clone(),
+        );
+        load_typed_into(
+            &mod_dir.join("systems"),
+            &mut charted_systems,
+            |s: &ChartedSystem| s.id.clone(),
+        );
         let gn_map: HashMap<String, GateNetwork> =
             load_typed(&mod_dir.join("gate_network"), |_| "core".to_string());
         if let Some((_, gn)) = gn_map.into_iter().next() {

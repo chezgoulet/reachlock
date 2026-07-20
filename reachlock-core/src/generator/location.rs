@@ -14,14 +14,37 @@ fn pick<'a>(rng: &mut SeededRng, table: &'a [&str]) -> &'a str {
 }
 
 const PREFIXES: &[&str] = &[
-    "Abandoned", "Forgotten", "Ancient", "Derelict", "Hidden", "Lost",
-    "Cursed", "Burning", "Sunken", "Floating", "Submerged", "Cratered",
+    "Abandoned",
+    "Forgotten",
+    "Ancient",
+    "Derelict",
+    "Hidden",
+    "Lost",
+    "Cursed",
+    "Burning",
+    "Sunken",
+    "Floating",
+    "Submerged",
+    "Cratered",
 ];
 
 const SUFFIXES: &[&str] = &[
-    "Station", "Outpost", "Bunker", "Vault", "Temple", "Tower",
-    "Caverns", "Depths", "Ruins", "Facility", "Colony", "Refinery",
-    "Mine", "Dock", "Archive", "Laboratory",
+    "Station",
+    "Outpost",
+    "Bunker",
+    "Vault",
+    "Temple",
+    "Tower",
+    "Caverns",
+    "Depths",
+    "Ruins",
+    "Facility",
+    "Colony",
+    "Refinery",
+    "Mine",
+    "Dock",
+    "Archive",
+    "Laboratory",
 ];
 
 fn size_params(size: &str) -> (u32, u32, u32, u32) {
@@ -45,7 +68,11 @@ pub fn generate_location(seed: u64, size: &str) -> Location {
     let room_count = room_lo + rng.next_below((room_hi - room_lo + 1) as u64) as u32;
     let enemy_count = enemy_lo + rng.next_below((enemy_hi - enemy_lo + 1) as u64) as u32;
 
-    Location { name, room_count, enemy_count }
+    Location {
+        name,
+        room_count,
+        enemy_count,
+    }
 }
 
 #[cfg(test)]

@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::Engine as _;
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
-use base64::Engine as _;
 
 use reachlock_core::network::VoiceSignalPayload;
 use reachlock_core::seed::types::SystemId;
@@ -35,7 +35,9 @@ pub struct VoiceRegistry {
 
 impl VoiceRegistry {
     pub fn new() -> Self {
-        VoiceRegistry { rooms: Mutex::new(HashMap::new()) }
+        VoiceRegistry {
+            rooms: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn join(&self, system_id: &SystemId, player_id: &str) {
@@ -44,12 +46,15 @@ impl VoiceRegistry {
             system_id: system_id.clone(),
             peers: HashMap::new(),
         });
-        room.peers.insert(player_id.into(), VoicePeerState {
-            player_id: player_id.into(),
-            muted: false,
-            speaking: false,
-            connected: false,
-        });
+        room.peers.insert(
+            player_id.into(),
+            VoicePeerState {
+                player_id: player_id.into(),
+                muted: false,
+                speaking: false,
+                connected: false,
+            },
+        );
     }
 
     pub fn leave(&self, system_id: &SystemId, player_id: &str) {
@@ -90,15 +95,16 @@ impl VoiceRegistry {
             .unwrap_or_default()
             .as_secs();
         let username = format!("{ts}:{player_id}");
-        let mut mac = Hmac::<Sha1>::new_from_slice(secret.as_bytes())
-            .expect("HMAC key");
+        let mut mac = Hmac::<Sha1>::new_from_slice(secret.as_bytes()).expect("HMAC key");
         mac.update(username.as_bytes());
-        let password = base64::engine::general_purpose::STANDARD
-            .encode(mac.finalize().into_bytes());
+        let password =
+            base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
         Some((url, username, password, 86_400))
     }
 }
 
 impl Default for VoiceRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

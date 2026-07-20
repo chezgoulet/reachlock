@@ -21,24 +21,53 @@ fn pick<'a>(rng: &mut SeededRng, table: &'a [&str]) -> &'a str {
 fn name_tables(species: &str) -> (&'static [&'static str], &'static [&'static str]) {
     match species {
         "Human" => (
-            &["Ana", "Bas", "Caz", "Dax", "Elu", "Fen", "Gus", "Hav", "Ion", "Jex", "Kai", "Lux", "Mya", "Nox", "Osa", "Pax", "Rey", "Siv", "Tor", "Vix", "Wyn", "Xan", "Yen", "Zev"],
-            &["Chen", "Drake", "Ezzo", "Farr", "Graves", "Hale", "Ito", "Jax", "Korr", "Lynx", "Moss", "Nero", "Ortiz", "Pryce", "Rho", "Shade", "Toll", "Vane", "Wren", "Yukio"],
+            &[
+                "Ana", "Bas", "Caz", "Dax", "Elu", "Fen", "Gus", "Hav", "Ion", "Jex", "Kai", "Lux",
+                "Mya", "Nox", "Osa", "Pax", "Rey", "Siv", "Tor", "Vix", "Wyn", "Xan", "Yen", "Zev",
+            ],
+            &[
+                "Chen", "Drake", "Ezzo", "Farr", "Graves", "Hale", "Ito", "Jax", "Korr", "Lynx",
+                "Moss", "Nero", "Ortiz", "Pryce", "Rho", "Shade", "Toll", "Vane", "Wren", "Yukio",
+            ],
         ),
         "Synthetic" => (
-            &["ALPHA", "BETA", "C6", "D3LTA", "E_X", "F7", "GAMMA", "H9", "IOTA", "J5", "KAPPA", "L2", "M4", "NOVA", "OMEGA", "P1", "Q7", "R5", "SIGMA", "T3", "U4", "V2", "W6", "X1", "Y0", "Z3"],
-            &["Unit", "Frame", "Chassis", "Core", "Droid", "Engine", "Golem", "Mech", "Proxy", "Shell"],
+            &[
+                "ALPHA", "BETA", "C6", "D3LTA", "E_X", "F7", "GAMMA", "H9", "IOTA", "J5", "KAPPA",
+                "L2", "M4", "NOVA", "OMEGA", "P1", "Q7", "R5", "SIGMA", "T3", "U4", "V2", "W6",
+                "X1", "Y0", "Z3",
+            ],
+            &[
+                "Unit", "Frame", "Chassis", "Core", "Droid", "Engine", "Golem", "Mech", "Proxy",
+                "Shell",
+            ],
         ),
         "Voidborn" => (
-            &["Cir", "Dusk", "Esh", "Fane", "Gloom", "Hush", "Ish", "Jinn", "Kith", "Lorn", "Mist", "Nyx", "Ombre", "Pall", "Rime", "Shade", "Tarn", "Umbra", "Vale", "Wisp", "Ymir", "Zeph"],
-            &["Night", "Shadow", "Deep", "Dark", "Star", "Void", "Dust", "Shroud"],
+            &[
+                "Cir", "Dusk", "Esh", "Fane", "Gloom", "Hush", "Ish", "Jinn", "Kith", "Lorn",
+                "Mist", "Nyx", "Ombre", "Pall", "Rime", "Shade", "Tarn", "Umbra", "Vale", "Wisp",
+                "Ymir", "Zeph",
+            ],
+            &[
+                "Night", "Shadow", "Deep", "Dark", "Star", "Void", "Dust", "Shroud",
+            ],
         ),
         "Augmented" => (
-            &["Blade", "Cypher", "Dash", "Echo", "Flux", "Ghost", "Hex", "Jolt", "Kode", "Link", "Neon", "Pixel", "Quake", "Reap", "Spark", "Tesla", "Vex", "Watt", "Zero"],
-            &["Cyte", "Dyne", "Graft", "Hack", "Mod", "Neural", "Rig", "Synth", "Tek", "Ware"],
+            &[
+                "Blade", "Cypher", "Dash", "Echo", "Flux", "Ghost", "Hex", "Jolt", "Kode", "Link",
+                "Neon", "Pixel", "Quake", "Reap", "Spark", "Tesla", "Vex", "Watt", "Zero",
+            ],
+            &[
+                "Cyte", "Dyne", "Graft", "Hack", "Mod", "Neural", "Rig", "Synth", "Tek", "Ware",
+            ],
         ),
         "Xenotype" => (
-            &["Chrr", "Fssk", "Grrk", "Hsss", "Krrk", "Mroo", "Nnnn", "Prrt", "Rrsh", "Sssk", "Trrl", "Vrrn", "Xrrk", "Yrrl", "Zrrk"],
-            &["Hive", "Nest", "Swarm", "Brood", "Caste", "Cluster", "Colony", "Horde"],
+            &[
+                "Chrr", "Fssk", "Grrk", "Hsss", "Krrk", "Mroo", "Nnnn", "Prrt", "Rrsh", "Sssk",
+                "Trrl", "Vrrn", "Xrrk", "Yrrl", "Zrrk",
+            ],
+            &[
+                "Hive", "Nest", "Swarm", "Brood", "Caste", "Cluster", "Colony", "Horde",
+            ],
         ),
         _ => (&["Nom", "One", "Two"], &["None", "Unknown"]),
     }

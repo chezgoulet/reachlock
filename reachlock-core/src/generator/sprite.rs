@@ -74,12 +74,42 @@ fn rgb(color: [u8; 3]) -> [u8; 4] {
 
 fn base_color(species: &str, rng: &mut SeededRng) -> [u8; 4] {
     match species {
-        "Human" => [rng.next_below(40) as u8 + 180, rng.next_below(30) as u8 + 160, rng.next_below(25) as u8 + 150, 255],
-        "Synthetic" => [rng.next_below(30) as u8 + 100, rng.next_below(30) as u8 + 120, rng.next_below(40) as u8 + 180, 255],
-        "Voidborn" => [rng.next_below(20) as u8 + 100, rng.next_below(20) as u8 + 100, rng.next_below(30) as u8 + 140, 255],
-        "Augmented" => [rng.next_below(40) as u8 + 180, rng.next_below(40) as u8 + 100, rng.next_below(30) as u8 + 100, 255],
-        "Xenotype" => [rng.next_below(60) as u8 + 100, rng.next_below(60) as u8 + 180, rng.next_below(40) as u8 + 80, 255],
-        _ => [rng.next_below(60) as u8 + 140, rng.next_below(60) as u8 + 140, rng.next_below(60) as u8 + 140, 255],
+        "Human" => [
+            rng.next_below(40) as u8 + 180,
+            rng.next_below(30) as u8 + 160,
+            rng.next_below(25) as u8 + 150,
+            255,
+        ],
+        "Synthetic" => [
+            rng.next_below(30) as u8 + 100,
+            rng.next_below(30) as u8 + 120,
+            rng.next_below(40) as u8 + 180,
+            255,
+        ],
+        "Voidborn" => [
+            rng.next_below(20) as u8 + 100,
+            rng.next_below(20) as u8 + 100,
+            rng.next_below(30) as u8 + 140,
+            255,
+        ],
+        "Augmented" => [
+            rng.next_below(40) as u8 + 180,
+            rng.next_below(40) as u8 + 100,
+            rng.next_below(30) as u8 + 100,
+            255,
+        ],
+        "Xenotype" => [
+            rng.next_below(60) as u8 + 100,
+            rng.next_below(60) as u8 + 180,
+            rng.next_below(40) as u8 + 80,
+            255,
+        ],
+        _ => [
+            rng.next_below(60) as u8 + 140,
+            rng.next_below(60) as u8 + 140,
+            rng.next_below(60) as u8 + 140,
+            255,
+        ],
     }
 }
 
@@ -164,7 +194,12 @@ fn outfit_metrics(species: &str) -> (i32, i32, i32) {
     }
 }
 
-fn draw_body(pixels: &mut [u8], species: &str, rng: &mut SeededRng, skin_override: Option<[u8; 3]>) -> [u8; 4] {
+fn draw_body(
+    pixels: &mut [u8],
+    species: &str,
+    rng: &mut SeededRng,
+    skin_override: Option<[u8; 3]>,
+) -> [u8; 4] {
     // Always consume the RNG so seed-derived values are order-independent.
     let skin = base_color(species, rng);
     let skin = skin_override.map(rgb).unwrap_or(skin);
@@ -176,8 +211,22 @@ fn draw_body(pixels: &mut [u8], species: &str, rng: &mut SeededRng, skin_overrid
 
     fill_circle(pixels, cx, head_y, head_r, skin);
     fill_rect(pixels, cx - torso_w / 2, torso_y, torso_w, torso_h, skin);
-    fill_rect(pixels, cx - torso_w / 2 - arm_w, torso_y + 2, arm_w, torso_h - 4, skin);
-    fill_rect(pixels, cx + torso_w / 2, torso_y + 2, arm_w, torso_h - 4, skin);
+    fill_rect(
+        pixels,
+        cx - torso_w / 2 - arm_w,
+        torso_y + 2,
+        arm_w,
+        torso_h - 4,
+        skin,
+    );
+    fill_rect(
+        pixels,
+        cx + torso_w / 2,
+        torso_y + 2,
+        arm_w,
+        torso_h - 4,
+        skin,
+    );
     fill_rect(pixels, cx - 3, leg_y, 5, leg_h, skin);
     fill_rect(pixels, cx + 2, leg_y, 5, leg_h, skin);
     skin
@@ -200,7 +249,14 @@ fn draw_outfit(
     let leg_y = torso_y + torso_h + 1;
 
     // Shirt covers the torso; pants cover the legs.
-    fill_rect(pixels, cx - torso_w / 2 + 1, torso_y + 1, torso_w - 2, torso_h - 1, shirt);
+    fill_rect(
+        pixels,
+        cx - torso_w / 2 + 1,
+        torso_y + 1,
+        torso_w - 2,
+        torso_h - 1,
+        shirt,
+    );
     fill_rect(pixels, cx - 2, leg_y, 4, leg_h - 1, pants);
     fill_rect(pixels, cx + 3, leg_y, 4, leg_h - 1, pants);
 }
@@ -252,16 +308,37 @@ fn draw_hair(
         0 => {}
         // 1 = Short: flat cap across the top of the head.
         1 => {
-            fill_rect(pixels, cx - head_r, head_y - head_r, head_r * 2, head_r / 2 + 1, color);
+            fill_rect(
+                pixels,
+                cx - head_r,
+                head_y - head_r,
+                head_r * 2,
+                head_r / 2 + 1,
+                color,
+            );
         }
         // 2 = Buzz: a thin line hugging the crown.
         2 => {
-            fill_rect(pixels, cx - head_r + 1, head_y - head_r, head_r * 2 - 2, 2, color);
+            fill_rect(
+                pixels,
+                cx - head_r + 1,
+                head_y - head_r,
+                head_r * 2 - 2,
+                2,
+                color,
+            );
         }
         // 3 = Long: side-swept panel hanging past the ear.
         3 => {
             let off = 1 + rng.next_below(3) as i32;
-            fill_rect(pixels, cx - head_r - off, head_y - head_r / 2, head_r + off, head_r, color);
+            fill_rect(
+                pixels,
+                cx - head_r - off,
+                head_y - head_r / 2,
+                head_r + off,
+                head_r,
+                color,
+            );
         }
         // 4 = Locs: a cluster of vertical strips.
         4 => {
@@ -276,7 +353,14 @@ fn draw_hair(
         }
         // 6 = Crest: a wide ridge (mohawk) down the centre.
         _ => {
-            fill_rect(pixels, cx - head_r / 2, head_y - head_r - 1, head_r, 3, color);
+            fill_rect(
+                pixels,
+                cx - head_r / 2,
+                head_y - head_r - 1,
+                head_r,
+                3,
+                color,
+            );
         }
     }
     style
@@ -291,7 +375,9 @@ fn draw_robot(
     chassis_override: Option<[u8; 3]>,
     visor_override: Option<[u8; 3]>,
 ) -> ([u8; 4], [u8; 4]) {
-    let chassis = chassis_override.map(rgb).unwrap_or_else(|| base_color(species, rng));
+    let chassis = chassis_override
+        .map(rgb)
+        .unwrap_or_else(|| base_color(species, rng));
     let visor = visor_override.map(rgb).unwrap_or_else(|| {
         let h = rng.next_below(5);
         match h {
@@ -309,10 +395,31 @@ fn draw_robot(
     let leg_y = torso_y + torso_h;
 
     // Boxy chassis: square head, blocky torso, stubby legs.
-    fill_rect(pixels, cx - head_r, head_y - head_r, head_r * 2, head_r * 2, chassis);
+    fill_rect(
+        pixels,
+        cx - head_r,
+        head_y - head_r,
+        head_r * 2,
+        head_r * 2,
+        chassis,
+    );
     fill_rect(pixels, cx - torso_w / 2, torso_y, torso_w, torso_h, chassis);
-    fill_rect(pixels, cx - torso_w / 2 - arm_w, torso_y + 2, arm_w, torso_h - 4, chassis);
-    fill_rect(pixels, cx + torso_w / 2, torso_y + 2, arm_w, torso_h - 4, chassis);
+    fill_rect(
+        pixels,
+        cx - torso_w / 2 - arm_w,
+        torso_y + 2,
+        arm_w,
+        torso_h - 4,
+        chassis,
+    );
+    fill_rect(
+        pixels,
+        cx + torso_w / 2,
+        torso_y + 2,
+        arm_w,
+        torso_h - 4,
+        chassis,
+    );
     fill_rect(pixels, cx - 3, leg_y, 5, leg_h, chassis);
     fill_rect(pixels, cx + 2, leg_y, 5, leg_h, chassis);
     // Visor band across the head.
@@ -386,9 +493,21 @@ pub fn generate_character_sprite(seed: u64, config: &CharacterLookConfig) -> Cha
 
     CharacterSprite {
         species: species.to_string(),
-        body_layer: GeneratedTexture { width: W, height: H, pixels: body_pixels },
-        outfit_layer: GeneratedTexture { width: W, height: H, pixels: outfit_pixels },
-        hair_layer: GeneratedTexture { width: W, height: H, pixels: hair_pixels },
+        body_layer: GeneratedTexture {
+            width: W,
+            height: H,
+            pixels: body_pixels,
+        },
+        outfit_layer: GeneratedTexture {
+            width: W,
+            height: H,
+            pixels: outfit_pixels,
+        },
+        hair_layer: GeneratedTexture {
+            width: W,
+            height: H,
+            pixels: hair_pixels,
+        },
         palette_key,
         hair_style_index,
     }
@@ -444,8 +563,16 @@ mod tests {
         let s = generate_character_sprite(42, &cfg);
         assert_eq!(s.hair_style_index, 5);
         // The override colors must appear somewhere in each layer.
-        assert!(s.body_layer.pixels.windows(4).any(|w| w == [10, 20, 30, 255]));
-        assert!(s.outfit_layer.pixels.windows(4).any(|w| w == [200, 10, 10, 255]));
+        assert!(s
+            .body_layer
+            .pixels
+            .windows(4)
+            .any(|w| w == [10, 20, 30, 255]));
+        assert!(s
+            .outfit_layer
+            .pixels
+            .windows(4)
+            .any(|w| w == [200, 10, 10, 255]));
         assert!(s.hair_layer.pixels.windows(4).any(|w| w == [5, 5, 5, 255]));
     }
 
@@ -469,9 +596,17 @@ mod tests {
         cfg.visor_color = Some([80, 200, 255]);
         let s = generate_character_sprite(42, &cfg);
         assert_eq!(s.hair_style_index, 0);
-        assert!(s.body_layer.pixels.windows(4).any(|w| w == [120, 120, 130, 255]));
+        assert!(s
+            .body_layer
+            .pixels
+            .windows(4)
+            .any(|w| w == [120, 120, 130, 255]));
         // The visor band must be present.
-        assert!(s.body_layer.pixels.windows(4).any(|w| w == [80, 200, 255, 255]));
+        assert!(s
+            .body_layer
+            .pixels
+            .windows(4)
+            .any(|w| w == [80, 200, 255, 255]));
         // No hair layer content should remain (style 0 draws nothing).
         assert!(!s.hair_layer.pixels.windows(4).any(|w| w[3] == 255));
     }

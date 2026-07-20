@@ -74,6 +74,7 @@ pub struct Damager {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DamageSource {
     PlayerGun,
+    #[allow(dead_code)]
     Ram,
 }
 

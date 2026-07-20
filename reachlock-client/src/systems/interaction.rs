@@ -27,11 +27,13 @@ pub enum InteractKind {
     Engineering,
     Nav,
     Log,
+    #[allow(dead_code)]
     Fuel,
     /// Mode transitions, discoverable in the world: the parked ship boards,
     /// the airlock hatch disembarks, the pilot seat takes the helm.
     Board,
     Disembark,
+    #[allow(dead_code)]
     Launch,
     TakeHelm,
     /// Climb between the ship's decks (rebuilds the interior scene on the
@@ -53,6 +55,7 @@ pub enum InteractKind {
     /// S18: the interior-refit terminal beside it — opens the interior
     /// editor (room placement on the hull grid, spec §19).
     InteriorRefit,
+    #[allow(dead_code)]
     Unknown,
 }
 
@@ -107,6 +110,7 @@ pub enum ActivePanel {
     Miner,
     Power,
     /// S12 galactic news feed.
+    #[allow(dead_code)]
     News,
     /// S17 exterior editor (spec §19), opened from a Shipyard terminal.
     ShipExterior,

@@ -93,6 +93,7 @@ pub struct SettingsUiState {
     /// Working copy — changes are previewed live but only persisted on Apply.
     draft: Settings,
     /// Current mic device display name (updated by sync_settings_panel).
+    #[allow(dead_code)]
     mic_device_name: String,
 }
 

@@ -52,7 +52,7 @@ pub struct VoiceSignalBuffer {
 }
 
 #[derive(Default)]
-struct PcmBuffer {
+pub(crate) struct PcmBuffer {
     frames: Vec<f32>,
 }
 
@@ -74,6 +74,7 @@ pub struct VoiceManager {
     #[cfg(not(target_arch = "wasm32"))]
     thread_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
     #[cfg(not(target_arch = "wasm32"))]
+    #[allow(dead_code)]
     pub mic_tx: Option<voice_native::MicSender>,
 }
 
@@ -157,7 +158,11 @@ pub fn process_voice_signals(
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(tx) = &manager.cmd_tx {
                 let _ = tx.send(voice_native::VoiceCommand::SetTurnConfig(
-                    voice_native::TurnCreds { url, username, password },
+                    voice_native::TurnCreds {
+                        url,
+                        username,
+                        password,
+                    },
                 ));
             }
             #[cfg(target_arch = "wasm32")]
@@ -177,17 +182,26 @@ pub fn process_voice_signals(
             match signal {
                 VoiceSignalPayload::Offer { sdp } => {
                     let _ = cmd_tx.send(voice_native::VoiceCommand::CreatePeer {
-                        player_id: from_player, sdp,
+                        player_id: from_player,
+                        sdp,
                     });
                 }
                 VoiceSignalPayload::Answer { sdp } => {
                     let _ = cmd_tx.send(voice_native::VoiceCommand::SetRemoteAnswer {
-                        player_id: from_player, sdp,
+                        player_id: from_player,
+                        sdp,
                     });
                 }
-                VoiceSignalPayload::IceCandidate { candidate, sdp_mid, sdp_mline_index } => {
+                VoiceSignalPayload::IceCandidate {
+                    candidate,
+                    sdp_mid,
+                    sdp_mline_index,
+                } => {
                     let _ = cmd_tx.send(voice_native::VoiceCommand::AddIceCandidate {
-                        player_id: from_player, candidate, sdp_mid, sdp_mline_index,
+                        player_id: from_player,
+                        candidate,
+                        sdp_mid,
+                        sdp_mline_index,
                     });
                 }
                 VoiceSignalPayload::Hangup => {
@@ -206,10 +220,19 @@ pub fn process_voice_signals(
                         signal: VoiceSignalPayload::Answer { sdp },
                     });
                 }
-                voice_native::VoiceEvent::LocalIceCandidate { player_id, candidate, sdp_mid, sdp_mline_index } => {
+                voice_native::VoiceEvent::LocalIceCandidate {
+                    player_id,
+                    candidate,
+                    sdp_mid,
+                    sdp_mline_index,
+                } => {
                     outbox.push(ClientMessage::VoiceSignal {
                         target_player: player_id,
-                        signal: VoiceSignalPayload::IceCandidate { candidate, sdp_mid, sdp_mline_index },
+                        signal: VoiceSignalPayload::IceCandidate {
+                            candidate,
+                            sdp_mid,
+                            sdp_mline_index,
+                        },
                     });
                 }
                 voice_native::VoiceEvent::PeerConnected { .. } => {}
@@ -236,8 +259,17 @@ pub fn process_voice_signals(
                 VoiceSignalPayload::Answer { sdp } => {
                     voice_wasm::handle_answer(&from_player, &sdp);
                 }
-                VoiceSignalPayload::IceCandidate { candidate, sdp_mid, sdp_mline_index } => {
-                    voice_wasm::handle_ice_candidate(&from_player, &candidate, &sdp_mid, sdp_mline_index);
+                VoiceSignalPayload::IceCandidate {
+                    candidate,
+                    sdp_mid,
+                    sdp_mline_index,
+                } => {
+                    voice_wasm::handle_ice_candidate(
+                        &from_player,
+                        &candidate,
+                        &sdp_mid,
+                        sdp_mline_index,
+                    );
                 }
                 VoiceSignalPayload::Hangup => {
                     voice_wasm::handle_hangup(&from_player);
@@ -353,12 +385,16 @@ pub fn mic_cycle_system(
     input: Res<ButtonInput<KeyCode>>,
     mut mic_devices: ResMut<MicDevices>,
     mut settings: ResMut<Settings>,
-    manager: Res<VoiceManager>,
+    _manager: Res<VoiceManager>,
 ) {
     let key = settings.key(InputAction::MicCycleDevice);
-    if !input.just_pressed(key) { return; }
+    if !input.just_pressed(key) {
+        return;
+    }
 
-    if mic_devices.devices.is_empty() { return; }
+    if mic_devices.devices.is_empty() {
+        return;
+    }
 
     mic_devices.current_index = (mic_devices.current_index + 1) % mic_devices.devices.len();
     let name = mic_devices.devices[mic_devices.current_index].clone();
@@ -398,13 +434,19 @@ pub fn start_voice_thread(
     match voice_native::spawn_voice_thread(cmd_rx, evt_tx, mic_rx) {
         Ok(handle) => {
             commands.insert_resource(VoiceManager::new_native(
-                Some(cmd_tx), evt_rx, handle, Some(mic_tx),
+                Some(cmd_tx),
+                evt_rx,
+                handle,
+                Some(mic_tx),
             ));
         }
         Err(e) => {
             log::warn!("voice: voice thread failed to start — voice disabled: {e}");
             commands.insert_resource(VoiceManager::new_native(
-                None, evt_rx, voice_native_placeholder_handle(), None,
+                None,
+                evt_rx,
+                voice_native_placeholder_handle(),
+                None,
             ));
         }
     }
@@ -422,7 +464,9 @@ fn start_mic_capture(preferred: Option<&str>, tx: voice_native::MicSender) {
     let host = cpal::default_host();
     let device = preferred
         .and_then(|name| {
-            host.input_devices().ok()?.find(|d| d.name().ok().as_deref() == Some(name))
+            host.input_devices()
+                .ok()?
+                .find(|d| d.name().ok().as_deref() == Some(name))
         })
         .or_else(|| host.default_input_device());
 
@@ -467,8 +511,6 @@ fn start_mic_capture(preferred: Option<&str>, tx: voice_native::MicSender) {
         Err(e) => log::error!("voice: mic stream build failed: {e}"),
     }
 }
-
-
 
 /// Enumerate available input devices and populate MicDevices resource.
 #[cfg(not(target_arch = "wasm32"))]

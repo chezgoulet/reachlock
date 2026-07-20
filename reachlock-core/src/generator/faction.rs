@@ -14,13 +14,25 @@ fn pick<'a>(rng: &mut SeededRng, table: &'a [&str]) -> &'a str {
 }
 
 const PREFIXES: &[&str] = &[
-    "Iron", "Crimson", "Azure", "Obsidian", "Golden", "Shadow", "Solar", "Lunar",
-    "Void", "Crystal", "Storm", "Ember", "Frost", "Ash", "Thorn", "Bone",
+    "Iron", "Crimson", "Azure", "Obsidian", "Golden", "Shadow", "Solar", "Lunar", "Void",
+    "Crystal", "Storm", "Ember", "Frost", "Ash", "Thorn", "Bone",
 ];
 
 const SUFFIXES: &[&str] = &[
-    "Legion", "Collective", "Syndicate", "Alliance", "Covenant", "Federation",
-    "Order", "Clan", "Nexus", "Dominion", "Guild", "Council", "Concord", "Hegemony",
+    "Legion",
+    "Collective",
+    "Syndicate",
+    "Alliance",
+    "Covenant",
+    "Federation",
+    "Order",
+    "Clan",
+    "Nexus",
+    "Dominion",
+    "Guild",
+    "Council",
+    "Concord",
+    "Hegemony",
 ];
 
 const DOCTRINES: &[&str] = &[
@@ -71,7 +83,11 @@ pub fn generate_faction(seed: u64) -> Faction {
     let doctrine = pick(&mut rng, DOCTRINES).to_string();
     let goal = pick(&mut rng, GOALS).to_string();
 
-    Faction { name, doctrine, goal }
+    Faction {
+        name,
+        doctrine,
+        goal,
+    }
 }
 
 #[cfg(test)]

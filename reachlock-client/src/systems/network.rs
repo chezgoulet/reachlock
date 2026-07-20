@@ -16,12 +16,12 @@ use crate::settings::Settings;
 use crate::states::CurrentLocation;
 #[cfg(target_arch = "wasm32")]
 use crate::systems::content_index::{ContentIndex, ContentSyncPayload};
-use bevy::ecs::system::SystemParam;
 use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog};
 use crate::systems::presence::PresenceEvents;
 use crate::systems::ship::ShipSystems;
 use crate::systems::ticker::UniverseTicker;
 use crate::systems::voice;
+use bevy::ecs::system::SystemParam;
 
 /// Owns the live socket, if any. `None` whenever offline, still connecting
 /// via backoff, or between "dropped" and "reconnected".
@@ -358,10 +358,18 @@ pub fn poll_network(
                 // Native clients load `mods/` from disk; ignore the server's
                 // sync (the server still sends it to every client).
             }
-            TransportEvent::Message(ServerMessage::VoiceSignal { from_player, signal }) => {
+            TransportEvent::Message(ServerMessage::VoiceSignal {
+                from_player,
+                signal,
+            }) => {
                 voice::push_signal(from_player, signal);
             }
-            TransportEvent::Message(ServerMessage::TurnConfig { url, username, password, ttl_secs }) => {
+            TransportEvent::Message(ServerMessage::TurnConfig {
+                url,
+                username,
+                password,
+                ttl_secs,
+            }) => {
                 voice::push_turn_config(url, username, password, ttl_secs);
             }
             TransportEvent::Message(ServerMessage::UniverseEvent { event }) => {

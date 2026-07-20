@@ -84,9 +84,18 @@ pub struct PlayerSubscription {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum TierEntitlement {
-    Granted { tier: UniverseTier, expires: DateTime<Utc> },
-    GracePeriod { tier: UniverseTier, expires: DateTime<Utc>, message: String },
-    Denied { reason: String },
+    Granted {
+        tier: UniverseTier,
+        expires: DateTime<Utc>,
+    },
+    GracePeriod {
+        tier: UniverseTier,
+        expires: DateTime<Utc>,
+        message: String,
+    },
+    Denied {
+        reason: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +148,10 @@ impl SubscriptionStore for MemorySubscriptionStore {
     }
 
     fn mark_webhook_processed(&self, event_id: &str) {
-        self.processed_webhooks.lock().unwrap().insert(event_id.to_owned());
+        self.processed_webhooks
+            .lock()
+            .unwrap()
+            .insert(event_id.to_owned());
     }
 
     fn entitlement(&self, player_id: &str) -> TierEntitlement {
@@ -163,7 +175,8 @@ impl SubscriptionStore for MemorySubscriptionStore {
                         tier: sub.tier,
                         expires: sub.current_period_end,
                         message: "Your subscription payment is past due. \
-                                   Crew morale unaffected — for now.".into(),
+                                   Crew morale unaffected — for now."
+                            .into(),
                     },
                     _ => TierEntitlement::Denied {
                         reason: "subscription_inactive".into(),
@@ -193,25 +206,31 @@ pub struct EntitlementToken {
 
 /// Signature format: HMAC-SHA256(key, "player_id|tier|expires_timestamp")
 fn server_secret() -> Result<String, &'static str> {
-    let key = std::env::var("REACHLOCK_SERVER_SECRET")
-        .map_err(|_| "server_secret_not_configured")?;
+    let key =
+        std::env::var("REACHLOCK_SERVER_SECRET").map_err(|_| "server_secret_not_configured")?;
     if key.is_empty() {
         return Err("server_secret_not_configured");
     }
     Ok(key)
 }
 
-fn sign_entitlement(player_id: &str, tier: &UniverseTier, expires: &DateTime<Utc>) -> Result<String, &'static str> {
+fn sign_entitlement(
+    player_id: &str,
+    tier: &UniverseTier,
+    expires: &DateTime<Utc>,
+) -> Result<String, &'static str> {
     let key = server_secret()?;
     let msg = format!("{player_id}|{tier:?}|{}", expires.timestamp());
-    let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes())
-        .expect("HMAC key");
+    let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("HMAC key");
     mac.update(msg.as_bytes());
     Ok(hex::encode(mac.finalize().into_bytes()))
 }
 
 /// Mint a 30-day offline token.
-pub fn mint_offline_token(player_id: &str, tier: UniverseTier) -> Result<EntitlementToken, &'static str> {
+pub fn mint_offline_token(
+    player_id: &str,
+    tier: UniverseTier,
+) -> Result<EntitlementToken, &'static str> {
     let now = Utc::now();
     let expires = now + chrono::TimeDelta::days(30);
     let signature = sign_entitlement(player_id, &tier, &expires)?;
@@ -259,15 +278,18 @@ pub fn verify_stripe_webhook(
     let mut timestamp = "";
     let mut sig = "";
     for p in &parts {
-        if let Some(val) = p.strip_prefix("t=") { timestamp = val; }
-        if let Some(val) = p.strip_prefix("v1=") { sig = val; }
+        if let Some(val) = p.strip_prefix("t=") {
+            timestamp = val;
+        }
+        if let Some(val) = p.strip_prefix("v1=") {
+            sig = val;
+        }
     }
     if timestamp.is_empty() || sig.is_empty() {
         return Err("bad_stripe_signature_format");
     }
 
-    let payload_str = std::str::from_utf8(payload)
-        .map_err(|_| "bad_stripe_payload_utf8")?;
+    let payload_str = std::str::from_utf8(payload).map_err(|_| "bad_stripe_payload_utf8")?;
     let signed_payload = format!("{timestamp}.{payload_str}");
     let mut mac = Hmac::<Sha256>::new_from_slice(webhook_secret.as_bytes())
         .map_err(|_| "bad_webhook_secret")?;
@@ -279,7 +301,8 @@ pub fn verify_stripe_webhook(
     }
 
     // Parse the event ID from the payload
-    let event: StripeWebhook = serde_json::from_slice(payload).map_err(|_| "unparseable_webhook")?;
+    let event: StripeWebhook =
+        serde_json::from_slice(payload).map_err(|_| "unparseable_webhook")?;
     Ok(event.id)
 }
 
@@ -288,12 +311,11 @@ pub async fn create_checkout_session(
     player_id: &str,
     tier: UniverseTier,
 ) -> Result<String, &'static str> {
-    let secret_key = std::env::var("REACHLOCK_STRIPE_SECRET_KEY")
-        .map_err(|_| "stripe_not_configured")?;
+    let secret_key =
+        std::env::var("REACHLOCK_STRIPE_SECRET_KEY").map_err(|_| "stripe_not_configured")?;
     let tier_name = format!("{tier:?}").to_lowercase();
     let price_env = format!("REACHLOCK_STRIPE_PRICE_{}", tier_name.to_uppercase());
-    let price_id = std::env::var(&price_env)
-        .map_err(|_| "stripe_price_not_configured")?;
+    let price_id = std::env::var(&price_env).map_err(|_| "stripe_price_not_configured")?;
 
     let client = reqwest::Client::new();
     let params = [
@@ -302,7 +324,10 @@ pub async fn create_checkout_session(
         ("line_items[0][quantity]", "1"),
         ("metadata[player_id]", player_id),
         ("metadata[universe_tier]", &tier_name),
-        ("success_url", "https://reachlock.app/subscription/confirmed"),
+        (
+            "success_url",
+            "https://reachlock.app/subscription/confirmed",
+        ),
         ("cancel_url", "https://reachlock.app/subscription/canceled"),
     ];
     let resp = client
@@ -322,8 +347,8 @@ pub async fn create_checkout_session(
 
 /// Create a Stripe Customer Portal session.
 pub async fn create_portal_session(customer_id: &str) -> Result<String, &'static str> {
-    let secret_key = std::env::var("REACHLOCK_STRIPE_SECRET_KEY")
-        .map_err(|_| "stripe_not_configured")?;
+    let secret_key =
+        std::env::var("REACHLOCK_STRIPE_SECRET_KEY").map_err(|_| "stripe_not_configured")?;
 
     let client = reqwest::Client::new();
     let params = [
