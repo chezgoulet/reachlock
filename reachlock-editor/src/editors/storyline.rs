@@ -248,11 +248,7 @@ impl Editor for StorylineEditor {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for i in 0..self.storylines.len() {
                         let s = &self.storylines[i];
-                        let label = format!(
-                            "{} ({} chapters)",
-                            s.faction.0,
-                            s.chapters.len()
-                        );
+                        let label = format!("{} ({} chapters)", s.faction.0, s.chapters.len());
                         if !needle.is_empty() && !label.to_lowercase().contains(&needle) {
                             continue;
                         }
@@ -398,8 +394,8 @@ impl Editor for StorylineEditor {
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
-        let storyline: Storyline = serde_json::from_value(value.clone())
-            .map_err(|e| format!("storyline: {e}"))?;
+        let storyline: Storyline =
+            serde_json::from_value(value.clone()).map_err(|e| format!("storyline: {e}"))?;
         if self.storylines.is_empty() {
             self.storylines.push(storyline);
         } else {
@@ -407,6 +403,65 @@ impl Editor for StorylineEditor {
         }
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        ron::to_string(&(&self.storylines, &self.path, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (storylines, path, selected): (Vec<Storyline>, Option<std::path::PathBuf>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.storylines = storylines;
+        self.path = path;
+        self.selected = selected.min(self.storylines.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.storylines.len() <= 1 {
+            return None;
+        }
+        self.storylines
+            .get(self.selected)
+            .map(|s| format!("{} storyline", s.faction.0))
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.storylines.len() <= 1 || self.selected >= self.storylines.len() {
+            return false;
+        }
+        self.storylines.remove(self.selected);
+        if self.selected >= self.storylines.len() {
+            self.selected = self.storylines.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(s) = self.storylines.get(self.selected) else {
+            return;
+        };
+        ui.strong(format!("Faction: {}", s.faction.0));
+        ui.label(format!("{} chapter(s)", s.chapters.len()));
+        for chapter in s.chapters.iter().take(5) {
+            ui.weak(format!(
+                "· {}{}",
+                chapter.id,
+                if chapter.trigger.is_some() {
+                    ""
+                } else {
+                    " (no trigger)"
+                }
+            ));
+        }
+        ui.label(format!("{} storyline(s) in file", self.storylines.len()));
     }
 }
 

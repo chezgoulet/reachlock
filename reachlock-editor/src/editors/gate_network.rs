@@ -146,10 +146,7 @@ impl GateNetworkEditor {
         for (i, id) in ids.into_iter().enumerate() {
             self.node_positions.insert(
                 id,
-                egui::pos2(
-                    (i % 4) as f32 * 180.0 + 60.0,
-                    (i / 4) as f32 * 160.0 + 60.0,
-                ),
+                egui::pos2((i % 4) as f32 * 180.0 + 60.0, (i / 4) as f32 * 160.0 + 60.0),
             );
         }
     }
@@ -216,11 +213,7 @@ impl Editor for GateNetworkEditor {
                     .show_ui(ui, |ui| {
                         for id in self.biomes.keys() {
                             if !self.node_positions.contains_key(id) {
-                                ui.selectable_value(
-                                    &mut self.new_system_name,
-                                    id.clone(),
-                                    id,
-                                );
+                                ui.selectable_value(&mut self.new_system_name, id.clone(), id);
                             }
                         }
                     });
@@ -333,13 +326,11 @@ impl Editor for GateNetworkEditor {
                                     }
                                 }
                             });
-                        let mut controlled =
-                            gate.controlled_by.clone().unwrap_or_default();
+                        let mut controlled = gate.controlled_by.clone().unwrap_or_default();
                         ui.horizontal(|ui| {
                             ui.label("Controlled by:");
                             if ui.text_edit_singleline(&mut controlled).changed() {
-                                gate.controlled_by =
-                                    (!controlled.is_empty()).then_some(controlled);
+                                gate.controlled_by = (!controlled.is_empty()).then_some(controlled);
                                 self.has_changes = true;
                             }
                         });
@@ -366,10 +357,8 @@ impl Editor for GateNetworkEditor {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                let (canvas_rect, canvas_response) = ui.allocate_exact_size(
-                    ui.available_size(),
-                    egui::Sense::click_and_drag(),
-                );
+                let (canvas_rect, canvas_response) =
+                    ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
                 let painter = ui.painter_at(canvas_rect);
 
                 // Scroll-wheel zoom around the pointer.
@@ -379,8 +368,7 @@ impl Editor for GateNetworkEditor {
                         let old_zoom = self.zoom;
                         self.zoom = (self.zoom * (1.0 + scroll * 0.001)).clamp(0.25, 4.0);
                         // Keep the world point under the cursor fixed.
-                        let world =
-                            ((hover - canvas_rect.min) - self.pan) / old_zoom;
+                        let world = ((hover - canvas_rect.min) - self.pan) / old_zoom;
                         self.pan = (hover - canvas_rect.min) - world * self.zoom;
                     }
                 }
@@ -414,7 +402,11 @@ impl Editor for GateNetworkEditor {
                     let start = from + dir * radius + perp;
                     let end = to - dir * radius + perp;
                     let color = status_color(gate.status);
-                    let width = if self.selected_gate == Some(i) { 3.0 } else { 1.5 };
+                    let width = if self.selected_gate == Some(i) {
+                        3.0
+                    } else {
+                        1.5
+                    };
                     let stroke = egui::Stroke::new(width, color);
                     if gate.status == GateStatus::Destroyed {
                         // Dashed line for destroyed gates.
@@ -423,8 +415,7 @@ impl Editor for GateNetworkEditor {
                         for k in 0..n {
                             if k % 2 == 0 {
                                 let a = start + (end - start) * (k as f32 / n as f32);
-                                let b =
-                                    start + (end - start) * ((k + 1) as f32 / n as f32);
+                                let b = start + (end - start) * ((k + 1) as f32 / n as f32);
                                 painter.line_segment([a, b], stroke);
                             }
                         }
@@ -473,8 +464,10 @@ impl Editor for GateNetworkEditor {
                         continue;
                     };
                     let center = to_screen(world);
-                    let node_rect =
-                        egui::Rect::from_center_size(center, egui::vec2(radius * 2.0, radius * 2.0));
+                    let node_rect = egui::Rect::from_center_size(
+                        center,
+                        egui::vec2(radius * 2.0, radius * 2.0),
+                    );
                     let response = ui.interact(
                         node_rect,
                         ui.id().with(("gate_node", id)),
@@ -509,11 +502,73 @@ impl Editor for GateNetworkEditor {
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
-        let network: GateNetwork = serde_json::from_value(value.clone())
-            .map_err(|e| format!("gate network: {e}"))?;
+        let network: GateNetwork =
+            serde_json::from_value(value.clone()).map_err(|e| format!("gate network: {e}"))?;
         self.network = network;
+        self.ensure_positions();
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        // Node positions are part of the authoring experience — capture them
+        // as plain (x, y) tuples since Pos2 isn't serde.
+        let positions: Vec<(&String, (f32, f32))> = self
+            .node_positions
+            .iter()
+            .map(|(id, p)| (id, (p.x, p.y)))
+            .collect();
+        ron::to_string(&(&self.network, positions, self.selected_gate)).ok()
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (network, positions, selected_gate): (
+            GateNetwork,
+            Vec<(String, (f32, f32))>,
+            Option<usize>,
+        ) = ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.network = network;
+        self.node_positions = positions
+            .into_iter()
+            .map(|(id, (x, y))| (id, egui::pos2(x, y)))
+            .collect();
+        self.selected_gate = selected_gate.filter(|&i| i < self.network.gates.len());
+        self.ensure_positions();
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    // Gate networks are purely authored — a global reroll shouldn't touch
+    // them (generate_from_seed is a no-op anyway).
+    fn accept_seed_reroll(&self) -> bool {
+        false
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.strong(format!(
+            "{} system(s) · {} gate(s)",
+            self.system_ids().len(),
+            self.network.gates.len()
+        ));
+        let mut counts: std::collections::BTreeMap<&'static str, usize> =
+            std::collections::BTreeMap::new();
+        for gate in &self.network.gates {
+            *counts.entry(status_name(gate.status)).or_default() += 1;
+        }
+        for (status, n) in counts {
+            ui.label(format!("{status}: {n}"));
+        }
+        if let Some(i) = self.selected_gate {
+            if let Some(gate) = self.network.gates.get(i) {
+                ui.separator();
+                ui.label(format!("Selected: {} → {}", gate.from.0, gate.to.0));
+            }
+        }
     }
 }
 

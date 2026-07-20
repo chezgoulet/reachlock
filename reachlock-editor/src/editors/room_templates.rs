@@ -356,6 +356,74 @@ impl Editor for RoomTemplatesEditor {
         self.has_changes = true;
         Ok(())
     }
+
+    fn snapshot(&self) -> Option<String> {
+        ron::to_string(&(&self.file, &self.path, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (file, path, selected): (ContentFile, Option<std::path::PathBuf>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.file = file;
+        self.path = path;
+        self.selected = selected.min(self.templates().len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    // Reroll replaces the set with the canon reference templates — that's a
+    // destructive surprise from a global reroll, so opt out (handoff §5).
+    fn accept_seed_reroll(&self) -> bool {
+        false
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.templates().len() <= 1 {
+            return None;
+        }
+        self.templates().get(self.selected).map(|t| t.label.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        let selected = self.selected;
+        let ContentPayload::RoomTemplates(templates) = &mut self.file.payload else {
+            return false;
+        };
+        if templates.len() <= 1 || selected >= templates.len() {
+            return false;
+        }
+        templates.remove(selected);
+        if self.selected >= templates.len() {
+            self.selected = templates.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let templates = self.templates();
+        ui.strong(format!("{} template(s)", templates.len()));
+        let kinds: std::collections::BTreeSet<String> =
+            templates.iter().map(|t| format!("{:?}", t.kind)).collect();
+        ui.label(format!(
+            "Kinds: {}",
+            kinds.into_iter().collect::<Vec<_>>().join(", ")
+        ));
+        if let Some(t) = templates.get(self.selected) {
+            ui.separator();
+            ui.strong(&t.label);
+            ui.label(format!("{:?} · {}×{} cells", t.kind, t.width, t.height));
+            ui.label(format!(
+                "{} system(s) · {} furniture slot(s)",
+                t.required_systems.len(),
+                t.furniture_slots.len()
+            ));
+        }
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {

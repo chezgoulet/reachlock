@@ -108,6 +108,51 @@ pub trait Editor {
                 .into(),
         )
     }
+
+    /// Serialize the editor's full document state (entries, selection) to a
+    /// RON string for snapshot-based undo. `None` means this editor doesn't
+    /// support undo (previewers).
+    fn snapshot(&self) -> Option<String> {
+        None
+    }
+
+    /// Restore state previously captured by [`Editor::snapshot`].
+    fn restore_snapshot(&mut self, _ron: &str) -> Result<(), String> {
+        Err("undo is not supported by this editor".into())
+    }
+
+    /// The app shell calls this after a successful save so the dirty flag
+    /// (and the tab asterisk) clears.
+    fn mark_saved(&mut self) {}
+
+    /// Whether the seed panel's "Reroll All" should reseed this editor.
+    /// Editors whose content is purely authored (gate networks) or replaced
+    /// by a reference set (room templates) opt out.
+    fn accept_seed_reroll(&self) -> bool {
+        true
+    }
+
+    /// Seed panel entry point — defaults to procedural generation.
+    fn apply_seed(&mut self, seed: u64) {
+        self.generate_from_seed(seed);
+    }
+
+    /// Name of the currently selected entry, shown in the Delete shortcut's
+    /// confirmation dialog. `None` disables the shortcut for this editor.
+    fn selected_entry_name(&self) -> Option<String> {
+        None
+    }
+
+    /// Remove the selected entry. Returns false when nothing was removed.
+    fn delete_selected(&mut self) -> bool {
+        false
+    }
+
+    /// Compact summary card rendered in the right-hand preview panel.
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.label(self.content_type().name());
+        ui.weak("No preview for this editor.");
+    }
 }
 
 pub struct EditorRegistry(HashMap<ContentType, fn() -> Box<dyn Editor>>);
@@ -133,7 +178,10 @@ pub fn build_default_registry() -> EditorRegistry {
         crate::editors::hull_frame::create_editor,
     );
     r.register(ContentType::Station, crate::editors::station::create_editor);
-    r.register(ContentType::Location, crate::editors::location::create_editor);
+    r.register(
+        ContentType::Location,
+        crate::editors::location::create_editor,
+    );
     r.register(ContentType::Soul, crate::editors::soul::create_editor);
     r.register(
         ContentType::Contract,

@@ -45,12 +45,33 @@ const FILE_TYPES: [ContentType; 14] = [
 
 /// Directory under the mods root where each type's `.ron` files live.
 /// Mirrors each editor's default path in its `new()`.
-fn content_dir(ct: ContentType) -> &'static str {
+pub fn content_dir(ct: ContentType) -> &'static str {
     match ct {
         // Enemies live under combat/, not the enemies/ dir the ContentType
         // mapping suggests — this mirrors enemy.rs.
         ContentType::EnemyArchetype => "combat",
         other => other.directory(),
+    }
+}
+
+/// Which editor owns a `.ron` file, judged by its parent directory (and for
+/// the shared `hulls/` directory, by payload tag). Used by File > Open.
+pub fn detect_content_type(path: &Path) -> Option<ContentType> {
+    let dir = path.parent()?.file_name()?.to_str()?;
+    match dir {
+        "systems" => Some(ContentType::ChartedSystem),
+        "gate_network" => Some(ContentType::GateNetwork),
+        "hulls" => Some(classify_hull_file(path)),
+        "stations" => Some(ContentType::Station),
+        "souls" => Some(ContentType::Soul),
+        "combat" => Some(ContentType::EnemyArchetype),
+        "factions" => Some(ContentType::Faction),
+        "storylines" => Some(ContentType::Storyline),
+        "locations" => Some(ContentType::Location),
+        "economy" => Some(ContentType::EconomyGoods),
+        "items" => Some(ContentType::Item),
+        "contracts" => Some(ContentType::Contract),
+        _ => None,
     }
 }
 
@@ -96,10 +117,7 @@ impl ContentBrowser {
     }
 
     fn scan_if_stale(&mut self) {
-        if self
-            .last_scan
-            .is_some_and(|t| t.elapsed() < SCAN_TTL)
-        {
+        if self.last_scan.is_some_and(|t| t.elapsed() < SCAN_TTL) {
             return;
         }
         self.last_scan = Some(Instant::now());
@@ -218,8 +236,7 @@ impl ContentBrowser {
                         let visible: Vec<(&PathBuf, std::ops::Range<usize>)> = paths
                             .iter()
                             .filter_map(|p| {
-                                let name =
-                                    p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
                                 self.filter_match(name).map(|r| (p, r))
                             })
                             .collect();
@@ -238,10 +255,8 @@ impl ContentBrowser {
                                     ui.weak("No files yet.");
                                 }
                                 for (path, highlight) in &visible {
-                                    let name = path
-                                        .file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or("?");
+                                    let name =
+                                        path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
                                     ui.indent(("browser_file", name), |ui| {
                                         let job = Self::file_label(ui, name, highlight);
                                         let response = ui
@@ -321,8 +336,7 @@ impl ContentBrowser {
                             actions.push(BrowserAction::Status(format!("Deleted {name}")));
                         }
                         Err(e) => {
-                            actions
-                                .push(BrowserAction::Status(format!("Delete failed: {e}")));
+                            actions.push(BrowserAction::Status(format!("Delete failed: {e}")));
                         }
                     }
                     self.invalidate();

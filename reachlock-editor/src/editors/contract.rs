@@ -3,7 +3,9 @@
 //! optional LLM fallback authority. Edits `Contract` under
 //! `mods/reachlock/contracts/`.
 
-use reachlock_core::contract::types::{Action, Comparison, Condition, Contract, LlmConfig, Rule, Trigger};
+use reachlock_core::contract::types::{
+    Action, Comparison, Condition, Contract, LlmConfig, Rule, Trigger,
+};
 use reachlock_core::util::rng::SeededRng;
 
 use super::super::app::{ContentType, Editor};
@@ -291,10 +293,7 @@ impl Editor for ContractEditor {
                                 ui.horizontal(|ui| {
                                     ui.label("Interval (secs):");
                                     changed |= ui
-                                        .add(
-                                            egui::DragValue::new(interval_secs)
-                                                .range(1..=86_400),
-                                        )
+                                        .add(egui::DragValue::new(interval_secs).range(1..=86_400))
                                         .changed();
                                     changed |= ui.checkbox(repeat, "repeat").changed();
                                 });
@@ -314,17 +313,12 @@ impl Editor for ContractEditor {
                                         .show_ui(ui, |ui| {
                                             for o in COMPARISONS {
                                                 changed |= ui
-                                                    .selectable_value(
-                                                        op,
-                                                        o,
-                                                        comparison_symbol(o),
-                                                    )
+                                                    .selectable_value(op, o, comparison_symbol(o))
                                                     .changed();
                                             }
                                         });
                                     ui.label("Value:");
-                                    changed |=
-                                        ui.add(egui::DragValue::new(value)).changed();
+                                    changed |= ui.add(egui::DragValue::new(value)).changed();
                                 });
                             }
                             Trigger::Manual => {
@@ -343,8 +337,7 @@ impl Editor for ContractEditor {
                                     ui.label(format!("Rule {i} — priority:"));
                                     changed |= ui
                                         .add(
-                                            egui::DragValue::new(&mut rule.priority)
-                                                .range(0..=255),
+                                            egui::DragValue::new(&mut rule.priority).range(0..=255),
                                         )
                                         .changed();
                                     if ui.button("Remove Rule").clicked() {
@@ -398,9 +391,7 @@ impl Editor for ContractEditor {
                         if let Some(llm) = &mut c.llm_authority {
                             egui::Grid::new("contract_llm").show(ui, |ui| {
                                 ui.label("Fallback on timeout:");
-                                changed |= ui
-                                    .checkbox(&mut llm.fallback_on_timeout, "")
-                                    .changed();
+                                changed |= ui.checkbox(&mut llm.fallback_on_timeout, "").changed();
                                 ui.end_row();
                                 ui.label("Timeout (ms):");
                                 changed |= ui
@@ -412,10 +403,7 @@ impl Editor for ContractEditor {
                                 ui.end_row();
                                 ui.label("Max tokens:");
                                 changed |= ui
-                                    .add(
-                                        egui::DragValue::new(&mut llm.max_tokens)
-                                            .range(1..=8192),
-                                    )
+                                    .add(egui::DragValue::new(&mut llm.max_tokens).range(1..=8192))
                                     .changed();
                                 ui.end_row();
                             });
@@ -428,20 +416,14 @@ impl Editor for ContractEditor {
                                 )
                                 .changed();
                             let mut has_fallback = llm.fallback_action.is_some();
-                            if ui
-                                .checkbox(&mut has_fallback, "Fallback action")
-                                .changed()
-                            {
+                            if ui.checkbox(&mut has_fallback, "Fallback action").changed() {
                                 llm.fallback_action =
                                     has_fallback.then(|| Action::verb("maintain_course"));
                                 changed = true;
                             }
                             if let Some(action) = &mut llm.fallback_action {
-                                changed |= action_ui(
-                                    ui,
-                                    action,
-                                    egui::Id::new("contract_llm_fallback"),
-                                );
+                                changed |=
+                                    action_ui(ui, action, egui::Id::new("contract_llm_fallback"));
                             }
                         }
                     });
@@ -501,12 +483,11 @@ impl Editor for ContractEditor {
         let contract = match serde_json::from_value::<Contract>(value.clone()) {
             Ok(c) => c,
             Err(_) => {
-                let extracted =
-                    super::super::ai::extract_inner_from_envelope(value, "contract")
-                        .ok_or_else(|| {
-                            "response was neither a bare contract nor a ContentFile envelope"
-                                .to_string()
-                        })?;
+                let extracted = super::super::ai::extract_inner_from_envelope(value, "contract")
+                    .ok_or_else(|| {
+                        "response was neither a bare contract nor a ContentFile envelope"
+                            .to_string()
+                    })?;
                 serde_json::from_value::<Contract>(extracted)
                     .map_err(|e| format!("contract: {e}"))?
             }
@@ -522,6 +503,80 @@ impl Editor for ContractEditor {
         }
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        let state: Vec<(&Contract, &Option<std::path::PathBuf>)> = self
+            .entries
+            .iter()
+            .map(|e| (&e.contract, &e.path))
+            .collect();
+        ron::to_string(&(state, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (state, selected): (Vec<(Contract, Option<std::path::PathBuf>)>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.entries = state
+            .into_iter()
+            .map(|(contract, path)| Entry { contract, path })
+            .collect();
+        self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.entries.len() <= 1 {
+            return None;
+        }
+        self.entries
+            .get(self.selected)
+            .map(|e| e.contract.label.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.entries.len() <= 1 || self.selected >= self.entries.len() {
+            return false;
+        }
+        self.entries.remove(self.selected);
+        if self.selected >= self.entries.len() {
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(entry) = self.entries.get(self.selected) else {
+            return;
+        };
+        let c = &entry.contract;
+        ui.strong(&c.label);
+        let trigger = match &c.trigger {
+            Trigger::Timer {
+                interval_secs,
+                repeat,
+            } => format!(
+                "Timer: every {interval_secs}s{}",
+                if *repeat { " (repeating)" } else { "" }
+            ),
+            Trigger::Event { event_type } => format!("Event: {event_type}"),
+            Trigger::StateChange { field, .. } => format!("StateChange: {field}"),
+            Trigger::Manual => "Manual trigger".into(),
+        };
+        ui.label(trigger);
+        ui.label(format!("{} rule(s)", c.rules.len()));
+        for rule in c.rules.iter().take(4) {
+            ui.weak(format!("→ {}", rule.action.kind));
+        }
+        if c.llm_authority.is_some() {
+            ui.weak("LLM authority enabled");
+        }
     }
 }
 
