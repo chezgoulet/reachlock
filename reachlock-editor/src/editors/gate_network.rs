@@ -345,8 +345,9 @@ impl Editor for GateNetworkEditor {
                 }
             });
 
-        // Delete key removes the selected gate.
-        if ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
+        // Delete key removes the selected gate — but not while a text field
+        // (e.g. the "or type id" box) has keyboard focus.
+        if !ctx.wants_keyboard_input() && ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
             if let Some(i) = self.selected_gate.take() {
                 if i < self.network.gates.len() {
                     self.network.gates.remove(i);
@@ -372,10 +373,11 @@ impl Editor for GateNetworkEditor {
                         self.pan = (hover - canvas_rect.min) - world * self.zoom;
                     }
                 }
-                // Middle/right/background drag pans.
+                // Middle/right drag pans; the left button is reserved for
+                // node dragging and click-to-select so the canvas doesn't
+                // slide out from under a node grab.
                 if canvas_response.dragged_by(egui::PointerButton::Middle)
                     || canvas_response.dragged_by(egui::PointerButton::Secondary)
-                    || canvas_response.dragged_by(egui::PointerButton::Primary)
                 {
                     self.pan += canvas_response.drag_delta();
                 }
