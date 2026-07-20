@@ -131,6 +131,21 @@ pub fn enter_spaceflight(
         ModeScope(GameMode::SpaceFlight),
     ));
 
+    // 3D lighting: a keylight plus soft ambient so hulls read without textures.
+    commands.insert_resource(GlobalAmbientLight {
+        color: bridge::color_from_palette(palette.accent),
+        brightness: 220.0,
+        ..default()
+    });
+    commands.spawn((
+        DirectionalLight {
+            illuminance: 6_000.0,
+            ..default()
+        },
+        Transform::from_xyz(400.0, 800.0, 300.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ModeScope(GameMode::SpaceFlight),
+    ));
+
     starfield::spawn(
         &mut commands,
         &mut meshes,
