@@ -354,7 +354,8 @@ mod tests {
 
     #[test]
     fn classify_hull_file_by_payload_tag() {
-        let dir = std::env::temp_dir().join("reachlock_browser_tests/hulls");
+        let parent = std::env::temp_dir().join("reachlock_browser_tests");
+        let dir = parent.join("hulls");
         let _ = std::fs::create_dir_all(&dir);
         let cases = [
             (
@@ -379,6 +380,6 @@ mod tests {
             assert_eq!(detect_content_type(&path), Some(expected), "{name}");
             let _ = std::fs::remove_file(&path);
         }
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&parent);
     }
 }

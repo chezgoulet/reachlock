@@ -591,26 +591,28 @@ impl Editor for ItemEditor {
     }
 
     fn snapshot(&self) -> Option<String> {
-        let state: Vec<(&ItemSeed, &Option<std::path::PathBuf>)> = self
+        let state: Vec<(&ItemSeed, &Option<std::path::PathBuf>, bool)> = self
             .entries
             .iter()
-            .map(|e| (&e.item_seed, &e.path))
+            .map(|e| (&e.item_seed, &e.path, e.dirty))
             .collect();
         ron::to_string(&(state, self.selected)).ok()
     }
 
     fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
-        let (state, selected): (Vec<(ItemSeed, Option<std::path::PathBuf>)>, usize) =
+        let (state, selected): (Vec<(ItemSeed, Option<std::path::PathBuf>, bool)>, usize) =
             ron::from_str(ron).map_err(|e| e.to_string())?;
         self.entries = state
             .into_iter()
-            .map(|(item_seed, path)| Entry {
+            .map(|(item_seed, path, dirty)| Entry {
                 item_seed,
                 path,
-                dirty: true,
+                dirty,
             })
             .collect();
         self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.has_changes = self.entries.iter().any(|e| e.dirty);
+        self.touch();
         self.preview = self
             .entries
             .get(self.selected)
@@ -626,10 +628,10 @@ impl Editor for ItemEditor {
         }
     }
 
-    fn save_all(&self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<(), String> {
         use crate::app::content_root;
         let mut wrote = 0usize;
-        for entry in &self.entries {
+        for entry in &mut self.entries {
             if !entry.dirty {
                 continue;
             }
@@ -639,6 +641,7 @@ impl Editor for ItemEditor {
                 let stem = format!("item_{}", wrote);
                 let p = dir.join(format!("{stem}.ron"));
                 crate::io::write_ron(&p, &entry.item_seed)?;
+                entry.path = Some(p);
                 wrote += 1;
                 continue;
             };

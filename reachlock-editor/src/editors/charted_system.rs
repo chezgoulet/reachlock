@@ -399,23 +399,29 @@ impl Editor for ChartedSystemEditor {
     }
 
     fn snapshot(&self) -> Option<String> {
-        let state: Vec<(&ChartedSystem, &Option<std::path::PathBuf>)> =
-            self.entries.iter().map(|e| (&e.system, &e.path)).collect();
+        let state: Vec<(&ChartedSystem, &Option<std::path::PathBuf>, bool)> = self
+            .entries
+            .iter()
+            .map(|e| (&e.system, &e.path, e.dirty))
+            .collect();
         ron::to_string(&(state, self.selected)).ok()
     }
 
     fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
-        let (state, selected): (Vec<(ChartedSystem, Option<std::path::PathBuf>)>, usize) =
-            ron::from_str(ron).map_err(|e| e.to_string())?;
+        let (state, selected): (
+            Vec<(ChartedSystem, Option<std::path::PathBuf>, bool)>,
+            usize,
+        ) = ron::from_str(ron).map_err(|e| e.to_string())?;
         self.entries = state
             .into_iter()
-            .map(|(system, path)| Entry {
+            .map(|(system, path, dirty)| Entry {
                 system,
                 path,
-                dirty: true,
+                dirty,
             })
             .collect();
         self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.has_changes = self.entries.iter().any(|e| e.dirty);
         self.touch();
         Ok(())
     }
@@ -427,10 +433,10 @@ impl Editor for ChartedSystemEditor {
         }
     }
 
-    fn save_all(&self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<(), String> {
         use crate::app::content_root;
         let mut wrote = 0usize;
-        for entry in &self.entries {
+        for entry in &mut self.entries {
             if !entry.dirty {
                 continue;
             }
@@ -444,6 +450,7 @@ impl Editor for ChartedSystemEditor {
                 };
                 let p = dir.join(format!("{stem}.ron"));
                 crate::io::write_ron(&p, &entry.system)?;
+                entry.path = Some(p);
                 wrote += 1;
                 continue;
             };

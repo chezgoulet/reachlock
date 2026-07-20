@@ -160,7 +160,11 @@ pub trait Editor {
     /// collapsing all entries onto the single tab path. The default
     /// impl delegates to [`Editor::save`], so single-entry editors
     /// keep their existing behaviour.
-    fn save_all(&self) -> Result<(), String> {
+    ///
+    /// Takes `&mut self` so that newly-created entries (with no path yet)
+    /// can record the path they were written to, avoiding duplicate files
+    /// on the next save.
+    fn save_all(&mut self) -> Result<(), String> {
         // Single-entry editors have no per-entry paths to fan out to.
         Err("save_all is only meaningful for multi-entry editors".into())
     }

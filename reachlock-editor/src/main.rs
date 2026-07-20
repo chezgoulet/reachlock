@@ -310,15 +310,12 @@ impl EditorApp {
     /// Save As via the native file dialog. Rebinds the tab to the chosen
     /// path on success.
     fn save_editor_as(&mut self, idx: usize) -> bool {
-        let Some(open) = self.open_editors.get(idx) else {
+        let Some(open) = self.open_editors.get_mut(idx) else {
             return false;
         };
         // Multi-entry editors save each dirty entry to its own path; the Save
         // As dialog is meaningless for them, so just persist the dirty set.
         if open.editor.save_all().is_ok() {
-            let Some(open) = self.open_editors.get_mut(idx) else {
-                return false;
-            };
             open.editor.mark_saved();
             self.browser.invalidate();
             self.status_text = "Saved".into();
@@ -341,9 +338,6 @@ impl EditorApp {
         if path.extension().is_none() {
             path.set_extension("ron");
         }
-        let Some(open) = self.open_editors.get_mut(idx) else {
-            return false;
-        };
         match open.editor.save(&path) {
             Ok(()) => {
                 open.name = path
