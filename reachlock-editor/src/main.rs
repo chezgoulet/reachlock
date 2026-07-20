@@ -5,6 +5,7 @@ mod dialogs;
 pub mod editors;
 mod help_window;
 mod io;
+mod preferences_window;
 mod preview;
 mod schema;
 mod seed_workflow;
@@ -18,6 +19,7 @@ use app::{build_default_registry, ContentType, Editor, EditorRegistry};
 use browser::{BrowserAction, ContentBrowser};
 use dialogs::{confirmation_dialog, ConfirmationResult};
 use help_window::HelpWindow;
+use preferences_window::PreferencesWindow;
 use preview::PreviewPanel;
 use schema::SchemaCache;
 use seed_workflow::{SeedAction, SeedWorkflow};
@@ -57,6 +59,10 @@ struct EditorApp {
     active_tab: Option<usize>,
     show_browser: bool,
     help: HelpWindow,
+    preferences: PreferencesWindow,
+    /// Visuals from loaded preferences apply on the first frame.
+    prefs_applied: bool,
+    last_autosave: Instant,
     pending: Option<PendingAction>,
     /// Set once a quit is confirmed so the close request passes through.
     allow_close: bool,
@@ -165,6 +171,9 @@ impl Default for EditorApp {
             active_tab: None,
             show_browser: true,
             help: HelpWindow::new(),
+            preferences: PreferencesWindow::load(),
+            prefs_applied: false,
+            last_autosave: Instant::now(),
             pending: None,
             allow_close: false,
         }
@@ -224,6 +233,8 @@ impl EditorApp {
                 ));
                 self.active_tab = Some(idx);
                 self.status_text = format!("Opened {}", path.display());
+                self.preferences.prefs.push_recent(path);
+                self.preferences.save();
             }
             Err(e) => {
                 self.status_text = format!("Open failed: {e}");
@@ -303,6 +314,8 @@ impl EditorApp {
                 open.editor.mark_saved();
                 self.browser.invalidate();
                 self.status_text = format!("Saved {}", path.display());
+                self.preferences.prefs.push_recent(&path);
+                self.preferences.save();
                 true
             }
             Err(e) => {
@@ -477,6 +490,41 @@ impl EditorApp {
 
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F1)) {
             self.help.open = !self.help.open;
+        }
+    }
+
+    /// Background auto-save (Preferences): file-backed dirty editors save to
+    /// their existing paths on the configured interval.
+    fn autosave_tick(&mut self) {
+        let secs = self.preferences.prefs.auto_save_secs;
+        if secs == 0 || self.last_autosave.elapsed() < Duration::from_secs(u64::from(secs)) {
+            return;
+        }
+        self.last_autosave = Instant::now();
+        let mut saved = 0usize;
+        let mut failed = 0usize;
+        for open in &mut self.open_editors {
+            if !open.editor.has_unsaved_changes() {
+                continue;
+            }
+            let Some(path) = &open.path else {
+                continue; // Never Save-As from a timer.
+            };
+            match open.editor.save(path) {
+                Ok(()) => {
+                    open.editor.mark_saved();
+                    saved += 1;
+                }
+                Err(_) => failed += 1,
+            }
+        }
+        if saved > 0 || failed > 0 {
+            self.browser.invalidate();
+            self.status_text = if failed == 0 {
+                format!("Auto-saved {saved} editor(s)")
+            } else {
+                format!("Auto-saved {saved} editor(s), {failed} failed")
+            };
         }
     }
 
@@ -728,8 +776,8 @@ impl EditorApp {
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("Preferences").clicked() {
-                        self.status_text = "Preferences not yet implemented".into();
+                    if ui.button("Preferences…").clicked() {
+                        self.preferences.open = true;
                         ui.close_menu();
                     }
                 });
@@ -766,6 +814,15 @@ impl EditorApp {
 
 impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Loaded preferences (theme, zoom, content root) apply once at start.
+        if !self.prefs_applied {
+            self.prefs_applied = true;
+            self.preferences.prefs.apply_visuals(ctx);
+            self.browser.root = std::path::PathBuf::from(&self.preferences.prefs.content_root);
+        }
+
+        self.autosave_tick();
+
         // Intercept the window close button when there are unsaved changes.
         if ctx.input(|i| i.viewport().close_requested())
             && !self.allow_close
@@ -1018,6 +1075,14 @@ impl eframe::App for EditorApp {
 
         self.ai_settings.show(ctx);
         self.help.show(ctx);
+        if self.preferences.show(ctx) {
+            // A preference changed — pick up a possible content-root move.
+            let root = std::path::PathBuf::from(&self.preferences.prefs.content_root);
+            if self.browser.root != root {
+                self.browser.root = root;
+                self.browser.invalidate();
+            }
+        }
         self.handle_pending(ctx);
 
         // Undo bookkeeping: one diff point per frame, after every mutation
