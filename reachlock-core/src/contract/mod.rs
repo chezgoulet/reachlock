@@ -3,10 +3,16 @@
 //! cannot resolve. Every online evaluation is signed into a hash chain the
 //! server can verify.
 
+pub mod co_deliberation;
 pub mod engine;
 pub mod protocol;
 pub mod signature;
 pub mod types;
 
+pub use co_deliberation::{
+    CoDeliberation, CoDeliberationMetrics, CoResolution, CrewDeliberant, CrewPosition,
+    CrewRelationship, DeliberationTurn, GameEvent, RelationshipEvent, RelationshipEventType,
+    RelationshipState, StepOutcome, MAX_ROUNDS,
+};
 pub use engine::{evaluate, EvalContext, Outcome};
 pub use types::{Action, Comparison, Condition, Contract, LlmConfig, Rule, Trigger};
