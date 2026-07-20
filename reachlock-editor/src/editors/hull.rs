@@ -1,3 +1,9 @@
+//! Reference implementation of a `HullConfiguration` editor, kept as the
+//! pattern exemplar the Phase 1 handoff cites. It is NOT registered:
+//! `build_default_registry` maps ContentType::HullMesh to `hull_mesh.rs`
+//! (the ContentFile mesh editor). Registered in no menu; safe to study,
+//! not wired to the UI.
+
 use reachlock_core::editor::exterior::{
     compose_hull, ArmorSegment, Decal, Hardpoint, HullConfiguration, HullFrame, ItemRef,
     PaintScheme, SizeClass,

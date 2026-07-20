@@ -63,6 +63,9 @@ struct EditorApp {
     /// Visuals from loaded preferences apply on the first frame.
     prefs_applied: bool,
     last_autosave: Instant,
+    /// File > Validate All results: (tab name, issues) per editor, shown in
+    /// a window until dismissed. Empty issue lists mean the tab is clean.
+    validation_report: Option<Vec<(String, Vec<String>)>>,
     pending: Option<PendingAction>,
     /// Set once a quit is confirmed so the close request passes through.
     allow_close: bool,
@@ -174,6 +177,7 @@ impl Default for EditorApp {
             preferences: PreferencesWindow::load(),
             prefs_applied: false,
             last_autosave: Instant::now(),
+            validation_report: None,
             pending: None,
             allow_close: false,
         }
@@ -732,6 +736,20 @@ impl EditorApp {
                         ui.close_menu();
                     }
                     ui.separator();
+                    if ui.button("Validate All Open Editors").clicked() {
+                        let report: Vec<(String, Vec<String>)> = self
+                            .open_editors
+                            .iter()
+                            .map(|o| (o.name.clone(), o.editor.validate()))
+                            .collect();
+                        let clean = report.iter().filter(|(_, v)| v.is_empty()).count();
+                        let dirty = report.len() - clean;
+                        self.status_text =
+                            format!("Validation: {clean} editor(s) clean, {dirty} with issues");
+                        self.validation_report = Some(report);
+                        ui.close_menu();
+                    }
+                    ui.separator();
                     if ui.button("Close Tab        Ctrl+W").clicked() {
                         if let Some(idx) = self.active_tab {
                             self.request_close_tab(idx);
@@ -1097,6 +1115,50 @@ impl eframe::App for EditorApp {
 
         self.ai_settings.show(ctx);
         self.help.show(ctx);
+        if let Some(report) = &self.validation_report {
+            let mut open = true;
+            egui::Window::new("Validation Report")
+                .open(&mut open)
+                .resizable(true)
+                .default_size([440.0, 320.0])
+                .show(ctx, |ui| {
+                    if report.is_empty() {
+                        ui.label("No editors open.");
+                    }
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for (name, issues) in report {
+                            if issues.is_empty() {
+                                ui.horizontal(|ui| {
+                                    ui.colored_label(
+                                        egui::Color32::from_rgb(0x4C, 0xAF, 0x50),
+                                        "✔",
+                                    );
+                                    ui.strong(name);
+                                    ui.weak("clean");
+                                });
+                            } else {
+                                ui.horizontal(|ui| {
+                                    ui.colored_label(
+                                        egui::Color32::from_rgb(0xF4, 0x43, 0x36),
+                                        "✘",
+                                    );
+                                    ui.strong(name);
+                                    ui.label(format!("{} issue(s)", issues.len()));
+                                });
+                                for issue in issues {
+                                    ui.indent((name, issue), |ui| {
+                                        ui.label(issue);
+                                    });
+                                }
+                            }
+                            ui.add_space(4.0);
+                        }
+                    });
+                });
+            if !open {
+                self.validation_report = None;
+            }
+        }
         if self.preferences.show(ctx) {
             // A preference changed — pick up a possible content-root move.
             let root = std::path::PathBuf::from(&self.preferences.prefs.content_root);

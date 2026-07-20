@@ -151,6 +151,31 @@
                   "description": "Array of doors connecting rooms"
                 }
               }
+            },
+            "npc_spawns": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["room_index", "name"],
+                "properties": {
+                  "room_index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Index into layout.rooms where this NPC stands"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Display name"
+                  },
+                  "dialogue": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Lines the NPC says, in order"
+                  }
+                }
+              },
+              "description": "Authored NPCs placed in layout rooms (optional, defaults to empty)"
             }
           }
         }
