@@ -44,7 +44,7 @@ impl ContentType {
         ]
     }
 
-    pub fn name(&self) -> &str {
+    pub fn name(&self) -> &'static str {
         match self {
             ContentType::HullFrame => "Hull Frame",
             ContentType::Station => "Station",
@@ -65,7 +65,7 @@ impl ContentType {
         }
     }
 
-    pub fn directory(&self) -> &str {
+    pub fn directory(&self) -> &'static str {
         match self {
             ContentType::HullFrame => "hulls",
             ContentType::Station => "stations",

@@ -1,6 +1,7 @@
 mod ai;
 mod app;
 mod browser;
+mod dialogs;
 pub mod editors;
 mod io;
 mod preview;
@@ -12,7 +13,7 @@ use std::sync::mpsc::channel;
 use std::sync::Arc;
 
 use app::{build_default_registry, ContentType, Editor, EditorRegistry};
-use browser::ContentBrowser;
+use browser::{BrowserAction, ContentBrowser};
 use preview::PreviewPanel;
 use schema::SchemaCache;
 use seed_workflow::SeedWorkflow;
@@ -33,12 +34,11 @@ struct EditorApp {
     status_text: String,
     active_tab: Option<usize>,
     show_browser: bool,
-    browser_content_trigger: Option<(String, ContentType)>,
 }
 
 struct OpenEditor {
     editor: Box<dyn Editor>,
-    _name: String,
+    name: String,
     path: Option<std::path::PathBuf>,
 }
 
@@ -59,7 +59,6 @@ impl Default for EditorApp {
             status_text: "Ready".into(),
             active_tab: None,
             show_browser: true,
-            browser_content_trigger: None,
         }
     }
 }
@@ -70,7 +69,7 @@ impl EditorApp {
             let idx = self.open_editors.len();
             self.open_editors.push(OpenEditor {
                 editor,
-                _name: name.to_string(),
+                name: name.to_string(),
                 path: None,
             });
             self.active_tab = Some(idx);
@@ -79,13 +78,54 @@ impl EditorApp {
             self.status_text = format!("No editor for {:?}", ct);
         }
     }
+
+    /// Open an editor for `ct` and load `path` into it. Focuses the
+    /// existing tab instead if that file is already open.
+    fn open_editor_for_file(&mut self, name: &str, ct: ContentType, path: &std::path::Path) {
+        if let Some(idx) = self
+            .open_editors
+            .iter()
+            .position(|o| o.path.as_deref() == Some(path))
+        {
+            self.active_tab = Some(idx);
+            return;
+        }
+        let Some(mut editor) = self.registry.create(ct) else {
+            self.status_text = format!("No editor for {:?}", ct);
+            return;
+        };
+        match editor.load(path) {
+            Ok(()) => {
+                let idx = self.open_editors.len();
+                self.open_editors.push(OpenEditor {
+                    editor,
+                    name: name.to_string(),
+                    path: Some(path.to_path_buf()),
+                });
+                self.active_tab = Some(idx);
+                self.status_text = format!("Opened {}", path.display());
+            }
+            Err(e) => {
+                self.status_text = format!("Open failed: {e}");
+            }
+        }
+    }
+
+    fn handle_browser_actions(&mut self, actions: Vec<BrowserAction>) {
+        for action in actions {
+            match action {
+                BrowserAction::Open { name, ct, path } => match path {
+                    Some(path) => self.open_editor_for_file(&name, ct, &path),
+                    None => self.open_new_editor(&name, ct),
+                },
+                BrowserAction::Status(msg) => self.status_text = msg,
+            }
+        }
+    }
 }
 
 impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if let Some((name, ct)) = self.browser_content_trigger.take() {
-            self.open_new_editor(&name, ct);
-        }
 
         // Poll the background AI generation thread.
         if let Some(rx) = &self.ai_result_rx {
@@ -204,10 +244,8 @@ impl eframe::App for EditorApp {
         });
 
         if self.show_browser {
-            let on_open = &mut |name: String, ct: ContentType| {
-                self.browser_content_trigger = Some((name, ct));
-            };
-            self.browser.ui(ctx, on_open);
+            let actions = self.browser.ui(ctx);
+            self.handle_browser_actions(actions);
         }
 
         egui::TopBottomPanel::bottom("status_line").show(ctx, |ui| {
@@ -326,7 +364,7 @@ impl eframe::App for EditorApp {
                             for (i, open) in self.open_editors.iter().enumerate() {
                                 let title = format!(
                                     "{}{}",
-                                    open.editor.title(),
+                                    open.name,
                                     if open.editor.has_unsaved_changes() {
                                         " *"
                                     } else {
