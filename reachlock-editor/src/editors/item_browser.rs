@@ -283,6 +283,27 @@ impl Editor for ItemBrowser {
         self.seed_base = seed & 0x001F_FFFF_FFFF_FFFF;
         self.dirty = true;
     }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.label(format!(
+            "{:?} · tier {} · base seed {}",
+            self.family, self.tier, self.seed_base
+        ));
+        match self.selected.and_then(|i| self.cards.get(i)) {
+            Some(card) => {
+                ui.separator();
+                ui.strong(&card.item.display_name);
+                ui.colored_label(
+                    rarity_color(card.item.rarity),
+                    format!("{:?}", card.item.rarity),
+                );
+                ui.label(format!("Seed {}", card.item_seed.seed));
+            }
+            None => {
+                ui.weak("Click a card to inspect it.");
+            }
+        }
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {

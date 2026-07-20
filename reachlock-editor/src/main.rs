@@ -1066,12 +1066,34 @@ impl eframe::App for EditorApp {
             }
         });
 
+        let mut open_recent = None;
         egui::SidePanel::right("preview_panel")
             .resizable(true)
             .default_width(250.0)
             .show(ctx, |ui| {
-                self.preview.ui(ctx, ui);
+                let active = self
+                    .active_tab
+                    .and_then(|i| self.open_editors.get(i))
+                    .map(|o| (o.name.as_str(), o.editor.as_ref()));
+                open_recent = self
+                    .preview
+                    .show(ui, active, &self.preferences.prefs.recent_files);
             });
+        if let Some(path) = open_recent {
+            match browser::detect_content_type(&path) {
+                Some(ct) => {
+                    let name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("file")
+                        .to_string();
+                    self.open_editor_for_file(&name, ct, &path);
+                }
+                None => {
+                    self.status_text = format!("Can't open {} — unknown type", path.display());
+                }
+            }
+        }
 
         self.ai_settings.show(ctx);
         self.help.show(ctx);

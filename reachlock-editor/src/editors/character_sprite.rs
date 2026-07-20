@@ -449,6 +449,19 @@ impl Editor for CharacterSpriteViewer {
         self.config = CharacterLookConfig::seed_derived(generator_species(self.species));
         self.dirty = true;
     }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.label(format!(
+            "{} · seed {}",
+            species_name(self.species),
+            self.seed
+        ));
+        ui.monospace(&self.palette_key);
+        if let Some(texture) = &self.texture {
+            ui.add_space(4.0);
+            ui.image((texture.id(), egui::vec2(64.0, 96.0)));
+        }
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {
