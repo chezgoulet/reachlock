@@ -14,6 +14,7 @@ use super::widgets::{action_ui, comparison_symbol, condition_node_ui, COMPARISON
 struct Entry {
     contract: Contract,
     path: Option<std::path::PathBuf>,
+    dirty: bool,
 }
 
 pub struct ContractEditor {
@@ -87,7 +88,9 @@ impl TriggerKind {
 impl ContractEditor {
     fn new() -> Self {
         let mut entries = Vec::new();
-        if let Ok(dir) = std::fs::read_dir("mods/reachlock/contracts") {
+        if let Ok(dir) =
+            std::fs::read_dir(crate::app::content_root().join(ContentType::Contract.directory()))
+        {
             let mut paths: Vec<_> = dir
                 .flatten()
                 .map(|e| e.path())
@@ -99,6 +102,7 @@ impl ContractEditor {
                     entries.push(Entry {
                         contract,
                         path: Some(path),
+                        dirty: false,
                     });
                 }
             }
@@ -107,6 +111,7 @@ impl ContractEditor {
             entries.push(Entry {
                 contract: blank_contract(),
                 path: None,
+                dirty: true,
             });
         }
         ContractEditor {
@@ -127,6 +132,13 @@ impl Editor for ContractEditor {
         ContentType::Contract
     }
 
+    fn touch(&mut self) {
+        self.has_changes = true;
+        if let Some(e) = self.entries.get_mut(self.selected) {
+            e.dirty = true;
+        }
+    }
+
     fn has_unsaved_changes(&self) -> bool {
         self.has_changes
     }
@@ -144,6 +156,7 @@ impl Editor for ContractEditor {
             self.entries.push(Entry {
                 contract,
                 path: Some(path.to_path_buf()),
+                dirty: false,
             });
             self.selected = self.entries.len() - 1;
         }
@@ -207,9 +220,10 @@ impl Editor for ContractEditor {
                     self.entries.push(Entry {
                         contract: blank_contract(),
                         path: None,
+                        dirty: true,
                     });
                     self.selected = self.entries.len() - 1;
-                    self.has_changes = true;
+                    self.touch();
                 }
                 if let Some(entry) = self.entries.get(self.selected) {
                     let name = entry
@@ -436,7 +450,7 @@ impl Editor for ContractEditor {
                 }
             });
             if changed {
-                self.has_changes = true;
+                self.touch();
             }
         });
     }
@@ -474,7 +488,7 @@ impl Editor for ContractEditor {
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.contract = contract;
         }
-        self.has_changes = true;
+        self.touch();
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
@@ -498,36 +512,75 @@ impl Editor for ContractEditor {
             self.entries.push(Entry {
                 contract,
                 path: None,
+                dirty: true,
             });
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         Ok(())
     }
 
     fn snapshot(&self) -> Option<String> {
-        let state: Vec<(&Contract, &Option<std::path::PathBuf>)> = self
+        let state: Vec<(&Contract, &Option<std::path::PathBuf>, bool)> = self
             .entries
             .iter()
-            .map(|e| (&e.contract, &e.path))
+            .map(|e| (&e.contract, &e.path, e.dirty))
             .collect();
         ron::to_string(&(state, self.selected)).ok()
     }
 
     fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
-        let (state, selected): (Vec<(Contract, Option<std::path::PathBuf>)>, usize) =
+        let (state, selected): (Vec<(Contract, Option<std::path::PathBuf>, bool)>, usize) =
             ron::from_str(ron).map_err(|e| e.to_string())?;
         self.entries = state
             .into_iter()
-            .map(|(contract, path)| Entry { contract, path })
+            .map(|(contract, path, dirty)| Entry {
+                contract,
+                path,
+                dirty,
+            })
             .collect();
         self.selected = selected.min(self.entries.len().saturating_sub(1));
-        self.has_changes = true;
+        self.has_changes = self.entries.iter().any(|e| e.dirty);
+        self.touch();
         Ok(())
     }
 
     fn mark_saved(&mut self) {
         self.has_changes = false;
+        for e in &mut self.entries {
+            e.dirty = false;
+        }
+    }
+
+    fn save_all(&mut self) -> Result<(), String> {
+        use crate::app::content_root;
+        let mut wrote = 0usize;
+        for entry in &mut self.entries {
+            if !entry.dirty {
+                continue;
+            }
+            let Some(path) = &entry.path else {
+                let dir = content_root().join(ContentType::Contract.directory());
+                let _ = std::fs::create_dir_all(&dir);
+                let stem = if entry.contract.label.is_empty() {
+                    format!("contract_{}", wrote)
+                } else {
+                    entry.contract.label.clone()
+                };
+                let p = dir.join(format!("{stem}.ron"));
+                crate::io::write_ron(&p, &entry.contract)?;
+                entry.path = Some(p);
+                wrote += 1;
+                continue;
+            };
+            crate::io::write_ron(path, &entry.contract)?;
+            wrote += 1;
+        }
+        if wrote == 0 {
+            return Err("no dirty entries to save".into());
+        }
+        Ok(())
     }
 
     fn selected_entry_name(&self) -> Option<String> {
@@ -547,7 +600,7 @@ impl Editor for ContractEditor {
         if self.selected >= self.entries.len() {
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         true
     }
 

@@ -49,6 +49,3 @@ debug = false
 
 [profile.release.package.rapier3d]
 opt-level = 3
-
-[profile.release.package.rapier2d]
-opt-level = 3

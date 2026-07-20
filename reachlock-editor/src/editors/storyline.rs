@@ -134,8 +134,10 @@ fn blank_storyline() -> Storyline {
 
 impl StorylineEditor {
     fn new() -> Self {
-        let default_path = std::path::Path::new("mods/reachlock/storylines/compact_arc.ron");
-        let (storylines, path) = match crate::io::read_ron::<Vec<Storyline>>(default_path) {
+        let default_path = crate::app::content_root()
+            .join(ContentType::Storyline.directory())
+            .join("compact_arc.ron");
+        let (storylines, path) = match crate::io::read_ron::<Vec<Storyline>>(&default_path) {
             Ok(s) if !s.is_empty() => (s, Some(default_path.to_path_buf())),
             _ => (vec![blank_storyline()], None),
         };

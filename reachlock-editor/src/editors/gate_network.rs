@@ -80,13 +80,17 @@ pub struct GateNetworkEditor {
 
 impl GateNetworkEditor {
     fn new() -> Self {
-        let default_path = std::path::Path::new("mods/reachlock/gate_network/core_region.ron");
-        let (network, path) = match crate::io::read_ron::<GateNetwork>(default_path) {
+        let default_path = crate::app::content_root()
+            .join(ContentType::GateNetwork.directory())
+            .join("core_region.ron");
+        let (network, path) = match crate::io::read_ron::<GateNetwork>(&default_path) {
             Ok(n) => (n, Some(default_path.to_path_buf())),
             Err(_) => (GateNetwork { gates: Vec::new() }, None),
         };
         let mut biomes = HashMap::new();
-        if let Ok(dir) = std::fs::read_dir("mods/reachlock/systems") {
+        if let Ok(dir) = std::fs::read_dir(
+            crate::app::content_root().join(ContentType::ChartedSystem.directory()),
+        ) {
             for entry in dir.flatten() {
                 if let Ok(system) = crate::io::read_ron::<ChartedSystem>(&entry.path()) {
                     biomes.insert(system.id.clone(), system.biome);

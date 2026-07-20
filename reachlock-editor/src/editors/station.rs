@@ -20,6 +20,7 @@ const PRIORITIES: [Priority; 4] = [
 struct Entry {
     file: ContentFile,
     path: Option<std::path::PathBuf>,
+    dirty: bool,
 }
 
 pub struct StationEditor {
@@ -50,7 +51,9 @@ fn blank_file() -> ContentFile {
 impl StationEditor {
     fn new() -> Self {
         let mut entries = Vec::new();
-        if let Ok(dir) = std::fs::read_dir("mods/reachlock/stations") {
+        if let Ok(dir) =
+            std::fs::read_dir(crate::app::content_root().join(ContentType::Station.directory()))
+        {
             let mut paths: Vec<_> = dir
                 .flatten()
                 .map(|e| e.path())
@@ -63,6 +66,7 @@ impl StationEditor {
                         entries.push(Entry {
                             file,
                             path: Some(path),
+                            dirty: false,
                         });
                     }
                 }
@@ -72,6 +76,7 @@ impl StationEditor {
             entries.push(Entry {
                 file: blank_file(),
                 path: None,
+                dirty: true,
             });
         }
         StationEditor {
@@ -90,6 +95,13 @@ impl Editor for StationEditor {
 
     fn content_type(&self) -> ContentType {
         ContentType::Station
+    }
+
+    fn touch(&mut self) {
+        self.has_changes = true;
+        if let Some(e) = self.entries.get_mut(self.selected) {
+            e.dirty = true;
+        }
     }
 
     fn has_unsaved_changes(&self) -> bool {
@@ -112,6 +124,7 @@ impl Editor for StationEditor {
             self.entries.push(Entry {
                 file,
                 path: Some(path.to_path_buf()),
+                dirty: false,
             });
             self.selected = self.entries.len() - 1;
         }
@@ -179,9 +192,10 @@ impl Editor for StationEditor {
                     self.entries.push(Entry {
                         file: blank_file(),
                         path: None,
+                        dirty: true,
                     });
                     self.selected = self.entries.len() - 1;
-                    self.has_changes = true;
+                    self.touch();
                 }
                 if let Some(entry) = self.entries.get(self.selected) {
                     let name = entry
@@ -499,7 +513,7 @@ impl Editor for StationEditor {
                 }
             }
             if changed {
-                self.has_changes = true;
+                self.touch();
             }
         });
     }
@@ -533,7 +547,7 @@ impl Editor for StationEditor {
                 npc_spawns,
             };
         }
-        self.has_changes = true;
+        self.touch();
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
@@ -545,33 +559,74 @@ impl Editor for StationEditor {
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.file = file;
         } else {
-            self.entries.push(Entry { file, path: None });
+            self.entries.push(Entry {
+                file,
+                path: None,
+                dirty: true,
+            });
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         Ok(())
     }
 
     fn snapshot(&self) -> Option<String> {
-        let state: Vec<(&ContentFile, &Option<std::path::PathBuf>)> =
-            self.entries.iter().map(|e| (&e.file, &e.path)).collect();
+        let state: Vec<(&ContentFile, &Option<std::path::PathBuf>, bool)> = self
+            .entries
+            .iter()
+            .map(|e| (&e.file, &e.path, e.dirty))
+            .collect();
         ron::to_string(&(state, self.selected)).ok()
     }
 
     fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
-        let (state, selected): (Vec<(ContentFile, Option<std::path::PathBuf>)>, usize) =
+        let (state, selected): (Vec<(ContentFile, Option<std::path::PathBuf>, bool)>, usize) =
             ron::from_str(ron).map_err(|e| e.to_string())?;
         self.entries = state
             .into_iter()
-            .map(|(file, path)| Entry { file, path })
+            .map(|(file, path, dirty)| Entry { file, path, dirty })
             .collect();
         self.selected = selected.min(self.entries.len().saturating_sub(1));
-        self.has_changes = true;
+        self.has_changes = self.entries.iter().any(|e| e.dirty);
+        self.touch();
         Ok(())
     }
 
     fn mark_saved(&mut self) {
         self.has_changes = false;
+        for e in &mut self.entries {
+            e.dirty = false;
+        }
+    }
+
+    fn save_all(&mut self) -> Result<(), String> {
+        use crate::app::content_root;
+        let mut wrote = 0usize;
+        for entry in &mut self.entries {
+            if !entry.dirty {
+                continue;
+            }
+            let Some(path) = &entry.path else {
+                let dir = content_root().join(ContentType::Station.directory());
+                let _ = std::fs::create_dir_all(&dir);
+                let stem = if entry.file.display_name.is_empty() {
+                    format!("station_{}", wrote)
+                } else {
+                    entry.file.display_name.clone()
+                };
+                let p = dir.join(format!("{stem}.ron"));
+                crate::io::write_ron(&p, &entry.file)?;
+                entry.path = Some(p);
+                wrote += 1;
+                continue;
+            };
+            crate::io::write_ron(path, &entry.file)?;
+            wrote += 1;
+        }
+        if wrote == 0 {
+            return Err("no dirty entries to save".into());
+        }
+        Ok(())
     }
 
     fn selected_entry_name(&self) -> Option<String> {
@@ -591,7 +646,7 @@ impl Editor for StationEditor {
         if self.selected >= self.entries.len() {
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         true
     }
 

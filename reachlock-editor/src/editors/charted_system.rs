@@ -54,6 +54,7 @@ fn biome_description(biome: Biome) -> &'static str {
 struct Entry {
     system: ChartedSystem,
     path: Option<std::path::PathBuf>,
+    dirty: bool,
 }
 
 pub struct ChartedSystemEditor {
@@ -77,7 +78,9 @@ fn blank_system() -> ChartedSystem {
 impl ChartedSystemEditor {
     fn new() -> Self {
         let mut entries = Vec::new();
-        if let Ok(dir) = std::fs::read_dir("mods/reachlock/systems") {
+        if let Ok(dir) = std::fs::read_dir(
+            crate::app::content_root().join(ContentType::ChartedSystem.directory()),
+        ) {
             let mut paths: Vec<_> = dir
                 .flatten()
                 .map(|e| e.path())
@@ -89,6 +92,7 @@ impl ChartedSystemEditor {
                     entries.push(Entry {
                         system,
                         path: Some(path),
+                        dirty: false,
                     });
                 }
             }
@@ -98,6 +102,7 @@ impl ChartedSystemEditor {
             entries.push(Entry {
                 system: blank_system(),
                 path: None,
+                dirty: true,
             });
         }
         ChartedSystemEditor {
@@ -118,6 +123,13 @@ impl Editor for ChartedSystemEditor {
         ContentType::ChartedSystem
     }
 
+    fn touch(&mut self) {
+        self.has_changes = true;
+        if let Some(e) = self.entries.get_mut(self.selected) {
+            e.dirty = true;
+        }
+    }
+
     fn has_unsaved_changes(&self) -> bool {
         self.has_changes
     }
@@ -135,6 +147,7 @@ impl Editor for ChartedSystemEditor {
             self.entries.push(Entry {
                 system,
                 path: Some(path.to_path_buf()),
+                dirty: false,
             });
             self.selected = self.entries.len() - 1;
         }
@@ -186,9 +199,10 @@ impl Editor for ChartedSystemEditor {
                     self.entries.push(Entry {
                         system: blank_system(),
                         path: None,
+                        dirty: true,
                     });
                     self.selected = self.entries.len() - 1;
-                    self.has_changes = true;
+                    self.touch();
                 }
                 if let Some(entry) = self.entries.get(self.selected) {
                     let name = entry
@@ -246,9 +260,13 @@ impl Editor for ChartedSystemEditor {
                     let mut system = self.entries[i].system.clone();
                     system.id = format!("{}_copy", system.id);
                     system.display_name = format!("{} Copy", system.display_name);
-                    self.entries.push(Entry { system, path: None });
+                    self.entries.push(Entry {
+                        system,
+                        path: None,
+                        dirty: true,
+                    });
                     self.selected = self.entries.len() - 1;
-                    self.has_changes = true;
+                    self.touch();
                 }
                 if let Some(i) = delete_idx {
                     if self.entries.len() > 1 {
@@ -256,7 +274,7 @@ impl Editor for ChartedSystemEditor {
                         if self.selected >= self.entries.len() {
                             self.selected = self.entries.len() - 1;
                         }
-                        self.has_changes = true;
+                        self.touch();
                     }
                 }
             });
@@ -336,7 +354,7 @@ impl Editor for ChartedSystemEditor {
                 }
             });
             if changed {
-                self.has_changes = true;
+                self.touch();
             }
         });
     }
@@ -360,7 +378,7 @@ impl Editor for ChartedSystemEditor {
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.system = system;
         }
-        self.has_changes = true;
+        self.touch();
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
@@ -369,33 +387,80 @@ impl Editor for ChartedSystemEditor {
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.system = system;
         } else {
-            self.entries.push(Entry { system, path: None });
+            self.entries.push(Entry {
+                system,
+                path: None,
+                dirty: true,
+            });
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         Ok(())
     }
 
     fn snapshot(&self) -> Option<String> {
-        let state: Vec<(&ChartedSystem, &Option<std::path::PathBuf>)> =
-            self.entries.iter().map(|e| (&e.system, &e.path)).collect();
+        let state: Vec<(&ChartedSystem, &Option<std::path::PathBuf>, bool)> = self
+            .entries
+            .iter()
+            .map(|e| (&e.system, &e.path, e.dirty))
+            .collect();
         ron::to_string(&(state, self.selected)).ok()
     }
 
     fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
-        let (state, selected): (Vec<(ChartedSystem, Option<std::path::PathBuf>)>, usize) =
-            ron::from_str(ron).map_err(|e| e.to_string())?;
+        let (state, selected): (
+            Vec<(ChartedSystem, Option<std::path::PathBuf>, bool)>,
+            usize,
+        ) = ron::from_str(ron).map_err(|e| e.to_string())?;
         self.entries = state
             .into_iter()
-            .map(|(system, path)| Entry { system, path })
+            .map(|(system, path, dirty)| Entry {
+                system,
+                path,
+                dirty,
+            })
             .collect();
         self.selected = selected.min(self.entries.len().saturating_sub(1));
-        self.has_changes = true;
+        self.has_changes = self.entries.iter().any(|e| e.dirty);
+        self.touch();
         Ok(())
     }
 
     fn mark_saved(&mut self) {
         self.has_changes = false;
+        for e in &mut self.entries {
+            e.dirty = false;
+        }
+    }
+
+    fn save_all(&mut self) -> Result<(), String> {
+        use crate::app::content_root;
+        let mut wrote = 0usize;
+        for entry in &mut self.entries {
+            if !entry.dirty {
+                continue;
+            }
+            let Some(path) = &entry.path else {
+                let dir = content_root().join(ContentType::ChartedSystem.directory());
+                let _ = std::fs::create_dir_all(&dir);
+                let stem = if entry.system.display_name.is_empty() {
+                    format!("system_{}", wrote)
+                } else {
+                    entry.system.display_name.clone()
+                };
+                let p = dir.join(format!("{stem}.ron"));
+                crate::io::write_ron(&p, &entry.system)?;
+                entry.path = Some(p);
+                wrote += 1;
+                continue;
+            };
+            crate::io::write_ron(path, &entry.system)?;
+            wrote += 1;
+        }
+        if wrote == 0 {
+            return Err("no dirty entries to save".into());
+        }
+        Ok(())
     }
 
     fn selected_entry_name(&self) -> Option<String> {
@@ -415,7 +480,7 @@ impl Editor for ChartedSystemEditor {
         if self.selected >= self.entries.len() {
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         true
     }
 

@@ -48,6 +48,10 @@ REACHLOCK is a procedurally-generated spacefaring MMO being rebuilt from scratch
 - `~/.cargo/bin` is not on PATH in fresh shells: `export PATH="$HOME/.cargo/bin:$PATH"`.
 - Seeds are ≤ 2^53 (JSON float survival). `Seed::new` masks; keep it that way.
 - Bevy query filters trip clippy `type_complexity`; `#[allow]` on the system fn is the accepted pattern.
+- RON round-trip drops comments: `reachlock-editor/src/io.rs::write_ron` pretty-prints authored content files, but `ron` cannot preserve hand-written comments through deserialize→serialize. Never round-trip a commented file through the editor, and don't add comments expecting them to survive a save.
+- Toolchain is pinned via `rust-toolchain.toml` (channel `1.96.0`, `rustfmt`+`clippy`). Bumping the channel is a separate commit that must NOT be bundled with unrelated changes, because the new rustfmt may reformat the whole tree — land the fmt pass as its own commit first, then the feature work.
+- Branch discipline: each sprint/slice gets its own branch off `testing` (see the index's playbook). Don't pile unrelated slices onto one branch; keep PRs focused so `make check` stays green per-change.
+- Multi-entry editors (soul/station/enemy/…) save each dirty entry to its own `entry.path` via `Editor::save_all`. Never make a single-entry `save(path)` collapse all loaded entries onto the tab path — that silently loses authored content in the other entries.
 
 ## Build & Test
 

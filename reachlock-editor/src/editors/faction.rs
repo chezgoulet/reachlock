@@ -117,8 +117,10 @@ fn blank_faction() -> Faction {
 
 impl FactionEditor {
     fn new() -> Self {
-        let default_path = std::path::Path::new("mods/reachlock/factions/canon.ron");
-        let (catalog, path) = match crate::io::read_ron::<FactionCatalog>(default_path) {
+        let default_path = crate::app::content_root()
+            .join(ContentType::Faction.directory())
+            .join("canon.ron");
+        let (catalog, path) = match crate::io::read_ron::<FactionCatalog>(&default_path) {
             Ok(c) => (c, Some(default_path.to_path_buf())),
             Err(_) => (
                 FactionCatalog {

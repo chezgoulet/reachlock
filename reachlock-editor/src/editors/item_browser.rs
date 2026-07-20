@@ -217,15 +217,12 @@ impl Editor for ItemBrowser {
                             });
                         ui.separator();
                         if ui.button("Pin Seed").clicked() {
-                            let dir = std::path::Path::new("mods/reachlock/items");
-                            let result = std::fs::create_dir_all(dir)
+                            let dir =
+                                crate::app::content_root().join(ContentType::Item.directory());
+                            let seed_path = dir.join(format!("{}.ron", card.item.id));
+                            let result = std::fs::create_dir_all(&dir)
                                 .map_err(|e| e.to_string())
-                                .and_then(|()| {
-                                    crate::io::write_ron(
-                                        &dir.join(format!("{}.ron", card.item.id)),
-                                        &card.item_seed,
-                                    )
-                                });
+                                .and_then(|()| crate::io::write_ron(&seed_path, &card.item_seed));
                             self.status = match result {
                                 Ok(()) => {
                                     format!("Pinned {} to mods/reachlock/items/", card.item.id)

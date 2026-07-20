@@ -75,6 +75,9 @@ struct EditorApp {
     pending: Option<PendingAction>,
     /// Set once a quit is confirmed so the close request passes through.
     allow_close: bool,
+    /// Repaint requested by a state change outside direct input (timers,
+    /// async apply). Avoids a busy per-frame `request_repaint`.
+    repaint_requested: bool,
 }
 
 struct OpenEditor {
@@ -189,6 +192,7 @@ impl Default for EditorApp {
             validation_report: None,
             pending: None,
             allow_close: false,
+            repaint_requested: true,
         }
     }
 }
@@ -273,19 +277,32 @@ impl EditorApp {
         let Some(open) = self.open_editors.get_mut(idx) else {
             return false;
         };
-        let Some(path) = open.path.clone() else {
-            return self.save_editor_as(idx);
-        };
-        match open.editor.save(&path) {
+        // Multi-entry editors (souls, systems, enemies, …) persist each dirty
+        // entry to its own path via `save_all`. Single-entry editors return an
+        // error from `save_all` and fall through to path-based save below.
+        match open.editor.save_all() {
             Ok(()) => {
                 open.editor.mark_saved();
                 self.browser.invalidate();
-                self.status_text = format!("Saved {}", path.display());
+                self.status_text = "Saved".into();
                 true
             }
-            Err(e) => {
-                self.status_text = format!("Save error: {e}");
-                false
+            Err(_) => {
+                let Some(path) = open.path.clone() else {
+                    return self.save_editor_as(idx);
+                };
+                match open.editor.save(&path) {
+                    Ok(()) => {
+                        open.editor.mark_saved();
+                        self.browser.invalidate();
+                        self.status_text = format!("Saved {}", path.display());
+                        true
+                    }
+                    Err(e) => {
+                        self.status_text = format!("Save error: {e}");
+                        false
+                    }
+                }
             }
         }
     }
@@ -293,11 +310,19 @@ impl EditorApp {
     /// Save As via the native file dialog. Rebinds the tab to the chosen
     /// path on success.
     fn save_editor_as(&mut self, idx: usize) -> bool {
-        let Some(open) = self.open_editors.get(idx) else {
+        let Some(open) = self.open_editors.get_mut(idx) else {
             return false;
         };
+        // Multi-entry editors save each dirty entry to its own path; the Save
+        // As dialog is meaningless for them, so just persist the dirty set.
+        if open.editor.save_all().is_ok() {
+            open.editor.mark_saved();
+            self.browser.invalidate();
+            self.status_text = "Saved".into();
+            return true;
+        }
         let ct = open.editor.content_type();
-        let default_dir = self.browser.root.join(browser::content_dir(ct));
+        let default_dir = self.browser.root.join(ct.directory());
         let mut dialog = rfd::FileDialog::new()
             .add_filter("RON content", &["ron"])
             .set_file_name(format!("{}.ron", suggest_stem(&open.name)));
@@ -313,9 +338,6 @@ impl EditorApp {
         if path.extension().is_none() {
             path.set_extension("ron");
         }
-        let Some(open) = self.open_editors.get_mut(idx) else {
-            return false;
-        };
         match open.editor.save(&path) {
             Ok(()) => {
                 open.name = path
@@ -520,19 +542,35 @@ impl EditorApp {
             if !open.editor.has_unsaved_changes() {
                 continue;
             }
-            let Some(path) = &open.path else {
-                continue; // Never Save-As from a timer.
-            };
-            match open.editor.save(path) {
+            // Multi-entry editors persist each dirty entry to its own path;
+            // fall back to the tab path for single-entry editors.
+            let saved_ok = match open.editor.save_all() {
                 Ok(()) => {
                     open.editor.mark_saved();
-                    saved += 1;
+                    true
                 }
-                Err(_) => failed += 1,
+                Err(_) => {
+                    let Some(path) = &open.path else {
+                        continue; // Never Save-As from a timer.
+                    };
+                    match open.editor.save(path) {
+                        Ok(()) => {
+                            open.editor.mark_saved();
+                            true
+                        }
+                        Err(_) => false,
+                    }
+                }
+            };
+            if saved_ok {
+                saved += 1;
+            } else {
+                failed += 1;
             }
         }
         if saved > 0 || failed > 0 {
             self.browser.invalidate();
+            self.request_repaint();
             self.status_text = if failed == 0 {
                 format!("Auto-saved {saved} editor(s)")
             } else {
@@ -547,6 +585,11 @@ impl EditorApp {
 
     fn active_open_mut(&mut self) -> Option<&mut OpenEditor> {
         self.active_tab.and_then(|i| self.open_editors.get_mut(i))
+    }
+
+    /// Ask for exactly one repaint on the next frame, without busy-looping.
+    fn request_repaint(&mut self) {
+        self.repaint_requested = true;
     }
 
     /// Render and resolve the pending confirmation dialog, if any.
@@ -846,6 +889,9 @@ impl eframe::App for EditorApp {
             self.prefs_applied = true;
             self.preferences.prefs.apply_visuals(ctx);
             self.browser.root = std::path::PathBuf::from(&self.preferences.prefs.content_root);
+            crate::app::set_content_root(Some(std::path::PathBuf::from(
+                &self.preferences.prefs.content_root,
+            )));
         }
 
         self.autosave_tick();
@@ -862,6 +908,7 @@ impl eframe::App for EditorApp {
             self.status_text = "Ready".into();
             self.last_status = "Ready".into();
             self.status_expiry = None;
+            self.request_repaint();
         }
 
         // Window title mirrors the unsaved count.
@@ -896,6 +943,7 @@ impl eframe::App for EditorApp {
             if let Ok(outcome) = rx.try_recv() {
                 self.ai_running = false;
                 self.ai_result_rx = None;
+                self.request_repaint();
                 match outcome {
                     ai::AiGenOutcome::Ok { ct, result } => {
                         let mut applied = false;
@@ -1223,6 +1271,7 @@ impl eframe::App for EditorApp {
         if self.preferences.show(ctx) {
             // A preference changed — pick up a possible content-root move.
             let root = std::path::PathBuf::from(&self.preferences.prefs.content_root);
+            crate::app::set_content_root(Some(root.clone()));
             if self.browser.root != root {
                 self.browser.root = root;
                 self.browser.invalidate();
@@ -1236,7 +1285,13 @@ impl eframe::App for EditorApp {
             open.track_changes();
         }
 
-        ctx.request_repaint();
+        // Only repaint when there is input this frame or a state change
+        // requested one (timer/async). Unconditional repaint busy-loops at
+        // 100% CPU; egui already repaints on interactive input.
+        if self.repaint_requested || ctx.input(|i| !i.events.is_empty()) {
+            ctx.request_repaint();
+            self.repaint_requested = false;
+        }
     }
 }
 
@@ -1252,4 +1307,17 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|_cc| Ok(Box::new(EditorApp::default()))),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn suggest_stem_normalizes_names() {
+        assert_eq!(suggest_stem("New Soul"), "new_soul");
+        assert_eq!(suggest_stem("My-Cool Station!"), "my_cool_station");
+        assert_eq!(suggest_stem("   "), "untitled");
+        assert_eq!(suggest_stem(""), "untitled");
+    }
 }

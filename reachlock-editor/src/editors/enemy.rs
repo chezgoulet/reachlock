@@ -10,6 +10,7 @@ use super::super::app::{ContentType, Editor};
 struct Entry {
     archetype: HostileArchetype,
     path: Option<std::path::PathBuf>,
+    dirty: bool,
 }
 
 pub struct EnemyEditor {
@@ -58,7 +59,9 @@ fn blank_archetype() -> HostileArchetype {
 impl EnemyEditor {
     fn new() -> Self {
         let mut entries = Vec::new();
-        if let Ok(dir) = std::fs::read_dir("mods/reachlock/combat") {
+        if let Ok(dir) = std::fs::read_dir(
+            crate::app::content_root().join(ContentType::EnemyArchetype.directory()),
+        ) {
             let mut paths: Vec<_> = dir
                 .flatten()
                 .map(|e| e.path())
@@ -70,6 +73,7 @@ impl EnemyEditor {
                     entries.push(Entry {
                         archetype,
                         path: Some(path),
+                        dirty: false,
                     });
                 }
             }
@@ -78,6 +82,7 @@ impl EnemyEditor {
             entries.push(Entry {
                 archetype: blank_archetype(),
                 path: None,
+                dirty: true,
             });
         }
         EnemyEditor {
@@ -128,6 +133,13 @@ impl Editor for EnemyEditor {
         ContentType::EnemyArchetype
     }
 
+    fn touch(&mut self) {
+        self.has_changes = true;
+        if let Some(e) = self.entries.get_mut(self.selected) {
+            e.dirty = true;
+        }
+    }
+
     fn has_unsaved_changes(&self) -> bool {
         self.has_changes
     }
@@ -145,6 +157,7 @@ impl Editor for EnemyEditor {
             self.entries.push(Entry {
                 archetype,
                 path: Some(path.to_path_buf()),
+                dirty: false,
             });
             self.selected = self.entries.len() - 1;
         }
@@ -195,9 +208,10 @@ impl Editor for EnemyEditor {
                     self.entries.push(Entry {
                         archetype: blank_archetype(),
                         path: None,
+                        dirty: true,
                     });
                     self.selected = self.entries.len() - 1;
-                    self.has_changes = true;
+                    self.touch();
                 }
                 if let Some(entry) = self.entries.get(self.selected) {
                     let name = entry
@@ -254,9 +268,10 @@ impl Editor for EnemyEditor {
                     self.entries.push(Entry {
                         archetype,
                         path: None,
+                        dirty: true,
                     });
                     self.selected = self.entries.len() - 1;
-                    self.has_changes = true;
+                    self.touch();
                 }
                 if let Some(i) = delete_idx {
                     if self.entries.len() > 1 {
@@ -264,7 +279,7 @@ impl Editor for EnemyEditor {
                         if self.selected >= self.entries.len() {
                             self.selected = self.entries.len() - 1;
                         }
-                        self.has_changes = true;
+                        self.touch();
                     }
                 }
             });
@@ -391,7 +406,7 @@ impl Editor for EnemyEditor {
                 }
             });
             if changed {
-                self.has_changes = true;
+                self.touch();
             }
         });
     }
@@ -456,7 +471,7 @@ impl Editor for EnemyEditor {
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.archetype = archetype;
         }
-        self.has_changes = true;
+        self.touch();
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
@@ -468,36 +483,77 @@ impl Editor for EnemyEditor {
             self.entries.push(Entry {
                 archetype,
                 path: None,
+                dirty: true,
             });
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         Ok(())
     }
 
     fn snapshot(&self) -> Option<String> {
-        let state: Vec<(&HostileArchetype, &Option<std::path::PathBuf>)> = self
+        let state: Vec<(&HostileArchetype, &Option<std::path::PathBuf>, bool)> = self
             .entries
             .iter()
-            .map(|e| (&e.archetype, &e.path))
+            .map(|e| (&e.archetype, &e.path, e.dirty))
             .collect();
         ron::to_string(&(state, self.selected)).ok()
     }
 
     fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
-        let (state, selected): (Vec<(HostileArchetype, Option<std::path::PathBuf>)>, usize) =
-            ron::from_str(ron).map_err(|e| e.to_string())?;
+        let (state, selected): (
+            Vec<(HostileArchetype, Option<std::path::PathBuf>, bool)>,
+            usize,
+        ) = ron::from_str(ron).map_err(|e| e.to_string())?;
         self.entries = state
             .into_iter()
-            .map(|(archetype, path)| Entry { archetype, path })
+            .map(|(archetype, path, dirty)| Entry {
+                archetype,
+                path,
+                dirty,
+            })
             .collect();
         self.selected = selected.min(self.entries.len().saturating_sub(1));
-        self.has_changes = true;
+        self.has_changes = self.entries.iter().any(|e| e.dirty);
+        self.touch();
         Ok(())
     }
 
     fn mark_saved(&mut self) {
         self.has_changes = false;
+        for e in &mut self.entries {
+            e.dirty = false;
+        }
+    }
+
+    fn save_all(&mut self) -> Result<(), String> {
+        use crate::app::content_root;
+        let mut wrote = 0usize;
+        for entry in &mut self.entries {
+            if !entry.dirty {
+                continue;
+            }
+            let Some(path) = &entry.path else {
+                let dir = content_root().join(ContentType::EnemyArchetype.directory());
+                let _ = std::fs::create_dir_all(&dir);
+                let stem = if entry.archetype.display_name.is_empty() {
+                    format!("enemy_{}", wrote)
+                } else {
+                    entry.archetype.display_name.clone()
+                };
+                let p = dir.join(format!("{stem}.ron"));
+                crate::io::write_ron(&p, &entry.archetype)?;
+                entry.path = Some(p);
+                wrote += 1;
+                continue;
+            };
+            crate::io::write_ron(path, &entry.archetype)?;
+            wrote += 1;
+        }
+        if wrote == 0 {
+            return Err("no dirty entries to save".into());
+        }
+        Ok(())
     }
 
     fn selected_entry_name(&self) -> Option<String> {
@@ -517,7 +573,7 @@ impl Editor for EnemyEditor {
         if self.selected >= self.entries.len() {
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         true
     }
 

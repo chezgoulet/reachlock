@@ -64,8 +64,10 @@ fn blank_file() -> ContentFile {
 
 impl RoomTemplatesEditor {
     fn new() -> Self {
-        let default_path = std::path::Path::new("mods/reachlock/hulls/room_templates.ron");
-        let (file, path) = match crate::io::read_ron::<ContentFile>(default_path) {
+        let default_path = crate::app::content_root()
+            .join(ContentType::RoomTemplates.directory())
+            .join("room_templates.ron");
+        let (file, path) = match crate::io::read_ron::<ContentFile>(&default_path) {
             Ok(f) if matches!(f.payload, ContentPayload::RoomTemplates(_)) => {
                 (f, Some(default_path.to_path_buf()))
             }
