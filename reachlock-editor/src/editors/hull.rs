@@ -51,21 +51,15 @@ impl HullEditor {
             .iter()
             .map(|slot| {
                 let item_type = match slot.size_class {
-                    SizeClass::Small => {
-                        ItemType::Equipment(EquipmentKind::Weapon(
-                            WeaponKind::Energy(EnergyWeapon::Laser),
-                        ))
-                    }
-                    SizeClass::Medium => {
-                        ItemType::Equipment(EquipmentKind::Weapon(
-                            WeaponKind::Kinetic(KineticWeapon::Cannon),
-                        ))
-                    }
-                    SizeClass::Large => {
-                        ItemType::Equipment(EquipmentKind::Weapon(
-                            WeaponKind::Missile(MissileWeapon::Torpedo),
-                        ))
-                    }
+                    SizeClass::Small => ItemType::Equipment(EquipmentKind::Weapon(
+                        WeaponKind::Energy(EnergyWeapon::Laser),
+                    )),
+                    SizeClass::Medium => ItemType::Equipment(EquipmentKind::Weapon(
+                        WeaponKind::Kinetic(KineticWeapon::Cannon),
+                    )),
+                    SizeClass::Large => ItemType::Equipment(EquipmentKind::Weapon(
+                        WeaponKind::Missile(MissileWeapon::Torpedo),
+                    )),
                 };
                 Hardpoint {
                     slot_id: slot.id.clone(),
@@ -229,10 +223,7 @@ impl Editor for HullEditor {
 
                 ui.separator();
                 ui.heading("Engine");
-                ui.label(format!(
-                    "Engine seed: {}",
-                    self.config.engine.0.seed
-                ));
+                ui.label(format!("Engine seed: {}", self.config.engine.0.seed));
 
                 ui.separator();
                 ui.heading("Plating");

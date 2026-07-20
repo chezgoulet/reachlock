@@ -3,7 +3,8 @@ use std::path::Path;
 use crate::app::ContentType;
 
 pub fn read_ron<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    let bytes =
+        std::fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
     ron::from_str(&String::from_utf8_lossy(&bytes))
         .map_err(|e| format!("failed to parse {}: {e}", path.display()))
 }

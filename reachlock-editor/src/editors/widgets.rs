@@ -82,9 +82,7 @@ pub fn condition_node_ui(
                 .width(50.0)
                 .show_ui(ui, |ui| {
                     for o in COMPARISONS {
-                        changed |= ui
-                            .selectable_value(op, o, comparison_symbol(o))
-                            .changed();
+                        changed |= ui.selectable_value(op, o, comparison_symbol(o)).changed();
                     }
                 });
             ui.label("value:");

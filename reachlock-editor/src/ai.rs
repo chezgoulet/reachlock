@@ -278,12 +278,11 @@ pub async fn generate_content(
     schemas: &SchemaCache,
     user_prompt: &str,
 ) -> Result<GenerationResult, GenerationError> {
-    let schema = schemas
-        .get(&ct)
-        .ok_or_else(|| GenerationError::SchemaValidationFailed(vec![
-            "No schema available for this content type — use procedural generation instead."
-                .into(),
-        ]))?;
+    let schema = schemas.get(&ct).ok_or_else(|| {
+        GenerationError::SchemaValidationFailed(vec![
+            "No schema available for this content type — use procedural generation instead.".into(),
+        ])
+    })?;
 
     let system = build_system_prompt(&ct, schema);
 
@@ -297,7 +296,10 @@ pub async fn generate_content(
         "temperature": 0.7
     });
 
-    let url = format!("{}/chat/completions", config.api_base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/chat/completions",
+        config.api_base_url.trim_end_matches('/')
+    );
     let client = reqwest::Client::new();
     let resp = client
         .post(&url)
@@ -326,7 +328,9 @@ pub async fn generate_content(
         .and_then(|c| c.get("message"))
         .and_then(|m| m.get("content"))
         .and_then(|c| c.as_str())
-        .ok_or_else(|| GenerationError::NoJsonFound(serde_json::to_string(&body).unwrap_or_default()))?;
+        .ok_or_else(|| {
+            GenerationError::NoJsonFound(serde_json::to_string(&body).unwrap_or_default())
+        })?;
 
     let value = extract_json(content).map_err(GenerationError::NoJsonFound)?;
 

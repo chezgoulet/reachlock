@@ -14,8 +14,8 @@ pub mod hull_frame;
 pub mod hull_mesh;
 pub mod item;
 pub mod item_browser;
-pub mod room_templates;
 pub mod location;
+pub mod room_templates;
 pub mod soul;
 pub mod station;
 pub mod storyline;
@@ -31,10 +31,16 @@ pub fn register_all(registry: &mut super::app::EditorRegistry) {
     registry.register(super::app::ContentType::Soul, soul::create_editor);
     registry.register(super::app::ContentType::Contract, contract::create_editor);
     registry.register(super::app::ContentType::Faction, faction::create_editor);
-    registry.register(super::app::ContentType::EconomyGoods, economy::create_editor);
+    registry.register(
+        super::app::ContentType::EconomyGoods,
+        economy::create_editor,
+    );
     registry.register(super::app::ContentType::Storyline, storyline::create_editor);
     registry.register(super::app::ContentType::Item, item::create_editor);
-    registry.register(super::app::ContentType::EnemyArchetype, enemy::create_editor);
+    registry.register(
+        super::app::ContentType::EnemyArchetype,
+        enemy::create_editor,
+    );
     registry.register(
         super::app::ContentType::ChartedSystem,
         charted_system::create_editor,
