@@ -1,3 +1,9 @@
+//! Reference implementation of a `HullConfiguration` editor, kept as the
+//! pattern exemplar the Phase 1 handoff cites. It is NOT registered:
+//! `build_default_registry` maps ContentType::HullMesh to `hull_mesh.rs`
+//! (the ContentFile mesh editor). Registered in no menu; safe to study,
+//! not wired to the UI.
+
 use reachlock_core::editor::exterior::{
     compose_hull, ArmorSegment, Decal, Hardpoint, HullConfiguration, HullFrame, ItemRef,
     PaintScheme, SizeClass,
@@ -51,21 +57,15 @@ impl HullEditor {
             .iter()
             .map(|slot| {
                 let item_type = match slot.size_class {
-                    SizeClass::Small => {
-                        ItemType::Equipment(EquipmentKind::Weapon(
-                            WeaponKind::Energy(EnergyWeapon::Laser),
-                        ))
-                    }
-                    SizeClass::Medium => {
-                        ItemType::Equipment(EquipmentKind::Weapon(
-                            WeaponKind::Kinetic(KineticWeapon::Cannon),
-                        ))
-                    }
-                    SizeClass::Large => {
-                        ItemType::Equipment(EquipmentKind::Weapon(
-                            WeaponKind::Missile(MissileWeapon::Torpedo),
-                        ))
-                    }
+                    SizeClass::Small => ItemType::Equipment(EquipmentKind::Weapon(
+                        WeaponKind::Energy(EnergyWeapon::Laser),
+                    )),
+                    SizeClass::Medium => ItemType::Equipment(EquipmentKind::Weapon(
+                        WeaponKind::Kinetic(KineticWeapon::Cannon),
+                    )),
+                    SizeClass::Large => ItemType::Equipment(EquipmentKind::Weapon(
+                        WeaponKind::Missile(MissileWeapon::Torpedo),
+                    )),
                 };
                 Hardpoint {
                     slot_id: slot.id.clone(),
@@ -229,10 +229,7 @@ impl Editor for HullEditor {
 
                 ui.separator();
                 ui.heading("Engine");
-                ui.label(format!(
-                    "Engine seed: {}",
-                    self.config.engine.0.seed
-                ));
+                ui.label(format!("Engine seed: {}", self.config.engine.0.seed));
 
                 ui.separator();
                 ui.heading("Plating");

@@ -86,8 +86,7 @@ impl CompiledSchema {
                     obj.remove("title");
                     obj.remove("description");
                     // Drop per-property descriptions to keep the prompt tight.
-                    if let Some(props) = obj.get_mut("properties").and_then(|p| p.as_object_mut())
-                    {
+                    if let Some(props) = obj.get_mut("properties").and_then(|p| p.as_object_mut()) {
                         for prop in props.values_mut() {
                             if let Some(p) = prop.as_object_mut() {
                                 p.remove("description");
@@ -183,7 +182,10 @@ mod tests {
             }
         });
         let errors = cache.get(&ContentType::Station).unwrap().validate(&sample);
-        assert!(errors.is_empty(), "unexpected validation errors: {errors:?}");
+        assert!(
+            errors.is_empty(),
+            "unexpected validation errors: {errors:?}"
+        );
     }
 
     /// A bare HostileArchetype (enemy) must validate against the hostile schema.
@@ -203,8 +205,14 @@ mod tests {
             "disengage_radius": 12288,
             "flee_hp_frac": 256
         });
-        let errors = cache.get(&ContentType::EnemyArchetype).unwrap().validate(&sample);
-        assert!(errors.is_empty(), "unexpected validation errors: {errors:?}");
+        let errors = cache
+            .get(&ContentType::EnemyArchetype)
+            .unwrap()
+            .validate(&sample);
+        assert!(
+            errors.is_empty(),
+            "unexpected validation errors: {errors:?}"
+        );
     }
 
     /// A FactionCatalog-shaped JSON must validate and deserialize into the
@@ -223,7 +231,10 @@ mod tests {
             }]
         });
         let errors = cache.get(&ContentType::Faction).unwrap().validate(&sample);
-        assert!(errors.is_empty(), "unexpected validation errors: {errors:?}");
+        assert!(
+            errors.is_empty(),
+            "unexpected validation errors: {errors:?}"
+        );
         let catalog: FactionCatalog = serde_json::from_value(sample).expect("deserialize catalog");
         assert_eq!(catalog.factions.len(), 1);
     }
@@ -248,7 +259,10 @@ mod tests {
             "decals": []
         });
         let errors = cache.get(&ContentType::HullMesh).unwrap().validate(&sample);
-        assert!(errors.is_empty(), "unexpected validation errors: {errors:?}");
+        assert!(
+            errors.is_empty(),
+            "unexpected validation errors: {errors:?}"
+        );
         let _cfg: HullConfiguration =
             serde_json::from_value(sample).expect("deserialize hull configuration");
     }

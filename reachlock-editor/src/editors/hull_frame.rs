@@ -385,14 +385,18 @@ impl Editor for HullFrameEditor {
                             ui.label("Grid Bounds:");
                             ui.horizontal(|ui| {
                                 changed |= ui
-                                    .add(egui::DragValue::new(&mut frame.grid_bounds.0)
-                                        .range(4..=32)
-                                        .prefix("w: "))
+                                    .add(
+                                        egui::DragValue::new(&mut frame.grid_bounds.0)
+                                            .range(4..=32)
+                                            .prefix("w: "),
+                                    )
                                     .changed();
                                 changed |= ui
-                                    .add(egui::DragValue::new(&mut frame.grid_bounds.1)
-                                        .range(4..=32)
-                                        .prefix("h: "))
+                                    .add(
+                                        egui::DragValue::new(&mut frame.grid_bounds.1)
+                                            .range(4..=32)
+                                            .prefix("h: "),
+                                    )
                                     .changed();
                             });
                             ui.end_row();
@@ -563,6 +567,70 @@ impl Editor for HullFrameEditor {
         }
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        let state: Vec<(&ContentFile, &Option<std::path::PathBuf>)> =
+            self.entries.iter().map(|e| (&e.file, &e.path)).collect();
+        ron::to_string(&(state, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (state, selected): (Vec<(ContentFile, Option<std::path::PathBuf>)>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.entries = state
+            .into_iter()
+            .map(|(file, path)| Entry { file, path })
+            .collect();
+        self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.entries.len() <= 1 {
+            return None;
+        }
+        self.entries
+            .get(self.selected)
+            .map(|e| e.file.display_name.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.entries.len() <= 1 || self.selected >= self.entries.len() {
+            return false;
+        }
+        self.entries.remove(self.selected);
+        if self.selected >= self.entries.len() {
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(entry) = self.entries.get(self.selected) else {
+            return;
+        };
+        ui.strong(&entry.file.display_name);
+        if let ContentPayload::HullFrame(frame) = &entry.file.payload {
+            ui.label(format!("Class: {:?}", frame.class));
+            ui.label(format!(
+                "{} hardpoint slot(s) · {} armor zone(s)",
+                frame.slots.len(),
+                frame.zones.len()
+            ));
+            ui.label(format!(
+                "{} decal slot(s) · grid {}×{}",
+                frame.decal_slots.len(),
+                frame.grid_bounds.0,
+                frame.grid_bounds.1
+            ));
+        }
     }
 }
 

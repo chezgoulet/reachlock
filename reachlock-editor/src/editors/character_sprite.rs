@@ -362,10 +362,7 @@ impl Editor for CharacterSpriteViewer {
                 ui.horizontal(|ui| {
                     ui.label("Seed:");
                     if ui
-                        .add(
-                            egui::DragValue::new(&mut self.seed)
-                                .range(0..=((1u64 << 53) - 1)),
-                        )
+                        .add(egui::DragValue::new(&mut self.seed).range(0..=((1u64 << 53) - 1)))
                         .changed()
                     {
                         self.dirty = true;
@@ -387,10 +384,7 @@ impl Editor for CharacterSpriteViewer {
                     let result = std::fs::create_dir_all(dir)
                         .map_err(|e| e.to_string())
                         .and_then(|()| {
-                            self.save(&dir.join(format!(
-                                "character_look_{:x}.ron",
-                                self.seed
-                            )))
+                            self.save(&dir.join(format!("character_look_{:x}.ron", self.seed)))
                         });
                     self.status = match result {
                         Ok(()) => format!("Pinned look to save/character_look_{:x}.ron", self.seed),
@@ -454,6 +448,19 @@ impl Editor for CharacterSpriteViewer {
         // A fresh seed means a fully procedural look.
         self.config = CharacterLookConfig::seed_derived(generator_species(self.species));
         self.dirty = true;
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.label(format!(
+            "{} · seed {}",
+            species_name(self.species),
+            self.seed
+        ));
+        ui.monospace(&self.palette_key);
+        if let Some(texture) = &self.texture {
+            ui.add_space(4.0);
+            ui.image((texture.id(), egui::vec2(64.0, 96.0)));
+        }
     }
 }
 

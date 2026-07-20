@@ -110,11 +110,7 @@ fn species_hint(s: Species) -> &'static str {
     }
 }
 
-fn string_list_ui(
-    ui: &mut egui::Ui,
-    items: &mut Vec<String>,
-    add_label: &str,
-) -> bool {
+fn string_list_ui(ui: &mut egui::Ui, items: &mut Vec<String>, add_label: &str) -> bool {
     let mut changed = false;
     let mut remove: Option<usize> = None;
     for (i, item) in items.iter_mut().enumerate() {
@@ -290,10 +286,7 @@ fn dialogue_graph_ui(ui: &mut egui::Ui, graph: &mut DialogueGraph) -> bool {
                                 )
                                 .changed();
                             ui.label("→");
-                            let current = choice
-                                .next
-                                .clone()
-                                .unwrap_or_else(|| "(end)".into());
+                            let current = choice.next.clone().unwrap_or_else(|| "(end)".into());
                             egui::ComboBox::from_id_salt(("dialogue_next", i, j))
                                 .selected_text(current)
                                 .show_ui(ui, |ui| {
@@ -322,10 +315,7 @@ fn dialogue_graph_ui(ui: &mut egui::Ui, graph: &mut DialogueGraph) -> bool {
                             }
                         });
                         let mut has_condition = choice.condition.is_some();
-                        if ui
-                            .checkbox(&mut has_condition, "Condition gate")
-                            .changed()
-                        {
+                        if ui.checkbox(&mut has_condition, "Condition gate").changed() {
                             choice.condition = has_condition
                                 .then_some(reachlock_core::contract::types::Condition::Always);
                             changed = true;
@@ -438,7 +428,9 @@ impl Editor for SoulEditor {
                 errors.push(format!("relationship {i}: target_id must not be empty"));
             }
             if !(-1024..=1024).contains(&rel.trust) {
-                errors.push(format!("relationship {i}: trust must be within -1024..=1024"));
+                errors.push(format!(
+                    "relationship {i}: trust must be within -1024..=1024"
+                ));
             }
             if !(0..=1024).contains(&rel.familiarity) {
                 errors.push(format!(
@@ -535,22 +527,16 @@ impl Editor for SoulEditor {
                                 .show_ui(ui, |ui| {
                                     for s in SPECIES {
                                         changed |= ui
-                                            .selectable_value(
-                                                &mut soul.species,
-                                                s,
-                                                species_name(s),
-                                            )
+                                            .selectable_value(&mut soul.species, s, species_name(s))
                                             .changed();
                                     }
                                 });
                             ui.end_row();
                             ui.label("Portrait ID:");
-                            changed |=
-                                ui.text_edit_singleline(&mut soul.portrait_id).changed();
+                            changed |= ui.text_edit_singleline(&mut soul.portrait_id).changed();
                             ui.end_row();
                             ui.label("Origin:");
-                            changed |=
-                                ui.text_edit_singleline(&mut soul.identity.origin).changed();
+                            changed |= ui.text_edit_singleline(&mut soul.identity.origin).changed();
                             ui.end_row();
                             ui.label("Faction:");
                             changed |= ui
@@ -558,8 +544,7 @@ impl Editor for SoulEditor {
                                 .changed();
                             ui.end_row();
                             ui.label("Role:");
-                            changed |=
-                                ui.text_edit_singleline(&mut soul.identity.role).changed();
+                            changed |= ui.text_edit_singleline(&mut soul.identity.role).changed();
                             ui.end_row();
                         });
                         ui.small(species_hint(soul.species));
@@ -587,10 +572,7 @@ impl Editor for SoulEditor {
                         ui.horizontal(|ui| {
                             ui.label("Speaking style:");
                             egui::ComboBox::from_id_salt("soul_style")
-                                .selected_text(format!(
-                                    "{:?}",
-                                    soul.personality.speaking_style
-                                ))
+                                .selected_text(format!("{:?}", soul.personality.speaking_style))
                                 .show_ui(ui, |ui| {
                                     for s in STYLES {
                                         changed |= ui
@@ -604,14 +586,11 @@ impl Editor for SoulEditor {
                                 });
                         });
                         ui.label("Traits:");
-                        changed |=
-                            string_list_ui(ui, &mut soul.personality.traits, "Add Trait");
+                        changed |= string_list_ui(ui, &mut soul.personality.traits, "Add Trait");
                         ui.label("Values:");
-                        changed |=
-                            string_list_ui(ui, &mut soul.personality.values, "Add Value");
+                        changed |= string_list_ui(ui, &mut soul.personality.values, "Add Value");
                         ui.label("Quirks (species attributes live here too):");
-                        changed |=
-                            string_list_ui(ui, &mut soul.personality.quirks, "Add Quirk");
+                        changed |= string_list_ui(ui, &mut soul.personality.quirks, "Add Quirk");
                     });
 
                 egui::CollapsingHeader::new("Emotional state — baseline and triggers")
@@ -620,10 +599,7 @@ impl Editor for SoulEditor {
                         egui::Grid::new("soul_emotion").show(ui, |ui| {
                             ui.label("Dominant mood:");
                             egui::ComboBox::from_id_salt("soul_mood")
-                                .selected_text(format!(
-                                    "{:?}",
-                                    soul.emotional_state.dominant_mood
-                                ))
+                                .selected_text(format!("{:?}", soul.emotional_state.dominant_mood))
                                 .show_ui(ui, |ui| {
                                     for m in MOODS {
                                         changed |= ui
@@ -639,19 +615,15 @@ impl Editor for SoulEditor {
                             ui.label("Intensity (0..=1024):");
                             changed |= ui
                                 .add(
-                                    egui::DragValue::new(
-                                        &mut soul.emotional_state.intensity,
-                                    )
-                                    .range(0..=1024),
+                                    egui::DragValue::new(&mut soul.emotional_state.intensity)
+                                        .range(0..=1024),
                                 )
                                 .changed();
                             ui.end_row();
                         });
                         ui.label("Mood triggers:");
                         let mut remove: Option<usize> = None;
-                        for (i, trigger) in
-                            soul.emotional_state.triggers.iter_mut().enumerate()
-                        {
+                        for (i, trigger) in soul.emotional_state.triggers.iter_mut().enumerate() {
                             ui.group(|ui| {
                                 ui.horizontal(|ui| {
                                     ui.label("→ mood:");
@@ -702,8 +674,7 @@ impl Editor for SoulEditor {
                         }
                         if ui.button("Add Trigger").clicked() {
                             soul.emotional_state.triggers.push(Trigger {
-                                condition:
-                                    reachlock_core::contract::types::Condition::Always,
+                                condition: reachlock_core::contract::types::Condition::Always,
                                 mood: Mood::Tense,
                                 intensity: 512,
                                 priority: 0,
@@ -742,8 +713,7 @@ impl Editor for SoulEditor {
                             ui.group(|ui| {
                                 ui.horizontal(|ui| {
                                     ui.label("ID:");
-                                    changed |=
-                                        ui.text_edit_singleline(&mut secret.id).changed();
+                                    changed |= ui.text_edit_singleline(&mut secret.id).changed();
                                     if ui.button("×").clicked() {
                                         remove_secret = Some(i);
                                     }
@@ -825,8 +795,7 @@ impl Editor for SoulEditor {
                         if ui.button("Add Breaking Point").clicked() {
                             soul.breaking_points.push(BreakingPoint {
                                 id: format!("break_{}", soul.breaking_points.len()),
-                                trigger:
-                                    reachlock_core::contract::types::Condition::Always,
+                                trigger: reachlock_core::contract::types::Condition::Always,
                                 reaction: BreakReaction::Withdraw,
                             });
                             changed = true;
@@ -834,8 +803,7 @@ impl Editor for SoulEditor {
 
                         ui.separator();
                         ui.label("Deflections (offline fallback lines, in-voice):");
-                        changed |=
-                            string_list_ui(ui, &mut soul.deflections, "Add Deflection");
+                        changed |= string_list_ui(ui, &mut soul.deflections, "Add Deflection");
                     });
 
                 egui::CollapsingHeader::new("Memory & relationships")
@@ -847,13 +815,11 @@ impl Editor for SoulEditor {
                             ui.group(|ui| {
                                 egui::Grid::new(("soul_memory", i)).show(ui, |ui| {
                                     ui.label("ID:");
-                                    changed |=
-                                        ui.text_edit_singleline(&mut memory.id).changed();
+                                    changed |= ui.text_edit_singleline(&mut memory.id).changed();
                                     ui.end_row();
                                     ui.label("Event type:");
-                                    changed |= ui
-                                        .text_edit_singleline(&mut memory.event_type)
-                                        .changed();
+                                    changed |=
+                                        ui.text_edit_singleline(&mut memory.event_type).changed();
                                     ui.end_row();
                                     ui.label("Timestamp (tick):");
                                     changed |= ui
@@ -863,17 +829,14 @@ impl Editor for SoulEditor {
                                     ui.label("Emotional weight (0..=1024):");
                                     changed |= ui
                                         .add(
-                                            egui::DragValue::new(
-                                                &mut memory.emotional_weight,
-                                            )
-                                            .range(0..=1024),
+                                            egui::DragValue::new(&mut memory.emotional_weight)
+                                                .range(0..=1024),
                                         )
                                         .changed();
                                     ui.end_row();
                                     ui.label("Player involved:");
-                                    changed |= ui
-                                        .checkbox(&mut memory.player_involved, "")
-                                        .changed();
+                                    changed |=
+                                        ui.checkbox(&mut memory.player_involved, "").changed();
                                     ui.end_row();
                                 });
                                 ui.label("Summary:");
@@ -910,21 +873,14 @@ impl Editor for SoulEditor {
                         let mut remove_rel: Option<usize> = None;
                         for (i, rel) in soul.relationship_graph.iter_mut().enumerate() {
                             ui.horizontal(|ui| {
-                                changed |=
-                                    ui.text_edit_singleline(&mut rel.target_id).changed();
+                                changed |= ui.text_edit_singleline(&mut rel.target_id).changed();
                                 ui.label("trust:");
                                 changed |= ui
-                                    .add(
-                                        egui::DragValue::new(&mut rel.trust)
-                                            .range(-1024..=1024),
-                                    )
+                                    .add(egui::DragValue::new(&mut rel.trust).range(-1024..=1024))
                                     .changed();
                                 ui.label("familiarity:");
                                 changed |= ui
-                                    .add(
-                                        egui::DragValue::new(&mut rel.familiarity)
-                                            .range(0..=1024),
-                                    )
+                                    .add(egui::DragValue::new(&mut rel.familiarity).range(0..=1024))
                                     .changed();
                                 if !rel.history.is_empty() {
                                     ui.label(format!("({} history)", rel.history.len()));
@@ -957,8 +913,7 @@ impl Editor for SoulEditor {
                                 egui::ComboBox::from_id_salt(("soul_goal_priority", i))
                                     .selected_text(format!("{:?}", goal.priority))
                                     .show_ui(ui, |ui| {
-                                        for p in
-                                            [GoalPriority::Constant, GoalPriority::Situational]
+                                        for p in [GoalPriority::Constant, GoalPriority::Situational]
                                         {
                                             changed |= ui
                                                 .selectable_value(
@@ -969,8 +924,7 @@ impl Editor for SoulEditor {
                                                 .changed();
                                         }
                                     });
-                                changed |=
-                                    ui.text_edit_singleline(&mut goal.description).changed();
+                                changed |= ui.text_edit_singleline(&mut goal.description).changed();
                                 if ui.button("×").clicked() {
                                     remove_goal = Some(i);
                                 }
@@ -993,11 +947,8 @@ impl Editor for SoulEditor {
                 egui::CollapsingHeader::new("Contracts — automation this soul can run")
                     .default_open(false)
                     .show(ui, |ui| {
-                        changed |= string_list_ui(
-                            ui,
-                            &mut soul.contracts,
-                            "Add Contract Reference",
-                        );
+                        changed |=
+                            string_list_ui(ui, &mut soul.contracts, "Add Contract Reference");
                     });
 
                 if !validation.is_empty() {
@@ -1028,7 +979,12 @@ impl Editor for SoulEditor {
             "Kaelen", "Zeryn", "Mira", "Torben", "Saris", "Lyra", "Dax", "Vella",
         ];
         let traits = [
-            "adaptable", "stubborn", "curious", "cautious", "loyal", "restless",
+            "adaptable",
+            "stubborn",
+            "curious",
+            "cautious",
+            "loyal",
+            "restless",
         ];
         let values = ["survival", "honesty", "profit", "freedom", "kinship"];
         let mut soul = blank_soul();
@@ -1050,7 +1006,11 @@ impl Editor for SoulEditor {
         soul.emotional_state.intensity = 256 + rng.next_below(768) as i64;
         soul.relationship_graph = (0..1 + rng.next_below(2))
             .map(|i| Relationship {
-                target_id: if i == 0 { "player".into() } else { "boris".into() },
+                target_id: if i == 0 {
+                    "player".into()
+                } else {
+                    "boris".into()
+                },
                 trust: rng.next_below(1024) as i64 - 256,
                 familiarity: rng.next_below(512) as i64,
                 history: vec![],
@@ -1068,9 +1028,10 @@ impl Editor for SoulEditor {
         let inner = match serde_json::from_value::<SoulFile>(value.clone()) {
             Ok(soul) => soul,
             Err(_) => {
-                let extracted = super::super::ai::extract_inner_from_envelope(value, "soul").ok_or_else(|| {
-                    "response was neither a bare soul nor a ContentFile envelope".to_string()
-                })?;
+                let extracted = super::super::ai::extract_inner_from_envelope(value, "soul")
+                    .ok_or_else(|| {
+                        "response was neither a bare soul nor a ContentFile envelope".to_string()
+                    })?;
                 serde_json::from_value::<SoulFile>(extracted)
                     .map_err(|e| format!("soul file: {e}"))?
             }
@@ -1078,11 +1039,83 @@ impl Editor for SoulEditor {
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.soul = inner;
         } else {
-            self.entries.push(Entry { soul: inner, path: None });
+            self.entries.push(Entry {
+                soul: inner,
+                path: None,
+            });
             self.selected = self.entries.len() - 1;
         }
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        let state: Vec<(&SoulFile, &Option<std::path::PathBuf>)> =
+            self.entries.iter().map(|e| (&e.soul, &e.path)).collect();
+        ron::to_string(&(state, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (state, selected): (Vec<(SoulFile, Option<std::path::PathBuf>)>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.entries = state
+            .into_iter()
+            .map(|(soul, path)| Entry { soul, path })
+            .collect();
+        self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.entries.len() <= 1 {
+            return None;
+        }
+        self.entries.get(self.selected).map(|e| e.soul.name.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.entries.len() <= 1 || self.selected >= self.entries.len() {
+            return false;
+        }
+        self.entries.remove(self.selected);
+        if self.selected >= self.entries.len() {
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(entry) = self.entries.get(self.selected) else {
+            return;
+        };
+        let soul = &entry.soul;
+        ui.horizontal(|ui| {
+            ui.colored_label(species_color(soul.species), "●");
+            ui.strong(&soul.name);
+        });
+        ui.label(species_name(soul.species));
+        if !soul.portrait_id.is_empty() {
+            ui.monospace(&soul.portrait_id);
+        }
+        ui.label(format!(
+            "Mood: {:?} ({})",
+            soul.emotional_state.dominant_mood, soul.emotional_state.intensity
+        ));
+        ui.label(format!(
+            "{} traits · {} secrets · {} goals",
+            soul.personality.traits.len(),
+            soul.secrets.len(),
+            soul.goals.len()
+        ));
+        if soul.dialogue.is_some() {
+            ui.weak("Has dialogue graph");
+        }
     }
 }
 

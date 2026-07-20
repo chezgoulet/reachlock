@@ -271,9 +271,7 @@ impl Editor for LocationEditor {
                                     ui.end_row();
                                     ui.label("Height:");
                                     changed |= ui
-                                        .add(
-                                            egui::DragValue::new(&mut room.height).range(4..=64),
-                                        )
+                                        .add(egui::DragValue::new(&mut room.height).range(4..=64))
                                         .changed();
                                     ui.end_row();
                                 });
@@ -301,9 +299,7 @@ impl Editor for LocationEditor {
                                         ui.horizontal(|ui| {
                                             ui.label("Patrol:");
                                             let mut remove_wp: Option<usize> = None;
-                                            for (k, wp) in
-                                                spawn.patrol.iter_mut().enumerate()
-                                            {
+                                            for (k, wp) in spawn.patrol.iter_mut().enumerate() {
                                                 changed |= ui
                                                     .add(egui::DragValue::new(&mut wp.0))
                                                     .changed();
@@ -344,12 +340,10 @@ impl Editor for LocationEditor {
                                     ui.horizontal(|ui| {
                                         changed |=
                                             ui.text_edit_singleline(&mut prop.kind).changed();
-                                        changed |= ui
-                                            .add(egui::DragValue::new(&mut prop.pos.0))
-                                            .changed();
-                                        changed |= ui
-                                            .add(egui::DragValue::new(&mut prop.pos.1))
-                                            .changed();
+                                        changed |=
+                                            ui.add(egui::DragValue::new(&mut prop.pos.0)).changed();
+                                        changed |=
+                                            ui.add(egui::DragValue::new(&mut prop.pos.1)).changed();
                                         if ui.button("×").clicked() {
                                             remove_prop = Some(j);
                                         }
@@ -427,16 +421,13 @@ impl Editor for LocationEditor {
                         if let Some(keycard) = &mut loc.keycard {
                             ui.horizontal(|ui| {
                                 ui.label("Door:");
-                                changed |=
-                                    ui.text_edit_singleline(&mut keycard.door.0).changed();
+                                changed |= ui.text_edit_singleline(&mut keycard.door.0).changed();
                                 ui.label("↔");
-                                changed |=
-                                    ui.text_edit_singleline(&mut keycard.door.1).changed();
+                                changed |= ui.text_edit_singleline(&mut keycard.door.1).changed();
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Key Name:");
-                                changed |=
-                                    ui.text_edit_singleline(&mut keycard.key_name).changed();
+                                changed |= ui.text_edit_singleline(&mut keycard.key_name).changed();
                             });
                         }
                     });
@@ -530,8 +521,8 @@ impl Editor for LocationEditor {
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
-        let location: HostileLocation = serde_json::from_value(value.clone())
-            .map_err(|e| format!("location: {e}"))?;
+        let location: HostileLocation =
+            serde_json::from_value(value.clone()).map_err(|e| format!("location: {e}"))?;
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.location = location;
         } else {
@@ -543,6 +534,71 @@ impl Editor for LocationEditor {
         }
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        let state: Vec<(&HostileLocation, &Option<std::path::PathBuf>)> = self
+            .entries
+            .iter()
+            .map(|e| (&e.location, &e.path))
+            .collect();
+        ron::to_string(&(state, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (state, selected): (Vec<(HostileLocation, Option<std::path::PathBuf>)>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.entries = state
+            .into_iter()
+            .map(|(location, path)| Entry { location, path })
+            .collect();
+        self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.entries.len() <= 1 {
+            return None;
+        }
+        self.entries
+            .get(self.selected)
+            .map(|e| e.location.display_name.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.entries.len() <= 1 || self.selected >= self.entries.len() {
+            return false;
+        }
+        self.entries.remove(self.selected);
+        if self.selected >= self.entries.len() {
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(entry) = self.entries.get(self.selected) else {
+            return;
+        };
+        let l = &entry.location;
+        ui.strong(&l.display_name);
+        let spawns: usize = l.rooms.iter().map(|r| r.spawns.len()).sum();
+        ui.label(format!(
+            "{} room(s) · {} connection(s)",
+            l.rooms.len(),
+            l.connections.len()
+        ));
+        ui.label(format!("{spawns} enemy spawn(s)"));
+        match &l.keycard {
+            Some(_) => ui.label("Keycard gate: yes"),
+            None => ui.weak("No keycard gate"),
+        };
     }
 }
 

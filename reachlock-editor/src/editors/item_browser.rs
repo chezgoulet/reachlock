@@ -206,16 +206,15 @@ impl Editor for ItemBrowser {
                         // Stats sorted by value descending.
                         let mut stats: Vec<_> = card.item.stats.0.iter().collect();
                         stats.sort_by(|a, b| b.1.cmp(a.1));
-                        egui::Grid::new("item_browser_stats").striped(true).show(
-                            ui,
-                            |ui| {
+                        egui::Grid::new("item_browser_stats")
+                            .striped(true)
+                            .show(ui, |ui| {
                                 for (key, value) in stats {
                                     ui.label(format!("{key:?}"));
                                     ui.label(format!("{:.2}", *value as f32 / 1024.0));
                                     ui.end_row();
                                 }
-                            },
-                        );
+                            });
                         ui.separator();
                         if ui.button("Pin Seed").clicked() {
                             let dir = std::path::Path::new("mods/reachlock/items");
@@ -246,12 +245,10 @@ impl Editor for ItemBrowser {
                     .show(ui, |ui| {
                         for (i, card) in self.cards.iter().enumerate() {
                             let selected = self.selected == Some(i);
-                            let frame = egui::Frame::group(ui.style()).stroke(
-                                egui::Stroke::new(
-                                    if selected { 2.5 } else { 1.0 },
-                                    rarity_color(card.item.rarity),
-                                ),
-                            );
+                            let frame = egui::Frame::group(ui.style()).stroke(egui::Stroke::new(
+                                if selected { 2.5 } else { 1.0 },
+                                rarity_color(card.item.rarity),
+                            ));
                             let response = frame
                                 .show(ui, |ui| {
                                     ui.set_width(150.0);
@@ -260,8 +257,7 @@ impl Editor for ItemBrowser {
                                         rarity_color(card.item.rarity),
                                         format!("{:?}", card.item.rarity),
                                     );
-                                    let mut stats: Vec<_> =
-                                        card.item.stats.0.iter().collect();
+                                    let mut stats: Vec<_> = card.item.stats.0.iter().collect();
                                     stats.sort_by(|a, b| b.1.cmp(a.1));
                                     for (key, value) in stats.iter().take(4) {
                                         ui.small(format!(
@@ -286,6 +282,27 @@ impl Editor for ItemBrowser {
     fn generate_from_seed(&mut self, seed: u64) {
         self.seed_base = seed & 0x001F_FFFF_FFFF_FFFF;
         self.dirty = true;
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.label(format!(
+            "{:?} · tier {} · base seed {}",
+            self.family, self.tier, self.seed_base
+        ));
+        match self.selected.and_then(|i| self.cards.get(i)) {
+            Some(card) => {
+                ui.separator();
+                ui.strong(&card.item.display_name);
+                ui.colored_label(
+                    rarity_color(card.item.rarity),
+                    format!("{:?}", card.item.rarity),
+                );
+                ui.label(format!("Seed {}", card.item_seed.seed));
+            }
+            None => {
+                ui.weak("Click a card to inspect it.");
+            }
+        }
     }
 }
 
