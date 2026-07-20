@@ -89,8 +89,10 @@ fn cmd_types(crate_name: &str) -> Result<(), String> {
             for kw in &["struct", "enum", "type", "trait"] {
                 let pat = format!("pub {kw} ");
                 if let Some(rest) = trimmed.strip_prefix(&pat) {
-                    let name = rest.split(|c: char| c.is_whitespace() || c == '(' || c == '<')
-                        .next().unwrap_or("");
+                    let name = rest
+                        .split(|c: char| c.is_whitespace() || c == '(' || c == '<')
+                        .next()
+                        .unwrap_or("");
                     if !name.is_empty() && !name.contains(';') {
                         types.push(format!("- `{name}` ({kw})"));
                     }
@@ -109,10 +111,7 @@ fn cmd_types(crate_name: &str) -> Result<(), String> {
 fn cmd_deps(module: &str) -> Result<(), String> {
     // Simple heuristic: find the module file, extract use statements.
     let file_path = module.replace("::", "/");
-    let candidates = [
-        format!("{file_path}.rs"),
-        format!("{file_path}/mod.rs"),
-    ];
+    let candidates = [format!("{file_path}.rs"), format!("{file_path}/mod.rs")];
     let mut text = None;
     for c in &candidates {
         let full = format!("reachlock-{c}");
@@ -235,8 +234,10 @@ fn generate_agent_types() -> Result<String, String> {
                 let trimmed = line.trim();
                 for kw in &["pub struct", "pub enum", "pub type", "pub trait"] {
                     if let Some(rest) = trimmed.strip_prefix(kw) {
-                        let name = rest.split(|c: char| c.is_whitespace() || c == '(' || c == '<')
-                            .next().unwrap_or("");
+                        let name = rest
+                            .split(|c: char| c.is_whitespace() || c == '(' || c == '<')
+                            .next()
+                            .unwrap_or("");
                         if !name.is_empty() && !name.contains(';') {
                             lines.push(format!("- `{name}` — {rel}"));
                         }
@@ -251,7 +252,14 @@ fn generate_agent_types() -> Result<String, String> {
 
 fn cmd_diff(since: &str) -> Result<(), String> {
     let output = std::process::Command::new("git")
-        .args(["diff", since, "HEAD", "--", "reachlock-core/src/", "reachlock-client/src/"])
+        .args([
+            "diff",
+            since,
+            "HEAD",
+            "--",
+            "reachlock-core/src/",
+            "reachlock-client/src/",
+        ])
         .output()
         .map_err(|e| format!("git diff failed: {e}"))?;
     let diff = String::from_utf8_lossy(&output.stdout);

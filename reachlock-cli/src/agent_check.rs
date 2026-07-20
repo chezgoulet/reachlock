@@ -70,9 +70,7 @@ fn check_determinism_coverage() -> CheckResult {
                 // Match pub fn names.
                 if let Some(name) = line.strip_prefix("pub fn ") {
                     if let Some(fn_name) = name.split('(').next() {
-                        if fn_name.starts_with("generate_")
-                            && !det_text.contains(fn_name)
-                        {
+                        if fn_name.starts_with("generate_") && !det_text.contains(fn_name) {
                             missing.push(fn_name.to_string());
                         }
                     }
@@ -83,7 +81,10 @@ fn check_determinism_coverage() -> CheckResult {
     if missing.is_empty() {
         CheckResult::pass("determinism-coverage", "all generators have golden keys")
     } else {
-        CheckResult::fail("determinism-coverage", &format!("missing goldens: {}", missing.join(", ")))
+        CheckResult::fail(
+            "determinism-coverage",
+            &format!("missing goldens: {}", missing.join(", ")),
+        )
     }
 }
 
@@ -121,13 +122,19 @@ fn check_no_floats_in_gameplay() -> CheckResult {
             if trimmed.starts_with("//") || trimmed.starts_with("///") {
                 continue;
             }
-            if ["f32", "f64", " Float", " f32", " f64"].iter().any(|h| trimmed.contains(h)) {
+            if ["f32", "f64", " Float", " f32", " f64"]
+                .iter()
+                .any(|h| trimmed.contains(h))
+            {
                 violations.push(format!("{}:{}", rel, i + 1));
             }
         }
     }
     if violations.is_empty() {
-        CheckResult::pass("no-floats-in-gameplay", "no f32/f64 in core outside allowed paths")
+        CheckResult::pass(
+            "no-floats-in-gameplay",
+            "no f32/f64 in core outside allowed paths",
+        )
     } else {
         CheckResult::fail("no-floats-in-gameplay", &violations[..5].join("; "))
     }
@@ -171,9 +178,13 @@ fn check_gotcha_scan() -> CheckResult {
                 _ => continue,
             };
             for (i, line) in text.lines().enumerate() {
-                // r#" ... "# pattern where the content contains "# 
+                // r#" ... "# pattern where the content contains "#
                 if line.contains("r#\"") && line.contains("\"#") && !line.contains("r##\"") {
-                    violations.push(format!("{}:{}: possible raw string escape", path.display(), i+1));
+                    violations.push(format!(
+                        "{}:{}: possible raw string escape",
+                        path.display(),
+                        i + 1
+                    ));
                 }
             }
         }
@@ -201,9 +212,15 @@ fn check_sprint_branch() -> CheckResult {
     }
     // Check pattern: sprint-v2/sXX-name
     if branch.starts_with("sprint-v2/") {
-        CheckResult::pass("sprint-branch", &format!("branch {branch} follows convention"))
+        CheckResult::pass(
+            "sprint-branch",
+            &format!("branch {branch} follows convention"),
+        )
     } else {
-        CheckResult::fail("sprint-branch", &format!("branch {branch} does not follow sprint-v2/sXX-name"))
+        CheckResult::fail(
+            "sprint-branch",
+            &format!("branch {branch} does not follow sprint-v2/sXX-name"),
+        )
     }
 }
 
@@ -219,7 +236,8 @@ fn check_module_registration() -> CheckResult {
         let trimmed = line.trim();
         // Match: pub mod X; or pub mod X { OR pub mod X; // comment
         if let Some(rest) = trimmed.strip_prefix("pub mod ") {
-            let mod_name = rest.split(|c: char| c.is_whitespace() || c == ';' || c == '{')
+            let mod_name = rest
+                .split(|c: char| c.is_whitespace() || c == ';' || c == '{')
                 .next()
                 .unwrap_or("");
             if !mod_name.is_empty() {
@@ -237,7 +255,10 @@ fn check_module_registration() -> CheckResult {
     if missing.is_empty() {
         CheckResult::pass("module-registration", "all modules have files")
     } else {
-        CheckResult::fail("module-registration", &format!("missing files for: {}", missing.join(", ")))
+        CheckResult::fail(
+            "module-registration",
+            &format!("missing files for: {}", missing.join(", ")),
+        )
     }
 }
 
@@ -245,9 +266,17 @@ fn check_module_registration() -> CheckResult {
 
 impl CheckResult {
     pub fn pass(name: &'static str, detail: &str) -> Self {
-        CheckResult { name, passed: true, detail: detail.into() }
+        CheckResult {
+            name,
+            passed: true,
+            detail: detail.into(),
+        }
     }
     pub fn fail(name: &'static str, detail: &str) -> Self {
-        CheckResult { name, passed: false, detail: detail.into() }
+        CheckResult {
+            name,
+            passed: false,
+            detail: detail.into(),
+        }
     }
 }

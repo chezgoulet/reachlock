@@ -68,16 +68,22 @@ fn main() -> std::process::ExitCode {
         Command::Determinism { action } => determinism::run(action),
         Command::Content { action } => content::run(action),
         Command::Mod { action } => mod_cmd::run(action),
-        Command::Check { action: AgentCheckCommand::Agent { json } } => {
+        Command::Check {
+            action: AgentCheckCommand::Agent { json },
+        } => {
             let results = agent_check::run();
             if json {
                 let mut first = true;
                 println!("[");
                 for r in &results {
-                    if !first { println!(","); }
+                    if !first {
+                        println!(",");
+                    }
                     first = false;
-                    print!("  {{\"name\":\"{}\",\"passed\":{},\"detail\":\"{}\"}}",
-                        r.name, r.passed, r.detail);
+                    print!(
+                        "  {{\"name\":\"{}\",\"passed\":{},\"detail\":\"{}\"}}",
+                        r.name, r.passed, r.detail
+                    );
                 }
                 println!("\n]");
             } else {
