@@ -135,6 +135,7 @@ fn string_list_ui(ui: &mut egui::Ui, items: &mut Vec<String>, add_label: &str) -
 struct Entry {
     soul: SoulFile,
     path: Option<std::path::PathBuf>,
+    dirty: bool,
 }
 
 pub struct SoulEditor {
@@ -182,7 +183,9 @@ fn blank_soul() -> SoulFile {
 impl SoulEditor {
     fn new() -> Self {
         let mut entries = Vec::new();
-        if let Ok(dir) = std::fs::read_dir("mods/reachlock/souls") {
+        if let Ok(dir) =
+            std::fs::read_dir(crate::app::content_root().join(ContentType::Soul.directory()))
+        {
             let mut paths: Vec<_> = dir
                 .flatten()
                 .map(|e| e.path())
@@ -194,6 +197,7 @@ impl SoulEditor {
                     entries.push(Entry {
                         soul,
                         path: Some(path),
+                        dirty: false,
                     });
                 }
             }
@@ -202,6 +206,7 @@ impl SoulEditor {
             entries.push(Entry {
                 soul: blank_soul(),
                 path: None,
+                dirty: true,
             });
         }
         SoulEditor {
@@ -376,6 +381,13 @@ impl Editor for SoulEditor {
         ContentType::Soul
     }
 
+    fn touch(&mut self) {
+        self.has_changes = true;
+        if let Some(e) = self.entries.get_mut(self.selected) {
+            e.dirty = true;
+        }
+    }
+
     fn has_unsaved_changes(&self) -> bool {
         self.has_changes
     }
@@ -393,6 +405,7 @@ impl Editor for SoulEditor {
             self.entries.push(Entry {
                 soul,
                 path: Some(path.to_path_buf()),
+                dirty: false,
             });
             self.selected = self.entries.len() - 1;
         }
@@ -456,9 +469,10 @@ impl Editor for SoulEditor {
                     self.entries.push(Entry {
                         soul: blank_soul(),
                         path: None,
+                        dirty: true,
                     });
                     self.selected = self.entries.len() - 1;
-                    self.has_changes = true;
+                    self.touch();
                 }
                 if let Some(entry) = self.entries.get(self.selected) {
                     let name = entry
@@ -959,7 +973,7 @@ impl Editor for SoulEditor {
                 }
             });
             if changed {
-                self.has_changes = true;
+                self.touch();
             }
         });
     }
@@ -1019,7 +1033,7 @@ impl Editor for SoulEditor {
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.soul = soul;
         }
-        self.has_changes = true;
+        self.touch();
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
@@ -1042,10 +1056,11 @@ impl Editor for SoulEditor {
             self.entries.push(Entry {
                 soul: inner,
                 path: None,
+                dirty: true,
             });
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         Ok(())
     }
 
@@ -1060,15 +1075,52 @@ impl Editor for SoulEditor {
             ron::from_str(ron).map_err(|e| e.to_string())?;
         self.entries = state
             .into_iter()
-            .map(|(soul, path)| Entry { soul, path })
+            .map(|(soul, path)| Entry {
+                soul,
+                path,
+                dirty: true,
+            })
             .collect();
         self.selected = selected.min(self.entries.len().saturating_sub(1));
-        self.has_changes = true;
+        self.touch();
         Ok(())
     }
 
     fn mark_saved(&mut self) {
         self.has_changes = false;
+        for e in &mut self.entries {
+            e.dirty = false;
+        }
+    }
+
+    fn save_all(&self) -> Result<(), String> {
+        use crate::app::content_root;
+        let mut wrote = 0usize;
+        for entry in &self.entries {
+            if !entry.dirty {
+                continue;
+            }
+            let Some(path) = &entry.path else {
+                // New, never-saved entry: assign a path from the content root.
+                let dir = content_root().join(ContentType::Soul.directory());
+                let _ = std::fs::create_dir_all(&dir);
+                let stem = if entry.soul.id.is_empty() {
+                    format!("soul_{}", wrote)
+                } else {
+                    entry.soul.id.clone()
+                };
+                let p = dir.join(format!("{stem}.ron"));
+                crate::io::write_ron(&p, &entry.soul)?;
+                wrote += 1;
+                continue;
+            };
+            crate::io::write_ron(path, &entry.soul)?;
+            wrote += 1;
+        }
+        if wrote == 0 {
+            return Err("no dirty entries to save".into());
+        }
+        Ok(())
     }
 
     fn selected_entry_name(&self) -> Option<String> {
@@ -1086,7 +1138,7 @@ impl Editor for SoulEditor {
         if self.selected >= self.entries.len() {
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         true
     }
 

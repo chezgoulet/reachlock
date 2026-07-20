@@ -43,8 +43,10 @@ fn category_name(c: GoodCategory) -> &'static str {
 
 impl EconomyEditor {
     fn new() -> Self {
-        let default_path = std::path::Path::new("mods/reachlock/economy/goods.ron");
-        let (catalog, path) = match crate::io::read_ron::<GoodsCatalog>(default_path) {
+        let default_path = crate::app::content_root()
+            .join(ContentType::EconomyGoods.directory())
+            .join("goods.ron");
+        let (catalog, path) = match crate::io::read_ron::<GoodsCatalog>(&default_path) {
             Ok(c) => (c, Some(default_path.to_path_buf())),
             Err(_) => (load_goods_catalog(), None),
         };

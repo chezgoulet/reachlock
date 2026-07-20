@@ -1,4 +1,31 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::RwLock;
+
+/// Process-wide content root, set from the Preferences `content_root`
+/// value at startup and whenever that preference changes. Every editor's
+/// `new()` reads this so the directory it scans honors the configured
+/// root — not just the browser tree (the previous behaviour left editors
+/// hardcoding `mods/reachlock/` and silently ignoring the preference).
+static CONTENT_ROOT: RwLock<Option<PathBuf>> = RwLock::new(None);
+
+/// Set the content root (called from the app shell at startup and on
+/// preference change). Pass `None` to fall back to the default.
+pub fn set_content_root(root: Option<PathBuf>) {
+    if let Ok(mut g) = CONTENT_ROOT.write() {
+        *g = root;
+    }
+}
+
+/// Resolve the configured content root, falling back to `mods/reachlock`.
+pub fn content_root() -> PathBuf {
+    if let Ok(g) = CONTENT_ROOT.read() {
+        if let Some(r) = g.as_ref() {
+            return r.clone();
+        }
+    }
+    PathBuf::from("mods/reachlock")
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContentType {
@@ -76,7 +103,10 @@ impl ContentType {
             ContentType::EconomyGoods => "economy",
             ContentType::Storyline => "storylines",
             ContentType::Item => "items",
-            ContentType::EnemyArchetype => "enemies",
+            // The filesystem directory is `combat/` (see `mods/reachlock/`),
+            // not `enemies/`. The exporter and content loader agree on
+            // `combat/`, so this is the single source of truth.
+            ContentType::EnemyArchetype => "combat",
             ContentType::ChartedSystem => "systems",
             ContentType::HullMesh => "hulls",
             ContentType::RoomTemplates => "hulls",
@@ -85,14 +115,56 @@ impl ContentType {
             ContentType::SpriteViewer => "souls",
         }
     }
+
+    /// Reverse of [`ContentType::directory`]. Maps a content directory name
+    /// back to its `ContentType`. Returns `None` for unknown dirs
+    /// (e.g. `schemas/`, `assets/`) and `mods/reachlock` itself.
+    ///
+    /// `hulls/` is shared by three types; use
+    /// [`crate::browser::classify_hull_file`] to disambiguate those.
+    pub fn from_directory(dir: &str) -> Option<ContentType> {
+        match dir {
+            "systems" => Some(ContentType::ChartedSystem),
+            "gate_network" => Some(ContentType::GateNetwork),
+            "hulls" => None, // shared — disambiguate via classify_hull_file
+            "stations" => Some(ContentType::Station),
+            "souls" => Some(ContentType::Soul),
+            "combat" => Some(ContentType::EnemyArchetype),
+            "factions" => Some(ContentType::Faction),
+            "storylines" => Some(ContentType::Storyline),
+            "locations" => Some(ContentType::Location),
+            "economy" => Some(ContentType::EconomyGoods),
+            "items" => Some(ContentType::Item),
+            "contracts" => Some(ContentType::Contract),
+            _ => None,
+        }
+    }
 }
 
 pub trait Editor {
     fn title(&self) -> &str;
     fn content_type(&self) -> ContentType;
     fn has_unsaved_changes(&self) -> bool;
+
+    /// Mark the editor as having unsaved changes and flag the currently
+    /// selected entry dirty. Multi-entry editors override this so that
+    /// [`Editor::save_all`] writes back only the entries that actually
+    /// changed, preventing silent cross-entry data loss.
+    fn touch(&mut self) {}
     fn load(&mut self, path: &std::path::Path) -> Result<(), String>;
     fn save(&self, path: &std::path::Path) -> Result<(), String>;
+
+    /// Save every dirty entry to its own path. Multi-entry editors
+    /// (soul, station, enemy, …) override this to write each
+    /// loaded entry back to the file it was read from, instead of
+    /// collapsing all entries onto the single tab path. The default
+    /// impl delegates to [`Editor::save`], so single-entry editors
+    /// keep their existing behaviour.
+    fn save_all(&self) -> Result<(), String> {
+        // Single-entry editors have no per-entry paths to fan out to.
+        Err("save_all is only meaningful for multi-entry editors".into())
+    }
+
     fn validate(&self) -> Vec<String>;
     fn ui(&mut self, ctx: &egui::Context);
     fn generate_from_seed(&mut self, seed: u64);
@@ -226,4 +298,57 @@ pub fn build_default_registry() -> EditorRegistry {
         crate::editors::character_sprite::create_editor,
     );
     r
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `directory()` must be the inverse of `from_directory()` for every
+    /// content type that owns a unique directory. The `hulls/` directory is
+    /// shared by three types (disambiguated via `classify_hull_file`), and the
+    /// two previewers persist nothing, so they are excluded here.
+    #[test]
+    fn directory_round_trips_for_unique_dirs() {
+        let unique = [
+            ContentType::Station,
+            ContentType::Location,
+            ContentType::Soul,
+            ContentType::Contract,
+            ContentType::Faction,
+            ContentType::EconomyGoods,
+            ContentType::Storyline,
+            ContentType::Item,
+            ContentType::EnemyArchetype,
+            ContentType::ChartedSystem,
+            ContentType::GateNetwork,
+        ];
+        for ct in unique {
+            let dir = ct.directory();
+            assert_eq!(
+                ContentType::from_directory(dir),
+                Some(ct),
+                "{ct:?} directory {dir} did not round-trip"
+            );
+        }
+    }
+
+    /// Enemy archetypes live under `combat/`, not `enemies/` — the exporter and
+    /// content loader both read from `combat/`. Lock that mapping.
+    #[test]
+    fn enemy_archetype_maps_to_combat_dir() {
+        assert_eq!(ContentType::EnemyArchetype.directory(), "combat");
+        assert_eq!(
+            ContentType::from_directory("combat"),
+            Some(ContentType::EnemyArchetype)
+        );
+    }
+
+    /// Unknown directories resolve to `None` (e.g. `schemas/`, `assets/`).
+    #[test]
+    fn unknown_directory_resolves_to_none() {
+        assert_eq!(ContentType::from_directory("schemas"), None);
+        assert_eq!(ContentType::from_directory("assets"), None);
+        assert_eq!(ContentType::from_directory("hulls"), None);
+    }
 }

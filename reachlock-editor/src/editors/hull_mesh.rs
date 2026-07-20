@@ -31,6 +31,7 @@ const PRIORITIES: [Priority; 4] = [
 struct Entry {
     file: ContentFile,
     path: Option<std::path::PathBuf>,
+    dirty: bool,
 }
 
 pub struct HullMeshEditor {
@@ -59,7 +60,9 @@ fn blank_file() -> ContentFile {
 impl HullMeshEditor {
     fn new() -> Self {
         let mut entries = Vec::new();
-        if let Ok(dir) = std::fs::read_dir("mods/reachlock/hulls") {
+        if let Ok(dir) =
+            std::fs::read_dir(crate::app::content_root().join(ContentType::HullMesh.directory()))
+        {
             let mut paths: Vec<_> = dir
                 .flatten()
                 .map(|e| e.path())
@@ -72,6 +75,7 @@ impl HullMeshEditor {
                         entries.push(Entry {
                             file,
                             path: Some(path),
+                            dirty: false,
                         });
                     }
                 }
@@ -81,6 +85,7 @@ impl HullMeshEditor {
             entries.push(Entry {
                 file: blank_file(),
                 path: None,
+                dirty: true,
             });
         }
         HullMeshEditor {
@@ -103,6 +108,13 @@ impl Editor for HullMeshEditor {
         ContentType::HullMesh
     }
 
+    fn touch(&mut self) {
+        self.has_changes = true;
+        if let Some(e) = self.entries.get_mut(self.selected) {
+            e.dirty = true;
+        }
+    }
+
     fn has_unsaved_changes(&self) -> bool {
         self.has_changes
     }
@@ -123,6 +135,7 @@ impl Editor for HullMeshEditor {
             self.entries.push(Entry {
                 file,
                 path: Some(path.to_path_buf()),
+                dirty: false,
             });
             self.selected = self.entries.len() - 1;
         }
@@ -180,9 +193,10 @@ impl Editor for HullMeshEditor {
                     self.entries.push(Entry {
                         file: blank_file(),
                         path: None,
+                        dirty: true,
                     });
                     self.selected = self.entries.len() - 1;
-                    self.has_changes = true;
+                    self.touch();
                 }
                 if let Some(entry) = self.entries.get(self.selected) {
                     let name = entry
@@ -401,7 +415,7 @@ impl Editor for HullMeshEditor {
                 ));
             }
             if changed {
-                self.has_changes = true;
+                self.touch();
             }
         });
     }
@@ -414,7 +428,7 @@ impl Editor for HullMeshEditor {
             entry.file.seed = seed;
             entry.file.payload = ContentPayload::Hull(generate_hull_class(seed, class));
         }
-        self.has_changes = true;
+        self.touch();
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
@@ -433,10 +447,14 @@ impl Editor for HullMeshEditor {
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.file = file;
         } else {
-            self.entries.push(Entry { file, path: None });
+            self.entries.push(Entry {
+                file,
+                path: None,
+                dirty: true,
+            });
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         Ok(())
     }
 
@@ -451,15 +469,51 @@ impl Editor for HullMeshEditor {
             ron::from_str(ron).map_err(|e| e.to_string())?;
         self.entries = state
             .into_iter()
-            .map(|(file, path)| Entry { file, path })
+            .map(|(file, path)| Entry {
+                file,
+                path,
+                dirty: true,
+            })
             .collect();
         self.selected = selected.min(self.entries.len().saturating_sub(1));
-        self.has_changes = true;
+        self.touch();
         Ok(())
     }
 
     fn mark_saved(&mut self) {
         self.has_changes = false;
+        for e in &mut self.entries {
+            e.dirty = false;
+        }
+    }
+
+    fn save_all(&self) -> Result<(), String> {
+        use crate::app::content_root;
+        let mut wrote = 0usize;
+        for entry in &self.entries {
+            if !entry.dirty {
+                continue;
+            }
+            let Some(path) = &entry.path else {
+                let dir = content_root().join(ContentType::HullMesh.directory());
+                let _ = std::fs::create_dir_all(&dir);
+                let stem = if entry.file.id.is_empty() {
+                    format!("hull_{}", wrote)
+                } else {
+                    entry.file.id.clone()
+                };
+                let p = dir.join(format!("{stem}.ron"));
+                crate::io::write_ron(&p, &entry.file)?;
+                wrote += 1;
+                continue;
+            };
+            crate::io::write_ron(path, &entry.file)?;
+            wrote += 1;
+        }
+        if wrote == 0 {
+            return Err("no dirty entries to save".into());
+        }
+        Ok(())
     }
 
     fn selected_entry_name(&self) -> Option<String> {
@@ -477,7 +531,7 @@ impl Editor for HullMeshEditor {
         if self.selected >= self.entries.len() {
             self.selected = self.entries.len() - 1;
         }
-        self.has_changes = true;
+        self.touch();
         true
     }
 

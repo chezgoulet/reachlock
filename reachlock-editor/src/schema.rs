@@ -31,8 +31,10 @@ pub fn schemas_dir() -> std::path::PathBuf {
     primary
 }
 
-/// Schema id (filename stem) for each content type.
-fn schema_id(ct: &ContentType) -> Option<&'static str> {
+/// Schema id (filename stem) for each content type. Shared by the
+/// validation path ([`crate::io::validate_content`]) and the AI
+/// generation pipeline — this is the single source of truth.
+pub fn schema_id(ct: &ContentType) -> Option<&'static str> {
     Some(match ct {
         ContentType::HullFrame => "hull_frame",
         ContentType::Station => "station",

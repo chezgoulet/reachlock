@@ -43,36 +43,16 @@ const FILE_TYPES: [ContentType; 14] = [
     ContentType::Contract,
 ];
 
-/// Directory under the mods root where each type's `.ron` files live.
-/// Mirrors each editor's default path in its `new()`.
-pub fn content_dir(ct: ContentType) -> &'static str {
-    match ct {
-        // Enemies live under combat/, not the enemies/ dir the ContentType
-        // mapping suggests — this mirrors enemy.rs.
-        ContentType::EnemyArchetype => "combat",
-        other => other.directory(),
-    }
-}
-
 /// Which editor owns a `.ron` file, judged by its parent directory (and for
 /// the shared `hulls/` directory, by payload tag). Used by File > Open.
+/// Delegates to [`ContentType::from_directory`] (the single source of truth)
+/// so the directory↔type mapping is maintained in one place.
 pub fn detect_content_type(path: &Path) -> Option<ContentType> {
     let dir = path.parent()?.file_name()?.to_str()?;
-    match dir {
-        "systems" => Some(ContentType::ChartedSystem),
-        "gate_network" => Some(ContentType::GateNetwork),
-        "hulls" => Some(classify_hull_file(path)),
-        "stations" => Some(ContentType::Station),
-        "souls" => Some(ContentType::Soul),
-        "combat" => Some(ContentType::EnemyArchetype),
-        "factions" => Some(ContentType::Faction),
-        "storylines" => Some(ContentType::Storyline),
-        "locations" => Some(ContentType::Location),
-        "economy" => Some(ContentType::EconomyGoods),
-        "items" => Some(ContentType::Item),
-        "contracts" => Some(ContentType::Contract),
-        _ => None,
+    if dir == "hulls" {
+        return Some(classify_hull_file(path));
     }
+    ContentType::from_directory(dir)
 }
 
 /// Three content types share `hulls/`. Peek at the RON payload tag to sort a
@@ -130,7 +110,7 @@ impl ContentBrowser {
         };
         let mut scanned_dirs: Vec<&str> = Vec::new();
         for ct in FILE_TYPES {
-            let dir = content_dir(ct);
+            let dir = ct.directory();
             if scanned_dirs.contains(&dir) {
                 continue;
             }
@@ -349,5 +329,56 @@ impl ContentBrowser {
         }
 
         actions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_content_type_from_directory() {
+        let p = Path::new("mods/reachlock/souls/hero.ron");
+        assert_eq!(detect_content_type(p), Some(ContentType::Soul));
+        let p = Path::new("mods/reachlock/contracts/escort.ron");
+        assert_eq!(detect_content_type(p), Some(ContentType::Contract));
+        let p = Path::new("mods/reachlock/combat/raider.ron");
+        assert_eq!(detect_content_type(p), Some(ContentType::EnemyArchetype));
+    }
+
+    #[test]
+    fn detect_content_type_ignores_unknown_dirs() {
+        let p = Path::new("mods/reachlock/schemas/foo.json");
+        assert_eq!(detect_content_type(p), None);
+    }
+
+    #[test]
+    fn classify_hull_file_by_payload_tag() {
+        let dir = std::env::temp_dir().join("reachlock_browser_tests/hulls");
+        let _ = std::fs::create_dir_all(&dir);
+        let cases = [
+            (
+                "frame.ron",
+                "HullFrame(\n    id: \"x\",\n)",
+                ContentType::HullFrame,
+            ),
+            (
+                "rooms.ron",
+                "RoomTemplates(\n    templates: [],\n)",
+                ContentType::RoomTemplates,
+            ),
+            (
+                "mesh.ron",
+                "HullConfiguration(\n    hull_id: \"x\",\n)",
+                ContentType::HullMesh,
+            ),
+        ];
+        for (name, body, expected) in cases {
+            let path = dir.join(name);
+            std::fs::write(&path, body).unwrap();
+            assert_eq!(detect_content_type(&path), Some(expected), "{name}");
+            let _ = std::fs::remove_file(&path);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
