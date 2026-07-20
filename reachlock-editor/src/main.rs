@@ -20,7 +20,7 @@ use dialogs::{confirmation_dialog, ConfirmationResult};
 use help_window::HelpWindow;
 use preview::PreviewPanel;
 use schema::SchemaCache;
-use seed_workflow::SeedWorkflow;
+use seed_workflow::{SeedAction, SeedWorkflow};
 use settings_window::AiSettingsWindow;
 
 /// Snapshot undo: keep at most this many steps per tab.
@@ -844,9 +844,43 @@ impl eframe::App for EditorApp {
             });
         });
 
+        let mut seed_action = None;
         egui::TopBottomPanel::top("seed_panel").show(ctx, |ui| {
-            self.seed_workflow.ui(ui);
+            seed_action = self.seed_workflow.ui(ui);
         });
+        match seed_action {
+            Some(SeedAction::RerollAll(seed)) => {
+                let total = self.open_editors.len();
+                let mut rerolled = 0;
+                for open in &mut self.open_editors {
+                    if open.editor.accept_seed_reroll() {
+                        open.editor.apply_seed(seed);
+                        rerolled += 1;
+                    }
+                }
+                self.status_text = if total == 0 {
+                    "No editors open to reroll".into()
+                } else {
+                    format!("Rerolled {rerolled}/{total} editor(s) with seed {seed}")
+                };
+            }
+            Some(SeedAction::LockCurrent) => {
+                use std::hash::{DefaultHasher, Hash, Hasher};
+                match self.active_open().map(|open| open.name.clone()) {
+                    Some(name) => {
+                        let mut hasher = DefaultHasher::new();
+                        name.hash(&mut hasher);
+                        let seed = hasher.finish() & seed_workflow::SEED_MASK;
+                        self.seed_workflow.set_seed(seed);
+                        self.status_text = format!("Locked seed {seed} from \"{name}\"");
+                    }
+                    None => {
+                        self.status_text = "No active tab to lock a seed from".into();
+                    }
+                }
+            }
+            None => {}
+        }
 
         // AI generation bar (handoff §Phase 2.5).
         egui::TopBottomPanel::top("ai_bar")
