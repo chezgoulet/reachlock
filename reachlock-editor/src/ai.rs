@@ -80,7 +80,8 @@ pub enum AiGenOutcome {
 }
 
 /// One-paragraph context describing what a content type means in-world.
-fn type_context(ct: &ContentType) -> &'static str {
+/// Doubles as the per-editor documentation in the help window (F1).
+pub fn type_context(ct: &ContentType) -> &'static str {
     match ct {
         ContentType::ChartedSystem => {
             "A star system in the ReachLock galaxy. Systems are connected by a gate \
