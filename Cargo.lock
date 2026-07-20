@@ -6970,6 +6970,7 @@ dependencies = [
  "reachlock-core",
  "ron",
  "serde_json",
+ "walkdir",
  "zip",
 ]
 

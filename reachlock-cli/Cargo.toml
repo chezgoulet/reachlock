@@ -19,3 +19,5 @@ ron = "0.12"
 jsonschema = "0.47"
 # Mod packaging (S22): zip compression for .reachmod files.
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# S30 agent checks: directory walking for determinism-coverage, no-floats, gotcha.
+walkdir = "2"
