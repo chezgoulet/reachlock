@@ -615,6 +615,38 @@ pub fn manifest() -> Manifest {
                 checksum: hash_serde(&captures),
             });
         }
+
+        // S25 — character sprite generator. Hash both a fully seed-derived
+        // sprite and one with every property pinned, so drift in the hair
+        // style vocabulary, color overrides, or RNG-order is caught
+        // cross-platform (iron rule #3: generator change ⇒ golden entry).
+        use crate::generator::sprite::{CharacterLookConfig, HAIR_STYLE_COUNT};
+        for species in ["Human", "Synthetic", "Robot", "Voidborn", "Xenotype"] {
+            entries.push(Entry {
+                generator: format!("sprite_{species}"),
+                seed,
+                checksum: hash_serde(&generator::sprite::generate_character_sprite(
+                    seed,
+                    &CharacterLookConfig::seed_derived(species),
+                )),
+            });
+        }
+        // Fully-overridden look across every hair style.
+        for style in 0..HAIR_STYLE_COUNT {
+            let mut cfg = CharacterLookConfig::seed_derived("Human");
+            cfg.hair_style = Some(style);
+            cfg.hair_color = Some([20, 20, 20]);
+            cfg.skin_color = Some([240, 200, 180]);
+            cfg.shirt_color = Some([40, 80, 160]);
+            cfg.pants_color = Some([40, 40, 40]);
+            cfg.jacket_enabled = Some(true);
+            cfg.jacket_color = Some([200, 40, 40]);
+            entries.push(Entry {
+                generator: format!("sprite_override_style_{style}"),
+                seed: 0xABCD,
+                checksum: hash_serde(&generator::sprite::generate_character_sprite(0xABCD, &cfg)),
+            });
+        }
     }
 
     Manifest {
@@ -628,7 +660,9 @@ pub fn manifest() -> Manifest {
         // v8: added S18 ship_interior (interior realization) golden entry.
         // v9: added S21 deep_space_seed (frozen protocol) and S20 combat_humanoid.
         // v10: added S20 hostile_locations to GeneratedSystem (system POIs).
-        version: 10,
+        // v11: added S25 character sprite generator (seed-derived + fully
+        //      overridden hair-style sweep) golden entries.
+        version: 11,
         entries,
     }
 }
