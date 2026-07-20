@@ -56,6 +56,12 @@ struct EditorApp {
     ai_result_rx: Option<std::sync::mpsc::Receiver<ai::AiGenOutcome>>,
     schemas: SchemaCache,
     status_text: String,
+    /// Mirror of the last status text; a change re-arms the expiry timer.
+    last_status: String,
+    /// When to clear a non-error status message (5s after it was set).
+    status_expiry: Option<Instant>,
+    /// Last window title pushed via ViewportCommand, to avoid re-sending.
+    last_title: String,
     active_tab: Option<usize>,
     show_browser: bool,
     help: HelpWindow,
@@ -171,6 +177,9 @@ impl Default for EditorApp {
             ai_result_rx: None,
             schemas: SchemaCache::load_all(),
             status_text: "Ready".into(),
+            last_status: "Ready".into(),
+            status_expiry: None,
+            last_title: String::new(),
             active_tab: None,
             show_browser: true,
             help: HelpWindow::new(),
@@ -841,6 +850,38 @@ impl eframe::App for EditorApp {
 
         self.autosave_tick();
 
+        // Status housekeeping: newly-set messages get a 5s lifetime unless
+        // they look like errors; expired messages fall back to "Ready".
+        if self.status_text != self.last_status {
+            self.last_status = self.status_text.clone();
+            let lower = self.status_text.to_lowercase();
+            let sticky =
+                lower.contains("error") || lower.contains("failed") || lower.contains("issue");
+            self.status_expiry = (!sticky).then(|| Instant::now() + Duration::from_secs(5));
+        } else if self.status_expiry.is_some_and(|t| Instant::now() >= t) {
+            self.status_text = "Ready".into();
+            self.last_status = "Ready".into();
+            self.status_expiry = None;
+        }
+
+        // Window title mirrors the unsaved count.
+        let modified_count = self
+            .open_editors
+            .iter()
+            .filter(|o| o.editor.has_unsaved_changes())
+            .count();
+        let title = if self.open_editors.is_empty() {
+            "ReachLock Content Editor".to_string()
+        } else if modified_count == 0 {
+            "ReachLock Content Editor — all saved".to_string()
+        } else {
+            format!("ReachLock Content Editor — {modified_count} unsaved")
+        };
+        if title != self.last_title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.last_title = title;
+        }
+
         // Intercept the window close button when there are unsaved changes.
         if ctx.input(|i| i.viewport().close_requested())
             && !self.allow_close
@@ -912,7 +953,12 @@ impl eframe::App for EditorApp {
                         .filter(|o| o.editor.has_unsaved_changes())
                         .count();
                     if modified_count > 0 {
-                        ui.label(format!("{modified_count} unsaved"));
+                        let color = if modified_count > 5 {
+                            egui::Color32::from_rgb(0xF4, 0x43, 0x36)
+                        } else {
+                            egui::Color32::from_rgb(0xFF, 0xB3, 0x00)
+                        };
+                        ui.colored_label(color, format!("{modified_count} unsaved"));
                     }
                     ui.label(format!("{} editor(s) open", self.open_editors.len()));
                 });
@@ -984,6 +1030,9 @@ impl eframe::App for EditorApp {
                     } else {
                         "Generate"
                     };
+                    if self.ai_running {
+                        ui.spinner();
+                    }
                     if ui
                         .add_enabled(can_generate, egui::Button::new(btn))
                         .clicked()
@@ -1063,7 +1112,19 @@ impl eframe::App for EditorApp {
                                     }
                                 );
                                 let selected = self.active_tab == Some(i);
-                                if ui.selectable_label(selected, &title).clicked() {
+                                let tooltip = format!(
+                                    "{}\n{}",
+                                    open.path
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_else(|| "(unsaved file)".into()),
+                                    open.editor.content_type().name()
+                                );
+                                if ui
+                                    .selectable_label(selected, &title)
+                                    .on_hover_text(tooltip)
+                                    .clicked()
+                                {
                                     self.active_tab = Some(i);
                                 }
                                 if ui.button("x").clicked() {
