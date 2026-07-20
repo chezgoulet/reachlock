@@ -3,6 +3,7 @@ mod app;
 mod browser;
 mod dialogs;
 pub mod editors;
+mod help_window;
 mod io;
 mod preview;
 mod schema;
@@ -16,6 +17,7 @@ use std::time::{Duration, Instant};
 use app::{build_default_registry, ContentType, Editor, EditorRegistry};
 use browser::{BrowserAction, ContentBrowser};
 use dialogs::{confirmation_dialog, ConfirmationResult};
+use help_window::HelpWindow;
 use preview::PreviewPanel;
 use schema::SchemaCache;
 use seed_workflow::SeedWorkflow;
@@ -54,6 +56,7 @@ struct EditorApp {
     status_text: String,
     active_tab: Option<usize>,
     show_browser: bool,
+    help: HelpWindow,
     pending: Option<PendingAction>,
     /// Set once a quit is confirmed so the close request passes through.
     allow_close: bool,
@@ -161,6 +164,7 @@ impl Default for EditorApp {
             status_text: "Ready".into(),
             active_tab: None,
             show_browser: true,
+            help: HelpWindow::new(),
             pending: None,
             allow_close: false,
         }
@@ -470,6 +474,10 @@ impl EditorApp {
         {
             self.ai_settings.open = false;
         }
+
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F1)) {
+            self.help.open = !self.help.open;
+        }
     }
 
     fn active_open(&self) -> Option<&OpenEditor> {
@@ -744,6 +752,13 @@ impl EditorApp {
                     }
                     ui.label("Generate from the bar below the seed panel.");
                 });
+
+                ui.menu_button("Help", |ui| {
+                    if ui.button("Help            F1").clicked() {
+                        self.help.open = true;
+                        ui.close_menu();
+                    }
+                });
             });
         });
     }
@@ -968,6 +983,7 @@ impl eframe::App for EditorApp {
             });
 
         self.ai_settings.show(ctx);
+        self.help.show(ctx);
         self.handle_pending(ctx);
 
         // Undo bookkeeping: one diff point per frame, after every mutation
