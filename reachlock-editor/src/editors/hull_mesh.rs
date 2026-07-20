@@ -4,7 +4,9 @@
 //! read-only; "Regenerate" swaps the mesh via `generate_hull_class`.
 
 use reachlock_core::content::{AssetType, ContentFile, ContentPayload, Priority};
-use reachlock_core::editor::exterior::{compose_hull, HullConfiguration, HullFrame, ItemRef, PaintScheme};
+use reachlock_core::editor::exterior::{
+    compose_hull, HullConfiguration, HullFrame, ItemRef, PaintScheme,
+};
 use reachlock_core::generator::hull::{generate_hull_class, HullClass};
 use reachlock_core::item::{EquipmentKind, ItemSeed, ItemType};
 use reachlock_core::util::rng::SeededRng;
@@ -413,6 +415,86 @@ impl Editor for HullMeshEditor {
             entry.file.payload = ContentPayload::Hull(generate_hull_class(seed, class));
         }
         self.has_changes = true;
+    }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        // Accept a ContentFile envelope carrying a Hull payload. The AI
+        // schema for this type (`hull_configuration`) describes outfitting,
+        // not mesh geometry — a configuration response can't populate this
+        // editor, so reject it with a pointer at the procedural path.
+        let file: ContentFile = serde_json::from_value(value.clone()).map_err(|_| {
+            "response was not a hull ContentFile — hull meshes are procedural; \
+             use Regenerate or Generate from Seed instead"
+                .to_string()
+        })?;
+        if !matches!(file.payload, ContentPayload::Hull(_)) {
+            return Err("response payload is not a hull mesh".into());
+        }
+        if let Some(entry) = self.entries.get_mut(self.selected) {
+            entry.file = file;
+        } else {
+            self.entries.push(Entry { file, path: None });
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        let state: Vec<(&ContentFile, &Option<std::path::PathBuf>)> =
+            self.entries.iter().map(|e| (&e.file, &e.path)).collect();
+        ron::to_string(&(state, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (state, selected): (Vec<(ContentFile, Option<std::path::PathBuf>)>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.entries = state
+            .into_iter()
+            .map(|(file, path)| Entry { file, path })
+            .collect();
+        self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.entries.len() <= 1 {
+            return None;
+        }
+        self.entries.get(self.selected).map(|e| e.file.id.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.entries.len() <= 1 || self.selected >= self.entries.len() {
+            return false;
+        }
+        self.entries.remove(self.selected);
+        if self.selected >= self.entries.len() {
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(entry) = self.entries.get(self.selected) else {
+            return;
+        };
+        ui.strong(&entry.file.display_name);
+        if let ContentPayload::Hull(mesh) = &entry.file.payload {
+            ui.label(format!(
+                "{} vertices · {} triangles",
+                mesh.vertices.len(),
+                mesh.indices.len() / 3
+            ));
+        }
+        ui.label(format!("Seed {}", entry.file.seed));
+        ui.weak(format!("Priority: {:?}", entry.file.priority));
     }
 }
 

@@ -364,19 +364,85 @@ impl Editor for ChartedSystemEditor {
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
-        let system: ChartedSystem = serde_json::from_value(value.clone())
-            .map_err(|e| format!("charted system: {e}"))?;
+        let system: ChartedSystem =
+            serde_json::from_value(value.clone()).map_err(|e| format!("charted system: {e}"))?;
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.system = system;
         } else {
-            self.entries.push(Entry {
-                system,
-                path: None,
-            });
+            self.entries.push(Entry { system, path: None });
             self.selected = self.entries.len() - 1;
         }
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        let state: Vec<(&ChartedSystem, &Option<std::path::PathBuf>)> =
+            self.entries.iter().map(|e| (&e.system, &e.path)).collect();
+        ron::to_string(&(state, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (state, selected): (Vec<(ChartedSystem, Option<std::path::PathBuf>)>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.entries = state
+            .into_iter()
+            .map(|(system, path)| Entry { system, path })
+            .collect();
+        self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.entries.len() <= 1 {
+            return None;
+        }
+        self.entries
+            .get(self.selected)
+            .map(|e| e.system.display_name.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.entries.len() <= 1 || self.selected >= self.entries.len() {
+            return false;
+        }
+        self.entries.remove(self.selected);
+        if self.selected >= self.entries.len() {
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(entry) = self.entries.get(self.selected) else {
+            return;
+        };
+        let s = &entry.system;
+        ui.strong(&s.display_name);
+        let badge = match s.biome {
+            Biome::Core => egui::Color32::from_rgb(0xDA, 0xA5, 0x20),
+            Biome::Frontier => egui::Color32::from_rgb(0x3C, 0xB3, 0x71),
+            Biome::Nebula => egui::Color32::from_rgb(0x93, 0x70, 0xDB),
+            Biome::Derelict => egui::Color32::from_rgb(0x80, 0x80, 0x80),
+            Biome::DeepSpace => egui::Color32::from_rgb(0x5F, 0x8F, 0x8F),
+        };
+        ui.colored_label(badge, biome_name(s.biome));
+        ui.monospace(format!(
+            "({}, {}, {})",
+            s.position.x, s.position.y, s.position.z
+        ));
+        let desc: String = s.description.chars().take(120).collect();
+        if desc.len() < s.description.len() {
+            ui.label(format!("{desc}…"));
+        } else if !desc.is_empty() {
+            ui.label(desc);
+        }
     }
 }
 

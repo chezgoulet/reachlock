@@ -2,9 +2,7 @@
 //! class. Edits `HostileArchetype` — bare RON structs under
 //! `mods/reachlock/combat/`.
 
-use reachlock_core::combat::humanoid::{
-    AttackWindow, BlockWindow, DodgeWindow, HostileArchetype,
-};
+use reachlock_core::combat::humanoid::{AttackWindow, BlockWindow, DodgeWindow, HostileArchetype};
 use reachlock_core::util::rng::SeededRng;
 
 use super::super::app::{ContentType, Editor};
@@ -91,12 +89,7 @@ impl EnemyEditor {
     }
 }
 
-fn attack_window_ui(
-    ui: &mut egui::Ui,
-    id: &str,
-    attack: &mut AttackWindow,
-    changed: &mut bool,
-) {
+fn attack_window_ui(ui: &mut egui::Ui, id: &str, attack: &mut AttackWindow, changed: &mut bool) {
     egui::Grid::new(id).show(ui, |ui| {
         ui.label("Startup Ticks:");
         *changed |= ui
@@ -344,10 +337,7 @@ impl Editor for EnemyEditor {
                         egui::Grid::new("enemy_block").show(ui, |ui| {
                             ui.label("Active Ticks:");
                             changed |= ui
-                                .add(
-                                    egui::DragValue::new(&mut a.block.active_ticks)
-                                        .range(0..=200),
-                                )
+                                .add(egui::DragValue::new(&mut a.block.active_ticks).range(0..=200))
                                 .changed();
                             ui.end_row();
                             ui.label("Cooldown Ticks:");
@@ -360,10 +350,7 @@ impl Editor for EnemyEditor {
                             ui.end_row();
                             ui.label("Parry Ticks:");
                             changed |= ui
-                                .add(
-                                    egui::DragValue::new(&mut a.block.parry_ticks)
-                                        .range(0..=200),
-                                )
+                                .add(egui::DragValue::new(&mut a.block.parry_ticks).range(0..=200))
                                 .changed();
                             ui.end_row();
                         });
@@ -376,8 +363,7 @@ impl Editor for EnemyEditor {
                             ui.label("I-Frame Ticks:");
                             changed |= ui
                                 .add(
-                                    egui::DragValue::new(&mut a.dodge.i_frame_ticks)
-                                        .range(0..=200),
+                                    egui::DragValue::new(&mut a.dodge.i_frame_ticks).range(0..=200),
                                 )
                                 .changed();
                             ui.end_row();
@@ -391,10 +377,7 @@ impl Editor for EnemyEditor {
                             ui.end_row();
                             ui.label("Distance (fixed 1/1024):");
                             changed |= ui
-                                .add(
-                                    egui::DragValue::new(&mut a.dodge.distance)
-                                        .range(0..=65_536),
-                                )
+                                .add(egui::DragValue::new(&mut a.dodge.distance).range(0..=65_536))
                                 .changed();
                             ui.end_row();
                         });
@@ -426,7 +409,11 @@ impl Editor for EnemyEditor {
         };
         let hp = hp_lo + rng.next_below(hp_span) as i64;
         let speed = sp_lo + rng.next_below(sp_span) as i64;
-        let speed = if light_build { speed + speed / 2 } else { speed };
+        let speed = if light_build {
+            speed + speed / 2
+        } else {
+            speed
+        };
         let atk = |rng: &mut SeededRng, heavy: bool| {
             let scale = if heavy { 2 } else { 1 };
             AttackWindow {
@@ -460,7 +447,11 @@ impl Editor for EnemyEditor {
             },
             chase_radius: 6144 + rng.next_below(4096) as i64,
             disengage_radius: 12_288 + rng.next_below(8192) as i64,
-            flee_hp_frac: if is_bot { 0 } else { rng.next_below(512) as i64 },
+            flee_hp_frac: if is_bot {
+                0
+            } else {
+                rng.next_below(512) as i64
+            },
         };
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.archetype = archetype;
@@ -469,8 +460,8 @@ impl Editor for EnemyEditor {
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
-        let archetype: HostileArchetype = serde_json::from_value(value.clone())
-            .map_err(|e| format!("enemy archetype: {e}"))?;
+        let archetype: HostileArchetype =
+            serde_json::from_value(value.clone()).map_err(|e| format!("enemy archetype: {e}"))?;
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.archetype = archetype;
         } else {
@@ -482,6 +473,74 @@ impl Editor for EnemyEditor {
         }
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        let state: Vec<(&HostileArchetype, &Option<std::path::PathBuf>)> = self
+            .entries
+            .iter()
+            .map(|e| (&e.archetype, &e.path))
+            .collect();
+        ron::to_string(&(state, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (state, selected): (Vec<(HostileArchetype, Option<std::path::PathBuf>)>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.entries = state
+            .into_iter()
+            .map(|(archetype, path)| Entry { archetype, path })
+            .collect();
+        self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.entries.len() <= 1 {
+            return None;
+        }
+        self.entries
+            .get(self.selected)
+            .map(|e| e.archetype.display_name.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.entries.len() <= 1 || self.selected >= self.entries.len() {
+            return false;
+        }
+        self.entries.remove(self.selected);
+        if self.selected >= self.entries.len() {
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(entry) = self.entries.get(self.selected) else {
+            return;
+        };
+        let a = &entry.archetype;
+        ui.strong(&a.display_name);
+        // HP visualized against the archetype band ceiling (32000).
+        let frac = (a.hp as f32 / 32000.0).clamp(0.0, 1.0);
+        ui.add(egui::ProgressBar::new(frac).text(format!("HP {}", a.hp)));
+        ui.label(format!(
+            "Speed {} · chase {} · disengage {}",
+            a.speed, a.chase_radius, a.disengage_radius
+        ));
+        ui.label(format!(
+            "Light dmg {} · heavy dmg {}",
+            a.light_attack.damage, a.heavy_attack.damage
+        ));
+        if a.flee_hp_frac == 0 {
+            ui.weak("Fearless (never flees)");
+        }
     }
 }
 

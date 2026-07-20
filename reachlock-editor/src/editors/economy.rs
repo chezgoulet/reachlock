@@ -231,8 +231,8 @@ impl Editor for EconomyEditor {
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
-        let good: Good = serde_json::from_value(value.clone())
-            .map_err(|e| format!("trade good: {e}"))?;
+        let good: Good =
+            serde_json::from_value(value.clone()).map_err(|e| format!("trade good: {e}"))?;
         if let Some(existing) = self.goods.get_mut(self.selected) {
             *existing = good;
         } else {
@@ -241,6 +241,68 @@ impl Editor for EconomyEditor {
         }
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        ron::to_string(&(self.version, &self.goods, &self.path, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (version, goods, path, selected): (u32, Vec<Good>, Option<std::path::PathBuf>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.version = version;
+        self.goods = goods;
+        self.path = path;
+        self.selected = selected.min(self.goods.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.goods.len() <= 1 {
+            return None;
+        }
+        self.goods.get(self.selected).map(|g| g.name.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.goods.len() <= 1 || self.selected >= self.goods.len() {
+            return false;
+        }
+        self.goods.remove(self.selected);
+        if self.selected >= self.goods.len() {
+            self.selected = self.goods.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.strong(format!("{} good(s)", self.goods.len()));
+        let categories: std::collections::BTreeSet<String> = self
+            .goods
+            .iter()
+            .map(|g| format!("{:?}", g.category))
+            .collect();
+        ui.label(format!(
+            "Categories: {}",
+            categories.into_iter().collect::<Vec<_>>().join(", ")
+        ));
+        if let Some(g) = self.goods.get(self.selected) {
+            ui.separator();
+            ui.strong(&g.name);
+            ui.label(format!(
+                "{:?} · {} cr · {} mass",
+                g.category, g.base_price, g.mass
+            ));
+            if g.contraband {
+                ui.colored_label(egui::Color32::from_rgb(0xF4, 0x43, 0x36), "Contraband");
+            }
+        }
     }
 }
 

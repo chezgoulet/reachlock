@@ -281,9 +281,8 @@ impl Editor for FactionEditor {
                             ui.label("Color (RGBA):");
                             ui.horizontal(|ui| {
                                 for c in &mut f.color {
-                                    changed |= ui
-                                        .add(egui::DragValue::new(c).range(0..=255))
-                                        .changed();
+                                    changed |=
+                                        ui.add(egui::DragValue::new(c).range(0..=255)).changed();
                                 }
                                 let swatch = egui::Color32::from_rgba_unmultiplied(
                                     f.color[0], f.color[1], f.color[2], f.color[3],
@@ -301,11 +300,7 @@ impl Editor for FactionEditor {
                                 .show_ui(ui, |ui| {
                                     for d in DOCTRINES {
                                         changed |= ui
-                                            .selectable_value(
-                                                &mut f.doctrine,
-                                                d,
-                                                format!("{d:?}"),
-                                            )
+                                            .selectable_value(&mut f.doctrine, d, format!("{d:?}"))
                                             .changed();
                                     }
                                 });
@@ -340,10 +335,7 @@ impl Editor for FactionEditor {
                                 egui::Grid::new("faction_tariff_regulated").show(ui, |ui| {
                                     ui.label("Foreign Mult (fixed 1/1024):");
                                     changed |= ui
-                                        .add(
-                                            egui::DragValue::new(foreign_mult)
-                                                .range(0..=10_240),
-                                        )
+                                        .add(egui::DragValue::new(foreign_mult).range(0..=10_240))
                                         .changed();
                                     ui.end_row();
                                     ui.label("Own Mult (fixed 1/1024):");
@@ -406,8 +398,7 @@ impl Editor for FactionEditor {
                         let mut remove: Option<usize> = None;
                         for (i, claim) in f.territory.iter_mut().enumerate() {
                             ui.horizontal(|ui| {
-                                changed |=
-                                    ui.text_edit_singleline(&mut claim.system_id).changed();
+                                changed |= ui.text_edit_singleline(&mut claim.system_id).changed();
                                 changed |= ui
                                     .add(
                                         egui::DragValue::new(&mut claim.control)
@@ -490,10 +481,7 @@ impl Editor for FactionEditor {
                         }
                         if ui.button("Add Division").clicked() {
                             f.internal_divisions.push(InternalDivision {
-                                id: DivisionId(format!(
-                                    "division_{}",
-                                    f.internal_divisions.len()
-                                )),
+                                id: DivisionId(format!("division_{}", f.internal_divisions.len())),
                                 name: String::new(),
                                 influence: 0.5,
                                 agenda: DivisionAgenda::Mercantile,
@@ -516,11 +504,7 @@ impl Editor for FactionEditor {
                                     .show_ui(ui, |ui| {
                                         for s in STATUSES {
                                             if ui
-                                                .selectable_value(
-                                                    &mut status,
-                                                    s,
-                                                    format!("{s:?}"),
-                                                )
+                                                .selectable_value(&mut status, s, format!("{s:?}"))
                                                 .changed()
                                             {
                                                 standing.status_snapshot = s;
@@ -529,8 +513,7 @@ impl Editor for FactionEditor {
                                             }
                                         }
                                     });
-                                let mut treaty =
-                                    standing.treaty.clone().unwrap_or_default();
+                                let mut treaty = standing.treaty.clone().unwrap_or_default();
                                 if ui
                                     .add(
                                         egui::TextEdit::singleline(&mut treaty)
@@ -539,12 +522,10 @@ impl Editor for FactionEditor {
                                     )
                                     .changed()
                                 {
-                                    standing.treaty =
-                                        (!treaty.is_empty()).then_some(treaty);
+                                    standing.treaty = (!treaty.is_empty()).then_some(treaty);
                                     changed = true;
                                 }
-                                let mut war_goal =
-                                    standing.war_goal.clone().unwrap_or_default();
+                                let mut war_goal = standing.war_goal.clone().unwrap_or_default();
                                 if ui
                                     .add(
                                         egui::TextEdit::singleline(&mut war_goal)
@@ -553,8 +534,7 @@ impl Editor for FactionEditor {
                                     )
                                     .changed()
                                 {
-                                    standing.war_goal =
-                                        (!war_goal.is_empty()).then_some(war_goal);
+                                    standing.war_goal = (!war_goal.is_empty()).then_some(war_goal);
                                     changed = true;
                                 }
                                 if ui.button("×").clicked() {
@@ -578,8 +558,7 @@ impl Editor for FactionEditor {
                                 .show_ui(ui, |ui| {
                                     for id in &all_ids {
                                         if *id == f.id.0
-                                            || f.relationships
-                                                .contains_key(&FactionId(id.clone()))
+                                            || f.relationships.contains_key(&FactionId(id.clone()))
                                         {
                                             continue;
                                         }
@@ -665,8 +644,8 @@ impl Editor for FactionEditor {
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
-        let catalog: FactionCatalog = serde_json::from_value(value.clone())
-            .map_err(|e| format!("faction catalog: {e}"))?;
+        let catalog: FactionCatalog =
+            serde_json::from_value(value.clone()).map_err(|e| format!("faction catalog: {e}"))?;
         if catalog.factions.is_empty() {
             return Err("model returned a faction catalog with no factions".into());
         }
@@ -680,6 +659,68 @@ impl Editor for FactionEditor {
         self.selected = self.catalog.factions.len() - 1;
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        ron::to_string(&(&self.catalog, &self.path, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (catalog, path, selected): (FactionCatalog, Option<std::path::PathBuf>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.catalog = catalog;
+        self.path = path;
+        self.selected = selected.min(self.catalog.factions.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.catalog.factions.len() <= 1 {
+            return None;
+        }
+        self.catalog
+            .factions
+            .get(self.selected)
+            .map(|f| f.name.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.catalog.factions.len() <= 1 || self.selected >= self.catalog.factions.len() {
+            return false;
+        }
+        self.catalog.factions.remove(self.selected);
+        if self.selected >= self.catalog.factions.len() {
+            self.selected = self.catalog.factions.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(f) = self.catalog.factions.get(self.selected) else {
+            return;
+        };
+        let [r, g, b, a] = f.color;
+        ui.horizontal(|ui| {
+            ui.colored_label(egui::Color32::from_rgba_unmultiplied(r, g, b, a), "■");
+            ui.strong(&f.name);
+        });
+        ui.label(format!("Doctrine: {:?}", f.doctrine));
+        ui.label(format!(
+            "{} faction(s) in catalog · {} territory claim(s)",
+            self.catalog.factions.len(),
+            f.territory.len()
+        ));
+        ui.label(format!(
+            "{} division(s) · {} relationship(s)",
+            f.internal_divisions.len(),
+            f.relationships.len()
+        ));
     }
 }
 

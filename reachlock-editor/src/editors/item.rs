@@ -12,7 +12,13 @@ use reachlock_core::util::rng::SeededRng;
 
 use super::super::app::{ContentType, Editor};
 
-const TOP_LEVELS: [&str; 5] = ["Equipment", "Consumable", "Component", "Implant", "Cosmetic"];
+const TOP_LEVELS: [&str; 5] = [
+    "Equipment",
+    "Consumable",
+    "Component",
+    "Implant",
+    "Cosmetic",
+];
 
 const EQUIPMENT_KINDS: [(&str, EquipmentKind); 10] = [
     (
@@ -82,7 +88,11 @@ const COSMETICS: [CosmeticKind; 7] = [
     CosmeticKind::InteriorDecoration,
 ];
 
-const ENERGY: [EnergyWeapon; 3] = [EnergyWeapon::Laser, EnergyWeapon::Plasma, EnergyWeapon::Tachyon];
+const ENERGY: [EnergyWeapon; 3] = [
+    EnergyWeapon::Laser,
+    EnergyWeapon::Plasma,
+    EnergyWeapon::Tachyon,
+];
 const KINETIC: [KineticWeapon; 3] = [
     KineticWeapon::Cannon,
     KineticWeapon::Railgun,
@@ -93,7 +103,11 @@ const MISSILE: [MissileWeapon; 3] = [
     MissileWeapon::Standard,
     MissileWeapon::Decoy,
 ];
-const MELEE: [MeleeWeapon; 3] = [MeleeWeapon::Blade, MeleeWeapon::Baton, MeleeWeapon::ArcWelder];
+const MELEE: [MeleeWeapon; 3] = [
+    MeleeWeapon::Blade,
+    MeleeWeapon::Baton,
+    MeleeWeapon::ArcWelder,
+];
 const BOARDING: [BoardingWeapon; 2] = [
     BoardingWeapon::BreachingCharge,
     BoardingWeapon::SuppressionTool,
@@ -204,9 +218,7 @@ fn item_type_picker(ui: &mut egui::Ui, item_type: &mut ItemType) -> bool {
         ItemType::Equipment(kind) => {
             let idx = EQUIPMENT_KINDS
                 .iter()
-                .position(|(_, k)| {
-                    std::mem::discriminant(k) == std::mem::discriminant(kind)
-                })
+                .position(|(_, k)| std::mem::discriminant(k) == std::mem::discriminant(kind))
                 .unwrap_or(0);
             egui::ComboBox::from_label("Equipment Kind")
                 .selected_text(EQUIPMENT_KINDS[idx].0)
@@ -222,9 +234,7 @@ fn item_type_picker(ui: &mut egui::Ui, item_type: &mut ItemType) -> bool {
             if let EquipmentKind::Weapon(weapon) = kind {
                 let widx = WEAPON_KINDS
                     .iter()
-                    .position(|(_, w)| {
-                        std::mem::discriminant(w) == std::mem::discriminant(weapon)
-                    })
+                    .position(|(_, w)| std::mem::discriminant(w) == std::mem::discriminant(weapon))
                     .unwrap_or(0);
                 egui::ComboBox::from_label("Weapon Class")
                     .selected_text(WEAPON_KINDS[widx].0)
@@ -242,9 +252,8 @@ fn item_type_picker(ui: &mut egui::Ui, item_type: &mut ItemType) -> bool {
                             .selected_text(format!("{leaf:?}"))
                             .show_ui(ui, |ui| {
                                 for l in ENERGY {
-                                    changed |= ui
-                                        .selectable_value(leaf, l, format!("{l:?}"))
-                                        .changed();
+                                    changed |=
+                                        ui.selectable_value(leaf, l, format!("{l:?}")).changed();
                                 }
                             });
                     }
@@ -253,9 +262,8 @@ fn item_type_picker(ui: &mut egui::Ui, item_type: &mut ItemType) -> bool {
                             .selected_text(format!("{leaf:?}"))
                             .show_ui(ui, |ui| {
                                 for l in KINETIC {
-                                    changed |= ui
-                                        .selectable_value(leaf, l, format!("{l:?}"))
-                                        .changed();
+                                    changed |=
+                                        ui.selectable_value(leaf, l, format!("{l:?}")).changed();
                                 }
                             });
                     }
@@ -264,9 +272,8 @@ fn item_type_picker(ui: &mut egui::Ui, item_type: &mut ItemType) -> bool {
                             .selected_text(format!("{leaf:?}"))
                             .show_ui(ui, |ui| {
                                 for l in MISSILE {
-                                    changed |= ui
-                                        .selectable_value(leaf, l, format!("{l:?}"))
-                                        .changed();
+                                    changed |=
+                                        ui.selectable_value(leaf, l, format!("{l:?}")).changed();
                                 }
                             });
                     }
@@ -275,9 +282,8 @@ fn item_type_picker(ui: &mut egui::Ui, item_type: &mut ItemType) -> bool {
                             .selected_text(format!("{leaf:?}"))
                             .show_ui(ui, |ui| {
                                 for l in MELEE {
-                                    changed |= ui
-                                        .selectable_value(leaf, l, format!("{l:?}"))
-                                        .changed();
+                                    changed |=
+                                        ui.selectable_value(leaf, l, format!("{l:?}")).changed();
                                 }
                             });
                     }
@@ -286,9 +292,8 @@ fn item_type_picker(ui: &mut egui::Ui, item_type: &mut ItemType) -> bool {
                             .selected_text(format!("{leaf:?}"))
                             .show_ui(ui, |ui| {
                                 for l in BOARDING {
-                                    changed |= ui
-                                        .selectable_value(leaf, l, format!("{l:?}"))
-                                        .changed();
+                                    changed |=
+                                        ui.selectable_value(leaf, l, format!("{l:?}")).changed();
                                 }
                             });
                     }
@@ -499,10 +504,7 @@ impl Editor for ItemEditor {
                 if let Some(item) = &self.preview {
                     ui.separator();
                     ui.heading(&item.display_name);
-                    ui.colored_label(
-                        rarity_color(item.rarity),
-                        format!("{:?}", item.rarity),
-                    );
+                    ui.colored_label(rarity_color(item.rarity), format!("{:?}", item.rarity));
                     ui.label(&item.description);
                     ui.separator();
                     egui::Grid::new("item_stats").striped(true).show(ui, |ui| {
@@ -540,8 +542,7 @@ impl Editor for ItemEditor {
 
     fn generate_from_seed(&mut self, seed: u64) {
         let mut rng = SeededRng::new(seed ^ 0x17E4_A00A);
-        let item_type = reachlock_core::item::ItemFamily::ALL
-            [rng.next_below(18) as usize]
+        let item_type = reachlock_core::item::ItemFamily::ALL[rng.next_below(18) as usize]
             .representative_item_type();
         let item_seed = ItemSeed {
             seed: rng.next_u64() & 0x001F_FFFF_FFFF_FFFF,
@@ -558,8 +559,8 @@ impl Editor for ItemEditor {
     }
 
     fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
-        let item_seed: ItemSeed = serde_json::from_value(value.clone())
-            .map_err(|e| format!("item seed: {e}"))?;
+        let item_seed: ItemSeed =
+            serde_json::from_value(value.clone()).map_err(|e| format!("item seed: {e}"))?;
         self.preview = Some(generate_item(&item_seed));
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.item_seed = item_seed;
@@ -572,6 +573,77 @@ impl Editor for ItemEditor {
         }
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        let state: Vec<(&ItemSeed, &Option<std::path::PathBuf>)> = self
+            .entries
+            .iter()
+            .map(|e| (&e.item_seed, &e.path))
+            .collect();
+        ron::to_string(&(state, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (state, selected): (Vec<(ItemSeed, Option<std::path::PathBuf>)>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.entries = state
+            .into_iter()
+            .map(|(item_seed, path)| Entry { item_seed, path })
+            .collect();
+        self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.preview = self
+            .entries
+            .get(self.selected)
+            .map(|e| generate_item(&e.item_seed));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.entries.len() <= 1 {
+            return None;
+        }
+        self.entries
+            .get(self.selected)
+            .map(|e| generate_item(&e.item_seed).display_name)
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.entries.len() <= 1 || self.selected >= self.entries.len() {
+            return false;
+        }
+        self.entries.remove(self.selected);
+        if self.selected >= self.entries.len() {
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(entry) = self.entries.get(self.selected) else {
+            return;
+        };
+        let seed = &entry.item_seed;
+        if let Some(item) = &self.preview {
+            ui.strong(&item.display_name);
+            let rarity_color = match item.rarity {
+                Rarity::Common => egui::Color32::from_rgb(0xB0, 0xB0, 0xB0),
+                Rarity::Uncommon => egui::Color32::from_rgb(0x4C, 0xAF, 0x50),
+                Rarity::Rare => egui::Color32::from_rgb(0x42, 0xA5, 0xF5),
+                Rarity::Epic => egui::Color32::from_rgb(0xAB, 0x47, 0xBC),
+                Rarity::Legendary => egui::Color32::from_rgb(0xFF, 0xB3, 0x00),
+            };
+            ui.colored_label(rarity_color, format!("{:?}", item.rarity));
+        }
+        ui.label(format!("Tier {} · seed {}", seed.tier, seed.seed));
+        ui.monospace(format!("{:?}", seed.item_type));
+        ui.label(format!("{} / {}", seed.faction, seed.biome));
     }
 }
 

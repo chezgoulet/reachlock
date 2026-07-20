@@ -250,8 +250,7 @@ impl Editor for StationEditor {
                                 .changed();
                             ui.end_row();
                             ui.label("Universe:");
-                            changed |=
-                                ui.text_edit_singleline(&mut entry.file.universe).changed();
+                            changed |= ui.text_edit_singleline(&mut entry.file.universe).changed();
                             ui.end_row();
                             ui.label("Priority:");
                             egui::ComboBox::from_id_salt("station_priority")
@@ -446,8 +445,7 @@ impl Editor for StationEditor {
                                         )
                                         .changed();
                                     ui.label("Name:");
-                                    changed |=
-                                        ui.text_edit_singleline(&mut spawn.name).changed();
+                                    changed |= ui.text_edit_singleline(&mut spawn.name).changed();
                                     if ui.button("Remove NPC").clicked() {
                                         remove_npc = Some(i);
                                     }
@@ -508,8 +506,11 @@ impl Editor for StationEditor {
 
     fn generate_from_seed(&mut self, seed: u64) {
         let mut rng = SeededRng::new(seed ^ 0x57A7_8008);
-        let kind = [StationKind::Trade, StationKind::Mining, StationKind::Military]
-            [rng.next_below(3) as usize];
+        let kind = [
+            StationKind::Trade,
+            StationKind::Mining,
+            StationKind::Military,
+        ][rng.next_below(3) as usize];
         // Size 1-2 lands the handoff's 4-8 room band.
         let station = generate_station(seed, kind, 1 + rng.next_below(2) as u32);
         let room_count = station.layout.rooms.len();
@@ -549,6 +550,74 @@ impl Editor for StationEditor {
         }
         self.has_changes = true;
         Ok(())
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        let state: Vec<(&ContentFile, &Option<std::path::PathBuf>)> =
+            self.entries.iter().map(|e| (&e.file, &e.path)).collect();
+        ron::to_string(&(state, self.selected)).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
+        let (state, selected): (Vec<(ContentFile, Option<std::path::PathBuf>)>, usize) =
+            ron::from_str(ron).map_err(|e| e.to_string())?;
+        self.entries = state
+            .into_iter()
+            .map(|(file, path)| Entry { file, path })
+            .collect();
+        self.selected = selected.min(self.entries.len().saturating_sub(1));
+        self.has_changes = true;
+        Ok(())
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
+
+    fn selected_entry_name(&self) -> Option<String> {
+        if self.entries.len() <= 1 {
+            return None;
+        }
+        self.entries
+            .get(self.selected)
+            .map(|e| e.file.display_name.clone())
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.entries.len() <= 1 || self.selected >= self.entries.len() {
+            return false;
+        }
+        self.entries.remove(self.selected);
+        if self.selected >= self.entries.len() {
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        true
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        let Some(entry) = self.entries.get(self.selected) else {
+            return;
+        };
+        ui.strong(&entry.file.display_name);
+        if let ContentPayload::Station {
+            exterior,
+            layout,
+            npc_spawns,
+        } = &entry.file.payload
+        {
+            ui.label(format!(
+                "{} room(s) · {} door(s)",
+                layout.rooms.len(),
+                layout.doors.len()
+            ));
+            ui.label(format!("{} NPC spawn(s)", npc_spawns.len()));
+            ui.weak(format!(
+                "Exterior: {} vertices, {} triangles",
+                exterior.vertices.len(),
+                exterior.indices.len() / 3
+            ));
+        }
     }
 }
 
