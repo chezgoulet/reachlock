@@ -556,6 +556,23 @@ impl Editor for ItemEditor {
         }
         self.has_changes = true;
     }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        let item_seed: ItemSeed = serde_json::from_value(value.clone())
+            .map_err(|e| format!("item seed: {e}"))?;
+        self.preview = Some(generate_item(&item_seed));
+        if let Some(entry) = self.entries.get_mut(self.selected) {
+            entry.item_seed = item_seed;
+        } else {
+            self.entries.push(Entry {
+                item_seed,
+                path: None,
+            });
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        Ok(())
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {

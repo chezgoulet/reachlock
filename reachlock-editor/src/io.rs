@@ -25,9 +25,9 @@ pub fn validate_content(content_type: &ContentType, value: &serde_json::Value) -
         ContentType::EconomyGoods => "economy_goods",
         ContentType::Storyline => "storyline",
         ContentType::Item => "item",
-        ContentType::EnemyArchetype => "enemy_archetype",
+        ContentType::EnemyArchetype => "hostile",
         ContentType::ChartedSystem => "charted_system",
-        ContentType::HullMesh => "hull",
+        ContentType::HullMesh => "hull_configuration",
         ContentType::RoomTemplates => "room_template",
         ContentType::GateNetwork => "gate_network",
         // Previewers persist nothing; no schema applies.
@@ -36,10 +36,9 @@ pub fn validate_content(content_type: &ContentType, value: &serde_json::Value) -
         }
     };
 
-    let schema_json = match std::fs::read_to_string(format!(
-        "content/schemas/{}.schema.json",
-        schema_id
-    )) {
+    let schema_json = match std::fs::read_to_string(
+        crate::schema::schemas_dir().join(format!("{schema_id}.schema.json")),
+    ) {
         Ok(s) => s,
         Err(_) => return vec!["no schema file found".into()],
     };

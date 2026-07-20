@@ -494,6 +494,35 @@ impl Editor for ContractEditor {
         }
         self.has_changes = true;
     }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        // The contract schema describes a ContentFile envelope; some models
+        // emit the envelope, others the bare Contract. Accept both.
+        let contract = match serde_json::from_value::<Contract>(value.clone()) {
+            Ok(c) => c,
+            Err(_) => {
+                let extracted =
+                    super::super::ai::extract_inner_from_envelope(value, "contract")
+                        .ok_or_else(|| {
+                            "response was neither a bare contract nor a ContentFile envelope"
+                                .to_string()
+                        })?;
+                serde_json::from_value::<Contract>(extracted)
+                    .map_err(|e| format!("contract: {e}"))?
+            }
+        };
+        if let Some(entry) = self.entries.get_mut(self.selected) {
+            entry.contract = contract;
+        } else {
+            self.entries.push(Entry {
+                contract,
+                path: None,
+            });
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        Ok(())
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {

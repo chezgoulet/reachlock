@@ -293,7 +293,7 @@ impl Editor for StorylineEditor {
                             let mut has_trigger = chapter.trigger.is_some();
                             if ui.checkbox(&mut has_trigger, "Has Trigger").changed() {
                                 chapter.trigger =
-                                    has_trigger.then(|| ChapterTrigger::TickAfter(0));
+                                    has_trigger.then_some(ChapterTrigger::TickAfter(0));
                                 changed = true;
                             }
                             if let Some(trigger) = &mut chapter.trigger {
@@ -395,6 +395,18 @@ impl Editor for StorylineEditor {
             *s = storyline;
         }
         self.has_changes = true;
+    }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        let storyline: Storyline = serde_json::from_value(value.clone())
+            .map_err(|e| format!("storyline: {e}"))?;
+        if self.storylines.is_empty() {
+            self.storylines.push(storyline);
+        } else {
+            self.storylines[self.selected] = storyline;
+        }
+        self.has_changes = true;
+        Ok(())
     }
 }
 

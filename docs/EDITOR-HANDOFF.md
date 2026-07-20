@@ -934,344 +934,124 @@ These files are outside the editor crate's scope and should NOT be modified:
 
 ---
 
-## Phase 2.5 — AI-Assisted Content Creation
+## Phase 2.5 — AI-Assisted Content Creation — DONE (PR #142)
 
-**After completing Phase 1 editors and the Phase 2 previewers, implement this.**
-It depends on the editors existing because it populates their fields.
+**Status:** COMPLETE. All 14 content editors accept AI-generated JSON.
+Branch: `sprint-v2/phase25-ai-content-creation`.
 
-### Concept
+### What It Does
 
-A global AI prompt bar at the top of the editor window. The author types
-a natural language description ("a swampy planet with thriving ecosystem
-and lots of resources for discovery") and the editor calls any
-OpenAI-compatible API to generate a complete, schema-valid content asset.
-The generated fields populate the active editor tab, ready for human tuning.
+A global AI prompt bar in the editor calls any OpenAI-compatible
+`/v1/chat/completions` endpoint (Ollama by default, local-first), generates
+schema-valid JSON for the active editor tab, and populates the editor's
+data fields. Three creation paths coexist:
 
-### Architecture
+1. **AI generation** (the prompt bar) — natural language → JSON → populate
+2. **Procedural generation** ("Generate from Seed" button) — always works
+3. **Manual creation** ("New" button) — blank slate
 
-```
-User prompt → Editor assembles system prompt + JSON schema + user text
-→ POST /v1/chat/completions → LLM returns JSON
-→ Editor validates JSON against schema → Populates editor fields
-```
+### Files Added
 
-The editor calls any OpenAI-compatible chat completions endpoint. Ollama
-exposes this at `http://localhost:11434/v1` by default — local-first,
-offline, zero cost. Cloud APIs (OpenAI, Anthropic via proxy) work by
-changing the URL and key. No code branches needed.
+| File | Purpose |
+|------|---------|
+| `src/ai.rs` | `AiConfig`, `generate_content()` (async via tokio), per-type prompt builders with envelope/enum hints, 4-strategy JSON extraction, schema validation, `test_connection()`, `extract_inner_from_envelope()` for ContentFile-wrapped schemas |
+| `src/schema.rs` | `SchemaCache` — loads all schemas, compiles `jsonschema` validators, `compact_prompt()` strips meta fields, `schemas_dir()` resolves CWD + `$CARGO_MANIFEST_DIR` fallback |
+| `src/settings_window.rs` | AI settings modal — endpoint, model, API key, max tokens, "Test Connection" (spawns thread + tokio runtime → `Arc<Mutex<TestStatus>>`), persisted to `save/editor-settings.ron` |
+| `schemas/location.schema.json` | `HostileLocation` (rooms, connections, keycard) |
+| `schemas/economy_goods.schema.json` | Single `Good` |
+| `schemas/item.schema.json` | `ItemSeed` (all enum levels snake_case) |
+| `schemas/hull_configuration.schema.json` | `HullConfiguration` (hardpoints, engine, plating, paint, decals; SizeClass/PaintSlot snake_case) |
 
-### Dependencies to Add
+### Files Modified
 
-The editor's `Cargo.toml` already has `jsonschema` and `serde_json`. Add:
+| File | Change |
+|------|--------|
+| `main.rs` | AI bar panel between seed panel and tab bar; "AI > AI Settings" menu; background thread + `mpsc::channel` → `try_recv` each frame → `apply_ai_json` |
+| `app.rs` | `Editor` trait gains `apply_ai_json(&mut self, &Value) -> Result<(), String>` with default "not wired" error |
+| `io.rs` | Fixed dead schema path `content/schemas/` → `mods/reachlock/schemas/`; fixed mapping (`EnemyArchetype`→`hostile`, `HullMesh`→`hull_configuration`) |
+| `editors/soul.rs` | `apply_ai_json`: bare `SoulFile` first, then `extract_inner_from_envelope(value, "soul")` for ContentFile JSON |
+| `editors/contract.rs` | Same two-step: bare `Contract` → envelope extraction |
+| `editors/station.rs` | `apply_ai_json`: deserialize `ContentFile`, validate `Station` variant |
+| `editors/hull_frame.rs` | Deserialize `ContentFile`, validate `HullFrame` variant |
+| `editors/room_templates.rs` | Deserialize `ContentFile`, validate `RoomTemplates` variant |
+| `editors/faction.rs` | Deserialize `FactionCatalog`, append/merge factions |
+| `editors/economy.rs` | Deserialize single `Good`, replace/append |
+| `editors/item.rs` | Deserialize `ItemSeed`, regenerate preview |
+| `editors/hull.rs` | Fixed `content_type()` bug (`HullFrame`→`HullMesh`). Deserialize `HullConfiguration`. |
+| `editors/storyline.rs` | Fixed pre-existing clippy `then(||...)`→`then_some(...)` |
+| `editors/enemy.rs` | Fixed pre-existing clippy `seed % 2 == 0`→`is_multiple_of(2)` |
 
-```toml
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-```
+### Schema → Editor Mapping
 
-### New Files
+| ContentType | Schema ID | Shape | apply_ai_json strategy |
+|-------------|-----------|-------|----------------------|
+| ChartedSystem | `charted_system` | bare | `from_value::<T>` |
+| Soul | `soul` | envelope | bare first, then envelope extraction |
+| Contract | `contract` | envelope | bare first, then envelope extraction |
+| Faction | `faction` | catalog | `from_value::<FactionCatalog>` |
+| Storyline | `storyline` | bare | `from_value::<T>` |
+| GateNetwork | `gate_network` | bare | `from_value::<T>` |
+| EnemyArchetype | `hostile` | bare | `from_value::<T>` |
+| Location | `location` | bare | `from_value::<T>` |
+| Station | `station` | envelope | `from_value::<ContentFile>` |
+| HullFrame | `hull_frame` | envelope | `from_value::<ContentFile>` |
+| HullMesh | `hull_configuration` | bare | `from_value::<HullConfiguration>` |
+| RoomTemplates | `room_template` | envelope | `from_value::<ContentFile>` |
+| EconomyGoods | `economy_goods` | bare | `from_value::<Good>` |
+| Item | `item` | bare | `from_value::<ItemSeed>` |
+| ItemBrowser/SpriteViewer | *none* | — | preview, no schema |
 
-- `src/ai.rs` — AiConfig, generate_content(), prompt builders per content type
-- `src/settings_window.rs` — AI settings popup (or inline in main.rs)
+### Architecture Decisions
 
-### Settings
+**Async.** `reqwest` requires async but eframe is synchronous. Generation runs
+on a `std::thread` with its own `tokio::runtime`, `block_on`s the request,
+and sends the result via `mpsc::channel`. Main thread polls `try_recv()`.
 
-Stored in `save/editor-settings.ron` alongside editor preferences:
+**JSON extraction.** 4 strategies: parse whole response → extract from
+` ```json` fence → find first `{...}` → find first `[...]`.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `ai_api_base_url` | `http://localhost:11434/v1` | Ollama's OpenAI-compatible endpoint |
-| `ai_api_key` | `ollama` | Ollama accepts any string; cloud APIs need real keys |
-| `ai_model` | `llama3.2:3b` | Fast, lightweight, local |
-| `ai_max_tokens` | `4096` | Largest content type (SoulFile) is ~3KB of JSON |
+**Envelope extraction.** Soul/Contract schemas describe `ContentFile` envelopes
+but editors store bare inner types. `extract_inner_from_envelope()` deserializes
+the envelope, pattern-matches `ContentPayload`, re-serializes the inner value.
 
-### AI Settings Popup
+**Schema directory.** `schema::schemas_dir()` checks CWD first, then falls back
+to `$CARGO_MANIFEST_DIR/../mods/reachlock/schemas` for tests.
 
-A modal window opened from the gear (⚙) icon on the AI bar:
+### Gotchas
 
-```
-┌─ AI Settings ────────────────────────────────────┐
-│                                                  │
-│  API Base URL: [http://localhost:11434/v1     ]  │
-│  API Key:      [ollama                        ]  │
-│  Model:        [llama3.2:3b                   ]  │
-│  Max Tokens:   [4096                      ▲▼  ]  │
-│                                                  │
-│  [Test Connection]  [Save]  [Cancel]             │
-│                                                  │
-│  Status: ✓ Connected — llama3.2:3b (3.8B params) │
-│                                                  │
-└──────────────────────────────────────────────────┘
-```
-
-**"Test Connection"** sends a GET to `{base_url}/models` (Ollama-compatible)
-or a minimal chat completion. Shows ✓ with model name and param count on
-success, or ✗ with error message on failure. Parses the model list to
-populate a ComboBox for model selection (cache the list).
-
-Settings are saved immediately on "Save" and persist across editor restarts.
-
-### UI — Global AI Bar
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│ 🤖 [Describe what you want to create...                  ] [⚙] [▶] │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-- **Position:** below the menu bar, above the tab bar. Always visible.
-- **Text field:** expands to 3 visible lines on focus. Enter sends,
-  Shift+Enter inserts newline. Placeholder text: "Describe what you want
-  to create..."
-- **⚙ gear icon:** opens the AI Settings popup.
-- **▶ send button:** fires generation for the active editor tab's content
-  type. Disabled (greyed out) if no editor tab is open or the text field
-  is empty.
-- **Loading state:** during generation, the send button becomes a spinner
-  animation, the text field is disabled, and the status bar shows
-  "Generating... (may take 5-15 seconds)".
-- **On success:** status bar shows "AI generated — review and tune."
-  All editor fields populate. Modified indicator (*) appears on the tab.
-  Text field clears.
-- **On failure:** status bar shows the error in red. Example messages:
-  - "Connection refused — is Ollama running?"
-  - "Response failed schema validation: 'id' is required"
-  - "API error 401 — invalid API key"
-  A "Retry" link and a "[Use procedural instead]" button appear next
-  to the error.
-
-### Prompt Construction
-
-For each content type, the editor assembles a system prompt from three parts:
-
-**Part 1 — Role instruction:**
-
-> You are a content generation assistant for the ReachLock spacefaring
-> game. Output ONLY valid JSON matching the schema below. Do not include
-> markdown code fences or explanatory text. Output raw JSON only.
-
-**Part 2 — Content type context** (one paragraph per type, describing what
-it means in the game world):
-
-| ContentType | Context paragraph |
-|-------------|------------------|
-| ChartedSystem | A star system in the ReachLock galaxy. Systems are connected by a gate network. Each has a 3D position, a biome flavor, and a descriptive paragraph visible in the galaxy map. |
-| Soul | An NPC character. Species: Human (cybernetically enhanced), Android (synthetic humanoid), Robot (non-humanoid machine), Voidborn (space-dwelling, mystical, Predecessor-lore), Xenotype (planet-bound ecosystem creature). Each has personality traits, an emotional state, memories, relationships, secrets, goals, and optional branching dialogue. |
-| Faction | A political faction. Has a doctrine (Military/Economic/Diplomatic/Expansionist), tariff policy, territory claims, internal divisions with agendas, relationships with other factions, and goods it produces. |
-| HullFrame | A ship frame defining where hardpoints, armor zones, decals, and the engine mount go. Classes: Shuttle (small, fast), Corvette (balanced), Freighter (large, slow), Station (immobile), Rock (asteroid). |
-| EnemyArchetype | A landed-combat enemy. Has HP, speed, light and heavy attack windows (startup/active/recovery ticks, damage, range), block window, dodge window, chase/disengage radii, and flee threshold. |
-| Station | A space station with an exterior hull mesh, an interior layout of rooms connected by doors, and NPC spawns with dialogue lines. |
-| Location | A hostile interior location (derelict ship, bunker, space station). Contains rooms with enemy spawns, props, connections between rooms, and an optional keycard gate. |
-| Economy | A catalog of trade goods. Each good has a name, category (Consumable, Fuel, Material, Manufactured, Medical, Luxury, Contraband), base price, mass, and contraband flag. |
-| Contract | An automated contract evaluated by the game engine. Has a trigger (Timer, Event, StateChange, or Manual), prioritized rules with conditions (Always, Compare, All, Any, Not), actions, and optional LLM fallback authority. |
-| Storyline | A faction's narrative arc. Contains chapters with triggers (TickAfter, ChapterComplete, PlayerReputation, All, Any) and narration text that fires when triggered. |
-| Item | A generated equipment item. Has a type hierarchy (Equipment→Weapon→Kinetic→Cannon), tier (1-10), seed, faction/biome origin, and generates stats like Damage, Range, FireRate, ShieldHp, etc. |
-| HullMesh | A hand-crafted ship hull: a polygon mesh with vertices and triangle indices. |
-| RoomTemplates | A set of room templates for ship interiors. Each template has a kind (Cockpit, MedBay, Reactor, etc.), dimensions, required systems, furniture slots, and adjacency bonus pairs. |
-| GateNetwork | A directed graph of star systems connected by gates. Each gate has a from/to system, a status (Active, Blockaded, Restricted, Contested, Destroyed), and an optional controlling faction. |
-
-**Part 3 — JSON schema:** Read from `mods/reachlock/schemas/<type>.schema.json`
-at editor startup. Inline the schema's key requirements in compact form:
-required fields, types, enum values, numeric ranges. Strip `$schema`,
-`title`, and `description` meta fields — keep only the structural constraints.
-
-Example assembled system prompt for ChartedSystem:
-
-```
-You are a content generation assistant for the ReachLock spacefaring
-game. Output ONLY valid JSON matching the schema below. Do not include
-markdown code fences or explanatory text. Output raw JSON only.
-
-A star system in the ReachLock galaxy. Systems are connected by a gate
-network. Each has a 3D position, a biome flavor, and a descriptive
-paragraph visible in the galaxy map.
-
-Schema:
-- id: string (required, snake_case identifier)
-- display_name: string (required)
-- position: { x: integer, y: integer, z: integer } (required)
-- biome: "core" | "frontier" | "nebula" | "derelict" | "deep_space" (required)
-- seed: integer, 0 to 9007199254740991 (required)
-- description: string (required)
-```
-
-The user's natural language text becomes the `user` message. The full
-payload sent to the API:
-
-```json
-{
-  "model": "llama3.2:3b",
-  "messages": [
-    { "role": "system", "content": "<assembled system prompt + schema>" },
-    { "role": "user", "content": "<user's natural language description>" }
-  ],
-  "max_tokens": 4096,
-  "temperature": 0.7
-}
-```
-
-### Response Handling Pipeline
-
-```
-                  ┌─────────────────┐
-                  │ LLM Response    │
-                  └────────┬────────┘
-                           │
-                  ┌────────▼────────┐
-                  │ Extract JSON    │
-                  │ from response   │──No JSON found──▶ "Response contained no JSON" error
-                  └────────┬────────┘
-                           │
-                  ┌────────▼────────┐
-                  │ Validate against│
-                  │ JSON schema     │──Validation errors──▶ Show specific field errors
-                  └────────┬────────┘
-                           │
-                  ┌────────▼────────┐
-                  │ Map JSON fields │
-                  │ to editor state │──Type mismatch──▶ Show specific field error
-                  └────────┬────────┘
-                           │
-                  ┌────────▼────────┐
-                  │ Populate editor │
-                  │ Mark modified   │
-                  │ Status: success  │
-                  └─────────────────┘
-```
-
-**JSON extraction strategies** (try in order, stop at first success):
-1. Parse entire response content as JSON via `serde_json::from_str`
-2. Extract from ````json ... ```` markdown fences (regex: `json\s*\n(.*?)\n\s*\`\`\``)
-3. Find the first `{` and matching `}` (character-level bracket matching)
-4. Find the first `[` and matching `]` (for array return types like RoomTemplates)
-5. If all fail: return error with the raw response content for debugging
-
-**Schema validation:** The `jsonschema` crate is already in the editor's
-Cargo.toml. The `io.rs::validate_content()` function already reads schema
-files, compiles validators, and validates JSON values. Extract this logic
-into a shared helper (`src/schema.rs`) used by both the existing validator
-and the AI pipeline.
-
-On validation failure, parse the `jsonschema` error iterator and display
-each error inline: `"field 'biome': value 'jungle' is not one of [core,
-frontier, nebula, derelict, deep_space]"`.
-
-**Mapping JSON to editor state:** The validated JSON is deserialized into
-the target Rust struct. If deserialization fails (type mismatch), show the
-serde error. On success, assign to the editor's data field and set
-`has_changes = true`.
-
-### Schema Caching
-
-At editor startup, read all JSON schemas from `mods/reachlock/schemas/`
-into a `HashMap<ContentType, CompiledSchema>`. The `CompiledSchema` struct holds:
-- The raw schema JSON string (for the LLM prompt)
-- The compiled `jsonschema::JSONSchema` validator (for response validation)
-
-This cache is shared by `validate_content()` and `generate_content()`.
-
-### The generate_content() Function
-
-```rust
-// src/ai.rs
-
-pub struct AiConfig {
-    pub api_base_url: String,
-    pub api_key: String,
-    pub model: String,
-    pub max_tokens: u32,
-}
-
-pub struct GenerationResult {
-    pub json_value: serde_json::Value,
-    pub warnings: Vec<String>,  // non-fatal issues (e.g., extra fields)
-}
-
-pub async fn generate_content(
-    config: &AiConfig,
-    content_type: ContentType,
-    schema: &CompiledSchema,
-    user_prompt: &str,
-) -> Result<GenerationResult, GenerationError> {
-    // 1. Build system prompt from content type + schema
-    // 2. POST to {config.api_base_url}/chat/completions
-    // 3. Extract JSON from response
-    // 4. Validate against schema
-    // 5. Return validated JSON value or error
-}
-
-pub enum GenerationError {
-    HttpError(String),
-    NoJsonFound(String),
-    SchemaValidationFailed(Vec<String>),
-    DeserializationFailed(String),
-}
-```
-
-### Fallback Chain
-
-The editor always offers three creation paths:
-
-1. **AI generation** (the AI bar) — prompt-driven, requires API config
-2. **Procedural generation** ("Generate from Seed" button) — always works,
-   no network, uses SeededRng
-3. **Manual creation** ("New" button) — blank slate with defaults
-
-The "Generate from Seed" button remains in every editor toolbar regardless
-of AI availability. The AI bar is additive. If AI generation fails, the
-error message includes a clickable "[Use procedural instead]" link.
+1. **Station schema missing `npc_spawns`.** The `payload.station` object has
+   `additionalProperties: false` but no `npc_spawns` property. The Rust struct
+   has it. AI-generated stations cannot include NPCs. Not fixed — pre-existing.
+2. **`ItemType` enum casing.** All levels use `#[serde(rename_all = "snake_case")]`.
+   `SizeClass`/`PaintSlot` too. New schemas enforce this; `type_context` hints
+   document it.
+3. **Settings window borrow.** egui `Window::open(&mut is_open)` conflicts with
+   closure mutations. Fixed with a `do_close: bool` flag applied after `.show()`.
+4. **HullEditor `content_type()` collision.** Was returning `HullFrame`. Fixed
+   to `HullMesh`, which now maps to `hull_configuration.schema.json` (not
+   `hull.schema.json` — that one describes a polygon mesh).
+5. **Clippy pre-existing lints.** Fixed inline (`then_some`, `is_multiple_of`).
 
 ### Verification
 
-```
-# Prerequisite: install and run Ollama
-ollama pull llama3.2:3b
-ollama serve
+```bash
+# Prerequisite
+ollama pull llama3.2:3b && ollama serve
 
-# Build and launch
+# Build (from workspace root — mods paths are CWD-relative)
 cargo run -p reachlock-editor
 
-# Manual tests:
-# 1. Open Charted System editor, type "a swampy frontier world with
-#    abundant alien flora and ancient ruins", click send
-#    → Verify fields populate: id is snake_case, biome is "frontier",
-#      position has 3 integers, description is 2+ sentences
-# 2. Modify the description field → verify it saves
-# 3. Open AI Settings, change model to "nonexistent-model"
-#    → Click Test Connection → verify ✗ error shown
-#    → Click send → verify graceful error, "Use procedural instead" appears
-# 4. Open Soul editor, type "a grizzled voidborn smuggler with a
-#    mysterious past"
-#    → Verify species is "voidborn", personality traits filled, backstory
-#      generated, emotional state set
-# 5. Open Faction editor, type "a ruthless mercantile cartel that
-#    controls the outer rim trade routes"
-#    → Verify doctrine is Economic, tariff_policy has Flat/Dynamic params,
-#      territory has system claims, produces has goods
+# Manual: open AI Settings → Test Connection; generate across all 14 types
 
-# Automated: add tests to ensure all schemas parse and compile validators
-cargo test -p reachlock-editor
+# Automated
+cargo clippy -p reachlock-editor -- -D warnings   # clean
+cargo test -p reachlock-editor                     # 5 schema tests pass
 ```
 
 ### What the AI Bar Does NOT Do
 
-- It does not replace manual editing — it's a starting point for human
-  creative direction
+- It does not replace manual editing — it's a starting point
 - It does not auto-save — the human must review and explicitly Save
-- It does not generate visuals (sprites, meshes, icons) — it generates
-  the structured data; visuals come from the procedural generator via
-  the `visual_seed` field
+- It does not generate visuals (sprites, meshes, icons) — only structured data
 - It does not require internet — Ollama runs locally and offline
 - It does not store prompts or responses server-side — everything is local
-
-### Registration Checklist
-
-- [ ] Create `src/ai.rs` with AiConfig, generate_content(), prompt builders
-- [ ] Create `src/schema.rs` with CompiledSchema cache (extracted from io.rs)
-- [ ] Add `reqwest` and `tokio` to `Cargo.toml`
-- [ ] Add AI bar rendering in `main.rs::update()` between menu bar and tab bar
-- [ ] Add AI Settings popup window (modal)
-- [ ] Add settings persistence to `save/editor-settings.ron` (expand existing)
-- [ ] Wire "Test Connection" button in settings popup
-- [ ] Verify `cargo build -p reachlock-editor` passes
-- [ ] Verify `cargo run -p reachlock-editor` launches with AI bar visible

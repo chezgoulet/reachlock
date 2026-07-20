@@ -416,7 +416,7 @@ impl Editor for EnemyEditor {
     fn generate_from_seed(&mut self, seed: u64) {
         let mut rng = SeededRng::new(seed ^ 0xE4E4_2002);
         // Seed parity: even = light/fast archetype, odd = heavy/slow.
-        let light_build = seed % 2 == 0;
+        let light_build = seed.is_multiple_of(2);
         // Raider vs bot band split (handoff §2 numbers).
         let is_bot = rng.next_below(2) == 1;
         let (hp_lo, hp_span, sp_lo, sp_span) = if is_bot {
@@ -466,6 +466,22 @@ impl Editor for EnemyEditor {
             entry.archetype = archetype;
         }
         self.has_changes = true;
+    }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        let archetype: HostileArchetype = serde_json::from_value(value.clone())
+            .map_err(|e| format!("enemy archetype: {e}"))?;
+        if let Some(entry) = self.entries.get_mut(self.selected) {
+            entry.archetype = archetype;
+        } else {
+            self.entries.push(Entry {
+                archetype,
+                path: None,
+            });
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        Ok(())
     }
 }
 

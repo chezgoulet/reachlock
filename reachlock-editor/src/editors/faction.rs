@@ -663,6 +663,24 @@ impl Editor for FactionEditor {
         }
         self.has_changes = true;
     }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        let catalog: FactionCatalog = serde_json::from_value(value.clone())
+            .map_err(|e| format!("faction catalog: {e}"))?;
+        if catalog.factions.is_empty() {
+            return Err("model returned a faction catalog with no factions".into());
+        }
+        // If the active editor already has a factions list, append the
+        // generated factions; otherwise replace wholesale.
+        if self.catalog.factions.is_empty() {
+            self.catalog = catalog;
+        } else {
+            self.catalog.factions.extend(catalog.factions);
+        }
+        self.selected = self.catalog.factions.len() - 1;
+        self.has_changes = true;
+        Ok(())
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {

@@ -229,6 +229,19 @@ impl Editor for EconomyEditor {
         self.selected = 0;
         self.has_changes = true;
     }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        let good: Good = serde_json::from_value(value.clone())
+            .map_err(|e| format!("trade good: {e}"))?;
+        if let Some(existing) = self.goods.get_mut(self.selected) {
+            *existing = good;
+        } else {
+            self.goods.push(good);
+            self.selected = self.goods.len() - 1;
+        }
+        self.has_changes = true;
+        Ok(())
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {

@@ -326,9 +326,8 @@ fn dialogue_graph_ui(ui: &mut egui::Ui, graph: &mut DialogueGraph) -> bool {
                             .checkbox(&mut has_condition, "Condition gate")
                             .changed()
                         {
-                            choice.condition = has_condition.then(|| {
-                                reachlock_core::contract::types::Condition::Always
-                            });
+                            choice.condition = has_condition
+                                .then_some(reachlock_core::contract::types::Condition::Always);
                             changed = true;
                         }
                         if let Some(cond) = &mut choice.condition {
@@ -1061,6 +1060,29 @@ impl Editor for SoulEditor {
             entry.soul = soul;
         }
         self.has_changes = true;
+    }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        // The soul schema describes a ContentFile envelope; some models emit
+        // the envelope, others the bare SoulFile. Accept both.
+        let inner = match serde_json::from_value::<SoulFile>(value.clone()) {
+            Ok(soul) => soul,
+            Err(_) => {
+                let extracted = super::super::ai::extract_inner_from_envelope(value, "soul").ok_or_else(|| {
+                    "response was neither a bare soul nor a ContentFile envelope".to_string()
+                })?;
+                serde_json::from_value::<SoulFile>(extracted)
+                    .map_err(|e| format!("soul file: {e}"))?
+            }
+        };
+        if let Some(entry) = self.entries.get_mut(self.selected) {
+            entry.soul = inner;
+        } else {
+            self.entries.push(Entry { soul: inner, path: None });
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        Ok(())
     }
 }
 

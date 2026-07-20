@@ -528,6 +528,22 @@ impl Editor for LocationEditor {
         }
         self.has_changes = true;
     }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        let location: HostileLocation = serde_json::from_value(value.clone())
+            .map_err(|e| format!("location: {e}"))?;
+        if let Some(entry) = self.entries.get_mut(self.selected) {
+            entry.location = location;
+        } else {
+            self.entries.push(Entry {
+                location,
+                path: None,
+            });
+            self.selected = self.entries.len() - 1;
+        }
+        self.has_changes = true;
+        Ok(())
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {

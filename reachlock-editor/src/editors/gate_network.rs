@@ -507,6 +507,14 @@ impl Editor for GateNetworkEditor {
     fn generate_from_seed(&mut self, _seed: u64) {
         // Gate networks are purely authored (handoff §14) — no-op.
     }
+
+    fn apply_ai_json(&mut self, value: &serde_json::Value) -> Result<(), String> {
+        let network: GateNetwork = serde_json::from_value(value.clone())
+            .map_err(|e| format!("gate network: {e}"))?;
+        self.network = network;
+        self.has_changes = true;
+        Ok(())
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {
