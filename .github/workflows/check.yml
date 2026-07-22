@@ -19,6 +19,12 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
+      - name: System deps (Bevy on Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwayland-dev libxkbcommon-dev libudev-dev libasound2-dev
+
       - name: Format
         run: cargo fmt --all --check
 
