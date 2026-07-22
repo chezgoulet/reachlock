@@ -59,6 +59,9 @@ pub enum InteractKind {
     /// or from the main menu (design offline, test later).
     #[allow(dead_code)]
     ContractWorkshop,
+    /// S34 contract library browser — browse, import, and share contracts.
+    #[allow(dead_code)]
+    ContractLibrary,
     #[allow(dead_code)]
     Unknown,
 }
@@ -124,6 +127,8 @@ pub enum ActivePanel {
     /// S34 contract crafting workshop — rule builder, LLM config, persona,
     /// simulation, import/export.
     ContractWorkshop,
+    /// S34 contract library browser — browse, import, share contracts.
+    ContractLibrary,
     Unknown,
 }
 
@@ -279,6 +284,7 @@ pub fn try_interact(
                             InteractKind::Shipyard => ActivePanel::ShipExterior,
                             InteractKind::InteriorRefit => ActivePanel::ShipInterior,
                             InteractKind::ContractWorkshop => ActivePanel::ContractWorkshop,
+                            InteractKind::ContractLibrary => ActivePanel::ContractLibrary,
                             _ => ActivePanel::Unknown,
                         };
                     }

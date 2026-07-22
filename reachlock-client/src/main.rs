@@ -19,10 +19,10 @@ use bevy_rapier3d::prelude::*;
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
-    combat, comms, content_index, contract, contract_crafting, crew, crisis, cryojump, dialogue,
-    docking, factions, galaxy_map, hud, interaction, interior, inventory, jump, landed_combat,
-    market, menu, mode, network, onboard, pause, presence, reticle, sensors, settings_ui, setup,
-    ship, shipeditor, soul, ticker, voice,
+    combat, comms, content_index, contract, contract_crafting, contract_library, crew, crisis,
+    cryojump, dialogue, docking, factions, galaxy_map, hud, interaction, interior, inventory, jump,
+    landed_combat, market, menu, mode, network, onboard, pause, presence, reticle, sensors,
+    settings_ui, setup, ship, shipeditor, soul, ticker, voice,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -172,6 +172,8 @@ fn main() {
         .init_resource::<comms::CoDeliberationLog>()
         // S34: contract crafting workshop — rule builder state.
         .init_resource::<contract_crafting::ContractWorkshopState>()
+        // S34: contract library browser — browse, import, share.
+        .init_resource::<contract_library::ContractLibraryState>()
         // S19: space combat — seeded encounters, subsystem targeting, the
         // in-flight power split, and the damage-control contract.
         .init_resource::<combat::SpawnedEncounters>()
@@ -199,6 +201,7 @@ fn main() {
                     .chain(),
                 menu::spawn_menu,
                 contract_crafting::spawn_workshop_panel,
+                contract_library::spawn_library_panel,
                 sensors::init_blip_assets,
                 setup::apply_video_settings,
                 voice::enumerate_mic_devices,
@@ -454,6 +457,17 @@ fn main() {
             (
                 contract_crafting::workshop_system,
                 contract_crafting::render_workshop_panel,
+            )
+                .chain()
+                .run_if(in_any_interior),
+        )
+        // S34: contract library browser — browse, sort, filter, import
+        // contracts. Keyboard-driven, accessible from a crew console.
+        .add_systems(
+            Update,
+            (
+                contract_library::library_system,
+                contract_library::render_library_panel,
             )
                 .chain()
                 .run_if(in_any_interior),
