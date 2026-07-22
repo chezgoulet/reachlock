@@ -22,7 +22,7 @@ use systems::{
     combat, comms, content_index, contract, contract_crafting, contract_library, crew, crisis,
     cryojump, dialogue, docking, factions, galaxy_map, hud, interaction, interior, inventory, jump,
     landed_combat, market, menu, mode, network, onboard, pause, presence, reticle, sensors,
-    settings_ui, setup, ship, shipeditor, soul, ticker, voice,
+    settings_ui, setup, ship, shipeditor, soul, story_submission, ticker, voice,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -174,6 +174,8 @@ fn main() {
         .init_resource::<contract_crafting::ContractWorkshopState>()
         // S34: contract library browser — browse, import, share.
         .init_resource::<contract_library::ContractLibraryState>()
+        // S34: story submission — pending prompt + submitted stories.
+        .init_resource::<story_submission::StorySubmissionState>()
         // S19: space combat — seeded encounters, subsystem targeting, the
         // in-flight power split, and the damage-control contract.
         .init_resource::<combat::SpawnedEncounters>()
@@ -491,6 +493,11 @@ fn main() {
         .add_systems(
             Update,
             contract::tick_deliberation.run_if(in_state(AppState::InGame)),
+        )
+        // S34: story submission prompt — "Share this story?" after deliberation.
+        .add_systems(
+            Update,
+            story_submission::story_prompt_system.run_if(in_state(AppState::InGame)),
         )
         .add_systems(
             Update,
