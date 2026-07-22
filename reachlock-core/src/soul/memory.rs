@@ -224,3 +224,124 @@ impl RelationshipMemory {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(tick: u64, etype: SignificantEventType, weight: i64) -> SignificantEvent {
+        SignificantEvent {
+            tick,
+            event_type: etype,
+            summary: "test event".into(),
+            weight: Fixed(weight),
+            fading: false,
+        }
+    }
+
+    #[test]
+    fn new_memory_starts_empty() {
+        let m = RelationshipMemory::new("a".into(), "b".into(), 100);
+        assert_eq!(m.interaction_count, 1);
+        assert!(m.significant_events.is_empty());
+        assert_eq!(m.participants.0, "a");
+        assert_eq!(m.participants.1, "b");
+    }
+
+    #[test]
+    fn record_event_appends() {
+        let mut m = RelationshipMemory::new("a".into(), "b".into(), 100);
+        m.record_event(event(150, SignificantEventType::SavedMyLife, 800), 150);
+        assert_eq!(m.significant_events.len(), 1);
+    }
+
+    #[test]
+    fn cap_at_200_collapses_oldest() {
+        let mut m = RelationshipMemory::new("a".into(), "b".into(), 100);
+        // Add 210 events — should trigger collapse at 201st.
+        for i in 0..210 {
+            m.record_event(
+                event(150 + i as u64, SignificantEventType::ObservedFromAfar, 100),
+                150 + i as u64,
+            );
+        }
+        // Should have collapsed: 200 cap, but collapse removes 10, so 190 + 1
+        // merged = 191 events remaining after the 201st was added.
+        // After 210 events, multiple collapses may have happened.
+        assert!(
+            m.significant_events.len() <= MAX_SIGNIFICANT_EVENTS,
+            "events: {}",
+            m.significant_events.len()
+        );
+    }
+
+    #[test]
+    fn fading_decays_over_time() {
+        let mut m = RelationshipMemory::new("a".into(), "b".into(), 100);
+        m.record_event(event(100, SignificantEventType::SavedMyLife, 800), 100);
+        let ticks_per_hour = 1000;
+        let fade_start = 20 * ticks_per_hour;
+        let fade_end = fade_start + 60 * ticks_per_hour;
+
+        // Before fade start: not fading.
+        m.apply_fading(fade_start - 1, ticks_per_hour);
+        assert!(!m.significant_events[0].fading);
+
+        // After fade start: fading but not zero.
+        m.apply_fading(fade_start + 30 * ticks_per_hour, ticks_per_hour);
+        assert!(m.significant_events[0].fading);
+        assert!(m.significant_events[0].weight.0 > 0);
+        assert!(m.significant_events[0].weight.0 < 800);
+
+        // After fade end: weight is 0.
+        m.apply_fading(fade_end + 1, ticks_per_hour);
+        assert_eq!(m.significant_events[0].weight.0, 0);
+    }
+
+    #[test]
+    fn player_noted_never_fades() {
+        let mut m = RelationshipMemory::new("a".into(), "b".into(), 100);
+        m.record_event(
+            event(
+                100,
+                SignificantEventType::PlayerNoted {
+                    note: "stays forever".into(),
+                },
+                800,
+            ),
+            100,
+        );
+        m.apply_fading(1_000_000, 1000);
+        assert!(m.significant_events[0].weight.0 > 0);
+    }
+
+    #[test]
+    fn trajectory_tracks_trend() {
+        let mut m = RelationshipMemory::new("a".into(), "b".into(), 100);
+        // Rising trust
+        for i in 0..15 {
+            m.record_trust(100 + i as u64, Fixed(100 + i as i64 * 50));
+        }
+        assert!(matches!(
+            m.trust_trajectory.trend,
+            TrustTrend::Rising { .. }
+        ));
+
+        // Reset and test falling
+        let mut m2 = RelationshipMemory::new("a".into(), "b".into(), 100);
+        for i in 0..15 {
+            m2.record_trust(100 + i as u64, Fixed(1024 - i as i64 * 50));
+        }
+        assert!(matches!(
+            m2.trust_trajectory.trend,
+            TrustTrend::Falling { .. }
+        ));
+    }
+
+    #[test]
+    fn sorted_pair_key() {
+        let m = RelationshipMemory::new("z".into(), "a".into(), 100);
+        assert_eq!(m.participants.0, "a");
+        assert_eq!(m.participants.1, "z");
+    }
+}
