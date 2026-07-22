@@ -202,10 +202,7 @@ impl RelationshipMemory {
             return;
         }
         let recent: Vec<&(u64, Fixed)> = pts.iter().rev().take(10).collect();
-        let changes: Vec<i64> = recent
-            .windows(2)
-            .map(|w| w[0].1 .0 - w[1].1 .0)
-            .collect();
+        let changes: Vec<i64> = recent.windows(2).map(|w| w[0].1 .0 - w[1].1 .0).collect();
         let sum: i64 = changes.iter().sum();
         let abs_sum: i64 = changes.iter().map(|c| c.abs()).sum();
         let n = changes.len() as i64;

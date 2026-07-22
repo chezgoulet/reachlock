@@ -4,9 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::memory::{
-    RelationshipMemory, SignificantEventType, TrustTrend,
-};
+use super::memory::{RelationshipMemory, SignificantEventType, TrustTrend};
 
 /// LLM-ready relationship summary, produced deterministically from memory.
 /// The text fields are assembled from templates + event data.
@@ -38,7 +36,11 @@ pub enum CompressionStrategy {
 
 /// Produce a compressed context from a relationship memory.
 /// Deterministic — pure function, no I/O.
-pub fn compress(memory: &RelationshipMemory, strategy: CompressionStrategy, tick: u64) -> CompressedContext {
+pub fn compress(
+    memory: &RelationshipMemory,
+    strategy: CompressionStrategy,
+    tick: u64,
+) -> CompressedContext {
     let event_count = memory.significant_events.len() as u64;
 
     // --- relationship_summary ---
@@ -49,7 +51,14 @@ pub fn compress(memory: &RelationshipMemory, strategy: CompressionStrategy, tick
         memory.interaction_count,
         memory.conversation_count,
         memory.crisis_count,
-        trust_label(memory.trust_trajectory.points.last().map(|(_, v)| v.0).unwrap_or(0)),
+        trust_label(
+            memory
+                .trust_trajectory
+                .points
+                .last()
+                .map(|(_, v)| v.0)
+                .unwrap_or(0)
+        ),
         trend_label(&memory.trust_trajectory.trend),
     );
 
@@ -69,7 +78,10 @@ pub fn compress(memory: &RelationshipMemory, strategy: CompressionStrategy, tick
         }
         TrustTrend::Stable => "Trust has been stable.".into(),
         TrustTrend::Volatile { amplitude } => {
-            format!("Trust is volatile (amplitude ~{}).", rate_label(amplitude.0))
+            format!(
+                "Trust is volatile (amplitude ~{}).",
+                rate_label(amplitude.0)
+            )
         }
     };
 
@@ -103,10 +115,7 @@ pub fn compress(memory: &RelationshipMemory, strategy: CompressionStrategy, tick
 }
 
 /// Select compression strategy based on approximate token budget.
-pub fn select_strategy(
-    memory: &RelationshipMemory,
-    token_budget: u32,
-) -> CompressionStrategy {
+pub fn select_strategy(memory: &RelationshipMemory, token_budget: u32) -> CompressionStrategy {
     let event_count = memory.significant_events.len();
     if token_budget >= 200 || event_count <= 5 {
         CompressionStrategy::Summarize
@@ -282,7 +291,10 @@ mod tests {
             );
         }
         assert_eq!(select_strategy(&big, 150), CompressionStrategy::TopWeight);
-        assert_eq!(select_strategy(&big, 50), CompressionStrategy::TrajectoryOnly);
+        assert_eq!(
+            select_strategy(&big, 50),
+            CompressionStrategy::TrajectoryOnly
+        );
     }
 
     #[test]

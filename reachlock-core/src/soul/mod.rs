@@ -20,7 +20,9 @@ pub mod memory;
 pub mod runtime;
 pub mod types;
 
-pub use compression::{compress, select_strategy, should_compress, CompressedContext, CompressionStrategy};
+pub use compression::{
+    compress, select_strategy, should_compress, CompressedContext, CompressionStrategy,
+};
 pub use memory::{
     RelationshipMemory, SignificantEvent, SignificantEventType, TrustTrajectory, TrustTrend,
 };

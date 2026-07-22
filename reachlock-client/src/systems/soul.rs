@@ -40,6 +40,27 @@ impl Default for SoulRegistry {
 }
 
 impl SoulRegistry {
+    /// Record a co-deliberation relationship event between two souls (S35).
+    pub fn record_interaction(
+        &mut self,
+        a_id: &str,
+        b_id: &str,
+        event: &reachlock_core::soul::memory::SignificantEvent,
+    ) {
+        let tick = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let trust = event.weight.0.clamp(-1024, 1024);
+        for id in [a_id, b_id] {
+            let Some(state) = self.states.get_mut(id) else {
+                continue;
+            };
+            let other = if id == a_id { b_id } else { a_id };
+            state.record_interaction(other, event.clone(), trust, tick);
+        }
+    }
+
     /// Apply one event to one soul, then scan that soul's authored mutation
     /// arcs with the event's fields in context (fired-once — the narrative
     /// intersects the procedural world here, spec §15). Returns the outputs
