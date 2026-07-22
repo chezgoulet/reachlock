@@ -2,6 +2,7 @@ pub mod combat;
 pub mod comms;
 pub mod content_index;
 pub mod contract;
+pub mod contract_crafting;
 pub mod crew;
 pub mod crisis;
 pub mod cryojump;

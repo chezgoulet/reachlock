@@ -19,10 +19,10 @@ use bevy_rapier3d::prelude::*;
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
-    combat, comms, content_index, contract, crew, crisis, cryojump, dialogue, docking, factions,
-    galaxy_map, hud, interaction, interior, inventory, jump, landed_combat, market, menu, mode,
-    network, onboard, pause, presence, reticle, sensors, settings_ui, setup, ship, shipeditor,
-    soul, ticker, voice,
+    combat, comms, content_index, contract, contract_crafting, crew, crisis, cryojump, dialogue,
+    docking, factions, galaxy_map, hud, interaction, interior, inventory, jump, landed_combat,
+    market, menu, mode, network, onboard, pause, presence, reticle, sensors, settings_ui, setup,
+    ship, shipeditor, soul, ticker, voice,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -170,6 +170,8 @@ fn main() {
         .init_resource::<comms::CrewConference>()
         .init_resource::<comms::CrewRelationships>()
         .init_resource::<comms::CoDeliberationLog>()
+        // S34: contract crafting workshop — rule builder state.
+        .init_resource::<contract_crafting::ContractWorkshopState>()
         // S19: space combat — seeded encounters, subsystem targeting, the
         // in-flight power split, and the damage-control contract.
         .init_resource::<combat::SpawnedEncounters>()
@@ -196,6 +198,7 @@ fn main() {
                 )
                     .chain(),
                 menu::spawn_menu,
+                contract_crafting::spawn_workshop_panel,
                 sensors::init_blip_assets,
                 setup::apply_video_settings,
                 voice::enumerate_mic_devices,
@@ -439,6 +442,18 @@ fn main() {
             (
                 shipeditor::interior_editor_system,
                 shipeditor::interior_editor_preview,
+            )
+                .chain()
+                .run_if(in_any_interior),
+        )
+        // S34: contract crafting workshop — rule builder, LLM config, persona,
+        // simulation. Keyboard-driven editor opened from a crew console.
+        // Follows the same interior-only pattern as the ship editor.
+        .add_systems(
+            Update,
+            (
+                contract_crafting::workshop_system,
+                contract_crafting::render_workshop_panel,
             )
                 .chain()
                 .run_if(in_any_interior),
