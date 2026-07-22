@@ -25,6 +25,7 @@ use crate::states::GameMode;
 use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::crew::{CrewFigure, CrewRole, CrewRoster};
 use crate::systems::interior::ysort;
+use crate::systems::soul::SoulRegistry;
 
 /// Seconds between co-deliberation turns. Deliberate by design — the player
 /// watches the exchange unfold (spec S33).
@@ -70,6 +71,24 @@ pub struct CommHud;
 #[derive(Component)]
 pub struct CommBubble {
     pub speaker: String,
+}
+
+/// Map a crew relationship delta to a significant event type for S35 memory.
+fn relationship_event_for_delta(
+    rel: &reachlock_core::contract::co_deliberation::CrewRelationship,
+) -> reachlock_core::soul::memory::SignificantEventType {
+    use reachlock_core::soul::memory::SignificantEventType;
+    if rel.trust.0 > 256 {
+        SignificantEventType::ShowedTrust
+    } else if rel.trust.0 < -256 {
+        SignificantEventType::BrokeTrust
+    } else if rel.respect.0 > 256 {
+        SignificantEventType::DefendedMe
+    } else if rel.tension.0 > 512 {
+        SignificantEventType::OverruledMe
+    } else {
+        SignificantEventType::SharedSilence
+    }
 }
 
 pub fn spawn_comm_hud(mut commands: Commands) {
@@ -290,6 +309,7 @@ pub fn tick_crew_conference(
     mut log: ResMut<CoDeliberationLog>,
     mut ship_log: ResMut<ShipLog>,
     mut deliberation: ResMut<DeliberationState>,
+    mut souls: ResMut<SoulRegistry>,
 ) {
     let Some(mut session) = conf.session.take() else {
         return;
@@ -324,6 +344,19 @@ pub fn tick_crew_conference(
             ));
             log.events.push(session.metrics());
             deliberation.just_completed = Some("crew".into());
+            // S35: record co-deliberation relationship events into soul states.
+            for p in &session.participants {
+                for (other, rel) in &p.relationship_state {
+                    let event = reachlock_core::soul::memory::SignificantEvent {
+                        tick: 0,
+                        event_type: relationship_event_for_delta(rel),
+                        summary: format!("co-deliberation: {} with {}", p.crew_id, rel.trust.0),
+                        weight: reachlock_core::util::rng::Fixed(rel.trust.0.abs().min(1024)),
+                        fading: false,
+                    };
+                    souls.record_interaction(&p.crew_id, other, &event);
+                }
+            }
             // Persist relationship deltas (feeds S35 persistent memory).
             for p in &session.participants {
                 for (other, rel) in &p.relationship_state {

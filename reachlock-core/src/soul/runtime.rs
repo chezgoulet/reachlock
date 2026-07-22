@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::contract::engine::{condition_holds, EvalContext};
+use crate::soul::memory::RelationshipMemory;
 use crate::soul::types::{
     BreakReaction, Goal, Memory, Mood, Relationship, SoulChange, SoulFile, SoulMutation,
 };
@@ -48,6 +49,9 @@ pub struct SoulState {
     pub fired_mutations: BTreeSet<String>,
     #[serde(default)]
     pub fired_breaks: BTreeSet<String>,
+    /// S35: per-pair relationship memories, keyed by sorted `"id_a::id_b"`.
+    #[serde(default)]
+    pub relationship_memories: BTreeMap<String, RelationshipMemory>,
 }
 
 impl SoulState {
@@ -62,6 +66,7 @@ impl SoulState {
             relationships: file.relationship_graph.clone(),
             traits: file.personality.traits.clone(),
             goals: file.goals.clone(),
+            relationship_memories: BTreeMap::new(),
             unlocked_secrets: BTreeSet::new(),
             fired_mutations: BTreeSet::new(),
             fired_breaks: BTreeSet::new(),
@@ -71,6 +76,42 @@ impl SoulState {
     /// The soul's standing toward `target` ("player", or another soul id).
     pub fn relationship(&self, target: &str) -> Option<&Relationship> {
         self.relationships.iter().find(|r| r.target_id == target)
+    }
+
+    /// Get or create a relationship memory for a pair of souls.
+    fn memory_key(a: &str, b: &str) -> String {
+        if a <= b {
+            format!("{a}::{b}")
+        } else {
+            format!("{b}::{a}")
+        }
+    }
+
+    /// Get the relationship memory for another soul, if any.
+    pub fn relationship_memory(&self, other_id: &str) -> Option<&RelationshipMemory> {
+        let key = Self::memory_key(&self.soul_id, other_id);
+        self.relationship_memories.get(&key)
+    }
+
+    /// Record an interaction with another soul, creating or updating memory.
+    pub fn record_interaction(
+        &mut self,
+        other_id: &str,
+        event: crate::soul::memory::SignificantEvent,
+        trust_value: i64,
+        tick: u64,
+    ) {
+        let key = Self::memory_key(&self.soul_id, other_id);
+        let mem = self.relationship_memories.entry(key).or_insert_with(|| {
+            crate::soul::memory::RelationshipMemory::new(
+                self.soul_id.clone(),
+                other_id.to_string(),
+                tick,
+            )
+        });
+        mem.record_event(event, tick);
+        mem.record_trust(tick, crate::util::rng::Fixed(trust_value));
+        mem.interaction_count += 1;
     }
 }
 
