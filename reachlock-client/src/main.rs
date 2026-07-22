@@ -165,6 +165,11 @@ fn main() {
         .init_resource::<crisis::ShipFires>()
         // S16B: crew comm traffic (HUD lines + speech bubbles).
         .init_resource::<comms::CommFeed>()
+        // S33: co-deliberation — the active crew conference, live crew
+        // relationships, and the metrics log.
+        .init_resource::<comms::CrewConference>()
+        .init_resource::<comms::CrewRelationships>()
+        .init_resource::<comms::CoDeliberationLog>()
         // S19: space combat — seeded encounters, subsystem targeting, the
         // in-flight power split, and the damage-control contract.
         .init_resource::<combat::SpawnedEncounters>()
@@ -490,6 +495,12 @@ fn main() {
         .add_systems(
             Update,
             comms::comm_bubbles.run_if(in_state(AppState::InGame)),
+        )
+        // S33: co-deliberation — start (hotkey) + advance one turn at a time.
+        .add_systems(
+            Update,
+            (comms::crew_conference_hotkey, comms::tick_crew_conference)
+                .run_if(in_state(AppState::InGame)),
         )
         // S29: voice processing (signaling + audio feed + PTT).
         .add_systems(

@@ -353,6 +353,8 @@ pub enum InputAction {
     OpenCrewRoster,
     OpenShipLog,
     OpenMissionBoard,
+    // S33: call a crew conference (co-deliberation) from the comms panel.
+    OpenCrewConference,
 
     // Editor (S17/S18)
     EditorConfirm,
@@ -431,6 +433,8 @@ impl InputAction {
             (OpenCrewRoster, KeyBind(KeyU)),
             (OpenShipLog, KeyBind(KeyL)),
             (OpenMissionBoard, KeyBind(KeyJ)),
+            // S33: call a crew conference (co-deliberation) from the comms panel.
+            (OpenCrewConference, KeyBind(KeyY)),
             // Editor
             (EditorConfirm, KeyBind(Enter)),
             (EditorCancel, KeyBind(Escape)),
@@ -492,6 +496,8 @@ impl InputAction {
             OpenCrewRoster,
             OpenShipLog,
             OpenMissionBoard,
+            // S33: call a crew conference (co-deliberation) from the comms panel.
+            OpenCrewConference,
             EditorConfirm,
             EditorCancel,
             EditorCursorUp,
@@ -549,6 +555,7 @@ impl InputAction {
             OpenCrewRoster => "Open crew roster",
             OpenShipLog => "Open ship log",
             OpenMissionBoard => "Open mission board",
+            OpenCrewConference => "Open crew conference",
             EditorConfirm => "Editor confirm",
             EditorCancel => "Editor cancel",
             EditorCursorUp => "Editor cursor up",
@@ -620,6 +627,7 @@ impl KeyBind {
             KeyT => "KeyT",
             KeyV => "KeyV",
             KeyX => "KeyX",
+            KeyY => "KeyY",
             KeyB => "KeyB",
             KeyN => "KeyN",
             KeyM => "KeyM",
@@ -733,6 +741,7 @@ impl KeyBind {
             "KeyT" => KeyT,
             "KeyV" => KeyV,
             "KeyX" => KeyX,
+            "KeyY" => KeyY,
             "KeyB" => KeyB,
             "KeyN" => KeyN,
             "KeyM" => KeyM,

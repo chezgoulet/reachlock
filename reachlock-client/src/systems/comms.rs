@@ -3,12 +3,32 @@
 //! two ways — a fading comm line on the flight HUD, and a speech bubble
 //! above the speaker's figure when you're walking the ship. Same voice
 //! pipeline as dialogue (lines arrive already shaped).
+//!
+//! S33 adds co-deliberation: when crew contracts hit the LLM edge together,
+//! they argue it out on the comms panel instead of deciding in isolation.
+//! [`CrewConference`] drives a [`reachlock_core::contract::CoDeliberation`]
+//! session one turn at a time (the deliberation IS the content), the player
+//! can cut it short with "my way" (ENTER), and the resulting relationship
+//! deltas persist in [`CrewRelationships`] for S35's long-term memory.
+
+use std::collections::BTreeMap;
 
 use bevy::prelude::*;
 
+use reachlock_core::contract::co_deliberation::{
+    CoDeliberation, CoDeliberationMetrics, CrewDeliberant, CrewPosition, CrewRelationship,
+    GameEvent, RelationshipState, StepOutcome,
+};
+
+use crate::settings::{InputAction, Settings};
 use crate::states::GameMode;
-use crate::systems::crew::CrewFigure;
+use crate::systems::contract::ShipLog;
+use crate::systems::crew::{CrewFigure, CrewRole, CrewRoster};
 use crate::systems::interior::ysort;
+
+/// Seconds between co-deliberation turns. Deliberate by design — the player
+/// watches the exchange unfold (spec S33).
+const CREW_TURN_DELAY: f32 = 0.4;
 
 /// Seconds a comm line stays on the HUD / over a head.
 const COMM_TTL: f32 = 6.0;
@@ -155,5 +175,161 @@ pub fn comm_bubbles(
             Transform::from_xyz(pos.x, pos.y + 34.0, ysort(pos.y) + 0.05),
             crate::states::ModeScope(GameMode::OnBoard),
         ));
+    }
+}
+
+// ===========================================================================
+// S33 — co-deliberation
+// ===========================================================================
+
+/// The active crew conference, if any. Drives a [`CoDeliberation`] session
+/// one turn at a time via [`tick_crew_conference`].
+#[derive(Resource, Default)]
+pub struct CrewConference {
+    pub session: Option<CoDeliberation>,
+    /// Counts up to [`CREW_TURN_DELAY`] between turns.
+    pub timer: f32,
+    /// The trigger event type, for the ship-log line.
+    pub last_trigger: String,
+}
+
+/// Live crew-to-crew relationship state, keyed by `(speaker_id, other_id)`.
+/// S33 writes here; S35 (persistent relationship memory) will extend and
+/// persist it into the soul save.
+#[derive(Resource, Default)]
+pub struct CrewRelationships {
+    pub map: BTreeMap<(String, String), CrewRelationship>,
+}
+
+/// The S33 research/metrics table: one entry per co-deliberation session
+/// (structural data only, no PII).
+#[derive(Resource, Default)]
+pub struct CoDeliberationLog {
+    pub events: Vec<CoDeliberationMetrics>,
+}
+
+/// What a crew role proposes when a conference opens. The real system would
+/// derive this from each crew member's contract evaluation (S06/S16); this
+/// is the offline-first default so co-deliberation runs without a server.
+fn role_action(role: CrewRole) -> &'static str {
+    match role {
+        CrewRole::Pilot => "hold_course",
+        CrewRole::Engineer => "repair_systems",
+        CrewRole::Navigator => "plot_jump",
+        CrewRole::Medic => "tend_medbay",
+        CrewRole::Gunner => "man_battle_stations",
+    }
+}
+
+/// Build a co-deliberation session from the current crew: each member opens
+/// with a `Propose` stance from their role, and starts neutral toward every
+/// other member.
+pub fn start_conference(roster: &CrewRoster, trigger: GameEvent) -> CoDeliberation {
+    let ids: Vec<String> = roster.members.iter().map(|m| m.id.clone()).collect();
+    let participants = roster
+        .members
+        .iter()
+        .map(|m| {
+            let mut relationship_state: RelationshipState = BTreeMap::new();
+            for other in ids.iter().filter(|o| **o != m.id) {
+                relationship_state.insert(other.clone(), CrewRelationship::default());
+            }
+            let action = role_action(m.role);
+            CrewDeliberant {
+                crew_id: m.id.clone(),
+                relationship_state,
+                initial_position: CrewPosition::Propose {
+                    action: action.to_string(),
+                    reasoning: format!("{} recommends {}", m.name, action),
+                },
+                current_position: CrewPosition::Propose {
+                    action: action.to_string(),
+                    reasoning: format!("{} recommends {}", m.name, action),
+                },
+            }
+        })
+        .collect();
+    CoDeliberation::new(participants, trigger)
+}
+
+/// Player-initiated crew conference (the "hold a crew meeting" mechanic).
+/// Press the conference key (default Y) to open one with the current crew.
+pub fn crew_conference_hotkey(
+    keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
+    roster: Res<CrewRoster>,
+    mut conf: ResMut<CrewConference>,
+) {
+    if conf.session.is_some() {
+        return;
+    }
+    if keys.just_pressed(settings.key(InputAction::OpenCrewConference)) {
+        let trigger = GameEvent {
+            event_type: "crew_conference".into(),
+            summary: "Captain called a crew conference.".into(),
+            fields: BTreeMap::new(),
+        };
+        conf.session = Some(start_conference(&roster, trigger.clone()));
+        conf.timer = 0.0;
+        conf.last_trigger = trigger.event_type;
+    }
+}
+
+/// Advance the active conference one turn at a time, render each spoken turn
+/// to the comms feed, and persist the outcome. Never blocks the game loop:
+/// turns are paced by [`CREW_TURN_DELAY`] and the game keeps running between
+/// them (spec S33 gotcha).
+#[allow(clippy::too_many_arguments)]
+pub fn tick_crew_conference(
+    time: Res<Time>,
+    mut conf: ResMut<CrewConference>,
+    mut feed: ResMut<CommFeed>,
+    keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
+    mut rels: ResMut<CrewRelationships>,
+    mut log: ResMut<CoDeliberationLog>,
+    mut ship_log: ResMut<ShipLog>,
+) {
+    let Some(mut session) = conf.session.take() else {
+        return;
+    };
+
+    // Player override: ENTER ("my way") short-circuits the remaining
+    // deliberation. ESC is a no-op — let them work it out.
+    if keys.just_pressed(settings.key(InputAction::EditorConfirm)) {
+        let action = session
+            .leading_action()
+            .unwrap_or_else(|| "hold_course".to_string());
+        session.player_override(action);
+    }
+
+    conf.timer += time.delta_secs();
+    if conf.timer < CREW_TURN_DELAY {
+        conf.session = Some(session);
+        return;
+    }
+    conf.timer = 0.0;
+
+    match session.step() {
+        StepOutcome::Turn(t) => {
+            feed.say(t.speaker, t.visible_to_player);
+            conf.session = Some(session);
+        }
+        StepOutcome::Resolved(resolution) => {
+            feed.say("crew", format!("Crew reached a decision: {resolution:?}"));
+            ship_log.log(format!(
+                "Crew conference ({}) resolved: {resolution:?}",
+                conf.last_trigger
+            ));
+            log.events.push(session.metrics());
+            // Persist relationship deltas (feeds S35 persistent memory).
+            for p in &session.participants {
+                for (other, rel) in &p.relationship_state {
+                    rels.map
+                        .insert((p.crew_id.clone(), other.clone()), rel.clone());
+                }
+            }
+            // Leave `conf.session` as None — the conference is over.
+        }
     }
 }
