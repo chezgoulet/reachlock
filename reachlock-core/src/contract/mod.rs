@@ -5,6 +5,7 @@
 
 pub mod co_deliberation;
 pub mod engine;
+pub mod meta_game;
 pub mod metadata;
 pub mod protocol;
 pub mod signature;
@@ -17,6 +18,7 @@ pub use co_deliberation::{
     RelationshipState, StepOutcome, MAX_ROUNDS,
 };
 pub use engine::{evaluate, EvalContext, Outcome};
+pub use meta_game::{seasoned_bonus, ContractEvolution, SeasonedBonus};
 pub use metadata::{
     ContractLibraryEntry, ContractMetadata, ContractStory, CraftingWarning, CrewRole,
 };

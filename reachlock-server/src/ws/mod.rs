@@ -31,6 +31,7 @@ use crate::services::byok::ByokRegistration;
 use crate::services::content::ContentService;
 use crate::services::contracts::{ContractStore, MemoryContractStore};
 use crate::services::health::HealthAggregator;
+use crate::services::library::{ContractLibrary, MemoryContractLibrary};
 use crate::services::llm_proxy::LlmService;
 use crate::services::seed::{MemorySeedStore, SeedStore};
 use crate::services::verify::VerifyService;
@@ -135,6 +136,8 @@ pub struct AppState {
     pub voice: VoiceRegistry,
     /// Authored content distribution for wasm clients (spec §10).
     pub content: ContentService,
+    /// S34: contract library directory — published contracts + stories.
+    pub library: Box<dyn ContractLibrary>,
 }
 
 impl AppState {
@@ -165,6 +168,7 @@ impl AppState {
             content: ContentService::new(
                 std::env::var("REACHLOCK_MODS_DIR").unwrap_or_else(|_| "mods".to_string()),
             ),
+            library: Box::new(MemoryContractLibrary::default()),
         }
     }
 

@@ -8,6 +8,7 @@
 use bevy::prelude::*;
 
 use reachlock_core::contract::engine::{evaluate, EvalContext, Outcome};
+use reachlock_core::contract::meta_game::seasoned_bonus;
 use reachlock_core::contract::metadata::CraftingWarning;
 use reachlock_core::contract::types::{
     Action, Comparison, Condition, Contract, LlmConfig, Rule, Trigger,
@@ -175,6 +176,27 @@ pub struct ContractWorkshopState {
     pub importing: bool,
     /// Simulation results cache.
     pub sim_results: Vec<(&'static str, String)>,
+    /// Contract version (incremented on evolution).
+    #[allow(dead_code)]
+    pub version: u32,
+    /// Evolution log for the current draft.
+    #[allow(dead_code)]
+    pub evolutions: Vec<String>,
+    /// Metrics counters.
+    pub metrics: WorkshopMetrics,
+}
+
+/// S34 metrics: counts of workshop events (no PII).
+#[derive(Default)]
+pub struct WorkshopMetrics {
+    pub simulation_runs: u32,
+    pub imports: u32,
+    #[allow(dead_code)]
+    pub exports: u32,
+    #[allow(dead_code)]
+    pub shares_shared: u32,
+    #[allow(dead_code)]
+    pub evolutions: u32,
 }
 
 impl Default for ContractWorkshopState {
@@ -190,6 +212,9 @@ impl Default for ContractWorkshopState {
             import_buffer: String::new(),
             importing: false,
             sim_results: Vec::new(),
+            version: 1,
+            evolutions: Vec::new(),
+            metrics: WorkshopMetrics::default(),
         }
     }
 }
@@ -413,6 +438,7 @@ fn handle_rules_tab(
             let trimmed = state.import_buffer.trim();
             if let Ok(imported) = ron::from_str::<Contract>(trimmed) {
                 state.draft = Some(imported);
+                state.metrics.imports += 1;
                 state.status = "contract imported".into();
             } else {
                 state.status = "invalid RON — import failed".into();
@@ -569,6 +595,7 @@ fn handle_sim_tab(keys: &ButtonInput<KeyCode>, state: &mut ContractWorkshopState
         };
         results.push(("Validation", warn_summary));
         state.sim_results = results;
+        state.metrics.simulation_runs += 1;
         state.status = "simulation complete".into();
     }
 }
@@ -771,6 +798,15 @@ pub fn workshop_panel_text(
                     total - 1,
                     deliberate_count,
                     total - 1,
+                ));
+                // Seasoned bonus display (WO-6).
+                let bonus = seasoned_bonus(
+                    state.metrics.simulation_runs,
+                    state.metrics.simulation_runs * 2,
+                );
+                lines.push(format!(
+                    "  seasoned bonus: trust +{}  depth: {}",
+                    bonus.trust_bonus, bonus.personality_depth
                 ));
             }
         }

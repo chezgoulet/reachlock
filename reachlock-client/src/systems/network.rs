@@ -388,6 +388,23 @@ pub fn poll_network(
                     }
                 }
             }
+            TransportEvent::Message(ServerMessage::LibraryListResponse { entries }) => {
+                log.log(format!("Library: received {} contract(s)", entries.len()));
+            }
+            TransportEvent::Message(ServerMessage::LibraryPublished { success, message }) => {
+                if success {
+                    log.log("Contract published to library.");
+                } else {
+                    log.log(format!("Library publish failed: {message}"));
+                }
+            }
+            TransportEvent::Message(ServerMessage::LibraryStoryAck { success, story_id }) => {
+                if success {
+                    log.log(format!("Story submitted (id {story_id})."));
+                } else {
+                    log.log("Story submission failed.");
+                }
+            }
             TransportEvent::Message(ServerMessage::SystemNotice { message }) => {
                 // S28: subscription notice (grace period, etc.).
                 log.log(format!("System notice: {message}"));

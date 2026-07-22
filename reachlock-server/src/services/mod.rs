@@ -8,6 +8,7 @@ pub mod cost;
 pub mod degradation;
 pub mod eval;
 pub mod health;
+pub mod library;
 pub mod limiter;
 pub mod llm_proxy;
 pub mod metrics;
