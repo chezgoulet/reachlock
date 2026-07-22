@@ -15,9 +15,15 @@
 //!   not two (the v1 mistake we're not repeating).
 //! - Everything numeric is fixed-point `i64` (1024 = 1.0), per iron rule #2.
 
+pub mod compression;
+pub mod memory;
 pub mod runtime;
 pub mod types;
 
+pub use compression::{compress, select_strategy, should_compress, CompressedContext, CompressionStrategy};
+pub use memory::{
+    RelationshipMemory, SignificantEvent, SignificantEventType, TrustTrajectory, TrustTrend,
+};
 pub use runtime::{
     apply_event, apply_mutation, inject_soul_fields, load_soul_mutations, SoulEvent, SoulOutput,
     SoulState,
