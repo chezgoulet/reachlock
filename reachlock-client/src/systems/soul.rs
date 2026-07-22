@@ -171,6 +171,33 @@ pub fn log_soul_output(log: &mut ShipLog, output: &SoulOutput) {
     }
 }
 
+/// Narrative label for relationship trust + trend (S35).
+pub fn relationship_narrative(
+    trust_value: i64,
+    trend: &reachlock_core::soul::memory::TrustTrend,
+) -> String {
+    let trust = if trust_value > 512 {
+        "Very High"
+    } else if trust_value > 256 {
+        "High"
+    } else if trust_value > 0 {
+        "Moderate"
+    } else if trust_value > -256 {
+        "Low"
+    } else if trust_value > -512 {
+        "Distrustful"
+    } else {
+        "Hostile"
+    };
+    let trend_str = match trend {
+        reachlock_core::soul::memory::TrustTrend::Rising { .. } => "↑ rising",
+        reachlock_core::soul::memory::TrustTrend::Falling { .. } => "↓ falling",
+        reachlock_core::soul::memory::TrustTrend::Stable => "→ stable",
+        reachlock_core::soul::memory::TrustTrend::Volatile { .. } => "↕ volatile",
+    };
+    format!("{trust} {trend_str}")
+}
+
 /// Inspect text for one crew member: public bio, visible mood, standing
 /// with the player. Secrets stay hidden until unlocked. Pure — the order
 /// panel renders it.
@@ -196,6 +223,31 @@ pub fn inspect_text(registry: &SoulRegistry, soul_id: &str) -> Option<String> {
     for secret_id in &state.unlocked_secrets {
         if let Some(secret) = file.secrets.iter().find(|s| s.id == *secret_id) {
             lines.push(format!("· {}", secret.content));
+        }
+    }
+    // S35: relationship memories with crew roster members.
+    for member in registry.files.keys() {
+        if member == soul_id {
+            continue;
+        }
+        if let Some(rm) = state.relationship_memory(member) {
+            if rm.interaction_count == 0 {
+                continue;
+            }
+            let name = registry
+                .files
+                .get(member)
+                .map(|f| f.name.as_str())
+                .unwrap_or(member);
+            let trust_label = relationship_narrative(
+                rm.trust_trajectory
+                    .points
+                    .last()
+                    .map(|(_, v)| v.0)
+                    .unwrap_or(0),
+                &rm.trust_trajectory.trend,
+            );
+            lines.push(format!("  → {name}: {trust_label}"));
         }
     }
     Some(lines.join("\n"))
