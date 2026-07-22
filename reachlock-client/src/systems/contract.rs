@@ -296,7 +296,6 @@ pub fn resolve_timeout(
     let Some(active) = deliberation.active.take() else {
         return;
     };
-    deliberation.just_completed = Some(active.crew_member.clone());
     systems.unknown_signal = false; // the moment passes
     log.log(format!(
         "{} couldn't decide — fell back to {}. ({note}.)",

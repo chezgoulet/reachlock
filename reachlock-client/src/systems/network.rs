@@ -17,6 +17,7 @@ use crate::states::CurrentLocation;
 #[cfg(target_arch = "wasm32")]
 use crate::systems::content_index::{ContentIndex, ContentSyncPayload};
 use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog};
+use crate::systems::contract_library::ContractLibraryState;
 use crate::systems::presence::PresenceEvents;
 use crate::systems::ship::ShipSystems;
 use crate::systems::ticker::UniverseTicker;
@@ -45,6 +46,7 @@ pub struct IncomingState<'w> {
     #[cfg(target_arch = "wasm32")]
     pub content: ResMut<'w, ContentIndex>,
     pub presence: ResMut<'w, PresenceEvents>,
+    pub library: ResMut<'w, ContractLibraryState>,
 }
 
 /// Exponential-ish reconnect backoff (1s, 2s, 4s, 8s, 16s, capped at 30s).
@@ -389,7 +391,11 @@ pub fn poll_network(
                 }
             }
             TransportEvent::Message(ServerMessage::LibraryListResponse { entries }) => {
-                log.log(format!("Library: received {} contract(s)", entries.len()));
+                incoming.library.entries = entries;
+                log.log(format!(
+                    "Library: {} contract(s) synced",
+                    incoming.library.entries.len()
+                ));
             }
             TransportEvent::Message(ServerMessage::LibraryPublished { success, message }) => {
                 if success {
