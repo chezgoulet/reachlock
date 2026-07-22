@@ -7,6 +7,7 @@
 //! structs (spec §10 — the bridge doesn't know the difference).
 
 pub mod contract;
+pub mod dilemma;
 pub mod economy;
 pub mod enemy;
 pub mod faction;

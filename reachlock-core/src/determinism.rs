@@ -649,6 +649,15 @@ pub fn manifest() -> Manifest {
         }
     }
 
+    // S36 — procedural dilemma generator (frontier system).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "dilemma".into(),
+            seed,
+            checksum: hash_serde(&generator::dilemma::generate_dilemma(seed, true, 5, 3)),
+        });
+    }
+
     Manifest {
         // v3: added S06 hull_interior (ship interior layout) generator.
         // v4: added S10 economy engine golden entries.
@@ -662,7 +671,8 @@ pub fn manifest() -> Manifest {
         // v10: added S20 hostile_locations to GeneratedSystem (system POIs).
         // v11: added S25 character sprite generator (seed-derived + fully
         //      overridden hair-style sweep) golden entries.
-        version: 11,
+        // v12: added S36 procedural dilemma generator golden entries.
+        version: 12,
         entries,
     }
 }
