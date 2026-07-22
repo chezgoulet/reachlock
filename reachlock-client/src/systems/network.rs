@@ -17,6 +17,7 @@ use crate::states::CurrentLocation;
 #[cfg(target_arch = "wasm32")]
 use crate::systems::content_index::{ContentIndex, ContentSyncPayload};
 use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog};
+use crate::systems::contract_library::ContractLibraryState;
 use crate::systems::presence::PresenceEvents;
 use crate::systems::ship::ShipSystems;
 use crate::systems::ticker::UniverseTicker;
@@ -45,6 +46,7 @@ pub struct IncomingState<'w> {
     #[cfg(target_arch = "wasm32")]
     pub content: ResMut<'w, ContentIndex>,
     pub presence: ResMut<'w, PresenceEvents>,
+    pub library: ResMut<'w, ContractLibraryState>,
 }
 
 /// Exponential-ish reconnect backoff (1s, 2s, 4s, 8s, 16s, capped at 30s).
@@ -386,6 +388,27 @@ pub fn poll_network(
                     {
                         ticker.replay_server_tick();
                     }
+                }
+            }
+            TransportEvent::Message(ServerMessage::LibraryListResponse { entries }) => {
+                incoming.library.entries = entries;
+                log.log(format!(
+                    "Library: {} contract(s) synced",
+                    incoming.library.entries.len()
+                ));
+            }
+            TransportEvent::Message(ServerMessage::LibraryPublished { success, message }) => {
+                if success {
+                    log.log("Contract published to library.");
+                } else {
+                    log.log(format!("Library publish failed: {message}"));
+                }
+            }
+            TransportEvent::Message(ServerMessage::LibraryStoryAck { success, story_id }) => {
+                if success {
+                    log.log(format!("Story submitted (id {story_id})."));
+                } else {
+                    log.log("Story submission failed.");
                 }
             }
             TransportEvent::Message(ServerMessage::SystemNotice { message }) => {

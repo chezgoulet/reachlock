@@ -12,6 +12,12 @@ use reachlock_core::generator::{GeneratedLayout, RoomKind};
 
 /// A crew member's job — maps to a duty room (S08: engineer→Reactor,
 /// pilot→Bridge). S13 will layer personality/state on top.
+///
+/// NOTE: separate from `contract::metadata::CrewRole` in core. This enum
+/// defines the live ship crew taxonomy (referenced by the crew roster, duty
+/// maps, and walk animation). The core enum adds `Tactical` for the contract
+/// library filter dimension. They serve different purposes and are kept
+/// distinct intentionally.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CrewRole {
     Pilot,

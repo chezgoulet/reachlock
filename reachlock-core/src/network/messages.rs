@@ -89,6 +89,28 @@ pub enum ClientMessage {
     /// the server to push the authored content for a universe over the wire.
     #[serde(rename = "content.request")]
     RequestContent { universe: UniverseTier },
+    /// S34: list published contracts in the library, filtered/sorted.
+    #[serde(rename = "library.list")]
+    LibraryList {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        role_filter: Option<crate::contract::metadata::CrewRole>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sort: Option<String>,
+    },
+    /// S34: publish/share a contract in the library.
+    #[serde(rename = "library.publish")]
+    LibraryPublish {
+        metadata: crate::contract::metadata::ContractMetadata,
+        contract_ron: String,
+    },
+    /// S34: submit a story/anecdote for a published contract.
+    #[serde(rename = "library.submit_story")]
+    LibrarySubmitStory {
+        story: String,
+        contract_id: String,
+        event_type: String,
+        outcome_type: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -163,6 +185,17 @@ pub enum ServerMessage {
         password: String,
         ttl_secs: u32,
     },
+    /// S34: contract library listing response.
+    #[serde(rename = "library.list_response")]
+    LibraryListResponse {
+        entries: Vec<crate::contract::metadata::ContractLibraryEntry>,
+    },
+    /// S34: contract publish confirmation.
+    #[serde(rename = "library.published")]
+    LibraryPublished { success: bool, message: String },
+    /// S34: story submission acknowledgment.
+    #[serde(rename = "library.story_ack")]
+    LibraryStoryAck { success: bool, story_id: u64 },
     /// S28: system notice (subscription grace period, server messages).
     #[serde(rename = "system.notice")]
     SystemNotice { message: String },

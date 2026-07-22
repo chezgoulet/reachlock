@@ -42,6 +42,10 @@ impl ShipLog {
 #[derive(Resource, Default)]
 pub struct DeliberationState {
     pub active: Option<Deliberation>,
+    /// Set to the crew member's name when deliberation resolves. The story
+    /// submission system reads and clears this to detect that deliberation
+    /// just completed.
+    pub just_completed: Option<String>,
 }
 
 pub struct Deliberation {
@@ -322,6 +326,7 @@ pub fn resolve_response(
     let Some(active) = deliberation.active.take() else {
         return;
     };
+    deliberation.just_completed = Some(active.crew_member.clone());
     systems.unknown_signal = false;
 
     // The contract's own verb set: a wrong call is always a plausible one.
@@ -404,6 +409,7 @@ pub fn resolve_failed(
     let Some(active) = deliberation.active.take() else {
         return;
     };
+    deliberation.just_completed = Some(active.crew_member.clone());
     systems.unknown_signal = false;
     let verdict = match reason {
         "bad_response" => agency::ProviderVerdict::Collapsed,

@@ -376,5 +376,60 @@ async fn route(
             // (e.g. after a `content.update` notice, or a universe switch).
             Some(state.content.sync_for(universe))
         }
+        ClientMessage::LibraryList { role_filter, sort } => {
+            let state = Arc::clone(state);
+            let rf = role_filter.map(|r| format!("{r:?}"));
+            let sf = sort.clone();
+            let entries = tokio::task::spawn_blocking(move || {
+                state.library.list(rf.as_deref(), sf.as_deref())
+            })
+            .await
+            .unwrap_or_default();
+            Some(ServerMessage::LibraryListResponse { entries })
+        }
+        ClientMessage::LibraryPublish {
+            metadata,
+            contract_ron,
+        } => {
+            let state = Arc::clone(state);
+            let entry = reachlock_core::contract::metadata::ContractLibraryEntry {
+                metadata,
+                contract_ron,
+            };
+            let player = session.player_id.clone();
+            tokio::spawn(async move {
+                state.library.publish(&player, entry);
+            });
+            Some(ServerMessage::LibraryPublished {
+                success: true,
+                message: "contract published".into(),
+            })
+        }
+        ClientMessage::LibrarySubmitStory {
+            story,
+            contract_id,
+            event_type,
+            outcome_type,
+        } => {
+            let state = Arc::clone(state);
+            let story_obj = reachlock_core::contract::metadata::ContractStory {
+                contract_id,
+                story,
+                event_type,
+                outcome_type,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+            };
+            let story_id =
+                tokio::task::spawn_blocking(move || state.library.submit_story(story_obj))
+                    .await
+                    .unwrap_or(0);
+            Some(ServerMessage::LibraryStoryAck {
+                success: story_id > 0,
+                story_id,
+            })
+        }
     }
 }

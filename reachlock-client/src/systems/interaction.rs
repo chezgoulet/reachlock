@@ -55,6 +55,13 @@ pub enum InteractKind {
     /// S18: the interior-refit terminal beside it — opens the interior
     /// editor (room placement on the hull grid, spec §19).
     InteriorRefit,
+    /// S34 contract crafting workshop — opened from a crew console
+    /// or from the main menu (design offline, test later).
+    #[allow(dead_code)]
+    ContractWorkshop,
+    /// S34 contract library browser — browse, import, and share contracts.
+    #[allow(dead_code)]
+    ContractLibrary,
     #[allow(dead_code)]
     Unknown,
 }
@@ -117,6 +124,11 @@ pub enum ActivePanel {
     /// S18 interior editor (spec §19), opened from the interior-refit
     /// terminal in the same shipyard room.
     ShipInterior,
+    /// S34 contract crafting workshop — rule builder, LLM config, persona,
+    /// simulation, import/export.
+    ContractWorkshop,
+    /// S34 contract library browser — browse, import, share contracts.
+    ContractLibrary,
     Unknown,
 }
 
@@ -271,6 +283,8 @@ pub fn try_interact(
                             InteractKind::Power => ActivePanel::Power,
                             InteractKind::Shipyard => ActivePanel::ShipExterior,
                             InteractKind::InteriorRefit => ActivePanel::ShipInterior,
+                            InteractKind::ContractWorkshop => ActivePanel::ContractWorkshop,
+                            InteractKind::ContractLibrary => ActivePanel::ContractLibrary,
                             _ => ActivePanel::Unknown,
                         };
                     }

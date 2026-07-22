@@ -22,7 +22,7 @@ use reachlock_core::contract::co_deliberation::{
 
 use crate::settings::{InputAction, Settings};
 use crate::states::GameMode;
-use crate::systems::contract::ShipLog;
+use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::crew::{CrewFigure, CrewRole, CrewRoster};
 use crate::systems::interior::ysort;
 
@@ -289,6 +289,7 @@ pub fn tick_crew_conference(
     mut rels: ResMut<CrewRelationships>,
     mut log: ResMut<CoDeliberationLog>,
     mut ship_log: ResMut<ShipLog>,
+    mut deliberation: ResMut<DeliberationState>,
 ) {
     let Some(mut session) = conf.session.take() else {
         return;
@@ -322,6 +323,7 @@ pub fn tick_crew_conference(
                 conf.last_trigger
             ));
             log.events.push(session.metrics());
+            deliberation.just_completed = Some("crew".into());
             // Persist relationship deltas (feeds S35 persistent memory).
             for p in &session.participants {
                 for (other, rel) in &p.relationship_state {
