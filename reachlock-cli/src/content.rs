@@ -22,6 +22,8 @@ const CONTRACT_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/contrac
 const SOUL_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/soul.schema.json");
 const ROOM_TEMPLATE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/room_template.schema.json");
+const CAREER_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/career_path.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -218,6 +220,18 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                     );
                     return Ok(());
                 }
+                ContentPayload::Career(career) => {
+                    // Careers are data, not geometry — summarize.
+                    println!(
+                        "{}: career \"{}\" ({:?}) — {} rank(s), {} perk(s)",
+                        path.display(),
+                        career.name,
+                        career.path_type,
+                        career.ranks.len(),
+                        career.perks.len(),
+                    );
+                    return Ok(());
+                }
                 ContentPayload::RoomTemplates(templates) => {
                     // Templates are a palette, not geometry — summarize;
                     // the realized layout is what the editor previews.
@@ -259,6 +273,7 @@ fn validate_schema(
         AssetType::HullFrame => HULL_FRAME_SCHEMA,
         AssetType::Station => STATION_SCHEMA,
         AssetType::Contract => CONTRACT_SCHEMA,
+        AssetType::Career => CAREER_SCHEMA,
         AssetType::Soul => SOUL_SCHEMA,
         AssetType::RoomTemplates => ROOM_TEMPLATE_SCHEMA,
     };

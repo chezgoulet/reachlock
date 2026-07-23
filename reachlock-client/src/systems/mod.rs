@@ -1,3 +1,4 @@
+pub mod career;
 pub mod combat;
 pub mod comms;
 pub mod content_index;

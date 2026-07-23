@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::career::CareerPath;
 use crate::contract::types::Contract;
 use crate::editor::exterior::HullFrame;
 use crate::editor::interior::RoomTemplate;
@@ -22,6 +23,8 @@ pub enum AssetType {
     Hull,
     Station,
     Contract,
+    /// S42: a career path definition (spec §14/§21). One file per path.
+    Career,
     /// S13: an NPC soul (spec §15) — the pipeline's fourth content type.
     Soul,
     /// S17: an exterior hull frame (spec §19) — slot layout, engine mount,
@@ -63,6 +66,9 @@ pub enum ContentPayload {
         npc_spawns: Vec<NpcSpawn>,
     },
     Contract(Contract),
+    /// S42: a career path definition (spec §14/§21). Boxed to keep the
+    /// envelope enum small (career paths carry a vec of ranks and perks).
+    Career(Box<CareerPath>),
     /// S13: who an NPC is (spec §15). Souls are data; the contract engine
     /// decides how they act, S16 decides what they say. Boxed: a soul is an
     /// order of magnitude bigger than the other variants, and serde treats
@@ -239,6 +245,73 @@ mod tests {
             "size_class",
             // S18: interior placement area — an additive frame revision.
             "grid_bounds",
+        ] {
+            assert!(text.contains(field), "missing {field} in: {text}");
+        }
+        let back: ContentFile = ron::from_str(&text).unwrap();
+        assert_eq!(file, back);
+    }
+
+    /// S42: career-path payloads lock their serialized form —
+    /// `content/careers/*.ron` depends on these field names.
+    #[test]
+    fn career_serialized_form_is_locked() {
+        use crate::career::{
+            CareerPath, CareerPerk, CareerRank, PathType, PerkType, ProgressionCriterion,
+            ProgressionCriterionType, ProgressionRequirement,
+        };
+        use crate::util::Fixed;
+
+        let file = ContentFile {
+            id: "compact_navy".into(),
+            display_name: "Compact Navy".into(),
+            asset_type: AssetType::Career,
+            seed: 42,
+            universe: "all".into(),
+            priority: Priority::Authoritative,
+            expires_at: None,
+            payload: ContentPayload::Career(Box::new(CareerPath {
+                id: "compact_navy".into(),
+                path_type: PathType::Military,
+                name: "Compact Navy".into(),
+                description: "Serve in the Compact Fleet.".into(),
+                faction_id: Some("compact".into()),
+                ranks: vec![CareerRank {
+                    rank: 1,
+                    title: "Ensign".into(),
+                    required_criteria: vec![ProgressionRequirement {
+                        criterion_type: ProgressionCriterionType::CombatVictories,
+                        threshold: 3,
+                    }],
+                    rank_perks: vec!["nav_boost".into()],
+                    faction_standing_bonus: 10,
+                }],
+                progression_criteria: vec![ProgressionCriterion {
+                    criterion_type: ProgressionCriterionType::CombatVictories,
+                    target: "*".into(),
+                    threshold: 10,
+                    weight: Fixed::from_int(1),
+                }],
+                perks: vec![CareerPerk {
+                    id: "nav_boost".into(),
+                    name: "Nav Boost".into(),
+                    description: "Combat bonus".into(),
+                    perk_type: PerkType::CombatBonus {
+                        damage_type: "kinetic".into(),
+                        pct: Fixed::from_int(5),
+                    },
+                    magnitude: Fixed::from_int(5),
+                }],
+                conflicting_paths: vec!["reach_pirates".into()],
+            })),
+        };
+        let text = ron::to_string(&file).unwrap();
+        for field in [
+            "career",
+            "path_type",
+            "progression_criteria",
+            "conflicting_paths",
+            "combat_bonus",
         ] {
             assert!(text.contains(field), "missing {field} in: {text}");
         }
