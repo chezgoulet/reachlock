@@ -1,21 +1,28 @@
 //! LLM agency & failure model (S15, spec §18). "Who should decide?" is
 //! mechanical here:
 //!
-//! - Every LLM call resolves through the spec's outcome table
-//!   ([`LlmOutcome`], six rows) with seeded, modifier-shifted probabilities
-//!   ([`OutcomeWeights`], fixed-point rows summing to 1024).
-//! - Rolls derive from `(contract_id, tick, chain position)` — deterministic
-//!   and replayable, never wall-clock or thread randomness.
-//! - The [`Dispatch`] routes orders: robots get [`RoutedOrder::Execute`]
-//!   (fallible mechanically, never deliberating), droids/androids get
-//!   [`RoutedOrder::Consider`] (may counter-propose; the counter is itself
-//!   a deliberation under this same outcome model).
-//! - Every deliberation produces a [`TraceEntry`] triple — start, outcome,
-//!   fallback-if-fired — so the player can always reconstruct "Boris timed
-//!   out during jump 47". Failure is gameplay, provably never silent.
-//!
-//! Classic tier never reaches this module: no LLM = no outcome table
-//! (rules-only ships fail only by having no rule, handled in the engine).
+//! S37 adds captain's log generation:
+//! - [`log`] — key moment detection, session summarization
+//! - [`log_generation`] — LLM-based log entry generation + template fallback
+
+pub mod log;
+pub mod log_generation;
+
+// Every LLM call resolves through the spec's outcome table
+// ([`LlmOutcome`], six rows) with seeded, modifier-shifted probabilities
+// ([`OutcomeWeights`], fixed-point rows summing to 1024).
+// - Rolls derive from `(contract_id, tick, chain position)` — deterministic
+//   and replayable, never wall-clock or thread randomness.
+// - The [`Dispatch`] routes orders: robots get [`RoutedOrder::Execute`]
+//   (fallible mechanically, never deliberating), droids/androids get
+//   [`RoutedOrder::Consider`] (may counter-propose; the counter is itself
+//   a deliberation under this same outcome model).
+// - Every deliberation produces a [`TraceEntry`] triple — start, outcome,
+//   fallback-if-fired — so the player can always reconstruct "Boris timed
+//   out during jump 47". Failure is gameplay, provably never silent.
+//
+// Classic tier never reaches this module: no LLM = no outcome table
+// (rules-only ships fail only by having no rule, handled in the engine).
 
 use serde::{Deserialize, Serialize};
 
