@@ -22,6 +22,8 @@ const CONTRACT_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/contrac
 const SOUL_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/soul.schema.json");
 const ROOM_TEMPLATE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/room_template.schema.json");
+const ECOSYSTEM_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/ecosystem.schema.json");
 const PLANT_CULTURE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/planet_culture.schema.json");
 
@@ -230,6 +232,16 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                     );
                     return Ok(());
                 }
+                ContentPayload::Ecosystem(eco) => {
+                    println!(
+                        "{}: ecosystem \"{}\" — {} biomes, {} species total",
+                        path.display(),
+                        content.display_name,
+                        eco.biomes.len(),
+                        eco.global_species_count,
+                    );
+                    return Ok(());
+                }
                 ContentPayload::RoomTemplates(templates) => {
                     // Templates are a palette, not geometry — summarize;
                     // the realized layout is what the editor previews.
@@ -272,6 +284,7 @@ fn validate_schema(
         AssetType::Station => STATION_SCHEMA,
         AssetType::Contract => CONTRACT_SCHEMA,
         AssetType::Soul => SOUL_SCHEMA,
+        AssetType::Ecosystem => ECOSYSTEM_SCHEMA,
         AssetType::RoomTemplates => ROOM_TEMPLATE_SCHEMA,
         AssetType::PlanetCulture => PLANT_CULTURE_SCHEMA,
     };

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::contract::types::Contract;
 use crate::editor::exterior::HullFrame;
 use crate::editor::interior::RoomTemplate;
-use crate::generator::{GeneratedLayout, GeneratedMesh};
+use crate::generator::{Ecosystem, GeneratedLayout, GeneratedMesh};
 use crate::generator::culture::PlanetCulture;
 use crate::soul::types::SoulFile;
 use crate::universe::tier::UniverseTier;
@@ -23,6 +23,8 @@ pub enum AssetType {
     Hull,
     Station,
     Contract,
+    /// S39: a full ecosystem override (spec §5/§17).
+    Ecosystem,
     /// S47: a planet culture override (spec §20).
     PlanetCulture,
     /// S13: an NPC soul (spec §15) — the pipeline's fourth content type.
@@ -66,6 +68,9 @@ pub enum ContentPayload {
         npc_spawns: Vec<NpcSpawn>,
     },
     Contract(Contract),
+    /// S39: an authored ecosystem (spec §5). Boxed because ecosystems carry
+    /// a full species list and food web for each biome.
+    Ecosystem(Box<Ecosystem>),
     /// S47: an authored planet culture override (spec §20).
     PlanetCulture(Box<PlanetCulture>),
     /// S13: who an NPC is (spec §15). Souls are data; the contract engine
@@ -283,24 +288,9 @@ mod tests {
                 materials: vec!["stone".into()],
                 dominant_shape: "dome".into(),
                 color_palette: ColorScheme {
-                    primary: ColorRgba8 {
-                        r: 10,
-                        g: 20,
-                        b: 30,
-                        a: 255,
-                    },
-                    secondary: ColorRgba8 {
-                        r: 40,
-                        g: 50,
-                        b: 60,
-                        a: 255,
-                    },
-                    accent: ColorRgba8 {
-                        r: 70,
-                        g: 80,
-                        b: 90,
-                        a: 255,
-                    },
+                    primary: ColorRgba8 { r: 10, g: 20, b: 30, a: 255 },
+                    secondary: ColorRgba8 { r: 40, g: 50, b: 60, a: 255 },
+                    accent: ColorRgba8 { r: 70, g: 80, b: 90, a: 255 },
                     preference: ColorPreference::Warm,
                 },
                 adapted_to: vec![],
@@ -309,24 +299,9 @@ mod tests {
                 style_name: "test".into(),
                 primary_material: "synth".into(),
                 dominant_colors: ColorScheme {
-                    primary: ColorRgba8 {
-                        r: 1,
-                        g: 2,
-                        b: 3,
-                        a: 255,
-                    },
-                    secondary: ColorRgba8 {
-                        r: 4,
-                        g: 5,
-                        b: 6,
-                        a: 255,
-                    },
-                    accent: ColorRgba8 {
-                        r: 7,
-                        g: 8,
-                        b: 9,
-                        a: 255,
-                    },
+                    primary: ColorRgba8 { r: 1, g: 2, b: 3, a: 255 },
+                    secondary: ColorRgba8 { r: 4, g: 5, b: 6, a: 255 },
+                    accent: ColorRgba8 { r: 7, g: 8, b: 9, a: 255 },
                     preference: ColorPreference::Cool,
                 },
                 practicality_level: 50,
@@ -351,13 +326,82 @@ mod tests {
             payload: ContentPayload::PlanetCulture(Box::new(culture)),
         };
         let text = ron::to_string(&file).unwrap();
-        for field in [
-            "planet_culture",
-            "base_language",
-            "greeting",
-            "farewell",
-            "social_structure",
-        ] {
+        for field in ["planet_culture", "base_language", "greeting", "farewell", "social_structure"] {
+            assert!(text.contains(field), "missing {field} in: {text}");
+        }
+        let back: ContentFile = ron::from_str(&text).unwrap();
+        assert_eq!(file, back);
+    }
+
+    /// S39: ecosystem payloads lock their serialized form —
+    /// `content/ecosystems/*.ron` depends on these field names.
+    #[test]
+    fn ecosystem_serialized_form_is_locked() {
+        use crate::generator::ecosystem::{
+            BiomeEcosystem, EcologicalRole, Ecosystem, EcosystemComplexity, FoodWeb, Species,
+            SpeciesVisual, Taxonomy,
+        };
+        use crate::generator::ecosystem::{BodyPlan, Edibility};
+        use crate::item::types::Rarity;
+        use crate::seed::types::Biome;
+        use crate::util::color::ColorRgba8;
+        use crate::util::Fixed;
+
+        let species = Species {
+            id: "test-0".into(),
+            taxonomy: Taxonomy {
+                kingdom: "A".into(),
+                phylum: "B".into(),
+                class: "C".into(),
+                order: "D".into(),
+                family: "E".into(),
+                genus: "F".into(),
+                species: "g".into(),
+            },
+            common_name: "test lurker".into(),
+            scientific_name: "F g".into(),
+            ecological_role: EcologicalRole::PrimaryProducer,
+            size_class: crate::editor::exterior::SizeClass::Small,
+            habitat: "test".into(),
+            rarity: Rarity::Common,
+            visual: SpeciesVisual {
+                silhouette: 0,
+                primary_color: ColorRgba8 { r: 10, g: 20, b: 30, a: 255 },
+                secondary_color: ColorRgba8 { r: 40, g: 50, b: 60, a: 255 },
+                body_plan: BodyPlan::Radial,
+                size_hint: "fist".into(),
+            },
+            discoverable: true,
+            research_value: 10,
+            edibility: Edibility::Inedible,
+            medicinal_potential: 0,
+            danger_level: 0,
+        };
+        let eco = Ecosystem {
+            planet_seed: 999,
+            biomes: vec![BiomeEcosystem {
+                biome: Biome::Frontier,
+                species: vec![species],
+                food_web: FoodWeb { edges: vec![] },
+                keystone_species: vec![],
+            }],
+            global_species_count: 1,
+            endemic_species_count: 1,
+            ecological_complexity: EcosystemComplexity::Simple,
+            baseline_recorded: false,
+        };
+        let file = ContentFile {
+            id: "test_eco".into(),
+            display_name: "Test Eco".into(),
+            asset_type: AssetType::Ecosystem,
+            seed: 999,
+            universe: "all".into(),
+            priority: Priority::Authoritative,
+            expires_at: None,
+            payload: ContentPayload::Ecosystem(Box::new(eco)),
+        };
+        let text = ron::to_string(&file).unwrap();
+        for field in ["ecosystem", "common_name", "scientific_name", "food_web", "keystone_species"] {
             assert!(text.contains(field), "missing {field} in: {text}");
         }
         let back: ContentFile = ron::from_str(&text).unwrap();
