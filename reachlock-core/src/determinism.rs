@@ -695,6 +695,50 @@ pub fn manifest() -> Manifest {
         });
     }
 
+    // S40 — trope engine templates.
+    for &seed in &CANONICAL_SEEDS {
+        use crate::generator::trope::LocationType;
+        let mut gs = std::collections::BTreeMap::new();
+        gs.insert("factions".into(), vec!["compact".into()]);
+        gs.insert("species".into(), vec!["pale_lurker".into()]);
+        gs.insert("planet_names".into(), vec!["Velaris".into()]);
+        // Use a known template — field-matches the authored schema.
+        let template = crate::generator::trope::TropeTemplate {
+            id: "test_trope".into(),
+            trope_type: crate::generator::trope::TropeType::DerelictShip,
+            title_template: "The {ship}".into(),
+            narrative_template: "A {ship} drifts near {planet}.".into(),
+            slots: vec![
+                crate::generator::trope::TropeSlot {
+                    slot_name: "ship".into(),
+                    slot_kind: crate::generator::trope::SlotKind::Text { options: vec!["Grief".into()] },
+                    constraints: vec![],
+                },
+                crate::generator::trope::TropeSlot {
+                    slot_name: "planet".into(),
+                    slot_kind: crate::generator::trope::SlotKind::PlanetName,
+                    constraints: vec![],
+                },
+            ],
+            branches: vec![],
+            base_frequency: crate::util::Fixed::from_int(1),
+            location_types: vec![LocationType::DeepSpace],
+            min_threat_level: 1,
+            max_threat_level: 5,
+            dilemma_chance: crate::util::Fixed(102),
+        };
+        entries.push(Entry {
+            generator: "trope_instantiation".into(),
+            seed,
+            checksum: hash_serde(&crate::generator::instantiate_trope(
+                &template,
+                seed,
+                &gs,
+                LocationType::DeepSpace,
+            )),
+        });
+    }
+
     // S47 — planet scale & culture (wraps S04's GeneratedPlanet).
     for &seed in &CANONICAL_SEEDS {
         let mut fmap = std::collections::HashMap::new();
@@ -743,7 +787,8 @@ pub fn manifest() -> Manifest {
         //      (generation + event application).
         // v14: added S47 planet scale & culture golden entries
         //      (planet_extended wraps S04's GeneratedPlanet; culture).
-        version: 14,
+        // v15: added S40 trope engine template instantiation golden entries.
+        version: 15,
         entries,
     }
 }
