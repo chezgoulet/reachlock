@@ -6,6 +6,7 @@ pub mod contract_crafting;
 pub mod contract_library;
 pub mod crew;
 pub mod crisis;
+pub mod culture_view;
 pub mod cryojump;
 pub mod dialogue;
 pub mod docking;

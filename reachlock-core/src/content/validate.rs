@@ -171,6 +171,7 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
             }
         }
         ContentPayload::Contract(_) => {}
+        ContentPayload::PlanetCulture(_) => {}
         ContentPayload::Soul(soul) => {
             if soul.id != content.id {
                 errors.push(ValidationError::SoulIdMismatch {

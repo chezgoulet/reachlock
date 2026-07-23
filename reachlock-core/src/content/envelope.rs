@@ -9,6 +9,7 @@ use crate::contract::types::Contract;
 use crate::editor::exterior::HullFrame;
 use crate::editor::interior::RoomTemplate;
 use crate::generator::{GeneratedLayout, GeneratedMesh};
+use crate::generator::culture::PlanetCulture;
 use crate::soul::types::SoulFile;
 use crate::universe::tier::UniverseTier;
 
@@ -22,6 +23,8 @@ pub enum AssetType {
     Hull,
     Station,
     Contract,
+    /// S47: a planet culture override (spec §20).
+    PlanetCulture,
     /// S13: an NPC soul (spec §15) — the pipeline's fourth content type.
     Soul,
     /// S17: an exterior hull frame (spec §19) — slot layout, engine mount,
@@ -63,6 +66,8 @@ pub enum ContentPayload {
         npc_spawns: Vec<NpcSpawn>,
     },
     Contract(Contract),
+    /// S47: an authored planet culture override (spec §20).
+    PlanetCulture(Box<PlanetCulture>),
     /// S13: who an NPC is (spec §15). Souls are data; the contract engine
     /// decides how they act, S16 decides what they say. Boxed: a soul is an
     /// order of magnitude bigger than the other variants, and serde treats
@@ -239,6 +244,119 @@ mod tests {
             "size_class",
             // S18: interior placement area — an additive frame revision.
             "grid_bounds",
+        ] {
+            assert!(text.contains(field), "missing {field} in: {text}");
+        }
+        let back: ContentFile = ron::from_str(&text).unwrap();
+        assert_eq!(file, back);
+    }
+
+    /// S47: planet-culture payloads lock their serialized form —
+    /// `content/cultures/*.ron` depends on these field names.
+    #[test]
+    fn planet_culture_serialized_form_is_locked() {
+        use crate::faction::FactionId;
+        use crate::generator::culture::{
+            ArchitecturalStyle, ClothingStyle, ColorPreference, ColorScheme, Custom, CustomType,
+            CulturalValue, LanguageProfile, OutsiderAttitude, PlanetCulture, SocialStructure,
+        };
+        use crate::util::color::ColorRgba8;
+
+        let culture = PlanetCulture {
+            cultural_id: "test".into(),
+            language: LanguageProfile {
+                base_language: "Test".into(),
+                drift_intensity: 10,
+                accent_name: "flat".into(),
+                unique_terms: vec!["a".into()],
+                greeting: "hi".into(),
+                farewell: "bye".into(),
+            },
+            customs: vec![Custom {
+                custom_type: CustomType::Greeting,
+                description: "fist".into(),
+                trigger: "meet".into(),
+            }],
+            social_structure: SocialStructure::Egalitarian,
+            architecture: ArchitecturalStyle {
+                style_name: "test".into(),
+                materials: vec!["stone".into()],
+                dominant_shape: "dome".into(),
+                color_palette: ColorScheme {
+                    primary: ColorRgba8 {
+                        r: 10,
+                        g: 20,
+                        b: 30,
+                        a: 255,
+                    },
+                    secondary: ColorRgba8 {
+                        r: 40,
+                        g: 50,
+                        b: 60,
+                        a: 255,
+                    },
+                    accent: ColorRgba8 {
+                        r: 70,
+                        g: 80,
+                        b: 90,
+                        a: 255,
+                    },
+                    preference: ColorPreference::Warm,
+                },
+                adapted_to: vec![],
+            },
+            clothing: ClothingStyle {
+                style_name: "test".into(),
+                primary_material: "synth".into(),
+                dominant_colors: ColorScheme {
+                    primary: ColorRgba8 {
+                        r: 1,
+                        g: 2,
+                        b: 3,
+                        a: 255,
+                    },
+                    secondary: ColorRgba8 {
+                        r: 4,
+                        g: 5,
+                        b: 6,
+                        a: 255,
+                    },
+                    accent: ColorRgba8 {
+                        r: 7,
+                        g: 8,
+                        b: 9,
+                        a: 255,
+                    },
+                    preference: ColorPreference::Cool,
+                },
+                practicality_level: 50,
+                adapted_to: vec![],
+            },
+            attitude_toward_outsiders: OutsiderAttitude::Curious,
+            faction_allegiance: crate::generator::culture::FactionAllegiance::Loyal {
+                faction_id: FactionId("compact".into()),
+                intensity: 120,
+            },
+            dominant_values: vec![CulturalValue::Honor],
+            cultural_quirk: "test quirk".into(),
+        };
+        let file = ContentFile {
+            id: "test_culture".into(),
+            display_name: "Test Culture".into(),
+            asset_type: AssetType::PlanetCulture,
+            seed: 4242,
+            universe: "all".into(),
+            priority: Priority::Authoritative,
+            expires_at: None,
+            payload: ContentPayload::PlanetCulture(Box::new(culture)),
+        };
+        let text = ron::to_string(&file).unwrap();
+        for field in [
+            "planet_culture",
+            "base_language",
+            "greeting",
+            "farewell",
+            "social_structure",
         ] {
             assert!(text.contains(field), "missing {field} in: {text}");
         }

@@ -22,6 +22,8 @@ const CONTRACT_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/contrac
 const SOUL_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/soul.schema.json");
 const ROOM_TEMPLATE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/room_template.schema.json");
+const PLANT_CULTURE_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/planet_culture.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -218,6 +220,16 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                     );
                     return Ok(());
                 }
+                ContentPayload::PlanetCulture(culture) => {
+                    println!(
+                        "{}: culture \"{}\" — language: {}, attitude: {:?}",
+                        path.display(),
+                        culture.cultural_id,
+                        culture.language.base_language,
+                        culture.attitude_toward_outsiders,
+                    );
+                    return Ok(());
+                }
                 ContentPayload::RoomTemplates(templates) => {
                     // Templates are a palette, not geometry — summarize;
                     // the realized layout is what the editor previews.
@@ -261,6 +273,7 @@ fn validate_schema(
         AssetType::Contract => CONTRACT_SCHEMA,
         AssetType::Soul => SOUL_SCHEMA,
         AssetType::RoomTemplates => ROOM_TEMPLATE_SCHEMA,
+        AssetType::PlanetCulture => PLANT_CULTURE_SCHEMA,
     };
 
     let schema = serde_json::from_str::<serde_json::Value>(schema_text)
