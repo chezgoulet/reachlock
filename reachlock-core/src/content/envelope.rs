@@ -5,10 +5,12 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::career::CareerPath;
 use crate::contract::types::Contract;
 use crate::editor::exterior::HullFrame;
 use crate::editor::interior::RoomTemplate;
-use crate::generator::{GeneratedLayout, GeneratedMesh};
+use crate::generator::{Ecosystem, GeneratedLayout, GeneratedMesh};
+use crate::generator::culture::PlanetCulture;
 use crate::soul::types::SoulFile;
 use crate::universe::tier::UniverseTier;
 
@@ -22,6 +24,12 @@ pub enum AssetType {
     Hull,
     Station,
     Contract,
+    /// S39: a full ecosystem override (spec §5/§17).
+    Ecosystem,
+    /// S42: a career path definition (spec §14/§21). One file per path.
+    Career,
+    /// S47: a planet culture override (spec §20).
+    PlanetCulture,
     /// S13: an NPC soul (spec §15) — the pipeline's fourth content type.
     Soul,
     /// S17: an exterior hull frame (spec §19) — slot layout, engine mount,
@@ -63,6 +71,14 @@ pub enum ContentPayload {
         npc_spawns: Vec<NpcSpawn>,
     },
     Contract(Contract),
+    /// S39: an authored ecosystem (spec §5). Boxed because ecosystems carry
+    /// a full species list and food web for each biome.
+    Ecosystem(Box<Ecosystem>),
+    /// S42: a career path definition (spec §14/§21). Boxed to keep the
+    /// envelope enum small (career paths carry a vec of ranks and perks).
+    Career(Box<CareerPath>),
+    /// S47: an authored planet culture override (spec §20).
+    PlanetCulture(Box<PlanetCulture>),
     /// S13: who an NPC is (spec §15). Souls are data; the contract engine
     /// decides how they act, S16 decides what they say. Boxed: a soul is an
     /// order of magnitude bigger than the other variants, and serde treats
@@ -239,6 +255,225 @@ mod tests {
             "size_class",
             // S18: interior placement area — an additive frame revision.
             "grid_bounds",
+        ] {
+            assert!(text.contains(field), "missing {field} in: {text}");
+        }
+        let back: ContentFile = ron::from_str(&text).unwrap();
+        assert_eq!(file, back);
+    }
+
+    /// S47: planet-culture payloads lock their serialized form —
+    /// `content/cultures/*.ron` depends on these field names.
+    #[test]
+    fn planet_culture_serialized_form_is_locked() {
+        use crate::faction::FactionId;
+        use crate::generator::culture::{
+            ArchitecturalStyle, ClothingStyle, ColorPreference, ColorScheme, Custom, CustomType,
+            CulturalValue, LanguageProfile, OutsiderAttitude, PlanetCulture, SocialStructure,
+        };
+        use crate::util::color::ColorRgba8;
+
+        let culture = PlanetCulture {
+            cultural_id: "test".into(),
+            language: LanguageProfile {
+                base_language: "Test".into(),
+                drift_intensity: 10,
+                accent_name: "flat".into(),
+                unique_terms: vec!["a".into()],
+                greeting: "hi".into(),
+                farewell: "bye".into(),
+            },
+            customs: vec![Custom {
+                custom_type: CustomType::Greeting,
+                description: "fist".into(),
+                trigger: "meet".into(),
+            }],
+            social_structure: SocialStructure::Egalitarian,
+            architecture: ArchitecturalStyle {
+                style_name: "test".into(),
+                materials: vec!["stone".into()],
+                dominant_shape: "dome".into(),
+                color_palette: ColorScheme {
+                    primary: ColorRgba8 { r: 10, g: 20, b: 30, a: 255 },
+                    secondary: ColorRgba8 { r: 40, g: 50, b: 60, a: 255 },
+                    accent: ColorRgba8 { r: 70, g: 80, b: 90, a: 255 },
+                    preference: ColorPreference::Warm,
+                },
+                adapted_to: vec![],
+            },
+            clothing: ClothingStyle {
+                style_name: "test".into(),
+                primary_material: "synth".into(),
+                dominant_colors: ColorScheme {
+                    primary: ColorRgba8 { r: 1, g: 2, b: 3, a: 255 },
+                    secondary: ColorRgba8 { r: 4, g: 5, b: 6, a: 255 },
+                    accent: ColorRgba8 { r: 7, g: 8, b: 9, a: 255 },
+                    preference: ColorPreference::Cool,
+                },
+                practicality_level: 50,
+                adapted_to: vec![],
+            },
+            attitude_toward_outsiders: OutsiderAttitude::Curious,
+            faction_allegiance: crate::generator::culture::FactionAllegiance::Loyal {
+                faction_id: FactionId("compact".into()),
+                intensity: 120,
+            },
+            dominant_values: vec![CulturalValue::Honor],
+            cultural_quirk: "test quirk".into(),
+        };
+        let file = ContentFile {
+            id: "test_culture".into(),
+            display_name: "Test Culture".into(),
+            asset_type: AssetType::PlanetCulture,
+            seed: 4242,
+            universe: "all".into(),
+            priority: Priority::Authoritative,
+            expires_at: None,
+            payload: ContentPayload::PlanetCulture(Box::new(culture)),
+        };
+        let text = ron::to_string(&file).unwrap();
+        for field in ["planet_culture", "base_language", "greeting", "farewell", "social_structure"] {
+            assert!(text.contains(field), "missing {field} in: {text}");
+        }
+        let back: ContentFile = ron::from_str(&text).unwrap();
+        assert_eq!(file, back);
+    }
+
+    /// S39: ecosystem payloads lock their serialized form —
+    /// `content/ecosystems/*.ron` depends on these field names.
+    #[test]
+    fn ecosystem_serialized_form_is_locked() {
+        use crate::generator::ecosystem::{
+            BiomeEcosystem, EcologicalRole, Ecosystem, EcosystemComplexity, FoodWeb, Species,
+            SpeciesVisual, Taxonomy,
+        };
+        use crate::generator::ecosystem::{BodyPlan, Edibility};
+        use crate::item::types::Rarity;
+        use crate::seed::types::Biome;
+        use crate::util::color::ColorRgba8;
+        use crate::util::Fixed;
+
+        let species = Species {
+            id: "test-0".into(),
+            taxonomy: Taxonomy {
+                kingdom: "A".into(),
+                phylum: "B".into(),
+                class: "C".into(),
+                order: "D".into(),
+                family: "E".into(),
+                genus: "F".into(),
+                species: "g".into(),
+            },
+            common_name: "test lurker".into(),
+            scientific_name: "F g".into(),
+            ecological_role: EcologicalRole::PrimaryProducer,
+            size_class: crate::editor::exterior::SizeClass::Small,
+            habitat: "test".into(),
+            rarity: Rarity::Common,
+            visual: SpeciesVisual {
+                silhouette: 0,
+                primary_color: ColorRgba8 { r: 10, g: 20, b: 30, a: 255 },
+                secondary_color: ColorRgba8 { r: 40, g: 50, b: 60, a: 255 },
+                body_plan: BodyPlan::Radial,
+                size_hint: "fist".into(),
+            },
+            discoverable: true,
+            research_value: 10,
+            edibility: Edibility::Inedible,
+            medicinal_potential: 0,
+            danger_level: 0,
+        };
+        let eco = Ecosystem {
+            planet_seed: 999,
+            biomes: vec![BiomeEcosystem {
+                biome: Biome::Frontier,
+                species: vec![species],
+                food_web: FoodWeb { edges: vec![] },
+                keystone_species: vec![],
+            }],
+            global_species_count: 1,
+            endemic_species_count: 1,
+            ecological_complexity: EcosystemComplexity::Simple,
+            baseline_recorded: false,
+        };
+        let file = ContentFile {
+            id: "test_eco".into(),
+            display_name: "Test Eco".into(),
+            asset_type: AssetType::Ecosystem,
+            seed: 999,
+            universe: "all".into(),
+            priority: Priority::Authoritative,
+            expires_at: None,
+            payload: ContentPayload::Ecosystem(Box::new(eco)),
+        };
+        let text = ron::to_string(&file).unwrap();
+        for field in ["ecosystem", "common_name", "scientific_name", "food_web", "keystone_species"] {
+            assert!(text.contains(field), "missing {field} in: {text}");
+        }
+        let back: ContentFile = ron::from_str(&text).unwrap();
+        assert_eq!(file, back);
+    }
+
+    /// S42: career-path payloads lock their serialized form —
+    /// `content/careers/*.ron` depends on these field names.
+    #[test]
+    fn career_serialized_form_is_locked() {
+        use crate::career::{
+            CareerPath, CareerPerk, CareerRank, PathType, PerkType, ProgressionCriterion,
+            ProgressionCriterionType, ProgressionRequirement,
+        };
+        use crate::util::Fixed;
+
+        let file = ContentFile {
+            id: "compact_navy".into(),
+            display_name: "Compact Navy".into(),
+            asset_type: AssetType::Career,
+            seed: 42,
+            universe: "all".into(),
+            priority: Priority::Authoritative,
+            expires_at: None,
+            payload: ContentPayload::Career(Box::new(CareerPath {
+                id: "compact_navy".into(),
+                path_type: PathType::Military,
+                name: "Compact Navy".into(),
+                description: "Serve in the Compact Fleet.".into(),
+                faction_id: Some("compact".into()),
+                ranks: vec![CareerRank {
+                    rank: 1,
+                    title: "Ensign".into(),
+                    required_criteria: vec![ProgressionRequirement {
+                        criterion_type: ProgressionCriterionType::CombatVictories,
+                        threshold: 3,
+                    }],
+                    rank_perks: vec!["nav_boost".into()],
+                    faction_standing_bonus: 10,
+                }],
+                progression_criteria: vec![ProgressionCriterion {
+                    criterion_type: ProgressionCriterionType::CombatVictories,
+                    target: "*".into(),
+                    threshold: 10,
+                    weight: Fixed::from_int(1),
+                }],
+                perks: vec![CareerPerk {
+                    id: "nav_boost".into(),
+                    name: "Nav Boost".into(),
+                    description: "Combat bonus".into(),
+                    perk_type: PerkType::CombatBonus {
+                        damage_type: "kinetic".into(),
+                        pct: Fixed::from_int(5),
+                    },
+                    magnitude: Fixed::from_int(5),
+                }],
+                conflicting_paths: vec!["reach_pirates".into()],
+            })),
+        };
+        let text = ron::to_string(&file).unwrap();
+        for field in [
+            "career",
+            "path_type",
+            "progression_criteria",
+            "conflicting_paths",
+            "combat_bonus",
         ] {
             assert!(text.contains(field), "missing {field} in: {text}");
         }

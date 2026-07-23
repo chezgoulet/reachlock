@@ -7,6 +7,7 @@
 
 pub mod agency;
 pub mod combat;
+pub mod career;
 pub mod content;
 pub mod contract;
 pub mod crisis;

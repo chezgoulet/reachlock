@@ -658,6 +658,73 @@ pub fn manifest() -> Manifest {
         });
     }
 
+    // S39 — ecosystem & life generator (plus event application).
+    for &seed in &CANONICAL_SEEDS {
+        let biomes = vec![Biome::Frontier, Biome::Nebula, Biome::Core];
+        let params = generator::ecosystem::PlanetParams {
+            habitability: 180,
+            age_ticks: 5000,
+            biome_diversity: 3,
+        };
+        let eco = generator::generate_ecosystem(seed, biomes.clone(), params);
+        entries.push(Entry {
+            generator: "ecosystem".into(),
+            seed,
+            checksum: hash_serde(&eco),
+        });
+        let first = eco
+            .biomes
+            .first()
+            .and_then(|b| b.species.first())
+            .map(|s| s.id.clone())
+            .unwrap_or_default();
+        let evt = generator::ecosystem_events::EcosystemEvent {
+            event_type: generator::ecosystem_events::EcosystemEventType::Extinction {
+                cause: "determinism".into(),
+            },
+            affected_biomes: biomes.clone(),
+            affected_species: vec![first],
+            magnitude: 3,
+            description_template: "x".into(),
+        };
+        let after = generator::apply_ecosystem_event(&eco, &evt);
+        entries.push(Entry {
+            generator: "ecosystem_event".into(),
+            seed,
+            checksum: hash_serde(&after),
+        });
+    }
+
+    // S47 — planet scale & culture (wraps S04's GeneratedPlanet).
+    for &seed in &CANONICAL_SEEDS {
+        let mut fmap = std::collections::HashMap::new();
+        fmap.insert(crate::faction::FactionId("compact".into()), 120u8);
+        let sys = generator::planet_extended::SystemParams {
+            kind: "frontier".into(),
+            threat_level: 30,
+        };
+        let planet = generator::generate_planet_extended(seed, Biome::Frontier, 100, &sys, &fmap);
+        entries.push(Entry {
+            generator: "planet_extended".into(),
+            seed,
+            checksum: hash_serde(&planet),
+        });
+        let culture = generator::generate_culture(
+            seed ^ 0x5151,
+            60,
+            &[],
+            &crate::faction::FactionId("compact".into()),
+            generator::planet_extended::SettlementWave::FirstWave,
+            &fmap,
+            20,
+        );
+        entries.push(Entry {
+            generator: "culture".into(),
+            seed,
+            checksum: hash_serde(&culture),
+        });
+    }
+
     Manifest {
         // v3: added S06 hull_interior (ship interior layout) generator.
         // v4: added S10 economy engine golden entries.
@@ -672,7 +739,11 @@ pub fn manifest() -> Manifest {
         // v11: added S25 character sprite generator (seed-derived + fully
         //      overridden hair-style sweep) golden entries.
         // v12: added S36 procedural dilemma generator golden entries.
-        version: 12,
+        // v13: added S39 ecosystem & life generator golden entries
+        //      (generation + event application).
+        // v14: added S47 planet scale & culture golden entries
+        //      (planet_extended wraps S04's GeneratedPlanet; culture).
+        version: 14,
         entries,
     }
 }

@@ -71,6 +71,10 @@ pub enum ValidationError {
     ZeroSizeRoomTemplate {
         id: String,
     },
+    /// S42: a career path has a structural problem (duplicate rank, etc.).
+    CareerProblem {
+        problem: String,
+    },
 }
 
 impl std::fmt::Display for ValidationError {
@@ -130,6 +134,9 @@ impl std::fmt::Display for ValidationError {
             ValidationError::ZeroSizeRoomTemplate { id } => {
                 write!(f, "room template {id:?} has a zero-cell dimension")
             }
+            ValidationError::CareerProblem { problem } => {
+                write!(f, "career path: {problem}")
+            }
         }
     }
 }
@@ -171,6 +178,20 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
             }
         }
         ContentPayload::Contract(_) => {}
+        ContentPayload::PlanetCulture(_) => {}
+        ContentPayload::Ecosystem(_) => {
+            // Structural checks for ecosystems are schema-side for now.
+        }
+        ContentPayload::Career(career) => {
+            let mut seen_ranks = std::collections::HashSet::new();
+            for r in &career.ranks {
+                if !seen_ranks.insert(r.rank) {
+                    errors.push(ValidationError::CareerProblem {
+                        problem: format!("duplicate rank {}", r.rank),
+                    });
+                }
+            }
+        }
         ContentPayload::Soul(soul) => {
             if soul.id != content.id {
                 errors.push(ValidationError::SoulIdMismatch {

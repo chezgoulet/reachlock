@@ -20,7 +20,7 @@ use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     combat, comms, content_index, contract, contract_crafting, contract_library, crew, crisis,
-    cryojump, dialogue, docking, factions, galaxy_map, hud, interaction, interior, inventory, jump,
+    career, cryojump, culture_view, dialogue, discovery, docking, factions, galaxy_map, hud, interaction, interior, inventory, jump,
     landed_combat, market, menu, mode, network, onboard, pause, presence, reticle, sensors,
     settings_ui, setup, ship, shipeditor, soul, story_submission, ticker, voice,
 };
@@ -140,6 +140,12 @@ fn main() {
         // ticker. Built before Startup so load_save can restore into it.
         .init_resource::<ticker::UniverseTicker>()
         .init_resource::<factions::ReputationPanelVisible>()
+        .init_resource::<culture_view::CulturePanelVisible>()
+        .init_resource::<culture_view::CultureResource>()
+        .init_resource::<discovery::DiscoveryPanelVisible>()
+        .init_resource::<discovery::EcosystemResource>()
+        .init_resource::<career::CareerPanelVisible>()
+        .init_resource::<career::CareerResource>()
         // S09: live jump/transit bookkeeping + sensors.
         .init_resource::<jump::TransitState>()
         .init_resource::<jump::FtlRoute>()
@@ -234,11 +240,14 @@ fn main() {
                 onboard::spawn_onboard_panels,
                 comms::spawn_comm_hud,
                 combat::spawn_combat_hud,
+                discovery::spawn_discovery_panel,
                 network::connect_on_enter_playing,
                 #[cfg(not(target_arch = "wasm32"))]
                 voice::start_voice_thread,
                 factions::spawn_reputation_panel,
                 factions::spawn_faction_banner,
+                culture_view::spawn_culture_panel,
+                career::spawn_career_panel,
             ),
         )
         .add_systems(OnExit(AppState::InGame), mode::teardown_on_leave_game)
@@ -513,7 +522,12 @@ fn main() {
         )
         .add_systems(
             Update,
-            factions::reputation_panel_toggle.run_if(in_state(AppState::InGame)),
+            (
+                factions::reputation_panel_toggle.run_if(in_state(AppState::InGame)),
+                culture_view::culture_panel_toggle.run_if(in_state(AppState::InGame)),
+                discovery::discovery_panel_toggle.run_if(in_state(AppState::InGame)),
+                career::career_panel_toggle.run_if(in_state(AppState::InGame)),
+            ),
         )
         .add_systems(
             Update,
@@ -571,6 +585,9 @@ fn main() {
                 hud::update_hud_panels,
                 factions::render_reputation_panel,
                 factions::render_faction_banner,
+                culture_view::render_culture_panel,
+                discovery::render_discovery_panel,
+                career::render_career_panel,
             )
                 .run_if(in_state(AppState::InGame)),
         )

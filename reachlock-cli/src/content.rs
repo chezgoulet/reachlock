@@ -22,6 +22,12 @@ const CONTRACT_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/contrac
 const SOUL_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/soul.schema.json");
 const ROOM_TEMPLATE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/room_template.schema.json");
+const ECOSYSTEM_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/ecosystem.schema.json");
+const PLANT_CULTURE_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/planet_culture.schema.json");
+const CAREER_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/career_path.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -218,6 +224,35 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                     );
                     return Ok(());
                 }
+                ContentPayload::PlanetCulture(culture) => {
+                    println!(
+                        "{}: culture \"{}\" — language: {}, attitude: {:?}",
+                        path.display(),
+                        culture.cultural_id,
+                        culture.language.base_language,
+                        culture.attitude_toward_outsiders,
+                    );
+                    return Ok(());
+                }
+                ContentPayload::Ecosystem(eco) => {
+                    println!(
+                        "{}: ecosystem \"{}\" — {} biomes, {} species total",
+                        path.display(),
+                        content.display_name,
+                        eco.biomes.len(),
+                        eco.global_species_count,
+                ContentPayload::Career(career) => {
+                    // Careers are data, not geometry — summarize.
+                    println!(
+                        "{}: career \"{}\" ({:?}) — {} rank(s), {} perk(s)",
+                        path.display(),
+                        career.name,
+                        career.path_type,
+                        career.ranks.len(),
+                        career.perks.len(),
+                    );
+                    return Ok(());
+                }
                 ContentPayload::RoomTemplates(templates) => {
                     // Templates are a palette, not geometry — summarize;
                     // the realized layout is what the editor previews.
@@ -259,8 +294,11 @@ fn validate_schema(
         AssetType::HullFrame => HULL_FRAME_SCHEMA,
         AssetType::Station => STATION_SCHEMA,
         AssetType::Contract => CONTRACT_SCHEMA,
+        AssetType::Career => CAREER_SCHEMA,
         AssetType::Soul => SOUL_SCHEMA,
+        AssetType::Ecosystem => ECOSYSTEM_SCHEMA,
         AssetType::RoomTemplates => ROOM_TEMPLATE_SCHEMA,
+        AssetType::PlanetCulture => PLANT_CULTURE_SCHEMA,
     };
 
     let schema = serde_json::from_str::<serde_json::Value>(schema_text)

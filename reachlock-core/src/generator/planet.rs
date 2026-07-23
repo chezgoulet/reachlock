@@ -1,5 +1,7 @@
 //! Planet generation (spec §5): disc mesh + fbm-shaded surface texture.
 
+use serde::{Deserialize, Serialize};
+
 use super::{FixedVec2, GeneratedMesh, GeneratedTexture};
 use crate::seed::types::Biome;
 use crate::util::color::{generate_palette, ColorRgba8};
@@ -7,6 +9,7 @@ use crate::util::noise::fbm;
 use crate::util::rng::Fixed;
 use crate::util::trig::{icos, isin};
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GeneratedPlanet {
     pub disc: GeneratedMesh,
     pub surface: GeneratedTexture,
