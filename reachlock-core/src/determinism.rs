@@ -658,6 +658,43 @@ pub fn manifest() -> Manifest {
         });
     }
 
+    // S39 — ecosystem & life generator (plus event application).
+    for &seed in &CANONICAL_SEEDS {
+        let biomes = vec![Biome::Frontier, Biome::Nebula, Biome::Core];
+        let params = generator::ecosystem::PlanetParams {
+            habitability: 180,
+            age_ticks: 5000,
+            biome_diversity: 3,
+        };
+        let eco = generator::generate_ecosystem(seed, biomes.clone(), params);
+        entries.push(Entry {
+            generator: "ecosystem".into(),
+            seed,
+            checksum: hash_serde(&eco),
+        });
+        let first = eco
+            .biomes
+            .first()
+            .and_then(|b| b.species.first())
+            .map(|s| s.id.clone())
+            .unwrap_or_default();
+        let evt = generator::ecosystem_events::EcosystemEvent {
+            event_type: generator::ecosystem_events::EcosystemEventType::Extinction {
+                cause: "determinism".into(),
+            },
+            affected_biomes: biomes.clone(),
+            affected_species: vec![first],
+            magnitude: 3,
+            description_template: "x".into(),
+        };
+        let after = generator::apply_ecosystem_event(&eco, &evt);
+        entries.push(Entry {
+            generator: "ecosystem_event".into(),
+            seed,
+            checksum: hash_serde(&after),
+        });
+    }
+
     Manifest {
         // v3: added S06 hull_interior (ship interior layout) generator.
         // v4: added S10 economy engine golden entries.
@@ -672,7 +709,9 @@ pub fn manifest() -> Manifest {
         // v11: added S25 character sprite generator (seed-derived + fully
         //      overridden hair-style sweep) golden entries.
         // v12: added S36 procedural dilemma generator golden entries.
-        version: 12,
+        // v13: added S39 ecosystem & life generator golden entries
+        //      (generation + event application).
+        version: 13,
         entries,
     }
 }
