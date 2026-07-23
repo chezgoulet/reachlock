@@ -695,6 +695,36 @@ pub fn manifest() -> Manifest {
         });
     }
 
+    // S47 — planet scale & culture (wraps S04's GeneratedPlanet).
+    for &seed in &CANONICAL_SEEDS {
+        let mut fmap = std::collections::HashMap::new();
+        fmap.insert(crate::faction::FactionId("compact".into()), 120u8);
+        let sys = generator::planet_extended::SystemParams {
+            kind: "frontier".into(),
+            threat_level: 30,
+        };
+        let planet = generator::generate_planet_extended(seed, Biome::Frontier, 100, &sys, &fmap);
+        entries.push(Entry {
+            generator: "planet_extended".into(),
+            seed,
+            checksum: hash_serde(&planet),
+        });
+        let culture = generator::generate_culture(
+            seed ^ 0x5151,
+            60,
+            &[],
+            &crate::faction::FactionId("compact".into()),
+            generator::planet_extended::SettlementWave::FirstWave,
+            &fmap,
+            20,
+        );
+        entries.push(Entry {
+            generator: "culture".into(),
+            seed,
+            checksum: hash_serde(&culture),
+        });
+    }
+
     Manifest {
         // v3: added S06 hull_interior (ship interior layout) generator.
         // v4: added S10 economy engine golden entries.
@@ -711,7 +741,9 @@ pub fn manifest() -> Manifest {
         // v12: added S36 procedural dilemma generator golden entries.
         // v13: added S39 ecosystem & life generator golden entries
         //      (generation + event application).
-        version: 13,
+        // v14: added S47 planet scale & culture golden entries
+        //      (planet_extended wraps S04's GeneratedPlanet; culture).
+        version: 14,
         entries,
     }
 }

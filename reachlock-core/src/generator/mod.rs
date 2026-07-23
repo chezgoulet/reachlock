@@ -11,6 +11,8 @@ pub mod dilemma;
 pub mod economy;
 pub mod ecosystem;
 pub mod ecosystem_events;
+pub mod culture;
+pub mod planet_extended;
 pub mod enemy;
 pub mod faction;
 pub mod hull;
@@ -30,6 +32,10 @@ pub use contract::generate_contract;
 pub use economy::generate_economy_catalog;
 pub use ecosystem::{generate_ecosystem, generate_species_visual, Ecosystem, PlanetParams};
 pub use ecosystem_events::{apply_ecosystem_event, EcosystemEvent, EcosystemEventType};
+pub use planet_extended::{
+    generate_planet_extended, PlanetExtended, SystemParams,
+};
+pub use culture::generate_culture;
 pub use enemy::generate_enemy;
 pub use faction::generate_faction;
 pub use hull::{generate_hull, generate_hull_class};
