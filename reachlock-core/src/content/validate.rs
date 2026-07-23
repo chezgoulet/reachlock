@@ -171,6 +171,9 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
             }
         }
         ContentPayload::Contract(_) => {}
+        ContentPayload::Ecosystem(_) => {
+            // Structural checks for ecosystems are schema-side for now.
+        }
         ContentPayload::Soul(soul) => {
             if soul.id != content.id {
                 errors.push(ValidationError::SoulIdMismatch {

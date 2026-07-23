@@ -8,6 +8,7 @@ pub mod crew;
 pub mod crisis;
 pub mod cryojump;
 pub mod dialogue;
+pub mod discovery;
 pub mod docking;
 pub mod factions;
 pub mod galaxy_map;
