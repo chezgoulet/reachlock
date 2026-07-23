@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Career Path Content File",
+  "description": "A career path definition — ranks, perks, progression criteria, and conflicts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "asset_type", "seed", "universe", "priority", "payload"],
+  "properties": {
+    "id": { "type": "string", "description": "Unique identifier for this career path" },
+    "display_name": { "type": "string", "description": "Human-readable name for display" },
+    "asset_type": { "type": "string", "enum": ["career"], "description": "Must be 'career'" },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "universe": { "type": "string", "description": "'all' or a universe tier name" },
+    "priority": { "type": "string", "enum": ["procedural", "curated", "event", "authoritative"] },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["career"],
+      "properties": {
+        "career": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "path_type", "name", "description", "ranks", "perks", "conflicting_paths"],
+          "properties": {
+            "id": { "type": "string" },
+            "path_type": { "type": "string", "enum": ["military", "trade", "exploration", "science", "political", "criminal", "freelance"] },
+            "name": { "type": "string" },
+            "description": { "type": "string" },
+            "faction_id": { "type": "string" },
+            "ranks": { "type": "array", "items": { "type": "object" } },
+            "progression_criteria": { "type": "array", "items": { "type": "object" } },
+            "perks": { "type": "array", "items": { "type": "object" } },
+            "conflicting_paths": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}

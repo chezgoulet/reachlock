@@ -26,6 +26,8 @@ const ECOSYSTEM_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/ecosystem.schema.json");
 const PLANT_CULTURE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/planet_culture.schema.json");
+const CAREER_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/career_path.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -239,6 +241,15 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                         content.display_name,
                         eco.biomes.len(),
                         eco.global_species_count,
+                ContentPayload::Career(career) => {
+                    // Careers are data, not geometry — summarize.
+                    println!(
+                        "{}: career \"{}\" ({:?}) — {} rank(s), {} perk(s)",
+                        path.display(),
+                        career.name,
+                        career.path_type,
+                        career.ranks.len(),
+                        career.perks.len(),
                     );
                     return Ok(());
                 }
@@ -283,6 +294,7 @@ fn validate_schema(
         AssetType::HullFrame => HULL_FRAME_SCHEMA,
         AssetType::Station => STATION_SCHEMA,
         AssetType::Contract => CONTRACT_SCHEMA,
+        AssetType::Career => CAREER_SCHEMA,
         AssetType::Soul => SOUL_SCHEMA,
         AssetType::Ecosystem => ECOSYSTEM_SCHEMA,
         AssetType::RoomTemplates => ROOM_TEMPLATE_SCHEMA,
