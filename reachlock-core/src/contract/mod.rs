@@ -9,6 +9,7 @@ pub mod meta_game;
 pub mod metadata;
 pub mod protocol;
 pub mod signature;
+pub mod theater;
 pub mod types;
 pub mod validation;
 
