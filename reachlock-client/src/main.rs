@@ -22,7 +22,7 @@ use systems::{
     combat, comms, content_index, contract, contract_crafting, contract_library, crew, crisis,
     career, cryojump, culture_view, dialogue, discovery, docking, factions, galaxy_map, hud, interaction, interior, inventory, jump,
     landed_combat, market, menu, mode, music, network, onboard, pause, presence, reticle, sensors,
-    settings_ui, setup, ship, shipeditor, soul, story_submission, ticker, voice,
+    settings_ui, setup, sfx, ship, shipeditor, soul, story_submission, ticker, voice,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -97,6 +97,7 @@ fn main() {
         .init_resource::<presence::ChatFeed>()
         // S29: voice signaling buffer (decoupled from network polling).
         .init_resource::<voice::VoiceSignalBuffer>()
+        .init_resource::<sfx::SfxQueue>()
         // S29: microphone device enumeration (populated at runtime).
         .init_resource::<voice::MicDevices>()
         // S06/S21: mode machine resources. The player starts in Aethon,
@@ -213,6 +214,7 @@ fn main() {
                 menu::spawn_menu,
                 contract_crafting::spawn_workshop_panel,
                 music::setup_music,
+                sfx::setup_sfx,
                 contract_library::spawn_library_panel,
                 sensors::init_blip_assets,
                 setup::apply_video_settings,
@@ -523,6 +525,7 @@ fn main() {
             Update,
             (
                 ticker::tick_universe.run_if(in_state(AppState::InGame)),
+                sfx::process_sfx.run_if(in_state(AppState::InGame)),
                 music::tick_music.run_if(in_state(AppState::InGame)),
             ),
         )
