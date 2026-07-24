@@ -57,11 +57,6 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
         ))
         .await;
 
-    // WASM content distribution: push authored content for the session's
-    // universe over the wire. Native clients read `mods/` from disk, but wasm
-    // clients have no filesystem — the server adds, it never replaces.
-    let _ = out_tx.send(state.content.sync_for(session.universe)).await;
-
     // Writer task: single owner of the sink.
     let mut writer = tokio::spawn(async move {
         while let Some(msg) = out_rx.recv().await {
@@ -370,11 +365,6 @@ async fn route(
                 // No TURN configured — it's OK, peers still work via STUN.
                 None
             }
-        }
-        ClientMessage::RequestContent { universe } => {
-            // Re-send the content sync for the requested universe on demand
-            // (e.g. after a `content.update` notice, or a universe switch).
-            Some(state.content.sync_for(universe))
         }
         ClientMessage::LibraryList { role_filter, sort } => {
             let state = Arc::clone(state);

@@ -2,7 +2,6 @@ pub mod audit;
 pub mod auth;
 pub mod billing;
 pub mod byok;
-pub mod content;
 pub mod contracts;
 pub mod cost;
 pub mod degradation;

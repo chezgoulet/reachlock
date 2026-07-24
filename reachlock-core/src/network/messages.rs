@@ -7,11 +7,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::combat::{HostileArchetype, HostileLocation};
-use crate::content::ContentFile;
 use crate::contract::signature::SignedEvaluation;
 use crate::contract::types::Contract;
-use crate::galaxy::{ChartedSystem, GateNetwork};
+
 use crate::seed::types::{Seed, SystemId};
 use crate::universe::tier::UniverseTier;
 
@@ -85,10 +83,6 @@ pub enum ClientMessage {
     /// S29: request TURN server credentials from the server.
     #[serde(rename = "turn.request")]
     RequestTurnConfig,
-    /// WASM content distribution: a wasm client has no filesystem, so it asks
-    /// the server to push the authored content for a universe over the wire.
-    #[serde(rename = "content.request")]
-    RequestContent { universe: UniverseTier },
     /// S34: list published contracts in the library, filtered/sorted.
     #[serde(rename = "library.list")]
     LibraryList {
@@ -199,19 +193,6 @@ pub enum ServerMessage {
     /// S28: system notice (subscription grace period, server messages).
     #[serde(rename = "system.notice")]
     SystemNotice { message: String },
-    /// WASM content distribution: server pushes authored content for a
-    /// universe to a client that has no local filesystem. The client merges
-    /// this into its `ContentIndex` (spec §10, offline-first: the server adds,
-    /// it never replaces the local-mode loader).
-    #[serde(rename = "content.sync")]
-    ContentSync {
-        universe: UniverseTier,
-        files: Vec<ContentFile>,
-        hostile_archetypes: Vec<HostileArchetype>,
-        hostile_locations: Vec<HostileLocation>,
-        charted_systems: Vec<ChartedSystem>,
-        gate_network: Option<GateNetwork>,
-    },
 }
 
 /// S29: WebRTC signaling payload carried by `voice.signal` messages.
@@ -443,35 +424,5 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn request_content_wire_tag() {
-        let msg = ClientMessage::RequestContent {
-            universe: UniverseTier::Classic,
-        };
-        let json: serde_json::Value =
-            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
-        assert_eq!(json["type"], "content.request");
-        assert_eq!(json["universe"], "classic");
-    }
 
-    #[test]
-    fn content_sync_wire_tag_and_round_trip() {
-        let msg = ServerMessage::ContentSync {
-            universe: UniverseTier::Classic,
-            files: vec![],
-            hostile_archetypes: vec![],
-            hostile_locations: vec![],
-            charted_systems: vec![],
-            gate_network: None,
-        };
-        let json: serde_json::Value =
-            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
-        assert_eq!(json["type"], "content.sync");
-        assert_eq!(json["universe"], "classic");
-        assert_eq!(json["files"], serde_json::json!([]));
-        assert_eq!(
-            serde_json::from_str::<ServerMessage>(&serde_json::to_string(&msg).unwrap()).unwrap(),
-            msg
-        );
-    }
 }
