@@ -21,6 +21,7 @@ pub mod music;
 pub mod planet;
 pub mod ship;
 pub mod soul;
+pub mod scripted_encounter;
 pub mod sprite;
 pub mod station;
 pub mod trope;
