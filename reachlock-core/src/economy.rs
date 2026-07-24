@@ -19,7 +19,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::item::types::Rarity;
 use crate::util::rng::SeededRng;
+use crate::util::Fixed;
 
 /// Fixed-point scale for the tariff multiplier. `1024` reads as `1.0`
 /// (no tariff). Tariffs are introduced by faction standing (S11); the
@@ -28,7 +30,7 @@ pub const TARIFF_ONE: i64 = 1024;
 
 /// String newtype for a trade-good id. S07 froze this; S10 attaches the
 /// real [`Good`] definition keyed by it.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct GoodId(pub String);
 
 /// Static per-station price table: good → current mid price (credits).
@@ -42,6 +44,7 @@ pub trait PriceSource {
     fn price_table(&self, seed: u64) -> PriceTable;
 }
 
+/// A trade good's static reference data (authored).
 /// A trade good's static reference data (authored).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Good {
@@ -58,6 +61,30 @@ pub struct Good {
     /// Whether selling it to a core-lawful station is a crime (S11+).
     #[serde(default)]
     pub contraband: bool,
+    /// Weight per unit in Fixed (1/1024). For cargo mass calculations.
+    #[serde(default)]
+    pub weight: Option<Fixed>,
+    /// Rarity tier (Common…Legendary).
+    #[serde(default)]
+    pub rarity: Option<Rarity>,
+    /// Production sources (stations that produce this good).
+    #[serde(default)]
+    pub production: Vec<ProductionSource>,
+    /// Consumption sinks (stations that consume this good).
+    #[serde(default)]
+    pub consumption: Vec<ConsumptionSink>,
+    /// Optional multi-step production chain.
+    #[serde(default)]
+    pub production_chain: Option<ProductionChain>,
+    /// Luxury tier (1-10), if applicable.
+    #[serde(default)]
+    pub luxury_tier: Option<u8>,
+    /// Legality per faction (faction_id -> status).
+    #[serde(default)]
+    pub legality: std::collections::HashMap<String, LegalityStatus>,
+    /// Trade bonuses that affect pricing/trade.
+    #[serde(default)]
+    pub trade_bonuses: Vec<TradeBonus>,
 }
 
 /// Buckets goods fall into. Authored; used by UI and by future legality
@@ -72,11 +99,26 @@ pub enum GoodCategory {
     Medical,
     Luxury,
     Contraband,
+    RawMineral,
+    RawOrganic,
+    RawEnergy,
+    RefinedMetal,
+    RefinedOrganic,
+    ManufacturedComponent,
+    ElectronicComponent,
+    LuxuryGood,
+    Clothing,
+    Cybernetic,
+    Weapon,
+    ExplorationTool,
+    ShipComponent,
+    StationModule,
+    ResearchEquipment,
 }
 
 impl GoodCategory {
     /// Every variant, for exhaustive iteration (catalog completeness checks).
-    pub const ALL: [GoodCategory; 7] = [
+    pub const ALL: [GoodCategory; 22] = [
         GoodCategory::Consumable,
         GoodCategory::Fuel,
         GoodCategory::Material,
@@ -84,6 +126,21 @@ impl GoodCategory {
         GoodCategory::Medical,
         GoodCategory::Luxury,
         GoodCategory::Contraband,
+        GoodCategory::RawMineral,
+        GoodCategory::RawOrganic,
+        GoodCategory::RawEnergy,
+        GoodCategory::RefinedMetal,
+        GoodCategory::RefinedOrganic,
+        GoodCategory::ManufacturedComponent,
+        GoodCategory::ElectronicComponent,
+        GoodCategory::LuxuryGood,
+        GoodCategory::Clothing,
+        GoodCategory::Cybernetic,
+        GoodCategory::Weapon,
+        GoodCategory::ExplorationTool,
+        GoodCategory::ShipComponent,
+        GoodCategory::StationModule,
+        GoodCategory::ResearchEquipment,
     ];
 
     pub fn as_str(&self) -> &'static str {
@@ -95,6 +152,21 @@ impl GoodCategory {
             GoodCategory::Medical => "medical",
             GoodCategory::Luxury => "luxury",
             GoodCategory::Contraband => "contraband",
+            GoodCategory::RawMineral => "raw_mineral",
+            GoodCategory::RawOrganic => "raw_organic",
+            GoodCategory::RawEnergy => "raw_energy",
+            GoodCategory::RefinedMetal => "refined_metal",
+            GoodCategory::RefinedOrganic => "refined_organic",
+            GoodCategory::ManufacturedComponent => "manufactured_component",
+            GoodCategory::ElectronicComponent => "electronic_component",
+            GoodCategory::LuxuryGood => "luxury_good",
+            GoodCategory::Clothing => "clothing",
+            GoodCategory::Cybernetic => "cybernetic",
+            GoodCategory::Weapon => "weapon",
+            GoodCategory::ExplorationTool => "exploration_tool",
+            GoodCategory::ShipComponent => "ship_component",
+            GoodCategory::StationModule => "station_module",
+            GoodCategory::ResearchEquipment => "research_equipment",
         }
     }
 }
@@ -400,6 +472,14 @@ pub fn starter_catalog() -> GoodsCatalog {
                 mass,
                 category: cat,
                 contraband,
+                weight: None,
+                rarity: None,
+                production: vec![],
+                consumption: vec![],
+                production_chain: None,
+                luxury_tier: None,
+                legality: std::collections::HashMap::new(),
+                trade_bonuses: vec![],
             },
         );
     };
@@ -511,7 +591,7 @@ pub fn starter_catalog() -> GoodsCatalog {
         GoodCategory::Contraband,
         true,
     );
-    GoodsCatalog { version: 1, goods }
+    GoodsCatalog { version: 2, goods }
 }
 
 /// The client market UI's seam. `EconomyState` is itself a `PriceSource`,
@@ -539,6 +619,164 @@ pub fn load_goods_catalog() -> GoodsCatalog {
     match ron::from_str::<GoodsCatalog>(GOODS_CATALOG_RON) {
         Ok(cat) if cat.validate().is_empty() => cat,
         _ => starter_catalog(),
+    }
+}
+
+// --------------------------------------------------------------------------
+// S44 — Advanced Economy: production chains, trade bonuses, infrastructure
+// --------------------------------------------------------------------------
+
+/// How a good is produced at a station type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductionSource {
+    pub station_kind: StationKind,
+    pub production_rate: Fixed,
+    pub production_cost: u64,
+    pub inputs: Vec<ProductionInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductionInput {
+    pub good_id: GoodId,
+    pub quantity: Fixed,
+}
+
+/// How a good is consumed at a station type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConsumptionSink {
+    pub station_kind: StationKind,
+    pub consumption_rate: Fixed,
+    pub consumption_elasticity: Fixed,
+}
+
+/// A multi-step production chain that transforms inputs into outputs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductionChain {
+    pub chain_id: String,
+    pub steps: Vec<ProductionChainStep>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductionChainStep {
+    pub good_id: GoodId,
+    pub inputs: Vec<(GoodId, Fixed)>,
+    pub output_quantity: Fixed,
+    pub production_time_ticks: u64,
+}
+
+/// Legality of a good in a faction's jurisdiction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LegalityStatus {
+    Legal,
+    Restricted { license_required: String },
+    Contraband,
+}
+
+/// A bonus that applies to a trade route or transaction.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeBonus {
+    pub condition: TradeBonusCondition,
+    pub bonus_type: TradeBonusType,
+    pub magnitude: Fixed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TradeBonusCondition {
+    RouteBetween { faction_a: String, faction_b: String },
+    DuringEvent { event_type: String },
+    WithCareerRank { path_type: String, min_rank: u8 },
+    UnderBlockade,
+    Smuggled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TradeBonusType {
+    PriceMultiplier,
+    DemandMultiplier,
+    ReputationGain,
+    CareerProgress,
+}
+
+/// Player's investment portfolio in station production.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlayerInfrastructure {
+    pub investments: Vec<InfrastructureInvestment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InfrastructureInvestment {
+    pub station_id: String,
+    pub production_good_id: GoodId,
+    #[serde(default)]
+    pub shares_owned: u32,
+    #[serde(default)]
+    pub invested_credits: u64,
+    #[serde(default)]
+    pub dividend_rate: Fixed,
+    #[serde(default)]
+    pub total_dividends_earned: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductionOutput {
+    pub produced: BTreeMap<GoodId, u64>,
+    pub consumed: BTreeMap<GoodId, u64>,
+}
+
+/// Compute production for a station given its catalog and universe state.
+/// Pure & deterministic.
+pub fn compute_production(
+    station_kind: StationKind,
+    catalog: &GoodsCatalog,
+    seed: u64,
+) -> ProductionOutput {
+    let mut rng = SeededRng::new(seed);
+    let mut produced = BTreeMap::new();
+    let mut consumed = BTreeMap::new();
+    for (id, good) in &catalog.goods {
+        for src in &good.production {
+            if src.station_kind != station_kind {
+                continue;
+            }
+            let rate = rng.next_below(1024);
+            let boost = Fixed(rate as i64);
+            let qty = (src.production_rate.0 * boost.0 / 1024).max(1);
+            *produced.entry(id.clone()).or_insert(0) += qty as u64;
+        }
+        for sink in &good.consumption {
+            if sink.station_kind != station_kind {
+                continue;
+            }
+            let rate = rng.next_below(1024);
+            let boost = Fixed(rate as i64);
+            let qty = (sink.consumption_rate.0 * boost.0 / 1024).max(1);
+            *consumed.entry(id.clone()).or_insert(0) += qty as u64;
+        }
+    }
+    ProductionOutput { produced, consumed }
+}
+
+/// Compute a price given supply, demand, tariffs, and events.
+/// Pure & deterministic.
+pub fn compute_price(
+    base_price: u64,
+    supply: u64,
+    demand: u64,
+    tariff_numer: i64,
+) -> u64 {
+    let sf = supply.max(1);
+    let df = demand.max(1);
+    if df > sf {
+        let ratio = (df * TARIFF_ONE as u64) / sf;
+        let price = (base_price * ratio) / TARIFF_ONE as u64;
+        apply_tariff(price as i64, tariff_numer) as u64
+    } else {
+        let ratio = (sf * TARIFF_ONE as u64) / df;
+        let price = (base_price * TARIFF_ONE as u64) / ratio;
+        apply_tariff(price as i64, tariff_numer) as u64
     }
 }
 
