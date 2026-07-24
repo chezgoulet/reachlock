@@ -7,6 +7,7 @@ pub mod session;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -18,10 +19,13 @@ use reachlock_core::universe::tier::UniverseTier;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 
+use axum::response::{IntoResponse, Response};
+
 use crate::config::Config;
 use crate::services::audit::{AuditLog, MemoryAuditLog};
 use crate::services::auth::{
-    DevLoginRequest, DevLoginResponse, MemorySessionStore, SessionInfo, SessionStore,
+    DevLoginRequest, DevLoginResponse, MemoryPlayerStore, MemorySessionStore, PlayerStore,
+    SessionStore, TempTokenStore,
 };
 use crate::services::billing::{
     create_checkout_session, create_portal_session, verify_stripe_webhook, MemorySubscriptionStore,
@@ -29,6 +33,7 @@ use crate::services::billing::{
 };
 use crate::services::byok::ByokRegistration;
 use crate::services::contracts::{ContractStore, MemoryContractStore};
+use crate::services::email::{EmailBackend, NoopEmailBackend};
 use crate::services::health::HealthAggregator;
 use crate::services::library::{ContractLibrary, MemoryContractLibrary};
 use crate::services::llm_proxy::LlmService;
@@ -116,34 +121,48 @@ pub struct AppState {
     pub verify: VerifyService,
     pub contracts: Box<dyn ContractStore>,
     pub llm: LlmService,
-    /// Universe-wide fanout: tick events, presence.
     pub events: broadcast::Sender<ServerMessage>,
-    /// S23: per-system presence registry for scoped messages.
     pub presence: PresenceManager,
-    /// S26: audit log of admin actions.
     pub audit: Box<dyn AuditLog>,
-    /// S26: Prometheus metrics registry.
     pub prometheus: prometheus::Registry,
-    /// S26: health check aggregator.
     pub health: std::sync::Arc<HealthAggregator>,
-    /// When true, the WS handshake demands a token minted by `/auth/dev`.
-    pub auth_required: bool,
-    /// S28: subscription entitlements and offline token store.
+    pub auth_required: std::sync::atomic::AtomicBool,
     pub billing: Box<dyn SubscriptionStore>,
     connected: AtomicUsize,
-    /// S29: voice chat room registry.
     pub voice: VoiceRegistry,
-    /// S34: contract library directory — published contracts + stories.
     pub library: Box<dyn ContractLibrary>,
+    // S51: authentication stores.
+    pub players: Box<dyn PlayerStore>,
+    pub email: Box<dyn EmailBackend>,
+    pub auth_config: std::sync::Arc<std::sync::RwLock<crate::services::auth::AuthConfig>>,
+    pub verification_tokens: std::sync::Arc<Mutex<HashMap<String, String>>>,
+    pub reset_tokens: std::sync::Arc<Mutex<HashMap<String, String>>>,
+    pub temp_tokens: TempTokenStore,
+    pub totp_secrets: std::sync::Arc<Mutex<HashMap<String, String>>>,
+    pub totp_recovery_codes: std::sync::Arc<Mutex<Vec<(String, String)>>>,
+    pub oauth_flows: std::sync::Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl AppState {
     pub fn new(config: &Config) -> Self {
         let (events, _) = broadcast::channel(256);
-        // Store selection: the memory stores are the zero-infra default and
-        // mirror the Postgres semantics. `config.db_url` selects the sqlx
-        // stores when built `--features postgres` (wired in the pg module);
-        // the live path is exercised in CI, not here.
+        let cfg = crate::services::auth::AuthConfig::from_env();
+        let smtp_url = std::env::var("REACHLOCK_SMTP_URL").ok();
+        let from_addr = std::env::var("REACHLOCK_SMTP_FROM").unwrap_or_else(|_| "noreply@reachlock.test".into());
+        let email: Box<dyn EmailBackend> = if let Some(url) = &smtp_url {
+            match crate::services::email::SmtpEmailBackend::new(url, &from_addr) {
+                Ok(b) => Box::new(b),
+                Err(e) => {
+                    tracing::warn!("SMTP config failed ({e}), falling back to NoopEmailBackend");
+                    Box::new(NoopEmailBackend)
+                }
+            }
+        } else {
+            let file_dir = std::env::var("REACHLOCK_EMAIL_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| std::path::PathBuf::from("data/emails"));
+            Box::new(crate::services::email::FileEmailBackend::new(file_dir))
+        };
         AppState {
             seeds: Box::new(MemorySeedStore::default()),
             sessions: Box::new(MemorySessionStore::default()),
@@ -155,11 +174,20 @@ impl AppState {
             audit: Box::new(MemoryAuditLog::default()),
             prometheus: crate::observability::init_prometheus(),
             health: std::sync::Arc::new(HealthAggregator::default()),
-            auth_required: config.auth_required,
+            auth_required: std::sync::atomic::AtomicBool::new(config.auth_required),
             connected: AtomicUsize::new(0),
             voice: VoiceRegistry::default(),
             billing: Box::new(MemorySubscriptionStore::default()),
             library: Box::new(MemoryContractLibrary::default()),
+            players: Box::new(MemoryPlayerStore::default()),
+            email,
+            auth_config: std::sync::Arc::new(std::sync::RwLock::new(cfg)),
+            verification_tokens: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            reset_tokens: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            temp_tokens: TempTokenStore::new(),
+            totp_secrets: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            totp_recovery_codes: std::sync::Arc::new(Mutex::new(Vec::new())),
+            oauth_flows: std::sync::Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -176,11 +204,43 @@ impl AppState {
     }
 }
 
+/// S51: shared error type for auth routes — (status, json_body).
+/// Implement IntoResponse so Axum handlers can return `Result<_, AppError>`.
+pub struct AppError {
+    pub status: u16,
+    pub message: String,
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let status = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        (status, Json(serde_json::json!({"error": self.message}))).into_response()
+    }
+}
+
 pub fn router(state: Arc<AppState>) -> Router {
     let admin_routes = admin::admin_routes();
     Router::new()
         .route("/health", get(health_handler))
         .route("/metrics", get(metrics_handler))
+        // S51 auth endpoints
+        .route("/auth/register", post(register_handler))
+        .route("/auth/login", post(login_handler))
+        .route("/auth/logout", post(logout_handler))
+        .route("/auth/verify-email", post(verify_email_handler))
+        .route("/auth/resend-verification", post(resend_verification_handler))
+        .route("/auth/forgot-password", post(forgot_password_handler))
+        .route("/auth/reset-password", post(reset_password_handler))
+        .route("/auth/delete-account", post(delete_account_handler))
+        .route("/auth/cancel-deletion", post(cancel_deletion_handler))
+        .route("/auth/2fa/enable", post(tfa_enable_handler))
+        .route("/auth/2fa/verify", post(tfa_verify_handler))
+        .route("/auth/2fa/disable", post(tfa_disable_handler))
+        .route("/auth/2fa/challenge", post(tfa_challenge_handler))
+        .route("/auth/oauth/google/device", post(oauth_google_device_handler))
+        .route("/auth/oauth/github/device", post(oauth_github_device_handler))
+        .route("/auth/oauth/token", post(oauth_token_handler))
+        // S51 dev auth (preserved)
         .route("/auth/dev", post(auth_dev))
         .route("/byok", post(byok_register))
         .route("/ws", any(handler::upgrade))
@@ -247,19 +307,128 @@ async fn byok_register(
     }
 }
 
-/// `POST /auth/dev { username, universe? }` — dev-only token issuance
-/// (spec §8, S03). Not a security boundary; mints a bearer token the WS
-/// handshake then presents as `?token=…`.
+/// `POST /auth/dev { username, universe? }` — dev-only token issuance.
+/// Disabled when REACHLOCK_AUTH=1.
 async fn auth_dev(
     State(state): State<Arc<AppState>>,
     Json(req): Json<DevLoginRequest>,
-) -> Json<DevLoginResponse> {
-    let player_id = req.username;
-    let token = state.sessions.issue(SessionInfo {
-        player_id: player_id.clone(),
-        universe: req.universe,
-    });
-    Json(DevLoginResponse { token, player_id })
+) -> Result<Json<DevLoginResponse>, AppError> {
+    crate::services::auth::dev_login(State(state), Json(req)).await
+}
+
+// S51 auth handler wrappers -------------------------------------------------
+
+async fn register_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<crate::services::auth::RegisterRequest>,
+) -> Result<Json<crate::services::auth::RegisterResponse>, AppError> {
+    crate::services::auth::register(State(state), Json(body)).await
+}
+
+async fn login_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<crate::services::auth::LoginRequest>,
+) -> Result<Json<crate::services::auth::LoginResponse>, AppError> {
+    crate::services::auth::login(State(state), Json(body)).await
+}
+
+async fn logout_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Result<axum::http::StatusCode, AppError> {
+    crate::services::auth::logout(State(state), headers).await
+}
+
+async fn verify_email_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<crate::services::auth::VerifyEmailRequest>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    crate::services::auth::verify_email(State(state), Json(body)).await
+}
+
+async fn resend_verification_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    crate::services::auth::resend_verification(State(state), headers).await
+}
+
+async fn forgot_password_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<crate::services::auth::ForgotPasswordRequest>,
+) -> axum::Json<serde_json::Value> {
+    crate::services::auth::forgot_password(State(state), Json(body)).await
+}
+
+async fn reset_password_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<crate::services::auth::ResetPasswordRequest>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    crate::services::auth::reset_password(State(state), Json(body)).await
+}
+
+async fn delete_account_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<crate::services::auth::DeleteAccountRequest>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    crate::services::auth::delete_account(State(state), headers, Json(body)).await
+}
+
+async fn cancel_deletion_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    crate::services::auth::cancel_deletion(State(state), headers).await
+}
+
+async fn tfa_enable_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Result<axum::Json<crate::services::auth::TfaEnableResponse>, AppError> {
+    crate::services::auth::tfa_enable(State(state), headers).await
+}
+
+async fn tfa_verify_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<crate::services::auth::TfaVerifyRequest>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    crate::services::auth::tfa_verify(State(state), headers, Json(body)).await
+}
+
+async fn tfa_disable_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<crate::services::auth::TfaDisableRequest>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    crate::services::auth::tfa_disable(State(state), headers, Json(body)).await
+}
+
+async fn tfa_challenge_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<crate::services::auth::TfaChallengeRequest>,
+) -> Result<axum::Json<crate::services::auth::LoginResponse>, AppError> {
+    crate::services::auth::tfa_challenge(State(state), Json(body)).await
+}
+
+async fn oauth_google_device_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<axum::Json<crate::services::auth::OAuthDeviceResponse>, AppError> {
+    crate::services::auth::oauth_google_device(State(state)).await
+}
+
+async fn oauth_github_device_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<axum::Json<crate::services::auth::OAuthDeviceResponse>, AppError> {
+    crate::services::auth::oauth_github_device(State(state)).await
+}
+
+async fn oauth_token_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<crate::services::auth::OAuthTokenRequest>,
+) -> Result<axum::Json<crate::services::auth::OAuthTokenResponse>, AppError> {
+    crate::services::auth::oauth_token(State(state), Json(body)).await
 }
 
 // ---------------------------------------------------------------------------

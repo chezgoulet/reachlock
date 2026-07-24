@@ -19,7 +19,7 @@ pub async fn upgrade(
         let session = match Session::authenticate(
             query.as_deref().unwrap_or(""),
             &*state.sessions,
-            state.auth_required,
+            state.auth_required.load(std::sync::atomic::Ordering::Relaxed),
         ) {
             Ok(s) => s,
             Err(reason) => {

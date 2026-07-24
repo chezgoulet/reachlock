@@ -40,6 +40,18 @@ sha2 = "0.10"
 hex = "0.4"
 # S28: DateTime types for subscription periods.
 chrono = { version = "0.4", features = ["serde"] }
+# S51: Argon2id password hashing (OWASP recommended).
+argon2 = "0.5"
+# S51: TOTP two-factor authentication.
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+# S51: AES-256-GCM for TOTP secret encryption at rest.
+aes-gcm = "0.10"
+# S51: SMTP email sending.
+lettre = { version = "0.11", features = ["rustls-tls", "tokio1-rustls-tls", "builder", "smtp-transport"], default-features = false }
+rand = "0.8"
+# S51: QR code generation for TOTP setup URIs.
+qrcode = "0.14"
+image = "0.25"
 
 [dev-dependencies]
 tokio-tungstenite = "0.26"

@@ -23,6 +23,19 @@ async fn main() {
         config.tick_interval_secs,
     ));
 
+    // S51: account deletion grace period cron — runs every hour.
+    let purge_state = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            drop(purge_state.auth_config.read().unwrap());
+            // Memory store: no batch purge — acceptable for dev.
+            // Production will use PgPlayerStore with real batch purge.
+        }
+    });
+
     let app = router(state);
     let listener = tokio::net::TcpListener::bind(&config.bind)
         .await

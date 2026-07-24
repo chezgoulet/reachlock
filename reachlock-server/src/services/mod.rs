@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod auth;
+pub mod email;
 pub mod billing;
 pub mod byok;
 pub mod contracts;
