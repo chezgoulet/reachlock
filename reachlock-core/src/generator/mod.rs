@@ -134,6 +134,12 @@ pub enum RoomKind {
     Armory,
     /// A holding cell with an isolation chamber.
     Brig,
+    // S45 ship-room-upgrades kinds. Appended so discriminants stay stable.
+    CargoHold,
+    Galley,
+    Workshop,
+    ScienceLab,
+    Engineering,
 }
 
 /// A door connecting two rooms (indices into the room list).

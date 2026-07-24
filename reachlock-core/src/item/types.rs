@@ -427,9 +427,14 @@ pub enum ItemFamily {
     Component,
     Implant,
     Cosmetic,
+    /// S45: a ship room upgrade widget (carries the upgrade kind as data).
+    RoomUpgrade(super::room_upgrade::RoomUpgradeKind),
 }
 
 impl ItemFamily {
+    /// Note: `RoomUpgrade` is a data variant and cannot be included in this
+    /// const array. Use `ALL` for unit variants only; iterate `RoomUpgrade`
+    /// kinds separately via `RoomUpgradeKind::ALL` if needed.
     pub const ALL: [ItemFamily; 18] = [
         ItemFamily::EnergyWeapon,
         ItemFamily::KineticWeapon,
@@ -451,26 +456,27 @@ impl ItemFamily {
         ItemFamily::Cosmetic,
     ];
 
-    pub fn token(self) -> &'static str {
+    pub fn token(self) -> String {
         match self {
-            ItemFamily::EnergyWeapon => "energy_weapon",
-            ItemFamily::KineticWeapon => "kinetic_weapon",
-            ItemFamily::MissileWeapon => "missile_weapon",
-            ItemFamily::MeleeWeapon => "melee_weapon",
-            ItemFamily::BoardingWeapon => "boarding_weapon",
-            ItemFamily::Armor => "armor",
-            ItemFamily::Shield => "shield",
-            ItemFamily::Engine => "engine",
-            ItemFamily::Sensor => "sensor",
-            ItemFamily::MiningTool => "mining_tool",
-            ItemFamily::RepairTool => "repair_tool",
-            ItemFamily::Cybernetic => "cybernetic",
-            ItemFamily::Augmentation => "augmentation",
-            ItemFamily::Spacesuit => "spacesuit",
-            ItemFamily::Consumable => "consumable",
-            ItemFamily::Component => "component",
-            ItemFamily::Implant => "implant",
-            ItemFamily::Cosmetic => "cosmetic",
+            ItemFamily::EnergyWeapon => "energy_weapon".into(),
+            ItemFamily::KineticWeapon => "kinetic_weapon".into(),
+            ItemFamily::MissileWeapon => "missile_weapon".into(),
+            ItemFamily::MeleeWeapon => "melee_weapon".into(),
+            ItemFamily::BoardingWeapon => "boarding_weapon".into(),
+            ItemFamily::Armor => "armor".into(),
+            ItemFamily::Shield => "shield".into(),
+            ItemFamily::Engine => "engine".into(),
+            ItemFamily::Sensor => "sensor".into(),
+            ItemFamily::MiningTool => "mining_tool".into(),
+            ItemFamily::RepairTool => "repair_tool".into(),
+            ItemFamily::Cybernetic => "cybernetic".into(),
+            ItemFamily::Augmentation => "augmentation".into(),
+            ItemFamily::Spacesuit => "spacesuit".into(),
+            ItemFamily::Consumable => "consumable".into(),
+            ItemFamily::Component => "component".into(),
+            ItemFamily::Implant => "implant".into(),
+            ItemFamily::Cosmetic => "cosmetic".into(),
+            ItemFamily::RoomUpgrade(kind) => format!("room_upgrade_{:?}", kind),
         }
     }
 
@@ -507,6 +513,7 @@ impl ItemFamily {
             ItemFamily::Component => ItemType::Component(ComponentKind::Hardpoint),
             ItemFamily::Implant => ItemType::Implant(ImplantKind::NeuralLace),
             ItemFamily::Cosmetic => ItemType::Cosmetic(CosmeticKind::Decal),
+            ItemFamily::RoomUpgrade(_) => ItemType::Component(ComponentKind::Hardpoint),
         }
     }
 }
@@ -536,6 +543,16 @@ pub enum StatKey {
     /// no-floats-in-gameplay-values rule (index, rule 2) wins: weight lives
     /// in the stat map instead.
     Weight,
+    // S45 ship room upgrade stat keys.
+    HealRate,
+    HealSpeed,
+    Power,
+    FoodProduction,
+    ScienceOutput,
+    CrewMorale,
+    ScanEfficiency,
+    Stealth,
+    CargoEfficiency,
 }
 
 /// Fixed-point item stats (1 unit = 1/1024, matching `util::rng::Fixed`).
