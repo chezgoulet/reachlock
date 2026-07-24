@@ -1,0 +1,27 @@
+//! Predecessor Vault Alpha — a 7-room dungeon with glyph puzzle,
+//! sentinel guardian, lore discovery, and a final choice.
+(
+    id: "predecessor_vault_alpha",
+    display_name: "Predecessor Vault Alpha",
+    asset_type: "dungeon",
+    seed: 0x4C495F5641554C54,
+    universe: "all",
+    priority: curated,
+    payload: Dungeon((
+        id: "predecessor_vault_alpha",
+        rooms: [
+            (id: "entrance", x: 0, y: 0, width: 5, height: 5, connectors: ["hall_of_echoes"], tags: ["entrance"]),
+            (id: "hall_of_echoes", x: 6, y: 0, width: 7, height: 7, connectors: ["entrance", "puzzle_chamber"], tags: ["atmosphere"]),
+            (id: "puzzle_chamber", x: 14, y: 0, width: 6, height: 6, connectors: ["hall_of_echoes", "guardian_chamber"], tags: ["puzzle"]),
+            (id: "guardian_chamber", x: 21, y: 0, width: 6, height: 6, connectors: ["puzzle_chamber", "archive"], tags: ["combat"]),
+            (id: "archive", x: 28, y: 0, width: 6, height: 6, connectors: ["guardian_chamber", "vault_core"], tags: ["lore"]),
+            (id: "vault_core", x: 35, y: 0, width: 7, height: 7, connectors: ["archive", "escape_route"], tags: ["treasure", "choice"]),
+            (id: "escape_route", x: 43, y: 0, width: 5, height: 5, connectors: ["vault_core"], tags: ["exit"]),
+        ],
+        puzzles: [
+            (room_id: "puzzle_chamber", puzzle_type: "glyph_sequence", parameters: ["pattern_a:triangle", "pattern_b:spiral", "pattern_c:circle"]),
+        ],
+        enemies: ["predecessor_sentinel"],
+        reward_tables: ["predecessor_artifact", "lore_fragment_builders_lament"],
+    )),
+)

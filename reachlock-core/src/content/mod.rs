@@ -20,6 +20,7 @@ pub mod dialogue;
 pub mod dungeon;
 pub mod envelope;
 pub mod event;
+pub mod faction_loader;
 pub mod priority;
 pub mod recipe;
 pub mod resolve;

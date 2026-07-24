@@ -1,0 +1,18 @@
+{
+  "id": "reach_remnant",
+  "name": "The Reach",
+  "doctrine": "expansionist",
+  "territory": [],
+  "resources": { "stock": {} },
+  "relationships": {
+    "corporate_charters": {
+      "affinity": -30,
+      "status_snapshot": "hostile"
+    }
+  },
+  "goals": [],
+  "internal_divisions": [],
+  "produces": [],
+  "color": [155, 89, 182, 255],
+  "tariff_policy": "none"
+}

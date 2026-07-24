@@ -1,0 +1,18 @@
+{
+  "id": "earth_remnant",
+  "name": "Earth's Remnant",
+  "doctrine": "diplomatic",
+  "territory": [],
+  "resources": { "stock": {} },
+  "relationships": {},
+  "goals": [],
+  "internal_divisions": [],
+  "produces": [],
+  "color": [243, 156, 18, 255],
+  "tariff_policy": {
+    "regulated": {
+      "foreign_mult": 1229,
+      "own_mult": 871
+    }
+  }
+}

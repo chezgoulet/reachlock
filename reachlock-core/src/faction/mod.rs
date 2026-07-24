@@ -17,10 +17,24 @@
 //! offline/online stay bit-identical. No floats in any persisted value.
 
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
 use crate::economy::{GoodCategory, TARIFF_ONE};
+
+static OVERRIDE_STORYLINES: OnceLock<Vec<Storyline>> = OnceLock::new();
+static OVERRIDE_FACTION_CATALOG: OnceLock<FactionCatalog> = OnceLock::new();
+
+/// Override the embedded faction catalog with one loaded from files at runtime.
+pub fn set_faction_catalog(catalog: FactionCatalog) {
+    let _ = OVERRIDE_FACTION_CATALOG.set(catalog);
+}
+
+/// Override the embedded storylines with ones loaded from files at runtime.
+pub fn set_storylines(stories: Vec<Storyline>) {
+    let _ = OVERRIDE_STORYLINES.set(stories);
+}
 
 /// String newtype for a faction id (e.g. `"compact"`). Opaque so a division id
 /// or arbitrary string can never be fed where a faction id is expected.
@@ -587,14 +601,18 @@ fn check_trigger_refs(
 /// content (only possible if the authored file diverges from the schema, which
 /// the CLI `ValidateFactions` command catches).
 pub fn load_faction_catalog() -> FactionCatalog {
-    ron::from_str(FACTION_CATALOG_RON).expect("embedded canon.ron")
+    OVERRIDE_FACTION_CATALOG.get().cloned().unwrap_or_else(|| {
+        ron::from_str(FACTION_CATALOG_RON).expect("embedded canon.ron")
+    })
 }
 
 const FACTION_CATALOG_RON: &str = include_str!("../../../mods/reachlock/factions/canon.ron");
 
 /// Load the canon storylines from the embedded RON.
 pub fn load_storylines() -> Vec<Storyline> {
-    ron::from_str(STORYLINES_RON).expect("embedded storylines.ron")
+    OVERRIDE_STORYLINES.get().cloned().unwrap_or_else(|| {
+        ron::from_str(STORYLINES_RON).expect("embedded storylines.ron")
+    })
 }
 const STORYLINES_RON: &str = include_str!("../../../mods/reachlock/storylines/compact_arc.ron");
 

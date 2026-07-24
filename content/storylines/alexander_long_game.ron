@@ -1,0 +1,37 @@
+[
+    (
+        faction: ("corporate_charters"),
+        chapters: [
+            (
+                id: "first_contact",
+                trigger: Some(tick_after(10)),
+                narration: "A mysterious figure named Alexander makes contact.",
+                events: [],
+            ),
+            (
+                id: "the_offer",
+                trigger: Some(chapter_complete("first_contact")),
+                narration: "Alexander offers a proposition.",
+                events: [],
+            ),
+            (
+                id: "conspiracy",
+                trigger: Some(chapter_complete("the_offer")),
+                narration: "The scope of the conspiracy becomes clear.",
+                events: [],
+            ),
+            (
+                id: "allegiance",
+                trigger: Some(chapter_complete("conspiracy")),
+                narration: "The captain must decide their allegiance.",
+                events: [],
+            ),
+            (
+                id: "unveiled",
+                trigger: Some(chapter_complete("allegiance")),
+                narration: "Alexander's true plan is revealed.",
+                events: [],
+            ),
+        ],
+    ),
+]

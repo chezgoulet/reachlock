@@ -22,6 +22,14 @@ async fn main() {
     let app_state = AppState::new(&config);
     let state = Arc::new(app_state);
 
+    // S60: load authored faction profiles and storylines from content directory.
+    if let Err(e) = reachlock_core::content::faction_loader::load_faction_profiles("content/factions") {
+        tracing::warn!("could not load faction profiles: {e}");
+    }
+    if let Err(e) = reachlock_core::content::faction_loader::load_storyline_files("content/storylines") {
+        tracing::warn!("could not load storylines: {e}");
+    }
+
     // Universe tick: separate task, talks to sessions via the broadcast
     // channel — never blocks the WebSocket handlers (adversarial finding #6).
     tokio::spawn(services::tick::run(
