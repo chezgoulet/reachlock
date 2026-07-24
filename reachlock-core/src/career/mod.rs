@@ -10,6 +10,8 @@
 //! are stored as `Fixed` (1/1024) here — floats would break the cross-platform
 //! determinism harness.
 
+pub mod piracy;
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
