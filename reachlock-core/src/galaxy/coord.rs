@@ -9,7 +9,7 @@ use crate::universe::tier::UniverseTier;
 /// the loop across the two public functions.
 fn coord_fnv1a(coord: &GalaxyCoord, universe: UniverseTier) -> u64 {
     let mut h = 0xCBF2_9CE4_8422_2325u64;
-    for v in [coord.x, coord.y, coord.z, universe as u8 as i64] {
+    for v in [coord.x, coord.y, coord.z, universe as i64] {
         for b in v.to_le_bytes() {
             h ^= b as u64;
             h = h.wrapping_mul(0x0000_0100_0000_01B3);

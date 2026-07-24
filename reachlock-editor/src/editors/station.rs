@@ -31,12 +31,16 @@ pub struct StationEditor {
 }
 
 fn blank_file() -> ContentFile {
-    let station = generate_station(42, StationKind::Trade, 1);
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(42);
+    let station = generate_station(seed, StationKind::Trade, 1);
     ContentFile {
         id: "new_station".into(),
         display_name: "New Station".into(),
         asset_type: AssetType::Station,
-        seed: 42,
+        seed,
         universe: "all".into(),
         priority: Priority::Curated,
         expires_at: None,
@@ -599,7 +603,7 @@ impl Editor for StationEditor {
         }
     }
 
-    fn save_all(&mut self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<bool, String> {
         use crate::app::content_root;
         let mut wrote = 0usize;
         for entry in &mut self.entries {
@@ -626,7 +630,7 @@ impl Editor for StationEditor {
         if wrote == 0 {
             return Err("no dirty entries to save".into());
         }
-        Ok(())
+        Ok(true)
     }
 
     fn selected_entry_name(&self) -> Option<String> {

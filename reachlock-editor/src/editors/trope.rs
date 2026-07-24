@@ -60,18 +60,18 @@ impl Editor for TropeEditor {
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
         crate::io::write_ron(path, &self.template).map_err(|e| format!("saving trope: {e}"))
     }
-    fn save_all(&mut self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<bool, String> {
         let path = self.path.clone().unwrap_or_else(|| {
             crate::app::content_root().join(ContentType::Trope.directory()).join("generated_trope.ron")
         });
         self.save(&path)?;
         self.path = Some(path);
         self.has_changes = false;
-        Ok(())
+        Ok(true)
     }
     fn generate_from_seed(&mut self, seed: u64) {
         self.template.id = format!("trope_{:#x}", seed);
-        self.template.title_template = format!("Trope {{}}");
+        self.template.title_template = "Trope {}".to_string();
         self.template.narrative_template = "You encounter an anomaly.".into();
         self.has_changes = true;
     }

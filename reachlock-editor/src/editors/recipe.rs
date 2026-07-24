@@ -66,14 +66,14 @@ impl Editor for RecipeEditor {
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
         crate::io::write_ron(path, &self.recipe).map_err(|e| format!("saving recipe: {e}"))
     }
-    fn save_all(&mut self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<bool, String> {
         let path = self.path.clone().unwrap_or_else(|| {
             crate::app::content_root().join(ContentType::Recipe.directory()).join("generated_recipe.ron")
         });
         self.save(&path)?;
         self.path = Some(path);
         self.has_changes = false;
-        Ok(())
+        Ok(true)
     }
     fn generate_from_seed(&mut self, seed: u64) {
         self.recipe.id = format!("recipe_{:#x}", seed);

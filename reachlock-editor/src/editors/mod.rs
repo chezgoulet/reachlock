@@ -11,11 +11,11 @@ pub mod event;
 pub mod faction;
 pub mod gate_network;
 pub mod planet_culture;
-// Reference implementation for `HullConfiguration` editing; superseded in the
-// registry by `hull_frame` (the authored-frame editor) but kept as the
-// pattern exemplar the handoff cites.
-#[allow(dead_code)]
-pub mod hull;
+// `hull` was a reference implementation for `HullConfiguration` editing,
+// superseded in the registry by `hull_frame`. Removed from mod.rs (not the
+// file system) because it added compile time for a module that was
+// `#[allow(dead_code)]` and not registered in any dispatch path. The file
+// remains on disk as a study reference.
 pub mod hull_frame;
 pub mod hull_mesh;
 pub mod item;

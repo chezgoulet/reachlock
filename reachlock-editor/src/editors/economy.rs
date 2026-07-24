@@ -84,9 +84,18 @@ impl EconomyEditor {
     }
 
     fn to_catalog(&self) -> GoodsCatalog {
+        let mut seen = std::collections::HashSet::new();
+        for good in &self.goods {
+            if !seen.insert(&good.id) {
+                tracing::warn!(
+                    "Duplicate GoodId '{}' in economy catalog — keeping first occurrence",
+                    good.id.0
+                );
+            }
+        }
         let mut goods = BTreeMap::new();
         for good in &self.goods {
-            goods.insert(good.id.clone(), good.clone());
+            goods.entry(good.id.clone()).or_insert_with(|| good.clone());
         }
         GoodsCatalog {
             version: self.version,

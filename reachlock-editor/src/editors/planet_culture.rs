@@ -131,7 +131,7 @@ impl Editor for PlanetCultureEditor {
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
         crate::io::write_ron(path, &self.culture).map_err(|e| format!("saving culture: {e}"))
     }
-    fn save_all(&mut self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<bool, String> {
         let path = self.path.clone().unwrap_or_else(|| {
             crate::app::content_root()
                 .join(ContentType::PlanetCulture.directory())
@@ -140,7 +140,7 @@ impl Editor for PlanetCultureEditor {
         self.save(&path)?;
         self.path = Some(path);
         self.has_changes = false;
-        Ok(())
+        Ok(true)
     }
     fn generate_from_seed(&mut self, seed: u64) {
         use std::collections::HashMap;

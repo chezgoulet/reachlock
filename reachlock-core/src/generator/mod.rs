@@ -93,7 +93,7 @@ pub struct GeneratedTexture {
 }
 
 /// Plain-data audio: mono PCM.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeneratedAudio {
     pub sample_rate: u32,
     pub samples: Vec<i16>,

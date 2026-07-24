@@ -1094,7 +1094,7 @@ impl Editor for SoulEditor {
         }
     }
 
-    fn save_all(&mut self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<bool, String> {
         use crate::app::content_root;
         let mut wrote = 0usize;
         for entry in &mut self.entries {
@@ -1123,7 +1123,7 @@ impl Editor for SoulEditor {
         if wrote == 0 {
             return Err("no dirty entries to save".into());
         }
-        Ok(())
+        Ok(true)
     }
 
     fn selected_entry_name(&self) -> Option<String> {

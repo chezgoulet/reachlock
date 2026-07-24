@@ -216,9 +216,9 @@ pub trait Editor {
     /// Takes `&mut self` so that newly-created entries (with no path yet)
     /// can record the path they were written to, avoiding duplicate files
     /// on the next save.
-    fn save_all(&mut self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<bool, String> {
         // Single-entry editors have no per-entry paths to fan out to.
-        Err("save_all is only meaningful for multi-entry editors".into())
+        Ok(false)
     }
 
     fn validate(&self) -> Vec<String>;

@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use hmac::{Hmac, Mac};
-use sha1::Sha1;
+use sha2::Sha256;
 
 use reachlock_core::network::VoiceSignalPayload;
 use reachlock_core::seed::types::SystemId;
@@ -95,7 +95,7 @@ impl VoiceRegistry {
             .unwrap_or_default()
             .as_secs();
         let username = format!("{ts}:{player_id}");
-        let mut mac = Hmac::<Sha1>::new_from_slice(secret.as_bytes()).expect("HMAC key");
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC key");
         mac.update(username.as_bytes());
         let password =
             base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());

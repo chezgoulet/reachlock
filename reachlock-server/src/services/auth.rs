@@ -5,7 +5,8 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::LazyLock;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use aes_gcm::aead::{Aead, KeyInit, AeadCore};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -20,6 +21,45 @@ use totp_rs::{Algorithm, Secret, TOTP};
 
 use base64::Engine;
 use rand::rngs::OsRng;
+use subtle::ConstantTimeEq;
+
+// ---------------------------------------------------------------------------
+// Rate limiter for auth endpoints (S63)
+// ---------------------------------------------------------------------------
+
+/// Simple sliding-window rate limiter for auth endpoints.
+pub struct AuthRateLimiter {
+    buckets: Mutex<HashMap<String, Vec<Instant>>>,
+    max_attempts: u32,
+    window_secs: u64,
+}
+
+impl AuthRateLimiter {
+    pub fn new(max_attempts: u32, window_secs: u64) -> Self {
+        AuthRateLimiter {
+            buckets: Mutex::new(HashMap::new()),
+            max_attempts,
+            window_secs,
+        }
+    }
+
+    pub fn is_limited(&self, key: &str) -> bool {
+        let now = Instant::now();
+        let cutoff = now - Duration::from_secs(self.window_secs);
+        let mut buckets = self.buckets.lock().unwrap();
+        let entries = buckets.entry(key.to_string()).or_default();
+        entries.retain(|&t| t > cutoff);
+        if entries.len() as u32 >= self.max_attempts {
+            return true;
+        }
+        entries.push(now);
+        false
+    }
+}
+
+static LOGIN_LIMITER: LazyLock<AuthRateLimiter> = LazyLock::new(|| AuthRateLimiter::new(5, 60));
+static REGISTER_LIMITER: LazyLock<AuthRateLimiter> = LazyLock::new(|| AuthRateLimiter::new(1, 3600));
+static FORGOT_PW_LIMITER: LazyLock<AuthRateLimiter> = LazyLock::new(|| AuthRateLimiter::new(1, 600));
 
 // ---------------------------------------------------------------------------
 // AuthConfig — runtime-editable settings
@@ -163,10 +203,10 @@ impl PlayerStore for MemoryPlayerStore {
         let mut players = self.players.lock().unwrap();
         let mut emails = self.by_email.lock().unwrap();
         if players.values().any(|p| p.username == username) {
-            return Err("username already taken".into());
+            return Err("username or email already taken by another player".into());
         }
         if !email.is_empty() && emails.contains_key(email) {
-            return Err("email already taken".into());
+            return Err("username or email already taken by another player".into());
         }
         let id_num = self.next_id.fetch_add(1, Ordering::Relaxed);
         let id = format!("p{id_num:x}");
@@ -411,6 +451,8 @@ impl TempTokenStore {
 
     pub fn consume(&self, token: &str) -> Option<String> {
         let mut tokens = self.tokens.lock().unwrap();
+        // Clean expired tokens while we hold the lock
+        tokens.retain(|_, entry| now_secs() <= entry.expires_at);
         let entry = tokens.remove(token)?;
         if now_secs() > entry.expires_at {
             return None;
@@ -461,12 +503,14 @@ pub fn generate_split_token() -> (String, String, String) {
     (full, selector, verifier_hash)
 }
 
-/// Verify a split token against its stored hash (constant-time via SHA-256).
+/// Verify a split token against its stored hash (constant-time).
 pub fn verify_split_token(full: &str, stored_hash: &str) -> bool {
     let (_selector, verifier) = full.split_once(':').unwrap_or(("", ""));
-    let computed = sha256_hex(verifier);
-    // constant-time comparison via sha2 — Hash::eq does constant-time
-    computed == stored_hash
+    let mut hasher = Sha256::new();
+    hasher.update(verifier.as_bytes());
+    let computed = hasher.finalize();
+    let stored = hex::decode(stored_hash).unwrap_or_default();
+    computed[..].ct_eq(&stored).unwrap_u8() == 1
 }
 
 // ---------------------------------------------------------------------------
@@ -883,8 +927,16 @@ pub fn resolve_player_id(
 
 pub async fn register(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
+    headers: axum::http::HeaderMap,
     axum::Json(body): axum::Json<RegisterRequest>,
 ) -> Result<axum::Json<RegisterResponse>, crate::ws::AppError> {
+    let client_ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown");
+    if REGISTER_LIMITER.is_limited(&format!("register:{}", client_ip)) {
+        return Err(app_err(429, "too many requests"));
+    }
     let cfg = state.auth_config.read().unwrap();
 
     // Validate input
@@ -918,9 +970,10 @@ pub async fn register(
     // Store in memory for now — in production this goes to email_verification_tokens table
     // via PgPlayerStore. For the memory store, we hold it alongside the player record
     // in a separate map. For simplicity in the in-memory path, we'll use a shared map.
-    state.verification_tokens.lock().unwrap().insert(full.clone(), record.id.clone());
+    state.verification_tokens.lock().unwrap().insert(full.clone(), (record.id.clone(), now_secs() + 24 * 3600));
+    let token_escaped = full; // hex tokens are HTML-safe
     let body_html = format!(
-        "<h2>Welcome to ReachLock!</h2><p>Verify your email: <a href='https://reachlock.example/auth/verify?token={full}'>click here</a></p><p>Your verification code: <code>{full}</code></p>"
+        "<h2>Welcome to ReachLock!</h2><p>Verify your email: <a href='https://reachlock.example/auth/verify?token={token_escaped}'>click here</a></p><p>Your verification code: <code>{token_escaped}</code></p>"
     );
     let _ = state.email.send(&body.email, "Verify your ReachLock account", &body_html);
 
@@ -943,8 +996,13 @@ pub async fn login(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
     axum::Json(body): axum::Json<LoginRequest>,
 ) -> Result<axum::Json<LoginResponse>, crate::ws::AppError> {
+    if LOGIN_LIMITER.is_limited(&body.login) {
+        return Err(app_err(429, "too many requests"));
+    }
     let cfg = state.auth_config.read().unwrap();
     let Some(record) = state.players.by_login(&body.login) else {
+        // Prevent timing enumeration: run dummy verify against a known hash
+        let _ = verify_password(&body.password, "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHlzYWx0Zm9yZHVtbXk$c2FsdHlzYWx0Zm9yZHVtbXlzYWx0");
         return Err(app_err(401, "invalid login credentials"));
     };
 
@@ -1042,8 +1100,13 @@ pub async fn verify_email(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
     axum::Json(body): axum::Json<VerifyEmailRequest>,
 ) -> Result<axum::Json<serde_json::Value>, crate::ws::AppError> {
-    let tokens = state.verification_tokens.lock().unwrap();
-    let player_id = tokens.get(&body.token).cloned().ok_or_else(|| app_err(400, "invalid or expired token"))?;
+    let mut tokens = state.verification_tokens.lock().unwrap();
+    let &(ref player_id, expires_at) = tokens.get(&body.token).ok_or_else(|| app_err(400, "invalid or expired token"))?;
+    if now_secs() > expires_at {
+        tokens.remove(&body.token);
+        return Err(app_err(400, "invalid or expired token"));
+    }
+    let player_id = player_id.clone();
     drop(tokens);
     state.players.set_verified(&player_id);
     state.verification_tokens.lock().unwrap().remove(&body.token);
@@ -1062,9 +1125,10 @@ pub async fn resend_verification(
     }
     let (full, _selector, _vhash) = generate_split_token();
     let email = record.email.as_deref().unwrap_or("unknown");
-    state.verification_tokens.lock().unwrap().insert(full.clone(), player_id);
+    state.verification_tokens.lock().unwrap().insert(full.clone(), (player_id, now_secs() + 24 * 3600));
+    let token_escaped = full; // hex tokens are HTML-safe
     let body_html = format!(
-        "<h2>ReachLock Email Verification</h2><p>Verify: <a href='https://reachlock.example/auth/verify?token={full}'>click here</a></p><p>Code: <code>{full}</code></p>"
+        "<h2>ReachLock Email Verification</h2><p>Verify: <a href='https://reachlock.example/auth/verify?token={token_escaped}'>click here</a></p><p>Code: <code>{token_escaped}</code></p>"
     );
     let _ = state.email.send(email, "Verify your ReachLock account", &body_html);
     Ok(axum::Json(serde_json::json!({"sent": true})))
@@ -1074,14 +1138,19 @@ pub async fn forgot_password(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
     axum::Json(body): axum::Json<ForgotPasswordRequest>,
 ) -> axum::Json<serde_json::Value> {
+    if FORGOT_PW_LIMITER.is_limited(&body.email) {
+        let always = "if an account with that email exists, a reset link has been sent";
+        return axum::Json(serde_json::json!({"message": always}));
+    }
     let always = "if an account with that email exists, a reset link has been sent";
     let Some(record) = state.players.by_email(&body.email) else {
         return axum::Json(serde_json::json!({"message": always}));
     };
     let (full, _selector, _vhash) = generate_split_token();
-    state.reset_tokens.lock().unwrap().insert(full.clone(), record.id.clone());
+    state.reset_tokens.lock().unwrap().insert(full.clone(), (record.id.clone(), now_secs() + 24 * 3600));
+    let token_escaped = full; // hex tokens are HTML-safe
     let body_html = format!(
-        "<h2>ReachLock Password Reset</h2><p><a href='https://reachlock.example/auth/reset?token={full}'>Reset password</a></p><p>Code: <code>{full}</code></p>"
+        "<h2>ReachLock Password Reset</h2><p><a href='https://reachlock.example/auth/reset?token={token_escaped}'>Reset password</a></p><p>Code: <code>{token_escaped}</code></p>"
     );
     let _ = state.email.send(&body.email, "Reset your ReachLock password", &body_html);
     axum::Json(serde_json::json!({"message": always}))
@@ -1096,7 +1165,10 @@ pub async fn reset_password(
         return Err(app_err(400, &format!("password must be at least {} characters", cfg.min_password_length)));
     }
     let mut tokens = state.reset_tokens.lock().unwrap();
-    let player_id = tokens.remove(&body.token).ok_or_else(|| app_err(400, "invalid or expired token"))?;
+    let (player_id, expires_at) = tokens.remove(&body.token).ok_or_else(|| app_err(400, "invalid or expired token"))?;
+    if now_secs() > expires_at {
+        return Err(app_err(400, "invalid or expired token"));
+    }
     drop(tokens);
     let hash = hash_password(&body.new_password, &cfg).map_err(|e| app_err(500, &e))?;
     state.players.update_hash(&player_id, &hash);

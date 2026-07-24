@@ -265,7 +265,7 @@ impl FactionCatalog {
     /// relationship is reciprocated with the same status (symmetry gotcha).
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = std::collections::BTreeSet::new();
         for f in &self.factions {
             if !seen.insert(&f.id) {
                 errors.push(format!(
@@ -527,7 +527,7 @@ pub fn validate_storylines(stories: &[Storyline]) -> Vec<String> {
     let mut errors = Vec::new();
     let default_catalog = load_faction_catalog();
     for (si, story) in stories.iter().enumerate() {
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = std::collections::BTreeSet::new();
         for (ci, ch) in story.chapters.iter().enumerate() {
             if !seen.insert(&ch.id) {
                 errors.push(format!(
@@ -606,7 +606,10 @@ pub fn load_faction_catalog() -> FactionCatalog {
     })
 }
 
-const FACTION_CATALOG_RON: &str = include_str!("../../../mods/reachlock/factions/canon.ron");
+const FACTION_CATALOG_RON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../mods/reachlock/factions/canon.ron"
+));
 
 /// Load the canon storylines from the embedded RON.
 pub fn load_storylines() -> Vec<Storyline> {
@@ -614,7 +617,10 @@ pub fn load_storylines() -> Vec<Storyline> {
         ron::from_str(STORYLINES_RON).expect("embedded storylines.ron")
     })
 }
-const STORYLINES_RON: &str = include_str!("../../../mods/reachlock/storylines/compact_arc.ron");
+const STORYLINES_RON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../mods/reachlock/storylines/compact_arc.ron"
+));
 
 // ───────────────────────────── Tick (spec §21) ─────────────────────────
 

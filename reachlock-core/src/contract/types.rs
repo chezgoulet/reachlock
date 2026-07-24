@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// A contract: player-authored automation for a ship system or crew member.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Contract {
     pub id: String,
     pub label: String,
@@ -32,6 +33,7 @@ pub enum Trigger {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rule {
     pub condition: Condition,
     pub action: Action,
@@ -43,7 +45,7 @@ pub struct Rule {
 /// Boolean expression over game state. All values are fixed-point integers
 /// (spec §5) — floats never enter contract evaluation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
 pub enum Condition {
     /// Always true — the conventional default/fallback rule.
     Always,
@@ -87,6 +89,7 @@ impl Comparison {
 /// What a rule does when it fires. `kind` is the verb the game interprets
 /// ("wake_crew", "maintain_course"); params are fixed-point.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Action {
     pub kind: String,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
@@ -105,6 +108,7 @@ impl Action {
 /// LLM fallback authority: fires only when no rule matches (spec §6 pillar —
 /// "LLM at the edge, not the center").
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LlmConfig {
     pub fallback_on_timeout: bool,
     pub timeout_ms: u32,

@@ -43,6 +43,7 @@ impl ScriptedEncounterEditor {
 }
 
 impl Editor for ScriptedEncounterEditor {
+    #[allow(clippy::misnamed_getters)]
     fn title(&self) -> &str { &self.encounter.id }
     fn content_type(&self) -> ContentType { ContentType::ScriptedEncounter }
     fn has_unsaved_changes(&self) -> bool { self.has_changes }
@@ -56,14 +57,14 @@ impl Editor for ScriptedEncounterEditor {
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
         crate::io::write_ron(path, &self.encounter).map_err(|e| format!("saving encounter: {e}"))
     }
-    fn save_all(&mut self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<bool, String> {
         let path = self.path.clone().unwrap_or_else(|| {
             crate::app::content_root().join(ContentType::ScriptedEncounter.directory()).join("generated_encounter.ron")
         });
         self.save(&path)?;
         self.path = Some(path);
         self.has_changes = false;
-        Ok(())
+        Ok(true)
     }
     fn generate_from_seed(&mut self, seed: u64) {
         self.encounter.id = format!("encounter_{:#x}", seed);

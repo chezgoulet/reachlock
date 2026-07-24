@@ -278,16 +278,16 @@ impl EditorApp {
             return false;
         };
         // Multi-entry editors (souls, systems, enemies, …) persist each dirty
-        // entry to its own path via `save_all`. Single-entry editors return an
-        // error from `save_all` and fall through to path-based save below.
+        // entry to its own path via `save_all`. Single-entry editors return
+        // Ok(false) from save_all and fall through to path-based save below.
         match open.editor.save_all() {
-            Ok(()) => {
+            Ok(true) => {
                 open.editor.mark_saved();
                 self.browser.invalidate();
                 self.status_text = "Saved".into();
                 true
             }
-            Err(_) => {
+            Ok(false) => {
                 let Some(path) = open.path.clone() else {
                     return self.save_editor_as(idx);
                 };
@@ -304,6 +304,11 @@ impl EditorApp {
                     }
                 }
             }
+            Err(e) => {
+                tracing::error!("save_all failed: {e}");
+                self.status_text = format!("Save error: {e}");
+                false
+            }
         }
     }
 
@@ -315,11 +320,19 @@ impl EditorApp {
         };
         // Multi-entry editors save each dirty entry to its own path; the Save
         // As dialog is meaningless for them, so just persist the dirty set.
-        if open.editor.save_all().is_ok() {
-            open.editor.mark_saved();
-            self.browser.invalidate();
-            self.status_text = "Saved".into();
-            return true;
+        match open.editor.save_all() {
+            Ok(true) => {
+                open.editor.mark_saved();
+                self.browser.invalidate();
+                self.status_text = "Saved".into();
+                return true;
+            }
+            Ok(false) => {} // Single-entry editor — show Save As dialog.
+            Err(e) => {
+                tracing::error!("save_all failed: {e}");
+                self.status_text = format!("Save error: {e}");
+                return false;
+            }
         }
         let ct = open.editor.content_type();
         let default_dir = self.browser.root.join(ct.directory());
@@ -395,6 +408,10 @@ impl EditorApp {
             return;
         }
         self.open_editors.remove(idx);
+        // After removing tab at `idx`, fix `active_tab`:
+        // Case 1: active_tab > idx — shift down by 1
+        // Case 2: active_tab >= new len — tab was removed or was the last tab
+        // Case 3: active_tab < idx — unchanged
         self.active_tab = if self.open_editors.is_empty() {
             None
         } else {
@@ -545,11 +562,11 @@ impl EditorApp {
             // Multi-entry editors persist each dirty entry to its own path;
             // fall back to the tab path for single-entry editors.
             let saved_ok = match open.editor.save_all() {
-                Ok(()) => {
+                Ok(true) => {
                     open.editor.mark_saved();
                     true
                 }
-                Err(_) => {
+                Ok(false) => {
                     let Some(path) = &open.path else {
                         continue; // Never Save-As from a timer.
                     };
@@ -560,6 +577,9 @@ impl EditorApp {
                         }
                         Err(_) => false,
                     }
+                }
+                Err(_) => {
+                    false
                 }
             };
             if saved_ok {

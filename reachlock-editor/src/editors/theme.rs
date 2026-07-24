@@ -54,14 +54,14 @@ impl Editor for ThemeEditor {
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
         crate::io::write_ron(path, &self.theme).map_err(|e| format!("saving theme: {e}"))
     }
-    fn save_all(&mut self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<bool, String> {
         let path = self.path.clone().unwrap_or_else(|| {
             crate::app::content_root().join(ContentType::Theme.directory()).join("generated_theme.ron")
         });
         self.save(&path)?;
         self.path = Some(path);
         self.has_changes = false;
-        Ok(())
+        Ok(true)
     }
     fn generate_from_seed(&mut self, seed: u64) {
         let intent = reachlock_core::generator::generate_music_intent(seed, reachlock_core::generator::music::Mood::Calm, 8);

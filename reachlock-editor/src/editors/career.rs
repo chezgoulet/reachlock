@@ -72,7 +72,7 @@ impl Editor for CareerEditor {
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
         crate::io::write_ron(path, &self.career).map_err(|e| format!("saving career: {e}"))
     }
-    fn save_all(&mut self) -> Result<(), String> {
+    fn save_all(&mut self) -> Result<bool, String> {
         let path = self.path.clone().unwrap_or_else(|| {
             crate::app::content_root()
                 .join(ContentType::Career.directory())
@@ -81,7 +81,7 @@ impl Editor for CareerEditor {
         self.save(&path)?;
         self.path = Some(path);
         self.has_changes = false;
-        Ok(())
+        Ok(true)
     }
     fn generate_from_seed(&mut self, seed: u64) {
         self.career.id = format!("gen_career_{:#x}", seed);

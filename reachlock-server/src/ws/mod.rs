@@ -146,8 +146,8 @@ pub struct AppState {
     pub players: Box<dyn PlayerStore>,
     pub email: Box<dyn EmailBackend>,
     pub auth_config: std::sync::Arc<std::sync::RwLock<crate::services::auth::AuthConfig>>,
-    pub verification_tokens: std::sync::Arc<Mutex<HashMap<String, String>>>,
-    pub reset_tokens: std::sync::Arc<Mutex<HashMap<String, String>>>,
+    pub verification_tokens: std::sync::Arc<Mutex<HashMap<String, (String, i64)>>>,
+    pub reset_tokens: std::sync::Arc<Mutex<HashMap<String, (String, i64)>>>,
     pub temp_tokens: TempTokenStore,
     pub totp_secrets: std::sync::Arc<Mutex<HashMap<String, String>>>,
     pub totp_recovery_codes: std::sync::Arc<Mutex<Vec<(String, String)>>>,
@@ -179,7 +179,7 @@ impl AppState {
         cfg_if::cfg_if! {
             if #[cfg(feature = "postgres")] {
                 if let Some(url) = &config.db_url {
-                    return Self::new_pg(url, events, email, cfg);
+                    return Self::new_pg(url, events, email, cfg, config.auth_required);
                 }
             }
         }
@@ -247,6 +247,7 @@ impl AppState {
         events: broadcast::Sender<ServerMessage>,
         email: Box<dyn EmailBackend>,
         cfg: crate::services::auth::AuthConfig,
+        auth_required: bool,
     ) -> Self {
         use crate::services::seed::pg::PgSeedStore;
         use crate::services::auth::pg::{PgPlayerStore, PgSessionStore};
@@ -279,7 +280,7 @@ impl AppState {
             audit: Box::new(MemoryAuditLog::default()),
             prometheus: crate::observability::init_prometheus(),
             health: std::sync::Arc::new(HealthAggregator::default()),
-            auth_required: std::sync::atomic::AtomicBool::new(false),
+            auth_required: std::sync::atomic::AtomicBool::new(auth_required),
             connected: AtomicUsize::new(0),
             voice: VoiceRegistry::default(),
             billing: Box::new(MemorySubscriptionStore::default()),
@@ -466,13 +467,19 @@ async fn content_system(
 /// a mock content_override_id. Real persistence will replace the mock when
 /// the PgContentStore is wired.
 async fn content_publish_handler(
+    state: axum::extract::State<std::sync::Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(content): Json<ContentFile>,
-) -> Json<serde_json::Value> {
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    // Require auth
+    if resolve_bearer_token(&headers, &state).is_none() {
+        return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "unauthorized"}))));
+    }
     tracing::info!("content published: {}", content.id);
-    Json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "content_override_id": format!("mock-{}", content.id),
         "published": true,
-    }))
+    })))
 }
 
 /// `POST /auth/dev { username, universe? }` — dev-only token issuance.
@@ -488,9 +495,10 @@ async fn auth_dev(
 
 async fn register_handler(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<crate::services::auth::RegisterRequest>,
 ) -> Result<Json<crate::services::auth::RegisterResponse>, AppError> {
-    crate::services::auth::register(State(state), Json(body)).await
+    crate::services::auth::register(State(state), headers, Json(body)).await
 }
 
 async fn login_handler(

@@ -45,7 +45,6 @@ pub trait PriceSource {
 }
 
 /// A trade good's static reference data (authored).
-/// A trade good's static reference data (authored).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Good {
     /// Stable id, e.g. `"water"`. Also the map key in [`GoodsCatalog`].

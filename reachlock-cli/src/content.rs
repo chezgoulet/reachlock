@@ -404,7 +404,7 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                 Ok(())
             } else {
                 let status = response.status();
-                let text = response.text().unwrap_or_default();
+                let text = response.text().unwrap_or_else(|e| format!("(response body unavailable: {e})"));
                 Err(format!("failed (HTTP {status}): {text}"))
             }
         }

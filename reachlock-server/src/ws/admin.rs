@@ -8,6 +8,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use subtle::ConstantTimeEq;
 
 use super::AppState;
 
@@ -59,7 +60,7 @@ fn verify_admin(headers: &axum::http::HeaderMap) -> Result<&'static str, StatusC
         .ok_or(StatusCode::UNAUTHORIZED)?;
     let provided_hash = sha256::digest(header.as_bytes());
     let expected_hash = sha256::digest(expected.as_bytes());
-    if provided_hash != expected_hash {
+    if provided_hash.as_bytes().ct_eq(expected_hash.as_bytes()).unwrap_u8() != 1 {
         return Err(StatusCode::UNAUTHORIZED);
     }
     Ok("authorized")

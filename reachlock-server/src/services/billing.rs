@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use subtle::ConstantTimeEq;
 
 use reachlock_core::universe::tier::UniverseTier;
 
@@ -251,7 +252,7 @@ pub fn verify_offline_token(token: &EntitlementToken) -> Result<TierEntitlement,
     }
     let expected = sign_entitlement(&token.player_id, &token.tier, &token.expires)
         .map_err(|e| e.to_string())?;
-    if token.signature != expected {
+    if token.signature.as_bytes().ct_eq(expected.as_bytes()).unwrap_u8() != 1 {
         return Err("invalid_signature".into());
     }
     Ok(TierEntitlement::Granted {
@@ -296,7 +297,7 @@ pub fn verify_stripe_webhook(
     mac.update(signed_payload.as_bytes());
     let expected = hex::encode(mac.finalize().into_bytes());
 
-    if expected != sig {
+    if expected.as_bytes().ct_eq(sig.as_bytes()).unwrap_u8() != 1 {
         return Err("invalid_stripe_signature");
     }
 
