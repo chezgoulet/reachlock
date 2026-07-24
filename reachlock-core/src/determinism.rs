@@ -818,6 +818,200 @@ pub fn manifest() -> Manifest {
         });
     }
 
+    // S52 — generator golden entries for S25, S37, S38, S41, S49 modules
+    // that had generation code but no determinism manifest entries.
+
+    // S25 — soul (seed + species → NPC personality).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "soul".into(),
+            seed,
+            checksum: hash_serde(&generator::generate_soul(seed, "Human")),
+        });
+    }
+
+    // S25 — storyline (seed + chapter count → episodic narrative).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "storyline".into(),
+            seed,
+            checksum: hash_serde(&generator::generate_storyline(seed, 5)),
+        });
+    }
+
+    // S25 — enemy (seed + class → stats).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "enemy".into(),
+            seed,
+            checksum: hash_serde(&generator::generate_enemy(seed, "drone")),
+        });
+    }
+
+    // S25 — location (seed + size → name/counts).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "location".into(),
+            seed,
+            checksum: hash_serde(&generator::generate_location(seed, "medium")),
+        });
+    }
+
+    // S25 — contract (seed + kind → contract data).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "contract".into(),
+            seed,
+            checksum: hash_serde(&generator::generate_contract(seed, "bounty")),
+        });
+    }
+
+    // S41 — scripted encounter (encounter + game state → evaluation).
+    for &seed in &CANONICAL_SEEDS {
+        use crate::generator::scripted_encounter::{
+            EncounterChoice, EncounterScene, EncounterTrigger, ScriptedEncounter,
+            ScriptedEncounterType,
+        };
+        let encounter = ScriptedEncounter {
+            id: "golden_test".into(),
+            title: "Golden Test".into(),
+            encounter_type: ScriptedEncounterType::StoryBeat,
+            trigger: EncounterTrigger::Manual,
+            prerequisites: vec![],
+            scenes: vec![EncounterScene {
+                scene_id: "opening".into(),
+                narrative: "A {ship} appears.".into(),
+                speaker: Some("AI".into()),
+                choices: vec![EncounterChoice {
+                    label: "Approach".into(),
+                    condition: None,
+                    outcome_scene: "opening".into(),
+                    immediate_consequences: vec![],
+                    narrative_response: "You move closer.".into(),
+                }],
+                time_pressure: None,
+            }],
+            on_complete: vec![],
+            repeatable: false,
+            cooldown_ticks: None,
+        };
+        let mut gs = std::collections::BTreeMap::new();
+        gs.insert("ship".into(), "Grief".into());
+        entries.push(Entry {
+            generator: "scripted_encounter".into(),
+            seed,
+            checksum: hash_serde(
+                &generator::scripted_encounter::evaluate_scripted_encounter(&encounter, &gs),
+            ),
+        });
+    }
+
+    // S49 — procedural SFX (seed + kind → PCM i16 buffer).
+    for &seed in &CANONICAL_SEEDS {
+        for (kind, label) in &[
+            (generator::SfxKind::UiConfirm, "sfx_ui_confirm"),
+            (generator::SfxKind::Alarm, "sfx_alarm"),
+            (generator::SfxKind::WeaponFire, "sfx_weapon_fire"),
+        ] {
+            let audio = generator::generate_sfx(seed, *kind);
+            let mut h = Hasher::new();
+            for s in &audio.samples {
+                h.write(&s.to_le_bytes());
+            }
+            entries.push(Entry {
+                generator: (*label).into(),
+                seed,
+                checksum: h.finish(),
+            });
+        }
+    }
+
+    // S37 — log entry template narrative (deterministic offline fallback).
+    for &seed in &CANONICAL_SEEDS {
+        use crate::agency::log::{LogMoment, LogMomentType, LoggableEvent};
+        let events = vec![
+            LoggableEvent {
+                tick: seed,
+                kind: "deliberation".into(),
+                crew_involved: vec!["boris".into(), "tove".into()],
+                summary: "Crew debated repair priorities.".into(),
+            },
+            LoggableEvent {
+                tick: seed + 1,
+                kind: "dilemma".into(),
+                crew_involved: vec!["boris".into()],
+                summary: "Dilemma resolved: saved crew.".into(),
+            },
+        ];
+        let moments = vec![
+            LogMoment {
+                tick: seed,
+                moment_type: LogMomentType::CrewDeliberation,
+                summary: "Crew debated repair priorities.".into(),
+                significance: 7,
+            },
+            LogMoment {
+                tick: seed + 1,
+                moment_type: LogMomentType::DilemmaResolved,
+                summary: "Dilemma resolved: saved crew.".into(),
+                significance: 8,
+            },
+        ];
+        entries.push(Entry {
+            generator: "log_entry".into(),
+            seed,
+            checksum: hash_serde(
+                &crate::agency::log_generation::template_narrative(&events, &moments),
+            ),
+        });
+    }
+
+    // S38 — deliberation theater (multi-crew deliberation state machine).
+    for &seed in &CANONICAL_SEEDS {
+        use crate::contract::theater::{DeliberationTheater, TheaterSpeaker, TheaterTrigger};
+        let mut theater = DeliberationTheater::new(
+            "repair_priority".into(),
+            TheaterTrigger::PlayerCalled {
+                reason: "needs discussion".into(),
+            },
+            vec![
+                TheaterSpeaker {
+                    crew_id: "boris".into(),
+                    role: "Engineer".into(),
+                    relationship_to_topic: "hull integrity is my responsibility".into(),
+                    speaking_order: 1,
+                    spoke: false,
+                    position: None,
+                },
+                TheaterSpeaker {
+                    crew_id: "tove".into(),
+                    role: "Medic".into(),
+                    relationship_to_topic: "crew safety comes first".into(),
+                    speaking_order: 2,
+                    spoke: false,
+                    position: None,
+                },
+                TheaterSpeaker {
+                    crew_id: "prudence".into(),
+                    role: "Pilot".into(),
+                    relationship_to_topic: "we need to be flight-ready".into(),
+                    speaking_order: 3,
+                    spoke: false,
+                    position: None,
+                },
+            ],
+            true,
+        );
+        for _ in 0..3 {
+            let _ = theater.step();
+        }
+        entries.push(Entry {
+            generator: "theater".into(),
+            seed,
+            checksum: hash_serde(&theater),
+        });
+    }
+
     Manifest {
         // v3: added S06 hull_interior (ship interior layout) generator.
         // v4: added S10 economy engine golden entries.
@@ -838,7 +1032,20 @@ pub fn manifest() -> Manifest {
         //      (planet_extended wraps S04's GeneratedPlanet; culture).
         // v15: added S40 trope engine template instantiation golden entries.
         // v16: added S46 mission engine golden entries.
-        version: 16,
+        // v17: added S25 soul generator golden entries.
+        // v18: skipped S09 transit (gameplay rolls — S09 gotcha ledger).
+        // v19: added S41 scripted encounter evaluation golden entries.
+        // v20: added S25 storyline chapter generator golden entries.
+        // v21: added S25 enemy archetype generator golden entries.
+        // v22: skipped ship (authored deck plan — not a seeded generator).
+        // v23: added S25 location generator golden entries.
+        // v24: added S49 procedural SFX generator golden entries (3 kinds).
+        // v25: added S25 contract generator golden entries.
+        // v26: skipped career (authored content — no seeded generation func).
+        // v27: skipped piracy (state machine — no seeded generation func).
+        // v28: added S37 log entry template narrative golden entries.
+        // v29: added S38 deliberation theater golden entries.
+        version: 29,
         entries,
     }
 }
