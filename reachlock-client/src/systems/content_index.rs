@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use reachlock_core::content::ContentFile;
 use reachlock_core::galaxy::{ChartedSystem, GateNetwork};
+use reachlock_core::generator::music::Theme;
 use reachlock_core::mod_manifest::{resolve_load_order, ModManifest};
 
 /// The local override index (spec §10, "Loader reads `mods/` from disk
@@ -29,6 +30,9 @@ pub struct ContentIndex {
     pub charted_systems: HashMap<String, ChartedSystem>,
     /// S21: the authored gate network (single file: `core_region.ron`).
     pub gate_network: Option<GateNetwork>,
+    /// S48: authored music themes, keyed by `Theme::id`.
+    #[allow(dead_code)]
+    pub themes: HashMap<String, Theme>,
 }
 
 impl ContentIndex {
@@ -138,6 +142,7 @@ pub fn load_content_index(mut commands: Commands) {
         HashMap::new();
     let mut charted_systems: HashMap<String, ChartedSystem> = HashMap::new();
     let mut gate_network: Option<GateNetwork> = None;
+    let mut themes: HashMap<String, Theme> = HashMap::new();
 
     for mod_id in &load_order {
         let mod_dir = root.join(mod_id);
@@ -163,6 +168,12 @@ pub fn load_content_index(mut commands: Commands) {
         if let Some((_, gn)) = gn_map.into_iter().next() {
             gate_network = Some(gn);
         }
+        // S48: authored music themes.
+        load_typed_into(
+            &mod_dir.join("themes"),
+            &mut themes,
+            |t: &Theme| t.id.clone(),
+        );
     }
 
     // Phase 4: walk for ContentFile envelopes (skip typed dirs and manifest).
@@ -170,12 +181,13 @@ pub fn load_content_index(mut commands: Commands) {
     walk(root, &mut files);
 
     info!(
-        "content index: {} mod(s), {} file(s), {} archetype(s), {} location(s), {} system(s)",
+        "content index: {} mod(s), {} file(s), {} archetype(s), {} location(s), {} system(s), {} theme(s)",
         manifests.len(),
         files.len(),
         hostile_archetypes.len(),
         hostile_locations.len(),
         charted_systems.len(),
+        themes.len(),
     );
     commands.insert_resource(ContentIndex {
         files,
@@ -185,6 +197,7 @@ pub fn load_content_index(mut commands: Commands) {
         hostile_locations,
         charted_systems,
         gate_network,
+        themes,
     });
 }
 
@@ -246,6 +259,7 @@ fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
                 "locations",
                 "systems",
                 "gate_network",
+                "themes",
             ];
             if path
                 .file_name()
