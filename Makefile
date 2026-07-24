@@ -35,6 +35,11 @@ run-debug:
 server:
 	cargo run -p reachlock-server
 
+# Start Postgres via docker-compose (S03 infrastructure).
+db:
+	docker compose up -d postgres
+	@echo "Postgres ready on 127.0.0.1:5432 (user/pass: reachlock)"
+
 .PHONY: web web-serve wasm-bindgen-cli
 
 # Local determinism self-check (CI does the real cross-target compare).

@@ -36,7 +36,7 @@ use crate::bridge;
 use crate::states::{CurrentLocation, GameMode, ModeScope, SceneRegistry};
 use crate::systems::content_index::ContentIndex;
 use crate::systems::docking::Dockable;
-use crate::systems::career::CareerResource;
+use crate::systems::career::{CareerResource, PiracyResource};
 use crate::systems::culture_view::CultureResource;
 use crate::systems::discovery::EcosystemResource;
 use crate::systems::sensors::{Contact, KnownContacts};
@@ -241,6 +241,10 @@ pub fn enter_spaceflight(
     use reachlock_core::career::PlayerCareer;
     let pc = PlayerCareer::new(&format!("p-{:#x}", seed));
     commands.insert_resource(CareerResource(Some(pc)));
+
+    // S43: initialize piracy state.
+    use reachlock_core::career::piracy::PiracyState;
+    commands.insert_resource(PiracyResource(Some(PiracyState::default())));
 
     // S46: generate missions for this system.
     use reachlock_core::generator::mission::{generate_missions, MissionGenerationContext};

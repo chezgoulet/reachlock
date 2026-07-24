@@ -21,7 +21,7 @@ use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     combat, comms, content_index, contract, contract_crafting, contract_library, crew, crisis,
     career, cryojump, culture_view, dialogue, discovery, docking, factions, galaxy_map, hud, interaction, interior, inventory, jump,
-    landed_combat, market, menu, mode, music, network, onboard, pause, presence, reticle, sensors,
+    landed_combat,     market, menu, mission_board, mode, music, network, onboard, pause, presence, reticle, sensors,
     settings_ui, setup, sfx, ship, shipeditor, soul, story_submission, ticker, voice,
 };
 
@@ -149,10 +149,12 @@ fn main() {
         .init_resource::<discovery::EcosystemResource>()
         .init_resource::<career::CareerPanelVisible>()
         .init_resource::<career::CareerResource>()
+        .init_resource::<career::PiracyResource>()
         // S09: live jump/transit bookkeeping + sensors.
         .init_resource::<jump::TransitState>()
         .init_resource::<jump::FtlRoute>()
         .init_resource::<jump::MissionBoardResource>()
+        .init_resource::<mission_board::MissionBoardVisible>()
         .init_resource::<sensors::MapOverlayState>()
         // S09b: cross-mode command bus — OnBoard consoles (gunner/scanner/
         // miner/power) write it, the flight systems read it (spec §22).
@@ -212,6 +214,7 @@ fn main() {
                 )
                     .chain(),
                 menu::spawn_menu,
+                mission_board::spawn_mission_board,
                 contract_crafting::spawn_workshop_panel,
                 music::setup_music,
                 sfx::setup_sfx,
@@ -536,6 +539,7 @@ fn main() {
                 culture_view::culture_panel_toggle.run_if(in_state(AppState::InGame)),
                 discovery::discovery_panel_toggle.run_if(in_state(AppState::InGame)),
                 career::career_panel_toggle.run_if(in_state(AppState::InGame)),
+                mission_board::mission_board_toggle.run_if(in_state(AppState::InGame)),
             ),
         )
         .add_systems(
@@ -598,6 +602,7 @@ fn main() {
                 culture_view::render_culture_panel,
                 discovery::render_discovery_panel,
                 career::render_career_panel,
+                mission_board::render_mission_board,
             )
                 .run_if(in_state(AppState::InGame)),
         )
