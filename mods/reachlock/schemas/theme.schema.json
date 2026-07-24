@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Music Theme",
+  "description": "An authored music theme for the procedural audio engine",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "notes", "scale", "bpm_range", "allowed_variations"],
+  "properties": {
+    "id": { "type": "string" },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["degree", "octave", "velocity", "start_tick", "duration_ticks"],
+        "properties": {
+          "degree": { "type": "integer", "minimum": 0, "maximum": 12 },
+          "octave": { "type": "integer", "minimum": 0, "maximum": 8 },
+          "velocity": { "type": "integer", "minimum": 0, "maximum": 127 },
+          "start_tick": { "type": "integer", "minimum": 0 },
+          "duration_ticks": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "scale": { "type": "string", "enum": ["minor_pentatonic", "major_pentatonic", "dorian", "octatonic"] },
+    "bpm_range": {
+      "type": "array",
+      "items": { "type": "integer" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "allowed_variations": { "type": "integer", "minimum": 0, "maximum": 65535 }
+  }
+}
