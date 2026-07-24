@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Crafting Recipe Content File",
+  "description": "An authored crafting recipe with inputs, output, and skill requirements (S55)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "asset_type", "seed", "universe", "priority", "payload"],
+  "properties": {
+    "id": { "type": "string" },
+    "display_name": { "type": "string" },
+    "asset_type": { "type": "string", "enum": ["recipe"] },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "universe": { "type": "string" },
+    "priority": { "type": "string", "enum": ["procedural", "curated", "event", "authoritative"] },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputs", "output"],
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": ["weapon", "armor", "consumable", "component", "cybernetic", "ship_part", "misc"]
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item_id", "quantity"],
+            "properties": {
+              "item_id": { "type": "string" },
+              "quantity": { "type": "integer", "minimum": 1 },
+              "optional": { "type": "boolean" }
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["item_id", "quantity"],
+          "properties": {
+            "item_id": { "type": "string" },
+            "quantity": { "type": "integer", "minimum": 1 },
+            "quality_min": { "type": "integer", "minimum": 0, "maximum": 10 },
+            "quality_max": { "type": "integer", "minimum": 0, "maximum": 10 },
+            "durability": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "skill_requirement": {
+          "type": "object",
+          "properties": {
+            "skill": {
+              "type": "string",
+              "enum": ["engineering", "chemistry", "biology", "programming", "weaponsmithing", "none"]
+            },
+            "minimum_level": { "type": "integer", "minimum": 0, "maximum": 100 }
+          }
+        },
+        "workbench_type": {
+          "type": "string",
+          "enum": ["ship_workshop", "station_fabricator", "med_bay", "computer_terminal", "cargo_bay_converted"]
+        },
+        "duration_ticks": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

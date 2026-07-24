@@ -30,6 +30,19 @@ const CAREER_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/career_path.schema.json");
 const THEME_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/theme.schema.json");
+const TROPE_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/trope.schema.json");
+const SCRIPTED_ENCOUNTER_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/scripted_encounter.schema.json");
+#[allow(dead_code)]
+const DUNGEON_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/dungeon.schema.json");
+#[allow(dead_code)]
+const EVENT_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/event.schema.json");
+#[allow(dead_code)]
+const RECIPE_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/recipe.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -336,8 +349,8 @@ fn validate_schema(
         AssetType::RoomTemplates => ROOM_TEMPLATE_SCHEMA,
         AssetType::PlanetCulture => PLANT_CULTURE_SCHEMA,
         AssetType::Theme => THEME_SCHEMA,
-        AssetType::Trope => ECOSYSTEM_SCHEMA,  // placeholder — needs dedicated schema
-        AssetType::ScriptedEncounter => ECOSYSTEM_SCHEMA,  // placeholder — needs dedicated schema
+        AssetType::Trope => TROPE_SCHEMA,
+        AssetType::ScriptedEncounter => SCRIPTED_ENCOUNTER_SCHEMA,
     };
 
     let schema = serde_json::from_str::<serde_json::Value>(schema_text)

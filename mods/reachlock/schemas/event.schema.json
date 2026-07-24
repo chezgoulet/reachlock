@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scripted Event Content File",
+  "description": "An authored event with trigger conditions, narrative, and consequences (S55)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "asset_type", "seed", "universe", "priority", "payload"],
+  "properties": {
+    "id": { "type": "string" },
+    "display_name": { "type": "string" },
+    "asset_type": { "type": "string", "enum": ["event"] },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "universe": { "type": "string" },
+    "priority": { "type": "string", "enum": ["procedural", "curated", "event", "authoritative"] },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stages"],
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "stages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["narrative"],
+            "properties": {
+              "stage_id": { "type": "string" },
+              "narrative": { "type": "string" },
+              "trigger": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["AND", "OR", "PlayerReputation", "TickAfter", "ChapterComplete", "HasItem", "PlayerInSystem", "FactionState", "FlagSet"]
+                  },
+                  "params": { "type": "object" }
+                }
+              },
+              "consequences": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["type"],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["AddReputation", "AddItem", "AdvanceChapter", "EcosystemEvent", "SpawnEncounter", "SetFlag", "RemoveItem", "AddCredits"]
+                    },
+                    "params": { "type": "object" }
+                  }
+                }
+              },
+              "dialogue": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "speaker": { "type": "string" },
+                    "text": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "expires_at_tick": { "type": "integer", "minimum": 0 },
+        "expires_after_event": { "type": "string" },
+        "repeatable": { "type": "boolean" }
+      }
+    }
+  }
+}
