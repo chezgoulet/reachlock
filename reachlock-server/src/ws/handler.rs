@@ -81,6 +81,9 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
     // S23 presence: track current system for interest scoping.
     let mut current_system: Option<reachlock_core::seed::types::SystemId> = None;
 
+    // S54: register this session's sender for targeted delivery (voice signaling).
+    state.player_senders.write().await.insert(session.player_id.clone(), out_tx.clone());
+
     // Read loop.
     loop {
         tokio::select! {
@@ -107,6 +110,9 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
             _ = &mut writer => break,
         }
     }
+
+    // S54: unregister sender for targeted delivery.
+    state.player_senders.write().await.remove(&session.player_id);
 
     // S23/S29: clean up presence and voice on disconnect.
     if let Some(sys_id) = &current_system {
@@ -257,26 +263,21 @@ async fn route(
             };
             // Update voice room state and relay.
             state.voice.join(sys_id, &session.player_id);
-            if let Some((_to, sig)) =
+            if let Some((target, sig)) =
                 state
                     .voice
                     .relay(sys_id, &session.player_id, &target_player, &signal)
             {
-                // Send VoiceSignal directly to the target's out_tx isn't
-                // possible here — we only have the current session's out_tx.
-                // Instead, broadcast via PresenceManager. The target will
-                // receive it as a scoped message.
-                state
-                    .presence
-                    .broadcast(
-                        session.universe,
-                        sys_id,
-                        &ServerMessage::VoiceSignal {
+                // S54: send directly to the target via their registered sender.
+                let senders = state.player_senders.read().await;
+                if let Some(target_tx) = senders.get(&target) {
+                    let _ = target_tx
+                        .send(ServerMessage::VoiceSignal {
                             from_player: session.player_id.clone(),
                             signal: sig,
-                        },
-                    )
-                    .await;
+                        })
+                        .await;
+                }
             }
             None
         }

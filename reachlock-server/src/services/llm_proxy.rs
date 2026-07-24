@@ -232,7 +232,7 @@ impl LlmService {
             },
         };
         let latency = started.elapsed().as_millis() as u64;
-        let success = result.is_err();
+        let success = result.is_ok();
         self.metrics.record(latency, success);
 
         // S27: record cost and track provider health.

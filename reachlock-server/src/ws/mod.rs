@@ -139,6 +139,8 @@ pub struct AppState {
     /// When Some, sessions, rate limiting, and presence use Redis.
     #[cfg(feature = "redis")]
     pub redis_pool: Option<std::sync::Arc<crate::services::redis::RedisPool>>,
+    /// S54: per-player message senders for targeted delivery (voice signaling).
+    pub player_senders: std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, tokio::sync::mpsc::Sender<ServerMessage>>>>,
     // S51: authentication stores.
     pub players: Box<dyn PlayerStore>,
     pub email: Box<dyn EmailBackend>,
@@ -192,6 +194,7 @@ impl AppState {
             pg_pool: None,
             #[cfg(feature = "redis")]
             redis_pool: None,
+            player_senders: std::sync::Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             presence: PresenceManager::default(),
             audit: Box::new(MemoryAuditLog::default()),
             prometheus: crate::observability::init_prometheus(),
@@ -270,6 +273,7 @@ impl AppState {
             pg_pool: Some(pool.clone()),
             #[cfg(feature = "redis")]
             redis_pool: None,
+            player_senders: std::sync::Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             presence: PresenceManager::default(),
             audit: Box::new(MemoryAuditLog::default()),
             prometheus: crate::observability::init_prometheus(),
