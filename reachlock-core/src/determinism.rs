@@ -658,6 +658,26 @@ pub fn manifest() -> Manifest {
         });
     }
 
+    // S46 — mission engine.
+    for &seed in &CANONICAL_SEEDS {
+        let ctx = generator::mission::MissionGenerationContext {
+            seed,
+            system_kind: "frontier".into(),
+            threat_level: 30,
+            station_faction: "compact".into(),
+            player_career_ranks: vec![],
+            player_notoriety: crate::career::piracy::NotorietyLevel::Clean,
+            player_credits: 1000,
+            tick: 50000,
+        };
+        let missions = generator::generate_missions(&ctx);
+        entries.push(Entry {
+            generator: "mission".into(),
+            seed,
+            checksum: hash_serde(&missions),
+        });
+    }
+
     // S39 — ecosystem & life generator (plus event application).
     for &seed in &CANONICAL_SEEDS {
         let biomes = vec![Biome::Frontier, Biome::Nebula, Biome::Core];
@@ -788,7 +808,8 @@ pub fn manifest() -> Manifest {
         // v14: added S47 planet scale & culture golden entries
         //      (planet_extended wraps S04's GeneratedPlanet; culture).
         // v15: added S40 trope engine template instantiation golden entries.
-        version: 15,
+        // v16: added S46 mission engine golden entries.
+        version: 16,
         entries,
     }
 }

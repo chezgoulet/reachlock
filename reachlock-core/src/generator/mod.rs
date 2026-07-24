@@ -17,6 +17,7 @@ pub mod enemy;
 pub mod faction;
 pub mod hull;
 pub mod location;
+pub mod mission;
 pub mod music;
 pub mod planet;
 pub mod ship;
@@ -33,6 +34,7 @@ pub mod ui;
 pub use contract::generate_contract;
 pub use economy::generate_economy_catalog;
 pub use ecosystem::{generate_ecosystem, generate_species_visual, Ecosystem, PlanetParams};
+pub use mission::generate_missions;
 pub use ecosystem_events::{apply_ecosystem_event, EcosystemEvent, EcosystemEventType};
 pub use planet_extended::{
     generate_planet_extended, PlanetExtended, SystemParams,
