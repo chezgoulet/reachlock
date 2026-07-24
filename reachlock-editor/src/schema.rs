@@ -55,6 +55,11 @@ pub fn schema_id(ct: &ContentType) -> Option<&'static str> {
         ContentType::HullMesh => "hull_configuration",
         ContentType::RoomTemplates => "room_template",
         ContentType::GateNetwork => "gate_network",
+        ContentType::Career => "career_path",
+        ContentType::Ecosystem => "ecosystem",
+        ContentType::PlanetCulture => "planet_culture",
+        ContentType::Theme => "theme",
+        ContentType::Trope => "trope",
         // Previewers persist nothing; no schema applies.
         ContentType::ItemBrowser | ContentType::SpriteViewer => return None,
     })

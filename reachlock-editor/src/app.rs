@@ -47,6 +47,12 @@ pub enum ContentType {
     ItemBrowser,
     /// Phase 2 previewer — character look explorer over the sprite generator.
     SpriteViewer,
+    // Wave 9 — Living Galaxy content types (Phase B editors).
+    Career,
+    Ecosystem,
+    PlanetCulture,
+    Theme,
+    Trope,
 }
 
 impl ContentType {
@@ -68,6 +74,11 @@ impl ContentType {
             ContentType::GateNetwork,
             ContentType::ItemBrowser,
             ContentType::SpriteViewer,
+            ContentType::Career,
+            ContentType::Ecosystem,
+            ContentType::PlanetCulture,
+            ContentType::Theme,
+            ContentType::Trope,
         ]
     }
 
@@ -89,6 +100,11 @@ impl ContentType {
             ContentType::GateNetwork => "Gate Network",
             ContentType::ItemBrowser => "Item Browser",
             ContentType::SpriteViewer => "Sprite Viewer",
+            ContentType::Career => "Career Path",
+            ContentType::Ecosystem => "Ecosystem",
+            ContentType::PlanetCulture => "Planet Culture",
+            ContentType::Theme => "Music Theme",
+            ContentType::Trope => "Trope Template",
         }
     }
 
@@ -113,6 +129,11 @@ impl ContentType {
             ContentType::GateNetwork => "gate_network",
             ContentType::ItemBrowser => "items",
             ContentType::SpriteViewer => "souls",
+            ContentType::Career => "careers",
+            ContentType::Ecosystem => "ecosystems",
+            ContentType::PlanetCulture => "cultures",
+            ContentType::Theme => "themes",
+            ContentType::Trope => "tropes",
         }
     }
 
@@ -136,6 +157,11 @@ impl ContentType {
             "economy" => Some(ContentType::EconomyGoods),
             "items" => Some(ContentType::Item),
             "contracts" => Some(ContentType::Contract),
+            "careers" => Some(ContentType::Career),
+            "ecosystems" => Some(ContentType::Ecosystem),
+            "cultures" => Some(ContentType::PlanetCulture),
+            "themes" => Some(ContentType::Theme),
+            "tropes" => Some(ContentType::Trope),
             _ => None,
         }
     }
@@ -249,6 +275,18 @@ impl EditorRegistry {
 
 pub fn build_default_registry() -> EditorRegistry {
     let mut r = EditorRegistry::new();
+    r.register(
+        ContentType::Career,
+        crate::editors::career::create_editor,
+    );
+    r.register(
+        ContentType::Ecosystem,
+        crate::editors::ecosystem::create_editor,
+    );
+    r.register(
+        ContentType::PlanetCulture,
+        crate::editors::planet_culture::create_editor,
+    );
     r.register(
         ContentType::HullFrame,
         crate::editors::hull_frame::create_editor,

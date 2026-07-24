@@ -45,6 +45,21 @@ fn category_name(c: GoodCategory) -> &'static str {
         GoodCategory::Medical => "Medical",
         GoodCategory::Luxury => "Luxury",
         GoodCategory::Contraband => "Contraband",
+        GoodCategory::RawMineral => "Raw Mineral",
+        GoodCategory::RawOrganic => "Raw Organic",
+        GoodCategory::RawEnergy => "Raw Energy",
+        GoodCategory::RefinedMetal => "Refined Metal",
+        GoodCategory::RefinedOrganic => "Refined Organic",
+        GoodCategory::ManufacturedComponent => "Manufactured Component",
+        GoodCategory::ElectronicComponent => "Electronic Component",
+        GoodCategory::LuxuryGood => "Luxury Good",
+        GoodCategory::Clothing => "Clothing",
+        GoodCategory::Cybernetic => "Cybernetic",
+        GoodCategory::Weapon => "Weapon",
+        GoodCategory::ExplorationTool => "Exploration Tool",
+        GoodCategory::ShipComponent => "Ship Component",
+        GoodCategory::StationModule => "Station Module",
+        GoodCategory::ResearchEquipment => "Research Equipment",
     }
 }
 
@@ -612,7 +627,7 @@ impl Editor for FactionEditor {
             _ => TariffPolicy::None,
         };
         let produces = (0..1 + rng.next_below(2))
-            .map(|_| GoodCategory::ALL[rng.next_below(7) as usize])
+            .map(|_| GoodCategory::ALL[rng.next_below(GoodCategory::ALL.len() as u64) as usize])
             .collect();
         let territory = (0..rng.next_below(3))
             .map(|i| SystemClaim {

@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::career::CareerPath;
 use crate::contract::types::Contract;
+use crate::generator::music::Theme;
+use crate::generator::trope::TropeTemplate;
 use crate::editor::exterior::HullFrame;
 use crate::editor::interior::RoomTemplate;
 use crate::generator::{Ecosystem, GeneratedLayout, GeneratedMesh};
@@ -30,6 +32,10 @@ pub enum AssetType {
     Career,
     /// S47: a planet culture override (spec §20).
     PlanetCulture,
+    /// S48: a music theme for the procedural audio engine.
+    Theme,
+    /// S40: a trope template for procedural narrative encounters.
+    Trope,
     /// S13: an NPC soul (spec §15) — the pipeline's fourth content type.
     Soul,
     /// S17: an exterior hull frame (spec §19) — slot layout, engine mount,
@@ -79,6 +85,10 @@ pub enum ContentPayload {
     Career(Box<CareerPath>),
     /// S47: an authored planet culture override (spec §20).
     PlanetCulture(Box<PlanetCulture>),
+    /// S48: a music theme (spec §5/§10).
+    Theme(Box<Theme>),
+    /// S40: a trope template (spec §10).
+    Trope(Box<TropeTemplate>),
     /// S13: who an NPC is (spec §15). Souls are data; the contract engine
     /// decides how they act, S16 decides what they say. Boxed: a soul is an
     /// order of magnitude bigger than the other variants, and serde treats

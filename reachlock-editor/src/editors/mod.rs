@@ -1,10 +1,13 @@
+pub mod career;
 pub mod character_sprite;
+pub mod ecosystem;
 pub mod charted_system;
 pub mod contract;
 pub mod economy;
 pub mod enemy;
 pub mod faction;
 pub mod gate_network;
+pub mod planet_culture;
 // Reference implementation for `HullConfiguration` editing; superseded in the
 // registry by `hull_frame` (the authored-frame editor) but kept as the
 // pattern exemplar the handoff cites.
@@ -22,6 +25,18 @@ pub mod storyline;
 pub mod widgets;
 
 pub fn register_all(registry: &mut super::app::EditorRegistry) {
+    registry.register(
+        super::app::ContentType::Career,
+        career::create_editor,
+    );
+    registry.register(
+        super::app::ContentType::Ecosystem,
+        ecosystem::create_editor,
+    );
+    registry.register(
+        super::app::ContentType::PlanetCulture,
+        planet_culture::create_editor,
+    );
     registry.register(
         super::app::ContentType::HullFrame,
         hull_frame::create_editor,

@@ -241,8 +241,10 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                         content.display_name,
                         eco.biomes.len(),
                         eco.global_species_count,
+                    );
+                    return Ok(());
+                }
                 ContentPayload::Career(career) => {
-                    // Careers are data, not geometry — summarize.
                     println!(
                         "{}: career \"{}\" ({:?}) — {} rank(s), {} perk(s)",
                         path.display(),
@@ -250,6 +252,27 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                         career.path_type,
                         career.ranks.len(),
                         career.perks.len(),
+                    );
+                    return Ok(());
+                }
+                ContentPayload::Theme(theme) => {
+                    println!(
+                        "{}: theme \"{}\" — {} notes, {} bpm range",
+                        path.display(),
+                        theme.id,
+                        theme.notes.len(),
+                        format!("{:?}", theme.bpm_range),
+                    );
+                    return Ok(());
+                }
+                ContentPayload::Trope(trope) => {
+                    println!(
+                        "{}: trope \"{}\" — {:?}, {} slot(s), {} branch(es)",
+                        path.display(),
+                        trope.id,
+                        trope.trope_type,
+                        trope.slots.len(),
+                        trope.branches.len(),
                     );
                     return Ok(());
                 }
@@ -299,6 +322,8 @@ fn validate_schema(
         AssetType::Ecosystem => ECOSYSTEM_SCHEMA,
         AssetType::RoomTemplates => ROOM_TEMPLATE_SCHEMA,
         AssetType::PlanetCulture => PLANT_CULTURE_SCHEMA,
+        AssetType::Theme => ECOSYSTEM_SCHEMA,  // placeholder — needs dedicated schema
+        AssetType::Trope => ECOSYSTEM_SCHEMA,  // placeholder — needs dedicated schema
     };
 
     let schema = serde_json::from_str::<serde_json::Value>(schema_text)

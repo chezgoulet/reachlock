@@ -26,6 +26,14 @@ fn blank_good() -> Good {
         mass: 1,
         category: GoodCategory::Consumable,
         contraband: false,
+        weight: None,
+        rarity: None,
+        production: vec![],
+        consumption: vec![],
+        production_chain: None,
+        luxury_tier: None,
+        legality: std::collections::HashMap::new(),
+        trade_bonuses: vec![],
     }
 }
 
@@ -38,6 +46,21 @@ fn category_name(c: GoodCategory) -> &'static str {
         GoodCategory::Medical => "Medical",
         GoodCategory::Luxury => "Luxury",
         GoodCategory::Contraband => "Contraband",
+        GoodCategory::RawMineral => "Raw Mineral",
+        GoodCategory::RawOrganic => "Raw Organic",
+        GoodCategory::RawEnergy => "Raw Energy",
+        GoodCategory::RefinedMetal => "Refined Metal",
+        GoodCategory::RefinedOrganic => "Refined Organic",
+        GoodCategory::ManufacturedComponent => "Manufactured Component",
+        GoodCategory::ElectronicComponent => "Electronic Component",
+        GoodCategory::LuxuryGood => "Luxury Good",
+        GoodCategory::Clothing => "Clothing",
+        GoodCategory::Cybernetic => "Cybernetic",
+        GoodCategory::Weapon => "Weapon",
+        GoodCategory::ExplorationTool => "Exploration Tool",
+        GoodCategory::ShipComponent => "Ship Component",
+        GoodCategory::StationModule => "Station Module",
+        GoodCategory::ResearchEquipment => "Research Equipment",
     }
 }
 

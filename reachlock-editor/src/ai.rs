@@ -170,6 +170,32 @@ pub fn type_context(ct: &ContentType) -> &'static str {
              system, a status (Active, Blockaded, Restricted, Contested, Destroyed), and an \
              optional controlling faction."
         }
+        ContentType::Career => {
+            "A career path with ranks, perks, and progression criteria. Each path has a type \
+             (Military, Trade, Exploration, Science, Political, Criminal, Freelance), 2-10 ranks \
+             with requirements, perks unlocked at each rank, and paths it conflicts with."
+        }
+        ContentType::Ecosystem => {
+            "A generated ecosystem for a planet biome: species with taxonomy, roles, a food web, \
+             visuals, and event-driven change (extinction, invasive species, mutation). Wrapped \
+             in a ContentFile envelope with asset_type \"ecosystem\"."
+        }
+        ContentType::PlanetCulture => {
+            "A planet's emergent culture: language profile, customs, social structure, \
+             architecture style, clothing style, attitude toward outsiders, faction allegiance, \
+             dominant values, and a cultural quirk. Wrapped in a ContentFile envelope with \
+             asset_type \"planet_culture\"."
+        }
+        ContentType::Theme => {
+            "A music theme for the procedural audio engine: a seed note sequence, scale, tempo \
+             range, and an allowed-variations bitmask controlling which variation operators the \
+             generator may apply. Wrapped in a ContentFile envelope."
+        }
+        ContentType::Trope => {
+            "A narrative encounter template: a procedural sector text with named slots, branching \
+             choices with conditions and consequences, and a location type / threat level filter. \
+             Wrapped in a ContentFile envelope with asset_type \"trope\"."
+        }
         ContentType::ItemBrowser | ContentType::SpriteViewer => {
             "A live preview with nothing persisted."
         }
