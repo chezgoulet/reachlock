@@ -82,7 +82,7 @@ pub struct LlmService {
     fairplay: AnyProvider,
     spectrum: AnyProvider,
     pub byok: ByokService,
-    limiter: Box<dyn RateLimiter>,
+    pub limiter: Box<dyn RateLimiter>,
     pub metrics: LatencyHistogram,
     /// S27: cost tracking for every LLM call.
     pub costs: Arc<dyn CostStore>,

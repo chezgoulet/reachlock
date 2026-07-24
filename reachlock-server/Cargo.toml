@@ -10,6 +10,9 @@ default = []
 # Postgres-backed stores. Off by default so the server builds and runs
 # (in-memory) with zero infrastructure; CI checks this feature compiles.
 postgres = ["dep:sqlx"]
+# Redis-backed stores for sessions, rate limiting, and presence.
+# Enables when REACHLOCK_REDIS_URL is set.
+redis = ["dep:redis"]
 
 [dependencies]
 reachlock-core = { path = "../reachlock-core" }
@@ -53,6 +56,8 @@ cfg-if = "1"
 # S51: QR code generation for TOTP setup URIs.
 qrcode = "0.14"
 image = "0.25"
+# S50: Redis connection management.
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager", "aio"], optional = true }
 
 [dev-dependencies]
 tokio-tungstenite = "0.26"

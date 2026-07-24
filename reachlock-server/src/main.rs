@@ -14,7 +14,13 @@ async fn main() {
         .init();
 
     let config = Config::from_env();
-    let state = Arc::new(AppState::new(&config));
+    #[cfg(feature = "redis")]
+    let mut app_state = AppState::new(&config);
+    #[cfg(feature = "redis")]
+    app_state.try_init_redis();
+    #[cfg(not(feature = "redis"))]
+    let app_state = AppState::new(&config);
+    let state = Arc::new(app_state);
 
     // Universe tick: separate task, talks to sessions via the broadcast
     // channel — never blocks the WebSocket handlers (adversarial finding #6).

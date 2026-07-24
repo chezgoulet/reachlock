@@ -135,6 +135,10 @@ pub struct AppState {
     /// When Some, tick events are persisted to `universe_events`.
     #[cfg(feature = "postgres")]
     pub pg_pool: Option<sqlx::PgPool>,
+    /// S50: Redis connection pool. `None` when using in-memory stores.
+    /// When Some, sessions, rate limiting, and presence use Redis.
+    #[cfg(feature = "redis")]
+    pub redis_pool: Option<std::sync::Arc<crate::services::redis::RedisPool>>,
     // S51: authentication stores.
     pub players: Box<dyn PlayerStore>,
     pub email: Box<dyn EmailBackend>,
@@ -168,8 +172,7 @@ impl AppState {
             Box::new(crate::services::email::FileEmailBackend::new(file_dir))
         };
 
-        // Store selection: when REACHLOCK_DB is set, use Postgres-backed stores.
-        // Otherwise use in-memory (zero-infra default).
+        // Store selection: Postgres and Redis are independent.
         cfg_if::cfg_if! {
             if #[cfg(feature = "postgres")] {
                 if let Some(url) = &config.db_url {
@@ -187,6 +190,8 @@ impl AppState {
             events,
             #[cfg(feature = "postgres")]
             pg_pool: None,
+            #[cfg(feature = "redis")]
+            redis_pool: None,
             presence: PresenceManager::default(),
             audit: Box::new(MemoryAuditLog::default()),
             prometheus: crate::observability::init_prometheus(),
@@ -206,6 +211,29 @@ impl AppState {
             totp_recovery_codes: std::sync::Arc::new(Mutex::new(Vec::new())),
             oauth_flows: std::sync::Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Try to initialize Redis stores (called after construction).
+    /// Replaces memory stores with Redis-backed ones when Redis is reachable.
+    #[cfg(feature = "redis")]
+    pub fn try_init_redis(&mut self) {
+        let url = match std::env::var("REACHLOCK_REDIS_URL").ok().filter(|s| !s.is_empty()) {
+            Some(u) => u,
+            None => return,
+        };
+        let rt = tokio::runtime::Handle::current();
+        let pool = match rt.block_on(crate::services::redis::RedisPool::new(&url)) {
+            Ok(p) => std::sync::Arc::new(p),
+            Err(e) => {
+                tracing::warn!("REACHLOCK_REDIS_URL failed: {e}, falling back to in-memory");
+                return;
+            }
+        };
+        let pool_clone = pool.clone();
+        self.sessions = Box::new(crate::services::redis::RedisSessionStore::new(pool_clone));
+        self.llm.limiter = Box::new(crate::services::redis::RedisRateLimiter::new(pool.clone()));
+        self.redis_pool = Some(pool);
+        tracing::info!("Redis stores active");
     }
 
     /// Construct all stores from Postgres. Only available with the `postgres` feature.
@@ -240,6 +268,8 @@ impl AppState {
             llm: LlmService::from_env(),
             events,
             pg_pool: Some(pool.clone()),
+            #[cfg(feature = "redis")]
+            redis_pool: None,
             presence: PresenceManager::default(),
             audit: Box::new(MemoryAuditLog::default()),
             prometheus: crate::observability::init_prometheus(),

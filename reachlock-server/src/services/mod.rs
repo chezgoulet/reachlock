@@ -14,6 +14,8 @@ pub mod llm_proxy;
 pub mod metrics;
 pub mod providers;
 pub mod quota;
+#[cfg(feature = "redis")]
+pub mod redis;
 pub mod seed;
 pub mod tick;
 pub mod verify;
