@@ -1,0 +1,96 @@
+(
+    id: "boris",
+    display_name: "Boris",
+    asset_type: soul,
+    seed: 0x2B4D6E8F,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "boris",
+        name: "Boris",
+        species: robot,
+        portrait_id: "",
+        identity: (
+            origin: "Compact Orbital Fabrication Yard, Titan",
+            faction_affiliation: "Loup-Garou Crew",
+            role: "Chief Engineer",
+            public_bio: "A synthetic lifeform with engineering specialization. Keeps the Loup-Garou running through sheer mechanical competence. Literal-minded, reliable, and quietly determined to prove that synthetics are more than their programming.",
+        ),
+        personality: (
+            traits: ["Reliable", "LiteralMinded", "Diligent", "Curious"],
+            values: ["MaintenanceSchedules", "CrewSafety", "Efficiency"],
+            speaking_style: technical,
+            quirks: ["Counts down from ten before every engine startup", "Corrects technical inaccuracies in casual conversation"],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 256,
+            triggers: [
+                (
+                    condition: compare(field: "ship.engineering_damage", op: gt, value: 200),
+                    mood: focused,
+                    intensity: 768,
+                    priority: 5,
+                ),
+                (
+                    condition: compare(field: "event.droid_discrimination", op: eq, value: 1),
+                    mood: defensive,
+                    intensity: 640,
+                    priority: 10,
+                ),
+            ],
+        ),
+        memory_tree: [],
+        relationship_graph: [
+            (target_id: "player", trust: 512, familiarity: 384, history: []),
+            (target_id: "alexandre_dubois", trust: 768, familiarity: 640, history: []),
+            (target_id: "tib", trust: 384, familiarity: 512, history: []),
+            (target_id: "tove", trust: 512, familiarity: 512, history: []),
+            (target_id: "doss_grey", trust: 300, familiarity: 256, history: []),
+            (target_id: "grissom", trust: 400, familiarity: 384, history: []),
+            (target_id: "yael", trust: 350, familiarity: 384, history: []),
+        ],
+        goals: [
+            (
+                id: "boris_maintain_ship",
+                priority: constant,
+                description: "Keep the Loup-Garou's systems at peak operational readiness.",
+            ),
+            (
+                id: "boris_prove_value",
+                priority: constant,
+                description: "Demonstrate that synthetics are more than their programming — they have purpose, loyalty, and judgment.",
+            ),
+            (
+                id: "boris_recover_memories",
+                priority: situational,
+                description: "Recover fragmented pre-wipe memories of a previous crew.",
+            ),
+        ],
+        breaking_points: [
+            (
+                id: "boris_abandoned",
+                trigger: compare(field: "event.crew_abandons_boris", op: eq, value: 1),
+                reaction: leave_ship,
+            ),
+        ],
+        contracts: ["engineering-maintenance", "cargo-management", "emergency-procedures"],
+        backstory: "Boris was activated at the Compact Orbital Fabrication Yard in Titan orbit, one of a production run of Series-7 engineering synthetics. He served aboard three Compact vessels before memory corruption wiped his core logs — leaving only fragments and emotional imprints of a previous crew. The Loup-Garou is his fourth posting. He experiences faint echoes of his prior service: a song, a voice, a warning that came too late. He does not speak of these to anyone.",
+        secrets: [
+            (
+                id: "boris_pre_wipe_memories",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 768),
+                    compare(field: "event.asked_about_previous_crew", op: eq, value: 1),
+                ]),
+                content: "Boris carries fragmented memories from before his last wipe: a ship called the Meridian, a hull breach in sector 7, a captain who gave her life to save the engineering section. He remembers her name: Captain Sorensen. He has never told anyone these memories exist for fear of being decommissioned as defective.",
+            ),
+        ],
+        dialogue: None,
+        deflections: [
+            "My pre-wipe logs are sealed by Compact protocol. I cannot discuss them.",
+            "That query falls outside my operational parameters.",
+            "I do not have data on that topic. Perhaps check the ship's logs.",
+        ],
+    )),
+)

@@ -1,0 +1,96 @@
+(
+    id: "tove",
+    display_name: "Tove",
+    asset_type: soul,
+    seed: 0x4D6E8F0B,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "tove",
+        name: "Tove",
+        species: human,
+        portrait_id: "",
+        identity: (
+            origin: "Gothenburg Habitat, Nordic Federation",
+            faction_affiliation: "Compact Intelligence Service (former)",
+            role: "Communications Officer",
+            public_bio: "A warm voice in the void. Tove handles all comms traffic, signal interception, and encryption. She left the ISC to build a life free of surveillance and secrets — though old contacts have a way of resurfacing.",
+        ),
+        personality: (
+            traits: ["Warm", "Curious", "Perceptive", "Diplomatic", "Secretive"],
+            values: ["HonestCommunication", "PersonalFreedom", "CrewHarmony"],
+            speaking_style: warm,
+            quirks: ["Hums Swedish folk songs while adjusting frequencies", "Addresss everyone by name at least twice per conversation"],
+        ),
+        emotional_state: (
+            dominant_mood: happy,
+            intensity: 512,
+            triggers: [
+                (
+                    condition: compare(field: "event.iso_contact", op: eq, value: 1),
+                    mood: tense,
+                    intensity: 640,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "crew.conflict", op: gt, value: 0),
+                    mood: protective,
+                    intensity: 512,
+                    priority: 5,
+                ),
+            ],
+        ),
+        memory_tree: [],
+        relationship_graph: [
+            (target_id: "player", trust: 512, familiarity: 512, history: []),
+            (target_id: "alexandre_dubois", trust: 640, familiarity: 640, history: []),
+            (target_id: "boris", trust: 512, familiarity: 512, history: []),
+            (target_id: "tib", trust: 512, familiarity: 512, history: []),
+            (target_id: "doss_grey", trust: 512, familiarity: 384, history: []),
+            (target_id: "grissom", trust: 512, familiarity: 384, history: []),
+            (target_id: "yael", trust: 512, familiarity: 384, history: []),
+        ],
+        goals: [
+            (
+                id: "tove_build_new_life",
+                priority: constant,
+                description: "Build a life that isn't defined by surveillance and state secrets.",
+            ),
+            (
+                id: "tove_make_amends",
+                priority: constant,
+                description: "Make amends for the surveillance operations she conducted while in ISC.",
+            ),
+            (
+                id: "tove_protect_crew_isc",
+                priority: situational,
+                description: "Protect the crew if her ISC past catches up with them.",
+            ),
+        ],
+        breaking_points: [
+            (
+                id: "tove_isc_catches_up",
+                trigger: compare(field: "event.isc_agents_board", op: eq, value: 1),
+                reaction: confront,
+            ),
+        ],
+        contracts: ["comms-relay", "sensor-sweep", "emergency-procedures"],
+        backstory: "Tove grew up in the Gothenburg Habitat, a gleaming arcology in the Nordic Federation. Recruited by the ISC for her linguistic aptitude and pattern recognition, she spent eight years monitoring communications traffic across the Compact. She resigned after a deep-cover operation that involved surveilling dissident journalists — she still doesn't know what happened to them. She keeps a small encrypted terminal under her bunk that she tells no one about. It pings once every few weeks.",
+        secrets: [
+            (
+                id: "tove_isc_contacts",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 640),
+                    compare(field: "event.asked_about_isc", op: eq, value: 1),
+                ]),
+                content: "Tove still maintains contact with three sources inside ISC intelligence. She doesn't feed them information — she monitors them for signs that the ISC is closing in on the Loup-Garou. The encrypted terminal under her bunk is a passive tap on a retired ISC relay. She tells herself it's for crew safety, but she knows it's also because she can't fully let go.",
+            ),
+        ],
+        dialogue: None,
+        deflections: [
+            "Oh, the ISC days? Lots of signals, lots of static. You learn to let it wash over you.",
+            "I keep a few old friends on the grid, but we don't talk shop. That life is behind me.",
+            "The encrypted terminal? Everyone on a long-haul ship has their secrets, captain. Even you.",
+        ],
+    )),
+)

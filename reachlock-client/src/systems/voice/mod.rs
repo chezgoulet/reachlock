@@ -14,6 +14,8 @@ use crate::systems::presence::RemoteShip;
 
 mod voice_native;
 
+mod speech;
+
 // ---------------------------------------------------------------------------
 // Global push buffer
 // ---------------------------------------------------------------------------
@@ -59,6 +61,37 @@ pub struct MicDevices {
     pub current_index: usize,
 }
 
+/// Request for NPC dialogue synthesis.
+pub struct SynthesisRequest {
+    pub text: String,
+    pub voice_params: speech::VoiceParams,
+    pub seed: u64,
+}
+
+/// Completed synthesis result (PCM samples + sample rate).
+pub struct SynthesisResult {
+    pub samples: Vec<f32>,
+    pub sample_rate: u32,
+}
+
+/// Queue of synthesized speech buffers pending playback in the Bevy world.
+/// Max capacity: 8 buffers. Oldest are dropped when full to prevent memory
+/// growth from rapid NPC dialogue.
+#[derive(Resource)]
+pub struct SynthesizedSpeechQueue {
+    rx: crossbeam_channel::Receiver<SynthesisResult>,
+    pending: Vec<SynthesisResult>,
+}
+
+impl SynthesizedSpeechQueue {
+    fn new(rx: crossbeam_channel::Receiver<SynthesisResult>) -> Self {
+        SynthesizedSpeechQueue {
+            rx,
+            pending: Vec::new(),
+        }
+    }
+}
+
 #[derive(Resource)]
 pub struct VoiceManager {
     pub cmd_tx: Option<crossbeam_channel::Sender<voice_native::VoiceCommand>>,
@@ -67,6 +100,10 @@ pub struct VoiceManager {
     thread_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
     #[allow(dead_code)]
     pub mic_tx: Option<voice_native::MicSender>,
+    /// Sender for NPC dialogue synthesis requests.
+    #[allow(dead_code)]
+    pub synthesis_tx: Option<crossbeam_channel::Sender<SynthesisRequest>>,
+    synthesis_thread_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 impl VoiceManager {
@@ -75,6 +112,8 @@ impl VoiceManager {
         evt_rx: crossbeam_channel::Receiver<voice_native::VoiceEvent>,
         handle: std::thread::JoinHandle<()>,
         mic_tx: Option<voice_native::MicSender>,
+        synthesis_tx: Option<crossbeam_channel::Sender<SynthesisRequest>>,
+        synthesis_handle: std::thread::JoinHandle<()>,
     ) -> Self {
         VoiceManager {
             cmd_tx,
@@ -82,6 +121,21 @@ impl VoiceManager {
             pcm_buffers: Mutex::new(HashMap::new()),
             thread_handle: Mutex::new(Some(handle)),
             mic_tx,
+            synthesis_tx,
+            synthesis_thread_handle: Mutex::new(Some(synthesis_handle)),
+        }
+    }
+
+    /// Send a dialogue line to the synthesis thread for NPC speech generation.
+    /// The resulting audio is played asynchronously — see `drain_synthesis_queue`.
+    #[allow(dead_code)]
+    pub fn speak_dialogue_line(&self, text: &str, voice_params: &speech::VoiceParams, seed: u64) {
+        if let Some(tx) = &self.synthesis_tx {
+            let _ = tx.send(SynthesisRequest {
+                text: text.to_string(),
+                voice_params: voice_params.clone(),
+                seed,
+            });
         }
     }
 }
@@ -92,6 +146,12 @@ impl Drop for VoiceManager {
             let _ = tx.send(voice_native::VoiceCommand::Shutdown);
         }
         if let Ok(mut handle) = self.thread_handle.lock() {
+            if let Some(h) = handle.take() {
+                let _ = h.join();
+            }
+        }
+        // Synthesis thread terminates when synthesis_tx is dropped (channel closes).
+        if let Ok(mut handle) = self.synthesis_thread_handle.lock() {
             if let Some(h) = handle.take() {
                 let _ = h.join();
             }
@@ -274,6 +334,35 @@ pub fn audio_feed_voice(
 }
 
 // ---------------------------------------------------------------------------
+// Synthesis queue drain — plays completed NPC speech
+// ---------------------------------------------------------------------------
+
+pub fn drain_synthesis_queue(
+    mut queue: ResMut<SynthesizedSpeechQueue>,
+    mut commands: Commands,
+    mut audio_sources: ResMut<Assets<AudioSource>>,
+) {
+    while let Ok(result) = queue.rx.try_recv() {
+        queue.pending.push(result);
+        if queue.pending.len() > 8 {
+            queue.pending.remove(0);
+        }
+    }
+
+    for result in queue.pending.drain(..) {
+        let wav = pcm_to_wav(&result.samples, result.sample_rate);
+        let source = audio_sources.add(AudioSource { bytes: wav.into() });
+        commands.spawn((
+            AudioPlayer(source),
+            PlaybackSettings {
+                spatial: false,
+                ..default()
+            },
+        ));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Push-to-talk
 // ---------------------------------------------------------------------------
 
@@ -323,28 +412,60 @@ pub fn start_voice_thread(
     let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded();
     let (evt_tx, evt_rx) = crossbeam_channel::unbounded();
     let (mic_tx, mic_rx) = crossbeam_channel::unbounded();
+    let (synthesis_tx, synthesis_rx, synthesis_handle) = start_synthesis_thread();
 
     let preferred = settings.audio.voice_input_device.as_deref();
     start_mic_capture(preferred, mic_tx.clone());
 
     match voice_native::spawn_voice_thread(cmd_rx, evt_tx, mic_rx) {
         Ok(handle) => {
-            commands.insert_resource(VoiceManager::new_native(Some(cmd_tx), evt_rx, handle, Some(mic_tx)));
+            commands.insert_resource(VoiceManager::new_native(
+                Some(cmd_tx),
+                evt_rx,
+                handle,
+                Some(mic_tx),
+                Some(synthesis_tx),
+                synthesis_handle,
+            ));
         }
         Err(e) => {
             log::warn!("voice: voice thread failed to start — voice disabled: {e}");
             commands.insert_resource(VoiceManager::new_native(
                 None,
                 evt_rx,
-                voice_native_placeholder_handle(),
+                std::thread::spawn(|| {}),
                 None,
+                Some(synthesis_tx),
+                synthesis_handle,
             ));
         }
     }
+
+    commands.insert_resource(SynthesizedSpeechQueue::new(synthesis_rx));
 }
 
-fn voice_native_placeholder_handle() -> std::thread::JoinHandle<()> {
-    std::thread::spawn(|| {})
+/// Start the TTS synthesis thread that processes NPC dialogue lines.
+/// Returns (sender, result_receiver, thread_handle).
+fn start_synthesis_thread() -> (
+    crossbeam_channel::Sender<SynthesisRequest>,
+    crossbeam_channel::Receiver<SynthesisResult>,
+    std::thread::JoinHandle<()>,
+) {
+    let (tx, rx) = crossbeam_channel::unbounded::<SynthesisRequest>();
+    let (result_tx, result_rx) = crossbeam_channel::unbounded::<SynthesisResult>();
+
+    let handle = std::thread::Builder::new()
+        .name("reachlock-tts".into())
+        .spawn(move || {
+            while let Ok(request) = rx.recv() {
+                let (samples, sample_rate) =
+                    speech::SpeechSynthesizer::synthesize(&request.text, &request.voice_params, request.seed);
+                let _ = result_tx.send(SynthesisResult { samples, sample_rate });
+            }
+        })
+        .expect("failed to spawn TTS thread");
+
+    (tx, result_rx, handle)
 }
 
 fn start_mic_capture(preferred: Option<&str>, tx: voice_native::MicSender) {

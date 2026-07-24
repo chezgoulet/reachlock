@@ -86,6 +86,21 @@ pub enum ContentCommand {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Upload a content file to the reachlock-server and register it as an
+    /// override. Prints the assigned content_override_id on success.
+    Publish {
+        /// Path to a `.ron` content file.
+        path: PathBuf,
+        /// Target server URL.
+        #[arg(long, default_value = "http://127.0.0.1:40711")]
+        server: String,
+        /// Universe scope.
+        #[arg(long, default_value = "all")]
+        universe: String,
+        /// Priority level.
+        #[arg(long, default_value = "curated")]
+        priority: String,
+    },
 }
 
 pub fn run(cmd: ContentCommand) -> Result<(), String> {
@@ -368,6 +383,30 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
             std::fs::write(&out, svg).map_err(|e| format!("writing {}: {e}", out.display()))?;
             println!("wrote {}", out.display());
             Ok(())
+        }
+        ContentCommand::Publish { path, server, .. } => {
+            let content = load(&path)?;
+            let client = reqwest::blocking::Client::new();
+            let url = format!("{}/content/publish", server.trim_end_matches('/'));
+            let response = client
+                .post(&url)
+                .json(&content)
+                .send()
+                .map_err(|e| format!("request failed: {e}"))?;
+            if response.status().is_success() {
+                let resp: serde_json::Value = response
+                    .json()
+                    .map_err(|e| format!("parsing response: {e}"))?;
+                let override_id = resp["content_override_id"]
+                    .as_str()
+                    .unwrap_or("unknown");
+                println!("published: content_override_id = {override_id}");
+                Ok(())
+            } else {
+                let status = response.status();
+                let text = response.text().unwrap_or_default();
+                Err(format!("failed (HTTP {status}): {text}"))
+            }
         }
     }
 }

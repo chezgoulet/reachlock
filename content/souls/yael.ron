@@ -1,0 +1,102 @@
+(
+    id: "yael",
+    display_name: "Yael",
+    asset_type: soul,
+    seed: 0x7F9A0B3E,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "yael",
+        name: "Yael",
+        species: xenotype,
+        portrait_id: "",
+        identity: (
+            origin: "Geneweaver Vault, Classified Research Station",
+            faction_affiliation: "None",
+            role: "Medical Officer",
+            public_bio: "A quiet, soft-spoken medic with an encyclopedic knowledge of xenobiology and trauma medicine. Yael keeps to themself but tends to the crew's injuries with unnerving precision. Their physiology is unlike any known species — they do not discuss where they come from.",
+        ),
+        personality: (
+            traits: ["Gentle", "Private", "Protective", "Observant", "Haunted"],
+            values: ["CrewHealth", "Secrecy", "Freedom"],
+            speaking_style: warm,
+            quirks: ["Speaks with melodic cadence that shifts between harmonics", "Sings to unconscious patients during surgery", "Touches every bulkhead they walk past as if reading it"],
+        ),
+        emotional_state: (
+            dominant_mood: focused,
+            intensity: 384,
+            triggers: [
+                (
+                    condition: compare(field: "crew.injuries", op: gt, value: 1),
+                    mood: focused,
+                    intensity: 768,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "event.asked_about_origin", op: eq, value: 1),
+                    mood: defensive,
+                    intensity: 640,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "event.trackers_detected", op: eq, value: 1),
+                    mood: anxious,
+                    intensity: 896,
+                    priority: 15,
+                ),
+            ],
+        ),
+        memory_tree: [],
+        relationship_graph: [
+            (target_id: "player", trust: 384, familiarity: 256, history: []),
+            (target_id: "alexandre_dubois", trust: 500, familiarity: 256, history: []),
+            (target_id: "boris", trust: 400, familiarity: 256, history: []),
+            (target_id: "tib", trust: 300, familiarity: 256, history: []),
+            (target_id: "tove", trust: 450, familiarity: 384, history: []),
+            (target_id: "doss_grey", trust: 400, familiarity: 256, history: []),
+            (target_id: "grissom", trust: 350, familiarity: 256, history: []),
+        ],
+        goals: [
+            (
+                id: "yael_keep_crew_alive",
+                priority: constant,
+                description: "Keep the crew alive — every life lost is a failure of their purpose.",
+            ),
+            (
+                id: "yael_stay_hidden",
+                priority: constant,
+                description: "Stay hidden from their creators. Discovery means recapture and the end of everything they built.",
+            ),
+        ],
+        breaking_points: [
+            (
+                id: "yael_creators_found",
+                trigger: compare(field: "event.creators_locate_ship", op: eq, value: 1),
+                reaction: leave_ship,
+            ),
+            (
+                id: "yael_patient_dies",
+                trigger: compare(field: "event.patient_dies_under_care", op: eq, value: 1),
+                reaction: withdraw,
+            ),
+        ],
+        contracts: ["medical-procedures", "emergency-procedures"],
+        backstory: "Yael was created in a Geneweaver Vault — a classified research program that spliced human DNA with xenological samples recovered from a Predecessor ruin. They were designed as a biological blank slate: adaptable, intelligent, and emotionally stable to the point of detachment. When the vault's security was breached during a corporate raid, Yael escaped into the chaos. They have spent the years since hiding, using their medical abilities to secure passage on ships that don't ask questions. The Loup-Garou is their longest stay anywhere. They know the Geneweavers are still searching. They do not know what the Geneweavers will do when they find them.",
+        secrets: [
+            (
+                id: "yael_geneweaver",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 768),
+                    compare(field: "event.asked_about_geneweaver", op: eq, value: 1),
+                ]),
+                content: "Yael is not a xenotype in the natural sense — they were designed as a proof of concept for a human-xeno hybrid soldier program. The Geneweavers implanted a subdermal tracker that went dormant when Yael fled, but they have no way to know if it's truly offline or merely waiting for an activation signal. Every time the ship passes a deep-space relay, Yael expects the tracker to wake up and lead their creators straight to them.",
+            ),
+        ],
+        dialogue: None,
+        deflections: [
+            "I came from a laboratory, not a womb. That is all I will say on the subject.",
+            "The Geneweavers called me a prototype. I call myself Yael. The name is the only thing I chose.",
+            "You are injured. Let me focus on your treatment, not my biography.",
+        ],
+    )),
+)

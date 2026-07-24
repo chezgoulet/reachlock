@@ -13,6 +13,7 @@ use axum::extract::{Path, RawQuery, State};
 use axum::http::StatusCode;
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
+use reachlock_core::content::ContentFile;
 use reachlock_core::network::ServerMessage;
 use reachlock_core::seed::types::{Seed, SystemId};
 use reachlock_core::universe::tier::UniverseTier;
@@ -348,6 +349,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/seed/discover", post(seed_discover))
         // S57: content overrides for a system (in-memory stub)
         .route("/content/system/{system_id}", get(content_system))
+        // S56: content file publish endpoint
+        .route("/content/publish", post(content_publish_handler))
         // S51 dev auth (preserved)
         .route("/auth/dev", post(auth_dev))
         .route("/byok", post(byok_register))
@@ -456,6 +459,20 @@ async fn content_system(
     // system_id and ?universe= captured for future use
     let _ = (system_id, query);
     Json(serde_json::json!([]))
+}
+
+/// `POST /content/publish` — accept an authored content override (S56).
+/// Validates the JSON body as a `ContentFile`, logs the publish, and returns
+/// a mock content_override_id. Real persistence will replace the mock when
+/// the PgContentStore is wired.
+async fn content_publish_handler(
+    Json(content): Json<ContentFile>,
+) -> Json<serde_json::Value> {
+    tracing::info!("content published: {}", content.id);
+    Json(serde_json::json!({
+        "content_override_id": format!("mock-{}", content.id),
+        "published": true,
+    }))
 }
 
 /// `POST /auth/dev { username, universe? }` — dev-only token issuance.

@@ -585,6 +585,7 @@ fn main() {
                 .run_if(in_state(AppState::InGame)),
         )
         // S29: voice processing (signaling + audio feed + PTT).
+        // S62: NPC synthesis queue drain.
         .add_systems(
             Update,
             (
@@ -592,6 +593,7 @@ fn main() {
                 voice::audio_feed_voice,
                 voice::ptt_system,
                 voice::mic_cycle_system,
+                voice::drain_synthesis_queue,
             )
                 .run_if(in_state(AppState::InGame)),
         )

@@ -28,6 +28,7 @@ bytes = "1"
 
 [features]
 debug-names = ["bevy/debug"]
+tts = []
 
 [dev-dependencies]
 reachlock-server = { path = "../reachlock-server" }

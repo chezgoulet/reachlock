@@ -7591,6 +7591,7 @@ dependencies = [
  "clap",
  "jsonschema 0.47.0",
  "reachlock-core",
+ "reqwest 0.12.28",
  "ron",
  "serde_json",
  "walkdir",

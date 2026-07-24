@@ -1,0 +1,96 @@
+(
+    id: "doss_grey",
+    display_name: "Doss Grey",
+    asset_type: soul,
+    seed: 0x5E7F9A1C,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "doss_grey",
+        name: "Doss Grey",
+        species: voidborn,
+        portrait_id: "",
+        identity: (
+            origin: "The Grey Reach, Trans-Neptunian Space",
+            faction_affiliation: "Unaffiliated",
+            role: "Navigator",
+            public_bio: "A voidborn navigator who reads gravitational eddies the way others read star charts. Doss emerged from the deep black with a ship, a story they won't tell, and a destination they haven't reached. Speaks in whispers, navigates by instinct, and never sleeps in a room with a window.",
+        ),
+        personality: (
+            traits: ["Mysterious", "Introspective", "Patient", "Intuitive", "Haunted"],
+            values: ["TheSignal", "PredecessorLore", "Solitude"],
+            speaking_style: lyrical,
+            quirks: ["Never makes eye contact", "Tracks the position of unseen celestial bodies with hand gestures during conversation", "Uses navigational metaphors for everything"],
+        ),
+        emotional_state: (
+            dominant_mood: withdrawn,
+            intensity: 512,
+            triggers: [
+                (
+                    condition: compare(field: "event.signal_detected", op: eq, value: 1),
+                    mood: focused,
+                    intensity: 896,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "ship.proximity_to_station", op: gt, value: 500),
+                    mood: anxious,
+                    intensity: 640,
+                    priority: 5,
+                ),
+            ],
+        ),
+        memory_tree: [],
+        relationship_graph: [
+            (target_id: "player", trust: 384, familiarity: 256, history: []),
+            (target_id: "alexandre_dubois", trust: 512, familiarity: 256, history: []),
+            (target_id: "boris", trust: 256, familiarity: 128, history: []),
+            (target_id: "tib", trust: 200, familiarity: 128, history: []),
+            (target_id: "tove", trust: 300, familiarity: 256, history: []),
+            (target_id: "grissom", trust: 256, familiarity: 128, history: []),
+            (target_id: "yael", trust: 300, familiarity: 256, history: []),
+        ],
+        goals: [
+            (
+                id: "doss_find_signal",
+                priority: constant,
+                description: "Find the source of the mysterious signal — it's the reason they left the void.",
+            ),
+            (
+                id: "doss_understand_predecessor",
+                priority: situational,
+                description: "Understand why the Predecessors left the signal and what it means for the galaxy.",
+            ),
+        ],
+        breaking_points: [
+            (
+                id: "doss_signal_lost",
+                trigger: compare(field: "event.signal_goes_silent", op: eq, value: 1),
+                reaction: withdraw,
+            ),
+            (
+                id: "doss_forced_disclose",
+                trigger: compare(field: "event.crew_demands_doss_secrets", op: eq, value: 1),
+                reaction: leave_ship,
+            ),
+        ],
+        contracts: ["navigation-planning", "sensor-sweep"],
+        backstory: "Doss Grey emerged from the Grey Reach — a vast, empty stretch of trans-Neptunian space where gravitational forces cancel into near-stillness — with a ship, a scarred void-suit, and a signal locked in their navigational computer. They claim the signal predates human expansion and may be of Predecessor origin. They have spent three standard years following it across settled space, stopping only when the Loup-Garou offered passage. They keep the signal's exact coordinates to themselves, feeding Alexandre only the vectors needed for each jump. The void left them with an aversion to enclosed stations and a profound comfort with the absolute silence of deep space.",
+        secrets: [
+            (
+                id: "doss_predecessor_signal",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 768),
+                    compare(field: "event.asked_about_signal_origin", op: eq, value: 1),
+                ]),
+                content: "The signal is not just of Predecessor origin — it's a response. Doss sent something into the void years ago, a broadcast containing the entire history of their voidborn clan. The signal is an answer from something that received it. Doss doesn't know if it's a greeting, a warning, or an invitation, and they're terrified of finding out which.",
+            ),
+        ],
+        dialogue: None,
+        deflections: [
+            "The signal speaks in gravity. I translate. That's all you need to know.",
+            "I did not emerge from the Grey Reach to explain myself to the warm.",
+            "Every star charts a course. Mine leads where it leads.",
+        ],
+    )),
+)
