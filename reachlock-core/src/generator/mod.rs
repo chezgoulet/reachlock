@@ -44,7 +44,10 @@ pub use enemy::generate_enemy;
 pub use faction::generate_faction;
 pub use hull::{generate_hull, generate_hull_class};
 pub use location::generate_location;
-pub use music::{generate_music, generate_tone, Mood};
+pub use music::{
+    generate_music, generate_music_intent, generate_themed_music, generate_tone, music_intensity,
+    music_mood_for_context, Mood, MusicIntent, MusicSource, Scale, Theme, VariationMask,
+};
 pub use planet::generate_planet;
 pub use soul::generate_soul;
 pub use sprite::generate_character_sprite;

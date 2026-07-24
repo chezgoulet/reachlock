@@ -678,6 +678,35 @@ pub fn manifest() -> Manifest {
         });
     }
 
+    // S48 — procedural audio engine (MusicIntent generator + theme variation).
+    for &seed in &CANONICAL_SEEDS {
+        let intent = crate::generator::generate_music_intent(seed, crate::generator::Mood::Calm, 4);
+        entries.push(Entry {
+            generator: "music_intent".into(),
+            seed,
+            checksum: hash_serde(&intent),
+        });
+        let theme = crate::generator::music::Theme {
+            id: "test".into(),
+            notes: vec![crate::generator::music::NoteEvent {
+                degree: 0,
+                octave: 1,
+                velocity: 80,
+                start_tick: 0,
+                duration_ticks: 24,
+            }],
+            scale: crate::generator::music::Scale::MinorPentatonic,
+            bpm_range: (60, 120),
+            allowed_variations: crate::generator::music::VariationMask(u16::MAX),
+        };
+        let themed = crate::generator::generate_themed_music(seed, crate::generator::Mood::Tense, &theme, 4, 2);
+        entries.push(Entry {
+            generator: "music_themed".into(),
+            seed,
+            checksum: hash_serde(&themed),
+        });
+    }
+
     // S39 — ecosystem & life generator (plus event application).
     for &seed in &CANONICAL_SEEDS {
         let biomes = vec![Biome::Frontier, Biome::Nebula, Biome::Core];
