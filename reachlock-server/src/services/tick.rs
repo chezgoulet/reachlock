@@ -53,8 +53,30 @@ pub async fn run(state: Arc<AppState>, interval_secs: u64) {
         interval.tick().await;
 
         // Advance and broadcast every SimEvent as a universe.event message.
-        for msg in tick_once(&mut universe, &storylines) {
-            let _ = state.events.send(msg);
+        let events = tick_once(&mut universe, &storylines);
+        for msg in &events {
+            let _ = state.events.send(msg.clone());
+        }
+
+        // S49: persist events to Postgres when the pool is available.
+        #[cfg(feature = "postgres")]
+        if let Some(ref pool) = state.pg_pool {
+            let tier = reachlock_core::universe::UniverseTier::Classic;
+            let sim_events: Vec<reachlock_core::sim::SimEvent> = events
+                .iter()
+                .filter_map(|msg| {
+                    if let ServerMessage::UniverseEvent { ref event } = msg {
+                        serde_json::from_value(event.clone()).ok()
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if !sim_events.is_empty() {
+                if let Err(e) = pg::append_events(pool, tier, &sim_events).await {
+                    tracing::error!("tick event persistence failed: {e}");
+                }
+            }
         }
 
         if universe.tick_no.is_multiple_of(SNAPSHOT_EVERY) {

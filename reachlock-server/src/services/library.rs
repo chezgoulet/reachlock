@@ -87,7 +87,9 @@ pub mod pg {
     use sqlx::PgPool;
 
     pub struct PgContractLibrary {
+        #[expect(dead_code)]
         pool: PgPool,
+        #[expect(dead_code)]
         runtime: tokio::runtime::Handle,
     }
 

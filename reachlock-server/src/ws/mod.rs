@@ -131,6 +131,10 @@ pub struct AppState {
     connected: AtomicUsize,
     pub voice: VoiceRegistry,
     pub library: Box<dyn ContractLibrary>,
+    /// S49: Postgres connection pool. `None` when using in-memory stores.
+    /// When Some, tick events are persisted to `universe_events`.
+    #[cfg(feature = "postgres")]
+    pub pg_pool: Option<sqlx::PgPool>,
     // S51: authentication stores.
     pub players: Box<dyn PlayerStore>,
     pub email: Box<dyn EmailBackend>,
@@ -163,6 +167,17 @@ impl AppState {
                 .unwrap_or_else(|_| std::path::PathBuf::from("data/emails"));
             Box::new(crate::services::email::FileEmailBackend::new(file_dir))
         };
+
+        // Store selection: when REACHLOCK_DB is set, use Postgres-backed stores.
+        // Otherwise use in-memory (zero-infra default).
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "postgres")] {
+                if let Some(url) = &config.db_url {
+                    return Self::new_pg(url, events, email, cfg);
+                }
+            }
+        }
+
         AppState {
             seeds: Box::new(MemorySeedStore::default()),
             sessions: Box::new(MemorySessionStore::default()),
@@ -170,6 +185,8 @@ impl AppState {
             contracts: Box::new(MemoryContractStore::default()),
             llm: LlmService::from_env(),
             events,
+            #[cfg(feature = "postgres")]
+            pg_pool: None,
             presence: PresenceManager::default(),
             audit: Box::new(MemoryAuditLog::default()),
             prometheus: crate::observability::init_prometheus(),
@@ -180,6 +197,59 @@ impl AppState {
             billing: Box::new(MemorySubscriptionStore::default()),
             library: Box::new(MemoryContractLibrary::default()),
             players: Box::new(MemoryPlayerStore::default()),
+            email,
+            auth_config: std::sync::Arc::new(std::sync::RwLock::new(cfg)),
+            verification_tokens: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            reset_tokens: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            temp_tokens: TempTokenStore::new(),
+            totp_secrets: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            totp_recovery_codes: std::sync::Arc::new(Mutex::new(Vec::new())),
+            oauth_flows: std::sync::Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Construct all stores from Postgres. Only available with the `postgres` feature.
+    #[cfg(feature = "postgres")]
+    fn new_pg(
+        url: &str,
+        events: broadcast::Sender<ServerMessage>,
+        email: Box<dyn EmailBackend>,
+        cfg: crate::services::auth::AuthConfig,
+    ) -> Self {
+        use crate::services::seed::pg::PgSeedStore;
+        use crate::services::auth::pg::{PgPlayerStore, PgSessionStore};
+
+        let rt = tokio::runtime::Handle::current();
+        let pool = rt.block_on(async {
+            let pool = sqlx::PgPool::connect(url)
+                .await
+                .expect("REACHLOCK_DB: connect failed");
+            sqlx::migrate!("./migrations")
+                .run(&pool)
+                .await
+                .expect("REACHLOCK_DB: migration failed");
+            tracing::info!("Postgres stores active — migrations applied");
+            pool
+        });
+
+        AppState {
+            seeds: Box::new(PgSeedStore::new(pool.clone())),
+            sessions: Box::new(PgSessionStore::new(pool.clone())),
+            verify: VerifyService::default(),
+            contracts: Box::new(MemoryContractStore::default()),
+            llm: LlmService::from_env(),
+            events,
+            pg_pool: Some(pool.clone()),
+            presence: PresenceManager::default(),
+            audit: Box::new(MemoryAuditLog::default()),
+            prometheus: crate::observability::init_prometheus(),
+            health: std::sync::Arc::new(HealthAggregator::default()),
+            auth_required: std::sync::atomic::AtomicBool::new(false),
+            connected: AtomicUsize::new(0),
+            voice: VoiceRegistry::default(),
+            billing: Box::new(MemorySubscriptionStore::default()),
+            library: Box::new(MemoryContractLibrary::default()),
+            players: Box::new(PgPlayerStore::new(pool)),
             email,
             auth_config: std::sync::Arc::new(std::sync::RwLock::new(cfg)),
             verification_tokens: std::sync::Arc::new(Mutex::new(HashMap::new())),

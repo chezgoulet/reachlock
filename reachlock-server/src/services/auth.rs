@@ -1452,3 +1452,482 @@ pub fn app_err(status: u16, msg: &str) -> crate::ws::AppError {
         message: msg.to_string(),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Postgres-backed PlayerStore + SessionStore (behind `postgres` feature)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "postgres")]
+pub mod pg {
+    use super::*;
+    use sqlx::PgPool;
+
+    pub struct PgPlayerStore {
+        pool: PgPool,
+        runtime: tokio::runtime::Handle,
+    }
+
+    impl PgPlayerStore {
+        pub fn new(pool: PgPool) -> Self {
+            PgPlayerStore {
+                pool,
+                runtime: tokio::runtime::Handle::current(),
+            }
+        }
+    }
+
+    impl PlayerStore for PgPlayerStore {
+        fn create(&self, username: &str, email: &str, hash: &str) -> Result<PlayerRecord, String> {
+            let pool = self.pool.clone();
+            let username = username.to_string();
+            let email = email.to_string();
+            let hash = hash.to_string();
+            self.runtime.block_on(async move {
+                let row: Result<(String,), sqlx::Error> = sqlx::query_as(
+                    "INSERT INTO players (username, email, password_hash)
+                     VALUES ($1, $2, $3) RETURNING id",
+                )
+                .bind(&username)
+                .bind(&email)
+                .bind(&hash)
+                .fetch_one(&pool)
+                .await;
+                match row {
+                    Ok((id,)) => Ok(PlayerRecord {
+                        id,
+                        username,
+                        email: Some(email),
+                        password_hash: Some(hash),
+                        role: "player".into(),
+                        verified_at: None,
+                        deleted_at: None,
+                        banned_at: None,
+                        banned_reason: None,
+                        failed_login_attempts: 0,
+                        locked_until: None,
+                        created_at: now_secs(),
+                    }),
+                    Err(e) => {
+                        if let Some(db_err) = e.as_database_error() {
+                            if db_err.code().as_deref() == Some("23505") {
+                                return Err("username or email already taken".into());
+                            }
+                        }
+                        Err(format!("db: {e}"))
+                    }
+                }
+            })
+        }
+
+        fn by_login(&self, login: &str) -> Option<PlayerRecord> {
+            let pool = self.pool.clone();
+            let login = login.to_string();
+            self.runtime.block_on(async move {
+                sqlx::query_as::<_, (String, String, Option<String>, Option<String>, String, Option<i64>, Option<i64>, Option<i64>, Option<String>, i32, Option<i64>, i64)>(
+                    "SELECT id, username, email, password_hash, role,
+                            EXTRACT(EPOCH FROM verified_at)::bigint,
+                            EXTRACT(EPOCH FROM deleted_at)::bigint,
+                            EXTRACT(EPOCH FROM banned_at)::bigint,
+                            banned_reason,
+                            failed_login_attempts,
+                            EXTRACT(EPOCH FROM locked_until)::bigint,
+                            EXTRACT(EPOCH FROM created_at)::bigint
+                     FROM players
+                     WHERE username = $1 OR email = $1",
+                )
+                .bind(&login)
+                .fetch_optional(&pool)
+                .await
+                .ok()?
+                .map(|(id, uname, email, pw_hash, role, verified, deleted, banned, reason, fails, locked, created)| {
+                    PlayerRecord {
+                        id, username: uname, email, password_hash: pw_hash,
+                        role, verified_at: verified.filter(|&v| v > 0),
+                        deleted_at: deleted.filter(|&v| v > 0),
+                        banned_at: banned.filter(|&v| v > 0),
+                        banned_reason: reason,
+                        failed_login_attempts: fails as u32,
+                        locked_until: locked.filter(|&v| v > 0),
+                        created_at: created,
+                    }
+                })
+            })
+        }
+
+        fn by_id(&self, id: &str) -> Option<PlayerRecord> {
+            let pool = self.pool.clone();
+            let id = id.to_string();
+            self.runtime.block_on(async move {
+                fetch_player_by_id(&pool, &id).await
+            })
+        }
+
+        fn by_email(&self, email: &str) -> Option<PlayerRecord> {
+            let pool = self.pool.clone();
+            let email = email.to_string();
+            self.runtime.block_on(async move {
+                sqlx::query_as::<_, (String, String, Option<String>, Option<String>, String, Option<i64>, Option<i64>, Option<i64>, Option<String>, i32, Option<i64>, i64)>(
+                    "SELECT id, username, email, password_hash, role,
+                            EXTRACT(EPOCH FROM verified_at)::bigint,
+                            EXTRACT(EPOCH FROM deleted_at)::bigint,
+                            EXTRACT(EPOCH FROM banned_at)::bigint,
+                            banned_reason,
+                            failed_login_attempts,
+                            EXTRACT(EPOCH FROM locked_until)::bigint,
+                            EXTRACT(EPOCH FROM created_at)::bigint
+                     FROM players WHERE email = $1",
+                )
+                .bind(&email)
+                .fetch_optional(&pool)
+                .await
+                .ok()?
+                .map(|(id, uname, email, pw_hash, role, verified, deleted, banned, reason, fails, locked, created)| {
+                    PlayerRecord {
+                        id, username: uname, email, password_hash: pw_hash,
+                        role, verified_at: verified.filter(|&v| v > 0),
+                        deleted_at: deleted.filter(|&v| v > 0),
+                        banned_at: banned.filter(|&v| v > 0),
+                        banned_reason: reason,
+                        failed_login_attempts: fails as u32,
+                        locked_until: locked.filter(|&v| v > 0),
+                        created_at: created,
+                    }
+                })
+            })
+        }
+
+        fn by_provider(&self, provider: &str, provider_uid: &str) -> Option<PlayerRecord> {
+            let pool = self.pool.clone();
+            let provider = provider.to_string();
+            let provider_uid = provider_uid.to_string();
+            self.runtime.block_on(async move {
+                let pid: Option<(String,)> = sqlx::query_as(
+                    "SELECT player_id FROM oauth_accounts WHERE provider = $1 AND provider_user_id = $2",
+                )
+                .bind(&provider)
+                .bind(&provider_uid)
+                .fetch_optional(&pool)
+                .await
+                .ok()?;
+                let (pid,) = pid?;
+                fetch_player_by_id(&pool, &pid).await
+            })
+        }
+
+        fn link_provider(&self, player_id: &str, provider: &str, provider_uid: &str, provider_email: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            let prov = provider.to_string();
+            let uid = provider_uid.to_string();
+            let email = provider_email.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "INSERT INTO oauth_accounts (player_id, provider, provider_user_id, provider_email)
+                     VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
+                )
+                .bind(&pid)
+                .bind(&prov)
+                .bind(&uid)
+                .bind(&email)
+                .execute(&pool)
+                .await;
+            });
+        }
+
+        fn update_hash(&self, player_id: &str, hash: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            let hash = hash.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query("UPDATE players SET password_hash = $1 WHERE id = $2")
+                    .bind(&hash)
+                    .bind(&pid)
+                    .execute(&pool)
+                    .await;
+            });
+        }
+
+        fn inc_fails(&self, player_id: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "UPDATE players SET failed_login_attempts = failed_login_attempts + 1 WHERE id = $1",
+                )
+                .bind(&pid)
+                .execute(&pool)
+                .await;
+            });
+        }
+
+        fn clear_fails(&self, player_id: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "UPDATE players SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1",
+                )
+                .bind(&pid)
+                .execute(&pool)
+                .await;
+            });
+        }
+
+        fn set_verified(&self, player_id: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "UPDATE players SET verified_at = NOW() WHERE id = $1",
+                )
+                .bind(&pid)
+                .execute(&pool)
+                .await;
+            });
+        }
+
+        fn set_deleted(&self, player_id: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "UPDATE players SET deleted_at = NOW() WHERE id = $1",
+                )
+                .bind(&pid)
+                .execute(&pool)
+                .await;
+            });
+        }
+
+        fn cancel_deletion(&self, player_id: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "UPDATE players SET deleted_at = NULL WHERE id = $1",
+                )
+                .bind(&pid)
+                .execute(&pool)
+                .await;
+            });
+        }
+
+        fn set_lock(&self, player_id: &str, locked_until: i64) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "UPDATE players SET locked_until = to_timestamp($1::double precision) WHERE id = $2",
+                )
+                .bind(locked_until as f64)
+                .bind(&pid)
+                .execute(&pool)
+                .await;
+            });
+        }
+
+        fn ban(&self, player_id: &str, reason: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            let reason = reason.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "UPDATE players SET banned_at = NOW(), banned_reason = $1 WHERE id = $2",
+                )
+                .bind(&reason)
+                .bind(&pid)
+                .execute(&pool)
+                .await;
+            });
+        }
+
+        fn unban(&self, player_id: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "UPDATE players SET banned_at = NULL, banned_reason = NULL WHERE id = $1",
+                )
+                .bind(&pid)
+                .execute(&pool)
+                .await;
+            });
+        }
+
+        fn set_role(&self, player_id: &str, role: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            let role = role.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "UPDATE players SET role = $1::auth_role WHERE id = $2",
+                )
+                .bind(&role)
+                .bind(&pid)
+                .execute(&pool)
+                .await;
+            });
+        }
+
+        fn list(&self, page: u32, per_page: u32) -> Vec<PlayerRecord> {
+            let pool = self.pool.clone();
+            let offset = ((page.saturating_sub(1)) * per_page) as i64;
+            let limit = per_page as i64;
+            self.runtime.block_on(async move {
+                sqlx::query_as::<_, (String, String, Option<String>, Option<String>, String, Option<i64>, Option<i64>, Option<i64>, Option<String>, i32, Option<i64>, i64)>(
+                    "SELECT id, username, email, password_hash, role,
+                            EXTRACT(EPOCH FROM verified_at)::bigint,
+                            EXTRACT(EPOCH FROM deleted_at)::bigint,
+                            EXTRACT(EPOCH FROM banned_at)::bigint,
+                            banned_reason,
+                            failed_login_attempts,
+                            EXTRACT(EPOCH FROM locked_until)::bigint,
+                            EXTRACT(EPOCH FROM created_at)::bigint
+                     FROM players ORDER BY created_at LIMIT $1 OFFSET $2",
+                )
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(id, uname, email, pw_hash, role, verified, deleted, banned, reason, fails, locked, created)| {
+                    PlayerRecord {
+                        id, username: uname, email, password_hash: pw_hash,
+                        role, verified_at: verified.filter(|&v| v > 0),
+                        deleted_at: deleted.filter(|&v| v > 0),
+                        banned_at: banned.filter(|&v| v > 0),
+                        banned_reason: reason,
+                        failed_login_attempts: fails as u32,
+                        locked_until: locked.filter(|&v| v > 0),
+                        created_at: created,
+                    }
+                })
+                .collect()
+            })
+        }
+
+        fn count(&self) -> usize {
+            let pool = self.pool.clone();
+            self.runtime.block_on(async move {
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM players")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or(0) as usize
+            })
+        }
+    }
+
+    /// Helper: fetch a player row by id.
+    async fn fetch_player_by_id(pool: &PgPool, id: &str) -> Option<PlayerRecord> {
+        sqlx::query_as::<_, (String, String, Option<String>, Option<String>, String, Option<i64>, Option<i64>, Option<i64>, Option<String>, i32, Option<i64>, i64)>(
+            "SELECT id, username, email, password_hash, role,
+                    EXTRACT(EPOCH FROM verified_at)::bigint,
+                    EXTRACT(EPOCH FROM deleted_at)::bigint,
+                    EXTRACT(EPOCH FROM banned_at)::bigint,
+                    banned_reason,
+                    failed_login_attempts,
+                    EXTRACT(EPOCH FROM locked_until)::bigint,
+                    EXTRACT(EPOCH FROM created_at)::bigint
+             FROM players WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .ok()?
+        .map(|(id, uname, email, pw_hash, role, verified, deleted, banned, reason, fails, locked, created)| {
+            PlayerRecord {
+                id, username: uname, email, password_hash: pw_hash,
+                role, verified_at: verified.filter(|&v| v > 0),
+                deleted_at: deleted.filter(|&v| v > 0),
+                banned_at: banned.filter(|&v| v > 0),
+                banned_reason: reason,
+                failed_login_attempts: fails as u32,
+                locked_until: locked.filter(|&v| v > 0),
+                created_at: created,
+            }
+        })
+    }
+
+    // ------------------------------------------------------------------
+    // PgSessionStore
+    // ------------------------------------------------------------------
+
+    pub struct PgSessionStore {
+        pool: PgPool,
+        runtime: tokio::runtime::Handle,
+    }
+
+    impl PgSessionStore {
+        pub fn new(pool: PgPool) -> Self {
+            PgSessionStore {
+                pool,
+                runtime: tokio::runtime::Handle::current(),
+            }
+        }
+    }
+
+    impl SessionStore for PgSessionStore {
+        fn issue(&self, info: SessionInfo) -> String {
+            let pool = self.pool.clone();
+            let token = uuid::Uuid::new_v4().to_string();
+            let token2 = token.clone();
+            let pid = info.player_id;
+            let universe = info.universe.as_str().to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query(
+                    "INSERT INTO sessions (token, player_id, universe) VALUES ($1, $2, $3::universe_tier)",
+                )
+                .bind(&token2)
+                .bind(&pid)
+                .bind(&universe)
+                .execute(&pool)
+                .await;
+            });
+            token
+        }
+
+        fn resolve(&self, token: &str) -> Option<SessionInfo> {
+            let pool = self.pool.clone();
+            let t = token.to_string();
+            self.runtime.block_on(async move {
+                let row: Option<(String, String)> = sqlx::query_as(
+                    "SELECT player_id, universe::text FROM sessions
+                     WHERE token = $1 AND expires_at > NOW()",
+                )
+                .bind(&t)
+                .fetch_optional(&pool)
+                .await
+                .ok()?;
+                let (player_id, universe_str) = row?;
+                let universe = universe_str.parse().ok()?;
+                Some(SessionInfo {
+                    player_id,
+                    universe,
+                })
+            })
+        }
+
+        fn revoke(&self, token: &str) {
+            let pool = self.pool.clone();
+            let t = token.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query("DELETE FROM sessions WHERE token = $1")
+                    .bind(&t)
+                    .execute(&pool)
+                    .await;
+            });
+        }
+
+        fn revoke_all_for_player(&self, player_id: &str) {
+            let pool = self.pool.clone();
+            let pid = player_id.to_string();
+            self.runtime.block_on(async move {
+                let _ = sqlx::query("DELETE FROM sessions WHERE player_id = $1")
+                    .bind(&pid)
+                    .execute(&pool)
+                    .await;
+            });
+        }
+    }
+}
