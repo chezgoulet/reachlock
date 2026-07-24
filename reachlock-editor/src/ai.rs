@@ -191,6 +191,13 @@ pub fn type_context(ct: &ContentType) -> &'static str {
              range, and an allowed-variations bitmask controlling which variation operators the \
              generator may apply. Wrapped in a ContentFile envelope."
         }
+        ContentType::ScriptedEncounter => {
+            "A fully authored multi-scene scripted encounter: trigger conditions, \
+             prerequisite checks, a scene graph with choices that branch to other \
+             scenes, consequences (give/remove items, modify reputation, unlock missions, \
+             ecosystem events, etc.), and outcome endings with permanent effects. Wrapped \
+             in a ContentFile envelope with asset_type \"scripted_encounter\"."
+        }
         ContentType::Trope => {
             "A narrative encounter template: a procedural sector text with named slots, branching \
              choices with conditions and consequences, and a location type / threat level filter. \

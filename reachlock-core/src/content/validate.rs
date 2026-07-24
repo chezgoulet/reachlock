@@ -180,6 +180,7 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
         ContentPayload::Contract(_) => {}
         ContentPayload::Theme(_) => {}
         ContentPayload::Trope(_) => {}
+        ContentPayload::ScriptedEncounter(_) => {}
         ContentPayload::PlanetCulture(_) => {}
         ContentPayload::Ecosystem(_) => {
             // Structural checks for ecosystems are schema-side for now.

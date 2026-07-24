@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::career::CareerPath;
 use crate::contract::types::Contract;
 use crate::generator::music::Theme;
+use crate::generator::scripted_encounter::ScriptedEncounter;
 use crate::generator::trope::TropeTemplate;
 use crate::editor::exterior::HullFrame;
 use crate::editor::interior::RoomTemplate;
@@ -36,6 +37,8 @@ pub enum AssetType {
     Theme,
     /// S40: a trope template for procedural narrative encounters.
     Trope,
+    /// S41: a fully authored, multi-scene scripted encounter.
+    ScriptedEncounter,
     /// S13: an NPC soul (spec §15) — the pipeline's fourth content type.
     Soul,
     /// S17: an exterior hull frame (spec §19) — slot layout, engine mount,
@@ -89,6 +92,8 @@ pub enum ContentPayload {
     Theme(Box<Theme>),
     /// S40: a trope template (spec §10).
     Trope(Box<TropeTemplate>),
+    /// S41: a scripted encounter (spec §10). Boxed to keep the envelope slim.
+    ScriptedEncounter(Box<ScriptedEncounter>),
     /// S13: who an NPC is (spec §15). Souls are data; the contract engine
     /// decides how they act, S16 decides what they say. Boxed: a soul is an
     /// order of magnitude bigger than the other variants, and serde treats

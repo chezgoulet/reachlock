@@ -53,6 +53,7 @@ pub enum ContentType {
     PlanetCulture,
     Theme,
     Trope,
+    ScriptedEncounter,
 }
 
 impl ContentType {
@@ -79,6 +80,7 @@ impl ContentType {
             ContentType::PlanetCulture,
             ContentType::Theme,
             ContentType::Trope,
+            ContentType::ScriptedEncounter,
         ]
     }
 
@@ -105,6 +107,7 @@ impl ContentType {
             ContentType::PlanetCulture => "Planet Culture",
             ContentType::Theme => "Music Theme",
             ContentType::Trope => "Trope Template",
+            ContentType::ScriptedEncounter => "Scripted Encounter",
         }
     }
 
@@ -134,6 +137,7 @@ impl ContentType {
             ContentType::PlanetCulture => "cultures",
             ContentType::Theme => "themes",
             ContentType::Trope => "tropes",
+            ContentType::ScriptedEncounter => "encounters",
         }
     }
 
@@ -162,6 +166,7 @@ impl ContentType {
             "cultures" => Some(ContentType::PlanetCulture),
             "themes" => Some(ContentType::Theme),
             "tropes" => Some(ContentType::Trope),
+            "encounters" => Some(ContentType::ScriptedEncounter),
             _ => None,
         }
     }
@@ -286,6 +291,18 @@ pub fn build_default_registry() -> EditorRegistry {
     r.register(
         ContentType::PlanetCulture,
         crate::editors::planet_culture::create_editor,
+    );
+    r.register(
+        ContentType::Theme,
+        crate::editors::theme::create_editor,
+    );
+    r.register(
+        ContentType::Trope,
+        crate::editors::trope::create_editor,
+    );
+    r.register(
+        ContentType::ScriptedEncounter,
+        crate::editors::scripted_encounter::create_editor,
     );
     r.register(
         ContentType::HullFrame,

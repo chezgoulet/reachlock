@@ -60,6 +60,7 @@ pub fn schema_id(ct: &ContentType) -> Option<&'static str> {
         ContentType::PlanetCulture => "planet_culture",
         ContentType::Theme => "theme",
         ContentType::Trope => "trope",
+        ContentType::ScriptedEncounter => "scripted_encounter",
         // Previewers persist nothing; no schema applies.
         ContentType::ItemBrowser | ContentType::SpriteViewer => return None,
     })

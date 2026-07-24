@@ -28,6 +28,8 @@ const PLANT_CULTURE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/planet_culture.schema.json");
 const CAREER_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/career_path.schema.json");
+const THEME_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/theme.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -261,7 +263,18 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                         path.display(),
                         theme.id,
                         theme.notes.len(),
-                        format!("{:?}", theme.bpm_range),
+                        format_args!("{:?}", theme.bpm_range),
+                    );
+                    return Ok(());
+                }
+                ContentPayload::ScriptedEncounter(enc) => {
+                    println!(
+                        "{}: scripted encounter \"{}\" ({:?}) — {} scene(s), {} prereq(s)",
+                        path.display(),
+                        enc.id,
+                        enc.encounter_type,
+                        enc.scenes.len(),
+                        enc.prerequisites.len(),
                     );
                     return Ok(());
                 }
@@ -322,8 +335,9 @@ fn validate_schema(
         AssetType::Ecosystem => ECOSYSTEM_SCHEMA,
         AssetType::RoomTemplates => ROOM_TEMPLATE_SCHEMA,
         AssetType::PlanetCulture => PLANT_CULTURE_SCHEMA,
-        AssetType::Theme => ECOSYSTEM_SCHEMA,  // placeholder — needs dedicated schema
+        AssetType::Theme => THEME_SCHEMA,
         AssetType::Trope => ECOSYSTEM_SCHEMA,  // placeholder — needs dedicated schema
+        AssetType::ScriptedEncounter => ECOSYSTEM_SCHEMA,  // placeholder — needs dedicated schema
     };
 
     let schema = serde_json::from_str::<serde_json::Value>(schema_text)

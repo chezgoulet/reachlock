@@ -19,9 +19,12 @@ pub mod item;
 pub mod item_browser;
 pub mod location;
 pub mod room_templates;
+pub mod scripted_encounter;
 pub mod soul;
 pub mod station;
 pub mod storyline;
+pub mod theme;
+pub mod trope;
 pub mod widgets;
 
 pub fn register_all(registry: &mut super::app::EditorRegistry) {
@@ -32,6 +35,14 @@ pub fn register_all(registry: &mut super::app::EditorRegistry) {
     registry.register(
         super::app::ContentType::Ecosystem,
         ecosystem::create_editor,
+    );
+    registry.register(
+        super::app::ContentType::Theme,
+        theme::create_editor,
+    );
+    registry.register(
+        super::app::ContentType::Trope,
+        trope::create_editor,
     );
     registry.register(
         super::app::ContentType::PlanetCulture,
