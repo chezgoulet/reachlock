@@ -9,12 +9,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use axum::extract::State;
+use axum::extract::{Path, RawQuery, State};
 use axum::http::StatusCode;
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use reachlock_core::network::ServerMessage;
-use reachlock_core::seed::types::SystemId;
+use reachlock_core::seed::types::{Seed, SystemId};
 use reachlock_core::universe::tier::UniverseTier;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
@@ -344,6 +344,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auth/oauth/google/device", post(oauth_google_device_handler))
         .route("/auth/oauth/github/device", post(oauth_github_device_handler))
         .route("/auth/oauth/token", post(oauth_token_handler))
+        // S57: seed discovery via HTTP
+        .route("/seed/discover", post(seed_discover))
+        // S57: content overrides for a system (in-memory stub)
+        .route("/content/system/{system_id}", get(content_system))
         // S51 dev auth (preserved)
         .route("/auth/dev", post(auth_dev))
         .route("/byok", post(byok_register))
@@ -409,6 +413,49 @@ async fn byok_register(
         ),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "key storage failed"),
     }
+}
+
+/// `POST /seed/discover { universe, system_id, tentative_seed }` — HTTP seed
+/// discovery (S57). Returns the canonical seed for the (universe, system) pair.
+async fn seed_discover(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let universe_str = body["universe"].as_str().ok_or_else(|| AppError {
+        status: 400,
+        message: "missing universe".into(),
+    })?;
+    let universe: UniverseTier = universe_str.parse().map_err(|e: String| AppError {
+        status: 400,
+        message: format!("bad universe tier: {e}"),
+    })?;
+    let system_id_str = body["system_id"].as_str().ok_or_else(|| AppError {
+        status: 400,
+        message: "missing system_id".into(),
+    })?;
+    let tentative_seed = body["tentative_seed"].as_u64().ok_or_else(|| AppError {
+        status: 400,
+        message: "missing or invalid tentative_seed".into(),
+    })?;
+    let system_id = SystemId(system_id_str.to_string());
+    let seed = Seed::new(tentative_seed);
+    let result = state.seeds.discover(universe, &system_id, seed);
+    Ok(Json(serde_json::json!({
+        "canonical_seed": result.canonical_seed.value(),
+        "diffs": result.diffs,
+        "you_discovered": result.you_discovered,
+    })))
+}
+
+/// `GET /content/system/{system_id}` — in-memory content overrides stub (S57).
+/// Returns an empty array; real content overrides will be added later.
+async fn content_system(
+    Path(system_id): Path<String>,
+    RawQuery(query): RawQuery,
+) -> Json<serde_json::Value> {
+    // system_id and ?universe= captured for future use
+    let _ = (system_id, query);
+    Json(serde_json::json!([]))
 }
 
 /// `POST /auth/dev { username, universe? }` — dev-only token issuance.

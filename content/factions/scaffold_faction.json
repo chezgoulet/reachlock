@@ -1,0 +1,11 @@
+//! Scaffold faction profile.
+{
+  "id": "scaffold_faction",
+  "name": "Scaffold Faction",
+  "doctrine": "Diplomatic",
+  "territory": [],
+  "resources": { "stock": {} },
+  "relationships": {},
+  "goals": [],
+  "color": [136, 136, 136, 255]
+}

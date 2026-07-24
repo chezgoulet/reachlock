@@ -255,6 +255,10 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
             check_unique("zone", frame.zones.iter().map(|z| &z.id).collect());
             check_unique("decal slot", frame.decal_slots.iter().collect());
         }
+        ContentPayload::Dialogue(_) => {}
+        ContentPayload::Dungeon(_) => {}
+        ContentPayload::Event(_) => {}
+        ContentPayload::Recipe(_) => {}
         ContentPayload::RoomTemplates(templates) => {
             let mut ids = std::collections::BTreeSet::new();
             let mut kinds = std::collections::BTreeSet::new();

@@ -203,6 +203,29 @@ pub fn type_context(ct: &ContentType) -> &'static str {
              choices with conditions and consequences, and a location type / threat level filter. \
              Wrapped in a ContentFile envelope with asset_type \"trope\"."
         }
+        ContentType::Dialogue => {
+            "A branching dialogue tree: node types NarratorLine, NpcLine, PlayerChoice, \
+             Branch, End. Each node has text, optional choices with conditions and consequences, \
+             and an optional voice clip path. Variable interpolation for player_name, ship_name, etc."
+        }
+        ContentType::Dungeon => {
+            "A dungeon layout: a 2D grid of rooms with position, size, connectors, and tags \
+             (entrance, boss, puzzle, treasure, etc.). Each room can have puzzles, enemy \
+             encounters, and reward tables."
+        }
+        ContentType::Event => {
+            "A scripted event with a timeline of narrative stages. Each stage has trigger \
+             conditions (AND/OR tree) and consequences. Trigger types: PlayerReputation, \
+             TickAfter, ChapterComplete, HasItem, PlayerInSystem, FactionState, FlagSet. \
+             Consequence types: AddReputation, AddItem, AdvanceChapter, EcosystemEvent, \
+             SpawnEncounter, SetFlag."
+        }
+        ContentType::Recipe => {
+            "A crafting recipe: ingredient grid with item_id, quantity, and optional flag; \
+             output config with item_id, quantity, quality range, and durability; optional \
+             skill requirement with category and minimum level; workbench type; and duration \
+             in ticks."
+        }
         ContentType::ItemBrowser | ContentType::SpriteViewer => {
             "A live preview with nothing persisted."
         }

@@ -363,6 +363,15 @@ pub fn poll_network(
                     log.log("Story submission failed.");
                 }
             }
+            TransportEvent::Message(ServerMessage::Pong) => {
+                // S57: heartbeat — silently handled.
+            }
+            TransportEvent::Message(ServerMessage::PlayerJumped { .. }) => {
+                // S57: another player jumped systems — presence handles it.
+            }
+            TransportEvent::Message(ServerMessage::PlayerDisconnected { .. }) => {
+                // S57: another player disconnected — presence handles it.
+            }
             TransportEvent::Message(ServerMessage::SystemNotice { message }) => {
                 // S28: subscription notice (grace period, etc.).
                 log.log(format!("System notice: {message}"));

@@ -1,10 +1,12 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{RawQuery, State};
 use axum::response::Response;
 use futures::{SinkExt, StreamExt};
 use reachlock_core::network::{ClientMessage, ServerMessage, PROTOCOL_VERSION};
+use tokio::time::Instant;
 
 use super::session::Session;
 use super::AppState;
@@ -81,11 +83,18 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
     // S23 presence: track current system for interest scoping.
     let mut current_system: Option<reachlock_core::seed::types::SystemId> = None;
 
+    // S57: heartbeat tracking.
+    let mut last_heartbeat = Instant::now();
+    let heartbeat_timeout = Duration::from_secs(30);
+
     // S54: register this session's sender for targeted delivery (voice signaling).
     state.player_senders.write().await.insert(session.player_id.clone(), out_tx.clone());
 
     // Read loop.
     loop {
+        let remaining = heartbeat_timeout.saturating_sub(last_heartbeat.elapsed());
+        let sleep = tokio::time::sleep(remaining);
+        tokio::pin!(sleep);
         tokio::select! {
             msg = stream.next() => {
                 let Some(Ok(Message::Text(text))) = msg else {
@@ -100,6 +109,12 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
                         continue;
                     }
                 };
+                // S57: handle ping before routing.
+                if matches!(cm, ClientMessage::Ping) {
+                    last_heartbeat = Instant::now();
+                    let _ = out_tx.send(ServerMessage::Pong).await;
+                    continue;
+                }
                 let reply = route(
                     &state, &session, cm, &out_tx, &mut current_system,
                 ).await;
@@ -108,8 +123,21 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
                 }
             }
             _ = &mut writer => break,
+            _ = &mut sleep => {
+                let _ = out_tx.send(ServerMessage::PlayerDisconnected {
+                    player_id: session.player_id.clone(),
+                    reason: "timeout".into(),
+                }).await;
+                break;
+            }
         }
     }
+
+    // S57: emit player.disconnected on session close.
+    let _ = state.events.send(ServerMessage::PlayerDisconnected {
+        player_id: session.player_id.clone(),
+        reason: "quit".into(),
+    });
 
     // S54: unregister sender for targeted delivery.
     state.player_senders.write().await.remove(&session.player_id);
@@ -165,6 +193,31 @@ async fn route(
                         &ServerMessage::PlayerLeft {
                             player_id: session.player_id.clone(),
                             system_id: old_id.clone(),
+                        },
+                    )
+                    .await;
+                // S57: broadcast PlayerJumped to old system and new system.
+                state
+                    .presence
+                    .broadcast(
+                        universe,
+                        &old_id,
+                        &ServerMessage::PlayerJumped {
+                            player_id: session.player_id.clone(),
+                            from_system: old_id.clone(),
+                            to_system: system_id.clone(),
+                        },
+                    )
+                    .await;
+                state
+                    .presence
+                    .broadcast(
+                        universe,
+                        &system_id,
+                        &ServerMessage::PlayerJumped {
+                            player_id: session.player_id.clone(),
+                            from_system: old_id,
+                            to_system: system_id.clone(),
                         },
                     )
                     .await;
@@ -422,5 +475,7 @@ async fn route(
                 story_id,
             })
         }
+        // S57: handled before route(), unreachable here.
+        ClientMessage::Ping => None,
     }
 }

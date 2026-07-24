@@ -61,6 +61,10 @@ pub fn schema_id(ct: &ContentType) -> Option<&'static str> {
         ContentType::Theme => "theme",
         ContentType::Trope => "trope",
         ContentType::ScriptedEncounter => "scripted_encounter",
+        ContentType::Dialogue => "ecosystem",  // placeholder — S53 has dialogue schema pending.
+        ContentType::Dungeon => "dungeon",
+        ContentType::Event => "event",
+        ContentType::Recipe => "recipe",
         // Previewers persist nothing; no schema applies.
         ContentType::ItemBrowser | ContentType::SpriteViewer => return None,
     })

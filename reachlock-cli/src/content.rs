@@ -34,15 +34,16 @@ const TROPE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/trope.schema.json");
 const SCRIPTED_ENCOUNTER_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/scripted_encounter.schema.json");
-#[allow(dead_code)]
 const DUNGEON_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/dungeon.schema.json");
-#[allow(dead_code)]
 const EVENT_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/event.schema.json");
-#[allow(dead_code)]
 const RECIPE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/recipe.schema.json");
+
+// Dialogue schema is pending from S53 — use ecosystem as placeholder.
+const DIALOGUE_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/ecosystem.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -302,6 +303,45 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                     );
                     return Ok(());
                 }
+                ContentPayload::Dialogue(dialogue) => {
+                    println!(
+                        "{}: dialogue — {} node(s), start: {}",
+                        path.display(),
+                        dialogue.nodes.len(),
+                        dialogue.start_node,
+                    );
+                    return Ok(());
+                }
+                ContentPayload::Dungeon(dungeon) => {
+                    println!(
+                        "{}: dungeon \"{}\" — {} room(s), {} puzzle(s)",
+                        path.display(),
+                        dungeon.id,
+                        dungeon.rooms.len(),
+                        dungeon.puzzles.len(),
+                    );
+                    return Ok(());
+                }
+                ContentPayload::Event(event) => {
+                    println!(
+                        "{}: event \"{}\" — {} stage(s)",
+                        path.display(),
+                        event.id,
+                        event.stages.len(),
+                    );
+                    return Ok(());
+                }
+                ContentPayload::Recipe(recipe) => {
+                    println!(
+                        "{}: recipe \"{}\" — {} ingredient(s), output: {} x{}",
+                        path.display(),
+                        recipe.id,
+                        recipe.ingredients.len(),
+                        recipe.output.item_id,
+                        recipe.output.quantity,
+                    );
+                    return Ok(());
+                }
                 ContentPayload::RoomTemplates(templates) => {
                     // Templates are a palette, not geometry — summarize;
                     // the realized layout is what the editor previews.
@@ -351,6 +391,10 @@ fn validate_schema(
         AssetType::Theme => THEME_SCHEMA,
         AssetType::Trope => TROPE_SCHEMA,
         AssetType::ScriptedEncounter => SCRIPTED_ENCOUNTER_SCHEMA,
+        AssetType::Dialogue => DIALOGUE_SCHEMA,
+        AssetType::Dungeon => DUNGEON_SCHEMA,
+        AssetType::Event => EVENT_SCHEMA,
+        AssetType::Recipe => RECIPE_SCHEMA,
     };
 
     let schema = serde_json::from_str::<serde_json::Value>(schema_text)

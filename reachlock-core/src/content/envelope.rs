@@ -17,6 +17,11 @@ use crate::generator::culture::PlanetCulture;
 use crate::soul::types::SoulFile;
 use crate::universe::tier::UniverseTier;
 
+use super::dialogue::Dialogue;
+use super::dungeon::Dungeon;
+use super::event::Event;
+use super::recipe::Recipe;
+
 use super::priority::Priority;
 
 /// What kind of authored asset a `ContentFile` carries. Mirrors the
@@ -33,12 +38,20 @@ pub enum AssetType {
     Career,
     /// S47: a planet culture override (spec §20).
     PlanetCulture,
+    /// S55: a crafting recipe (spec §?).
+    Recipe,
     /// S48: a music theme for the procedural audio engine.
     Theme,
     /// S40: a trope template for procedural narrative encounters.
     Trope,
     /// S41: a fully authored, multi-scene scripted encounter.
     ScriptedEncounter,
+    /// S55: a branching dialogue tree (spec §?).
+    Dialogue,
+    /// S55: a dungeon layout (spec §?).
+    Dungeon,
+    /// S55: a scripted event (spec §?).
+    Event,
     /// S13: an NPC soul (spec §15) — the pipeline's fourth content type.
     Soul,
     /// S17: an exterior hull frame (spec §19) — slot layout, engine mount,
@@ -94,6 +107,14 @@ pub enum ContentPayload {
     Trope(Box<TropeTemplate>),
     /// S41: a scripted encounter (spec §10). Boxed to keep the envelope slim.
     ScriptedEncounter(Box<ScriptedEncounter>),
+    /// S55: a branching dialogue tree.
+    Dialogue(Box<Dialogue>),
+    /// S55: a dungeon layout.
+    Dungeon(Box<Dungeon>),
+    /// S55: a scripted event.
+    Event(Box<Event>),
+    /// S55: a crafting recipe.
+    Recipe(Box<Recipe>),
     /// S13: who an NPC is (spec §15). Souls are data; the contract engine
     /// decides how they act, S16 decides what they say. Boxed: a soul is an
     /// order of magnitude bigger than the other variants, and serde treats

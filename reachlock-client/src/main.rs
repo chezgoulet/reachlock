@@ -20,9 +20,9 @@ use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     combat, comms, content_index, contract, contract_crafting, contract_library, crew, crisis,
-    career, cryojump, culture_view, dialogue, discovery, docking, factions, galaxy_map, hud, interaction, interior, inventory, jump,
-    landed_combat,     market, menu, mission_board, mode, music, network, onboard, pause, presence, reticle, sensors,
-    settings_ui, setup, sfx, ship, shipeditor, soul, story_submission, ticker, voice,
+    career, cryojump, culture_view, deliberation_renderer, dialogue, discovery, docking, factions, galaxy_map, hud, interaction, interior, inventory, jump,
+    landed_combat, market, menu, mission_board, mode, music, network, onboard, pause, presence, resource_gathering, reticle, sensors,
+    settings_ui, setup, sfx, ship, shipeditor, signature_collector, soul, story_submission, ticker, voice,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -186,6 +186,13 @@ fn main() {
         .init_resource::<contract_crafting::ContractWorkshopState>()
         // S34: contract library browser — browse, import, share.
         .init_resource::<contract_library::ContractLibraryState>()
+        // S61: resource gathering — active gathering session state.
+        .init_resource::<resource_gathering::GatheringProgress>()
+        // S61: signature collector — pending signatures for contract approval.
+        .init_resource::<signature_collector::SignatureCollector>()
+        .init_resource::<signature_collector::SignatureCollectorVisible>()
+        // S61: deliberation renderer — visible overlay state for crew deliberations.
+        .init_resource::<deliberation_renderer::DeliberationRenderState>()
         // S34: story submission — pending prompt + submitted stories.
         .init_resource::<story_submission::StorySubmissionState>()
         // S19: space combat — seeded encounters, subsystem targeting, the
@@ -219,6 +226,8 @@ fn main() {
                 music::setup_music,
                 sfx::setup_sfx,
                 contract_library::spawn_library_panel,
+                signature_collector::spawn_signature_panel,
+                resource_gathering::spawn_gathering_progress_bar,
                 sensors::init_blip_assets,
                 setup::apply_video_settings,
                 voice::enumerate_mic_devices,
@@ -250,6 +259,7 @@ fn main() {
                 comms::spawn_comm_hud,
                 combat::spawn_combat_hud,
                 discovery::spawn_discovery_panel,
+                deliberation_renderer::spawn_deliberation_ui,
                 network::connect_on_enter_playing,
                 voice::start_voice_thread,
                 factions::spawn_reputation_panel,
@@ -438,6 +448,7 @@ fn main() {
                 mode::interior_camera_follow,
                 docking::try_interior_transitions,
                 interaction::try_interact,
+                resource_gathering::interact_with_resource,
                 dialogue::sync_dialogue_session,
                 dialogue::dialogue_input,
                 market::market_system,
@@ -511,6 +522,10 @@ fn main() {
             Update,
             contract::tick_deliberation.run_if(in_state(AppState::InGame)),
         )
+        .add_systems(
+            Update,
+            resource_gathering::tick_gathering.run_if(in_state(AppState::InGame)),
+        )
         // S34: story submission prompt — "Share this story?" after deliberation.
         .add_systems(
             Update,
@@ -540,6 +555,10 @@ fn main() {
                 discovery::discovery_panel_toggle.run_if(in_state(AppState::InGame)),
                 career::career_panel_toggle.run_if(in_state(AppState::InGame)),
                 mission_board::mission_board_toggle.run_if(in_state(AppState::InGame)),
+                signature_collector::toggle_signature_panel.run_if(in_state(AppState::InGame)),
+                signature_collector::collect_signature.run_if(in_state(AppState::InGame)),
+                deliberation_renderer::render_deliberation.run_if(in_state(AppState::InGame)),
+                deliberation_renderer::cleanup_completed_deliberations.run_if(in_state(AppState::InGame)),
             ),
         )
         .add_systems(
@@ -603,6 +622,8 @@ fn main() {
                 discovery::render_discovery_panel,
                 career::render_career_panel,
                 mission_board::render_mission_board,
+                resource_gathering::render_gathering_progress,
+                signature_collector::render_signature_panel,
             )
                 .run_if(in_state(AppState::InGame)),
         )

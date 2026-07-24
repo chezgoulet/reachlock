@@ -15,7 +15,7 @@ use crate::universe::tier::UniverseTier;
 
 /// S23/S29: bump when adding/removing message variants so mismatched clients get
 /// a clear error instead of serde noise.
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;
 
 /// S26: wraps a `ServerMessage` with an optional `trace_id` field that old
 /// clients (which don't know about this field) ignore via serde's default
@@ -83,6 +83,9 @@ pub enum ClientMessage {
     /// S29: request TURN server credentials from the server.
     #[serde(rename = "turn.request")]
     RequestTurnConfig,
+    /// S57: heartbeat ping.
+    #[serde(rename = "ping")]
+    Ping,
     /// S34: list published contracts in the library, filtered/sorted.
     #[serde(rename = "library.list")]
     LibraryList {
@@ -153,6 +156,22 @@ pub enum ServerMessage {
     PlayerLeft {
         player_id: String,
         system_id: SystemId,
+    },
+    /// S57: heartbeat pong.
+    #[serde(rename = "pong")]
+    Pong,
+    /// S57: a player jumped from one system to another.
+    #[serde(rename = "player.jumped")]
+    PlayerJumped {
+        player_id: String,
+        from_system: SystemId,
+        to_system: SystemId,
+    },
+    /// S57: a player disconnected.
+    #[serde(rename = "player.disconnected")]
+    PlayerDisconnected {
+        player_id: String,
+        reason: String,
     },
     /// S23: a chat message from another player in the same system.
     #[serde(rename = "chat.message")]
@@ -250,8 +269,8 @@ mod tests {
     }
 
     #[test]
-    fn protocol_version_is_four() {
-        assert_eq!(PROTOCOL_VERSION, 4);
+    fn protocol_version_is_five() {
+        assert_eq!(PROTOCOL_VERSION, 5);
     }
 
     #[test]
@@ -416,6 +435,47 @@ mod tests {
             serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
         assert_eq!(json["type"], "system.notice");
         assert_eq!(json["message"], "Payment past due.");
+    }
+
+    #[test]
+    fn ping_pong_round_trip() {
+        let ping = ClientMessage::Ping;
+        let json = serde_json::to_string(&ping).unwrap();
+        assert_eq!(json, r#"{"type":"ping"}"#);
+        assert_eq!(serde_json::from_str::<ClientMessage>(&json).unwrap(), ping);
+
+        let pong = ServerMessage::Pong;
+        let json = serde_json::to_string(&pong).unwrap();
+        assert_eq!(json, r#"{"type":"pong"}"#);
+        assert_eq!(serde_json::from_str::<ServerMessage>(&json).unwrap(), pong);
+    }
+
+    #[test]
+    fn player_jumped_wire_tag() {
+        let msg = ServerMessage::PlayerJumped {
+            player_id: "alice".into(),
+            from_system: SystemId("alpha".into()),
+            to_system: SystemId("beta".into()),
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "player.jumped");
+        assert_eq!(json["player_id"], "alice");
+        assert_eq!(json["from_system"], "alpha");
+        assert_eq!(json["to_system"], "beta");
+    }
+
+    #[test]
+    fn player_disconnected_wire_tag() {
+        let msg = ServerMessage::PlayerDisconnected {
+            player_id: "bob".into(),
+            reason: "timeout".into(),
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "player.disconnected");
+        assert_eq!(json["player_id"], "bob");
+        assert_eq!(json["reason"], "timeout");
     }
 
     #[test]

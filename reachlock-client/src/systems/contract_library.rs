@@ -5,8 +5,10 @@
 use bevy::prelude::*;
 
 use reachlock_core::contract::metadata::{ContractLibraryEntry, ContractMetadata, CrewRole};
+use reachlock_core::contract::Contract;
 
 use crate::settings::{InputAction, Settings};
+use crate::systems::contract_crafting::ContractWorkshopState;
 use crate::systems::interaction::ActivePanel;
 
 // ---------------------------------------------------------------------------
@@ -117,6 +119,7 @@ pub fn library_system(
     settings: Res<Settings>,
     panel: Res<ActivePanel>,
     mut state: ResMut<ContractLibraryState>,
+    mut workshop: ResMut<ContractWorkshopState>,
 ) {
     if *panel != ActivePanel::ContractLibrary {
         if state.detail {
@@ -171,7 +174,25 @@ pub fn library_system(
         if keys.just_pressed(settings.key(InputAction::EditorConfirm))
             && state.entries.get(state.detail_idx).is_some()
         {
-            state.status = "imported to workshop (placeholder)".into();
+            let entry = state.entries[state.detail_idx].clone();
+            match ron::from_str::<Contract>(&entry.contract_ron) {
+                Ok(contract) => {
+                    workshop.draft = Some(contract);
+                    workshop.importing = false;
+                    workshop.metrics.imports += 1;
+                    state.status = format!(
+                        "imported to workshop: {} by {}",
+                        entry.metadata.crew_member_name, entry.metadata.author
+                    );
+                    info!(
+                        "contract imported: {} ({})",
+                        entry.metadata.crew_member_name, entry.metadata.author
+                    );
+                }
+                Err(e) => {
+                    state.status = format!("parse error: {e}");
+                }
+            }
         }
         return;
     }

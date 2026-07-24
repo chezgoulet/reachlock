@@ -1,10 +1,13 @@
 pub mod career;
 pub mod character_sprite;
+pub mod dialogue;
+pub mod dungeon;
 pub mod ecosystem;
 pub mod charted_system;
 pub mod contract;
 pub mod economy;
 pub mod enemy;
+pub mod event;
 pub mod faction;
 pub mod gate_network;
 pub mod planet_culture;
@@ -18,6 +21,7 @@ pub mod hull_mesh;
 pub mod item;
 pub mod item_browser;
 pub mod location;
+pub mod recipe;
 pub mod room_templates;
 pub mod scripted_encounter;
 pub mod soul;
@@ -87,5 +91,21 @@ pub fn register_all(registry: &mut super::app::EditorRegistry) {
     registry.register(
         super::app::ContentType::SpriteViewer,
         character_sprite::create_editor,
+    );
+    registry.register(
+        super::app::ContentType::Dungeon,
+        dungeon::create_editor,
+    );
+    registry.register(
+        super::app::ContentType::Event,
+        event::create_editor,
+    );
+    registry.register(
+        super::app::ContentType::Dialogue,
+        dialogue::create_editor,
+    );
+    registry.register(
+        super::app::ContentType::Recipe,
+        recipe::create_editor,
     );
 }

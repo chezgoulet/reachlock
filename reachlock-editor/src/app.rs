@@ -54,6 +54,11 @@ pub enum ContentType {
     Theme,
     Trope,
     ScriptedEncounter,
+    // S55 — Last 4 editors.
+    Dialogue,
+    Dungeon,
+    Event,
+    Recipe,
 }
 
 impl ContentType {
@@ -81,6 +86,10 @@ impl ContentType {
             ContentType::Theme,
             ContentType::Trope,
             ContentType::ScriptedEncounter,
+            ContentType::Dialogue,
+            ContentType::Dungeon,
+            ContentType::Event,
+            ContentType::Recipe,
         ]
     }
 
@@ -108,6 +117,10 @@ impl ContentType {
             ContentType::Theme => "Music Theme",
             ContentType::Trope => "Trope Template",
             ContentType::ScriptedEncounter => "Scripted Encounter",
+            ContentType::Dialogue => "Dialogue Tree",
+            ContentType::Dungeon => "Dungeon Layout",
+            ContentType::Event => "Scripted Event",
+            ContentType::Recipe => "Crafting Recipe",
         }
     }
 
@@ -138,6 +151,10 @@ impl ContentType {
             ContentType::Theme => "themes",
             ContentType::Trope => "tropes",
             ContentType::ScriptedEncounter => "encounters",
+            ContentType::Dialogue => "dialogues",
+            ContentType::Dungeon => "dungeons",
+            ContentType::Event => "events",
+            ContentType::Recipe => "recipes",
         }
     }
 
@@ -167,6 +184,10 @@ impl ContentType {
             "themes" => Some(ContentType::Theme),
             "tropes" => Some(ContentType::Trope),
             "encounters" => Some(ContentType::ScriptedEncounter),
+            "dialogues" => Some(ContentType::Dialogue),
+            "dungeons" => Some(ContentType::Dungeon),
+            "events" => Some(ContentType::Event),
+            "recipes" => Some(ContentType::Recipe),
             _ => None,
         }
     }
@@ -355,6 +376,22 @@ pub fn build_default_registry() -> EditorRegistry {
     r.register(
         ContentType::SpriteViewer,
         crate::editors::character_sprite::create_editor,
+    );
+    r.register(
+        ContentType::Dialogue,
+        crate::editors::dialogue::create_editor,
+    );
+    r.register(
+        ContentType::Dungeon,
+        crate::editors::dungeon::create_editor,
+    );
+    r.register(
+        ContentType::Event,
+        crate::editors::event::create_editor,
+    );
+    r.register(
+        ContentType::Recipe,
+        crate::editors::recipe::create_editor,
     );
     r
 }
