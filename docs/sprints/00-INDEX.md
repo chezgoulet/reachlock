@@ -99,6 +99,72 @@ as they exist after S47, not against design intent.
 |---|---|---|
 | S48 | Procedural audio engine (fundsp) — real-time seeded music, theme riffing, authored overrides | S01, S05, S06, S09 |
 
+### Wave 11 — Server Infrastructure
+
+The server works for real. Postgres stores work, Redis caches sessions and
+rate limits, and players register with passwords instead of dev tokens.
+
+| Sprint | Title | Depends on |
+|---|---|---|
+| S49 | Postgres store wiring — REACHLOCK_DB selects Pg stores in AppState | S03 |
+| S50 | Redis integration — session, rate-limit, presence | S49 |
+| S51 | Real authentication — register/login/logout, bcrypt passwords, WS enforcement | S49, S50 |
+
+### Wave 12 — Determinism Closure
+
+Every generator has a golden test. Every content type has a real schema.
+
+| Sprint | Title | Depends on |
+|---|---|---|
+| S52 | Generator golden entries — 13 generators get determinism manifest entries | — |
+| S53 | Content schema closure — dedicated JSON schemas for all types | — |
+
+### Wave 13 — Bug Fixes & Database Completion
+
+Known bugs are fixed. The database schema matches the code.
+
+| Sprint | Title | Depends on |
+|---|---|---|
+| S54 | Bug fixes (LLM metric, voice broadcast, faction directory cleanup) + migration 0003/0004 | S52, S53 |
+
+### Wave 14 — Editor & CLI
+
+Every content type has an editor. Authors can validate, preview, and publish.
+
+| Sprint | Title | Depends on |
+|---|---|---|
+| S55 | Last 4 editors — dungeon, event, dialogue, recipe | S54 |
+| S56 | CLI content commands — preview, publish | S55 |
+
+### Wave 15 — Server Routes
+
+Missing HTTP routes and WebSocket messages are wired.
+
+| Sprint | Title | Depends on |
+|---|---|---|
+| S57 | Server route completion — POST /seed/discover, GET /content/system/{id}, player.jumped, player.disconnected | S56 |
+
+### Wave 16 — Content Authoring
+
+The content directory gets structure and real files. Faction profiles, the
+7 Loup-Garou crew souls, storylines, and the first Predecessor dungeon.
+
+| Sprint | Title | Depends on |
+|---|---|---|
+| S58 | Content scaffold files — directory structure + templates | S57 |
+| S59 | 7 Loup-Garou crew souls — the canonical crew as authored .ron files | S58 |
+| S60 | Storyline framework — faction profiles, 3 story arcs, first Predecessor dungeon | S59 |
+
+### Wave 17 — Client Polish
+
+Missing client systems are built: resource gathering, signature collector,
+deliberation renderer. NPC voice synthesis is wired.
+
+| Sprint | Title | Depends on |
+|---|---|---|
+| S61 | Missing client systems — resource_gathering, signature_collector, deliberation_renderer, fix library placeholder | S60 |
+| S62 | Voice synthesis fix — replace no-op placeholder with real TTS thread | S61 |
+
 ## Fleet playbook (read before starting any sprint)
 
 **Branching.** One branch per sprint: `sprint-v2/sXX-short-name`, cut from
