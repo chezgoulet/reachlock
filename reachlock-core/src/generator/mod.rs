@@ -23,6 +23,7 @@ pub mod ship;
 pub mod soul;
 pub mod sprite;
 pub mod station;
+pub mod trope;
 pub mod storyline;
 pub mod system;
 pub mod transit;
@@ -48,6 +49,7 @@ pub use station::generate_station;
 pub use storyline::generate_storyline;
 pub use system::{generate_starfield, generate_system, HostileLocationKind, HostileLocationSlot};
 pub use transit::{anomaly_rolls, malfunction_roll, transit_destination};
+pub use trope::{fill_trope_slots, instantiate_trope, TropeInstance, TropeTemplate, TropeType};
 pub use ui::generate_ui_panel;
 
 use serde::{Deserialize, Serialize};
