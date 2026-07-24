@@ -21,7 +21,7 @@ use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
     combat, comms, content_index, contract, contract_crafting, contract_library, crew, crisis,
     career, cryojump, culture_view, dialogue, discovery, docking, factions, galaxy_map, hud, interaction, interior, inventory, jump,
-    landed_combat, market, menu, mode, network, onboard, pause, presence, reticle, sensors,
+    landed_combat, market, menu, mode, music, network, onboard, pause, presence, reticle, sensors,
     settings_ui, setup, ship, shipeditor, soul, story_submission, ticker, voice,
 };
 
@@ -122,6 +122,8 @@ fn main() {
         .init_resource::<interaction::ActivePanel>()
         .init_resource::<inventory::SaveTimer>()
         .init_resource::<market::MarketState>()
+        .init_resource::<music::MusicParams>()
+        .init_resource::<music::MusicEngine>()
         // S17: the applied exterior config (restored by load_save) + the
         // editor's live state. Must exist before Startup: load_save reads it.
         .init_resource::<shipeditor::ShipConfig>()
@@ -209,6 +211,7 @@ fn main() {
                     .chain(),
                 menu::spawn_menu,
                 contract_crafting::spawn_workshop_panel,
+                music::setup_music,
                 contract_library::spawn_library_panel,
                 sensors::init_blip_assets,
                 setup::apply_video_settings,
@@ -518,7 +521,10 @@ fn main() {
         )
         .add_systems(
             Update,
-            ticker::tick_universe.run_if(in_state(AppState::InGame)),
+            (
+                ticker::tick_universe.run_if(in_state(AppState::InGame)),
+                music::tick_music.run_if(in_state(AppState::InGame)),
+            ),
         )
         .add_systems(
             Update,
@@ -578,6 +584,7 @@ fn main() {
         .add_systems(
             Update,
             (
+                music::sync_music_params,
                 docking::transition_beat,
                 inventory::autosave_system,
                 pause::toggle_pause,

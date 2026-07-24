@@ -58,6 +58,9 @@ js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# S48: real-time procedural audio DSP via fundsp. Native only — WASM falls
+# back to the legacy WAV renderer (see S48 acceptance — warning-only gate).
+fundsp = "0.23"
 # S29: WebRTC peer connection for native voice chat. The wasm32 target uses
 # the browser's built-in RTCPeerConnection via web_sys instead.
 webrtc = "0.11"

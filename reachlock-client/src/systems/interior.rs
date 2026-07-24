@@ -172,6 +172,11 @@ fn room_kind_color(kind: RoomKind) -> Color {
         RoomKind::Hydroponics => Color::srgb(0.42, 0.58, 0.38),
         RoomKind::Armory => Color::srgb(0.55, 0.45, 0.4),
         RoomKind::Brig => Color::srgb(0.44, 0.46, 0.52),
+        RoomKind::CargoHold => Color::srgb(0.55, 0.52, 0.44),
+        RoomKind::Galley => Color::srgb(0.68, 0.62, 0.48),
+        RoomKind::Workshop => Color::srgb(0.50, 0.48, 0.44),
+        RoomKind::ScienceLab => Color::srgb(0.72, 0.78, 0.82),
+        RoomKind::Engineering => Color::srgb(0.55, 0.48, 0.42),
     }
 }
 
@@ -252,6 +257,11 @@ fn room_label(mode: GameMode, kind: RoomKind) -> &'static str {
         RoomKind::Hydroponics => "HYDROPONICS",
         RoomKind::Armory => "ARMORY",
         RoomKind::Brig => "BRIG",
+        RoomKind::CargoHold => "CARGO HOLD",
+        RoomKind::Galley => "GALLEY",
+        RoomKind::Workshop => "WORKSHOP",
+        RoomKind::ScienceLab => "SCIENCE LAB",
+        RoomKind::Engineering => "ENGINEERING",
     }
 }
 
@@ -795,7 +805,13 @@ fn spawn_props(
                 );
             }
         }
-        RoomKind::Scanner | RoomKind::Brig => {}
+        RoomKind::Scanner
+        | RoomKind::Brig
+        | RoomKind::CargoHold
+        | RoomKind::Galley
+        | RoomKind::Workshop
+        | RoomKind::ScienceLab
+        | RoomKind::Engineering => {}
         RoomKind::Hangar => {
             let pad = images.add(pixel::pad_sprite(accent));
             decal(commands, pad, mode, c.x, c.y, 0.12);

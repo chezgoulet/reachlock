@@ -22,6 +22,7 @@ pub mod jump;
 pub mod landed_combat;
 pub mod market;
 pub mod menu;
+pub mod music;
 pub mod mode;
 pub mod network;
 pub mod onboard;
