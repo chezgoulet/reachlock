@@ -97,6 +97,7 @@ fn family_stat_ranges(family: ItemFamily) -> Vec<StatRange> {
         ItemFamily::Component => vec![r(StatKey::Weight, 2, 6, 1)],
         ItemFamily::Implant => vec![r(StatKey::Weight, 1, 2, 0)],
         ItemFamily::Cosmetic => vec![r(StatKey::Weight, 0, 1, 0)],
+        ItemFamily::RoomUpgrade(_) => vec![],
     }
 }
 

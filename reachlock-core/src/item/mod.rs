@@ -7,6 +7,7 @@
 //! templates). This module composes them and adds the icon.
 
 pub mod names;
+pub mod room_upgrade;
 pub mod stats;
 pub mod types;
 
@@ -50,7 +51,8 @@ const ICON_SIZE: u32 = 24;
 /// rings — a coarse-but-deterministic silhouette, not art.
 fn generate_icon(seed: u64, family: ItemFamily) -> GeneratedTexture {
     // Family perturbs the palette so families read differently at a glance.
-    let palette = generate_palette(seed ^ (family as u64).wrapping_mul(0x9E37_79B9));
+    let disc = family_discriminant(&family);
+    let palette = generate_palette(seed ^ (disc).wrapping_mul(0x9E37_79B9));
     let shades = [palette.structure, palette.primary, palette.accent];
     let motif = IconMotif::of(family);
 
@@ -165,6 +167,33 @@ impl IconMotif {
             Engine | MiningTool | RepairTool => IconMotif::Angular,
             _ => IconMotif::Core,
         }
+    }
+}
+
+/// Map every `ItemFamily` variant to a stable u64 for palette seeding.
+/// Required because `ItemFamily::RoomUpgrade` is a data variant that can't
+/// be cast to integer directly.
+fn family_discriminant(family: &ItemFamily) -> u64 {
+    match family {
+        ItemFamily::EnergyWeapon => 0,
+        ItemFamily::KineticWeapon => 1,
+        ItemFamily::MissileWeapon => 2,
+        ItemFamily::MeleeWeapon => 3,
+        ItemFamily::BoardingWeapon => 4,
+        ItemFamily::Armor => 5,
+        ItemFamily::Shield => 6,
+        ItemFamily::Engine => 7,
+        ItemFamily::Sensor => 8,
+        ItemFamily::MiningTool => 9,
+        ItemFamily::RepairTool => 10,
+        ItemFamily::Cybernetic => 11,
+        ItemFamily::Augmentation => 12,
+        ItemFamily::Spacesuit => 13,
+        ItemFamily::Consumable => 14,
+        ItemFamily::Component => 15,
+        ItemFamily::Implant => 16,
+        ItemFamily::Cosmetic => 17,
+        ItemFamily::RoomUpgrade(_) => 18,
     }
 }
 
