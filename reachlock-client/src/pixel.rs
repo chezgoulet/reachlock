@@ -211,6 +211,24 @@ pub fn floor_texture(kind: RoomKind, base: Color, seed: u64) -> Image {
                 px.set(x, y, shade(b, if n.below(2) == 0 { 0.7 } else { 0.9 }));
             }
         }
+        // Grating for engineering, cargo hold, workshop.
+        RoomKind::Engineering | RoomKind::CargoHold | RoomKind::Workshop => {
+            px.rect(0, 0, 32, 32, shade(b, 0.55));
+            for i in (0..32).step_by(4) {
+                px.rect(i, 0, 1, 32, shade(b, 0.85));
+                px.rect(0, i, 32, 1, shade(b, 0.85));
+            }
+        }
+        // Painted tile: galley and science lab (kitchen/lab linoleum).
+        RoomKind::Galley | RoomKind::ScienceLab => {
+            px.rect(0, 0, 32, 32, shade(b, 0.85));
+            for ty in [0, 12, 24] {
+                for tx in [0, 12, 24] {
+                    px.rect(tx, ty, 11, 11, shade(b, 0.95));
+                    px.rect(tx + 1, ty + 1, 9, 9, shade(b, 0.75));
+                }
+            }
+        }
         // Metal deck plate: bridge / market / admin, and the ship's clean
         // technical rooms (cockpit, scanner, med bay, cryo) — the per-kind
         // base color carries the distinction.
