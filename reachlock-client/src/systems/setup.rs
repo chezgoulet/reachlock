@@ -36,6 +36,9 @@ use crate::bridge;
 use crate::states::{CurrentLocation, GameMode, ModeScope, SceneRegistry};
 use crate::systems::content_index::ContentIndex;
 use crate::systems::docking::Dockable;
+use crate::systems::career::CareerResource;
+use crate::systems::culture_view::CultureResource;
+use crate::systems::discovery::EcosystemResource;
 use crate::systems::sensors::{Contact, KnownContacts};
 use crate::systems::ship::{PlayerShip, ShipSystems};
 use crate::systems::starfield;
@@ -206,6 +209,55 @@ pub fn enter_spaceflight(
             orbit,
         );
     }
+    // S39: generate ecosystem for this system's biome and populate the
+    // discovery log. Pure & deterministic — same system seed always gives
+    // the same species and food web.
+    let biomes = vec![biome];
+    let params = reachlock_core::generator::ecosystem::PlanetParams {
+        habitability: 180,
+        age_ticks: 5000,
+        biome_diversity: 1,
+    };
+    let eco = reachlock_core::generator::generate_ecosystem(seed, biomes, params);
+    commands.insert_resource(EcosystemResource(Some(eco)));
+
+    // S47: generate emergent culture for this system from seed + faction data.
+    use std::collections::HashMap;
+    let faction_id = reachlock_core::faction::FactionId("compact".into());
+    let mut fmap = HashMap::new();
+    fmap.insert(faction_id.clone(), 120u8);
+    let culture = reachlock_core::generator::generate_culture(
+        seed ^ 0x5151,
+        60,
+        &[],
+        &faction_id,
+        reachlock_core::generator::planet_extended::SettlementWave::FirstWave,
+        &fmap,
+        20,
+    );
+    commands.insert_resource(CultureResource(Some(culture)));
+
+    // S42: initialize player career at system entry so the panel shows data.
+    use reachlock_core::career::PlayerCareer;
+    let pc = PlayerCareer::new(&format!("p-{:#x}", seed));
+    commands.insert_resource(CareerResource(Some(pc)));
+
+    // S46: generate missions for this system.
+    use reachlock_core::generator::mission::{generate_missions, MissionGenerationContext};
+    use reachlock_core::career::piracy::NotorietyLevel;
+    let ctx = MissionGenerationContext {
+        seed,
+        system_kind: biome.as_str().into(),
+        threat_level: 30,
+        station_faction: "compact".into(),
+        player_career_ranks: vec![],
+        player_notoriety: NotorietyLevel::Clean,
+        player_credits: 1000,
+        tick: 50000,
+    };
+    let missions = generate_missions(&ctx);
+    commands.insert_resource(crate::systems::jump::MissionBoardResource(missions));
+
     for (index, field) in system.asteroid_fields.iter().enumerate() {
         spawn_asteroid_field(
             &mut commands,

@@ -91,6 +91,11 @@ impl Default for TransitState {
 
 /// S21: FTL route target set from the galaxy map. When non-None, pressing J
 /// triggers a deep-space FTL jump instead of an in-system panic jump.
+/// S46: generated missions for the current station/system.
+#[derive(Resource, Default)]
+#[allow(dead_code)]
+pub struct MissionBoardResource(pub Vec<reachlock_core::generator::mission::Mission>);
+
 #[derive(Resource, Default)]
 pub struct FtlRoute {
     pub coord: Option<GalaxyCoord>,
@@ -262,6 +267,34 @@ pub fn hyperspace_tick(
 
     state.timer.tick(time.delta());
     let frac = (state.timer.elapsed_secs() as f64) / (TRANSIT_SECS as f64);
+
+    // S40: generate a trope encounter during transit.
+    if frac >= 0.3 && !state.anomaly_fired {
+        use reachlock_core::generator::trope::{instantiate_trope, TropeType, LocationType};
+        use std::collections::BTreeMap;
+        let gs = BTreeMap::new();
+        let template = reachlock_core::generator::trope::TropeTemplate {
+            id: "transit_trope".into(),
+            trope_type: TropeType::WeirdSpacePhenomenon,
+            title_template: "Anomalous Reading".into(),
+            narrative_template: "Sensors detect a {phenomenon} on the edge of the transit lane.".into(),
+            slots: vec![reachlock_core::generator::trope::TropeSlot {
+                slot_name: "phenomenon".into(),
+                slot_kind: reachlock_core::generator::trope::SlotKind::Text {
+                    options: vec!["gravitational shear".into(), "quantum echo".into(), "temporal distortion".into()],
+                },
+                constraints: vec![],
+            }],
+            branches: vec![],
+            base_frequency: reachlock_core::util::Fixed::from_int(1),
+            location_types: vec![LocationType::DeepSpace],
+            min_threat_level: 0,
+            max_threat_level: 10,
+            dilemma_chance: reachlock_core::util::Fixed(0),
+        };
+        let trope = instantiate_trope(&template, state.dest_seed, &gs, LocationType::DeepSpace);
+        log.log(format!("{}.", trope.narrative));
+    }
 
     // Mid-transit anomaly: force the cryo-pilot to deliberate.
     if frac >= 0.5 && !state.anomaly_fired {

@@ -151,6 +151,7 @@ fn main() {
         // S09: live jump/transit bookkeeping + sensors.
         .init_resource::<jump::TransitState>()
         .init_resource::<jump::FtlRoute>()
+        .init_resource::<jump::MissionBoardResource>()
         .init_resource::<sensors::MapOverlayState>()
         // S09b: cross-mode command bus — OnBoard consoles (gunner/scanner/
         // miner/power) write it, the flight systems read it (spec §22).
