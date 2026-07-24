@@ -1,12 +1,12 @@
 # ReachLock v2 — developer entry points.
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: test check fmt clippy run run-debug server wasm determinism clean
+.PHONY: test check fmt clippy run run-debug server determinism clean
 
 test:
 	cargo test --workspace
 
-check: fmt clippy test wasm
+check: fmt clippy test
 	@echo "all gates green"
 
 fmt:
@@ -34,39 +34,6 @@ run-debug:
 # Launch the ledger server on 127.0.0.1:40711.
 server:
 	cargo run -p reachlock-server
-
-# The spike gate: full plugin stack must compile for the web target.
-wasm:
-	cargo build -p reachlock-client --target wasm32-unknown-unknown
-
-# S24: release-profile WASM build → wasm-bindgen → web/dist/.
-# wasm-opt reduces binary size when binaryen is installed.
-WEB_DIST := web/dist
-WEB_WASM := target/wasm32-unknown-unknown/release/reachlock-client.wasm
-web: wasm-bindgen-cli
-	cargo build -p reachlock-client --target wasm32-unknown-unknown --release
-	rm -rf $(WEB_DIST)
-	mkdir -p $(WEB_DIST)
-	wasm-bindgen --out-dir $(WEB_DIST) --target web $(WEB_WASM)
-	cp web/index.html $(WEB_DIST)/
-	@which wasm-opt >/dev/null && wasm-opt -Oz $(WEB_DIST)/reachlock_client_bg.wasm -o $(WEB_DIST)/reachlock_client_bg.wasm || true
-	@echo "--- web build: $$(wc -c < $(WEB_DIST)/reachlock_client_bg.wasm) bytes (wasm)"
-	@gzip -c $(WEB_DIST)/reachlock_client_bg.wasm | wc -c | awk '{printf "--- web build: %d bytes (gzip)\n", $$1}'
-	@ls -lh $(WEB_DIST)/
-
-# Serve the web build locally (COOP/COEP headers commented — needed for
-# threading/atomics when that arrives; not needed for single-threaded mode).
-web-serve:
-	@echo "Serving on http://localhost:4080 (COOP/COEP headers not set)"
-	python3 -m http.server 4080 --directory $(WEB_DIST)
-
-# Install wasm-bindgen-cli at the version pinned in Cargo.lock (version skew
-# fails with a cryptic schema error — S24 gotcha).
-wasm-bindgen-cli:
-	@WASM_BINDGEN_VER=$$(grep -Po '"wasm-bindgen" "(\K[^"]+)' Cargo.lock | head -1); \
-	if [ -n "$$WASM_BINDGEN_VER" ]; then \
-		cargo install wasm-bindgen-cli --version "$$WASM_BINDGEN_VER" 2>&1 | tail -1; \
-	fi
 
 .PHONY: web web-serve wasm-bindgen-cli
 

@@ -28,7 +28,6 @@ use crate::services::billing::{
     StripeWebhook, SubscriptionStatus, SubscriptionStore,
 };
 use crate::services::byok::ByokRegistration;
-use crate::services::content::ContentService;
 use crate::services::contracts::{ContractStore, MemoryContractStore};
 use crate::services::health::HealthAggregator;
 use crate::services::library::{ContractLibrary, MemoryContractLibrary};
@@ -134,8 +133,6 @@ pub struct AppState {
     connected: AtomicUsize,
     /// S29: voice chat room registry.
     pub voice: VoiceRegistry,
-    /// Authored content distribution for wasm clients (spec §10).
-    pub content: ContentService,
     /// S34: contract library directory — published contracts + stories.
     pub library: Box<dyn ContractLibrary>,
 }
@@ -162,12 +159,6 @@ impl AppState {
             connected: AtomicUsize::new(0),
             voice: VoiceRegistry::default(),
             billing: Box::new(MemorySubscriptionStore::default()),
-            // Content distribution reads `mods/` from the working directory
-            // (same source the native client loads). Override with
-            // REACHLOCK_MODS_DIR if the server runs elsewhere.
-            content: ContentService::new(
-                std::env::var("REACHLOCK_MODS_DIR").unwrap_or_else(|_| "mods".to_string()),
-            ),
             library: Box::new(MemoryContractLibrary::default()),
         }
     }

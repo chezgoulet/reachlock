@@ -7,90 +7,29 @@ repository.workspace = true
 
 [dependencies]
 reachlock-core = { path = "../reachlock-core" }
-# S48: real-time procedural audio DSP via fundsp. Available on all targets;
-# the WASM build validates this and falls back to legacy WAV if it chokes.
 fundsp = "0.23"
-# "wav" lets the spike play a procedurally generated tone (spec §5,
-# generate_music) — the generator emits raw PCM, the bridge wraps it in a
-# WAV header for bevy_audio's decoder.
 bevy = { workspace = true, features = ["wav"] }
-# Bevy 0.18 reworked events into the `message` module; `MessageReader` lives
-# in `bevy_ecs::message` and isn't re-exported by `bevy::prelude`. Pull the
-# crate directly (same version bevy bundles) so collision-event reads compile.
 bevy_ecs = "0.18.1"
 bevy_prototype_lyon = { workspace = true }
 bevy_rapier3d = { workspace = true }
-# Authoring format for content/ (spec §10) — same crate/version core uses;
-# wasm-safe. The native content_index loader parses .ron with it directly.
 ron = "0.12"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# S02: one WebSocket API for native + wasm32, no async runtime pulled in.
-# default-features = false keeps the native backend on a blocking OS thread
-# (tungstenite) instead of the "tokio" feature's tokio-tungstenite — wasm32
-# has no tokio (iron rule #5), and native doesn't need one either since Bevy
-# systems only ever poll the channel. "tls" adds wss:// support natively;
-# on wasm32 the browser handles TLS regardless of this feature.
 ewebsock = { version = "0.8", default-features = false, features = ["tls"] }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
-# S29: browser WebRTC APIs + audio context for WASM voice chat.
-web-sys = { version = "0.3", features = [
-    "RtcPeerConnection", "RtcConfiguration", "RtcIceServer",
-    "RtcIceCandidateInit", "RtcSessionDescriptionInit",
-    "RtcSdpType", "RtcTrackEvent", "RtcTrackEventInit",
-    "RtcPeerConnectionIceEvent", "RtcPeerConnectionIceEventInit",
-    "RtcDataChannel", "RtcDataChannelInit", "RtcAnswerOptions",
-    "RtcSignalingState", "RtcIceGatheringState", "RtcIceConnectionState",
-    "RtcPeerConnectionState", "RtcRtpSender",
-    "MediaStream", "MediaStreamTrack", "MediaStreamConstraints",
-    "MediaDeviceInfo", "MediaDevices", "MediaStreamAudioSourceNode",
-    "Navigator",
-    "AudioContext", "BaseAudioContext", "AudioNode",
-    "GainNode", "PannerNode", "PanningModelType", "DistanceModelType",
-    "AudioParam", "AudioDestinationNode",
-    "Window", "console",
-    "MessageEvent",
-    "RtcIceCandidate", "RtcSessionDescription",
-    "Event", "EventTarget",
-] }
-# S29: js-sys types (Array, Function) for web-sys configuration.
-js-sys = "0.3"
-wasm-bindgen-futures = "0.4"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# S29: WebRTC peer connection for native voice chat. The wasm32 target uses
-# the browser's built-in RTCPeerConnection via web_sys instead.
+# S29: WebRTC peer connection for native voice chat.
 webrtc = "0.11"
-# S29: Opus audio codec (decode only — encode handled by webrtc-rs codec layer).
 opus = "0.3"
-# S29: microphone input capture on native (already in Cargo.lock from bevy_audio).
 cpal = "0.15"
-# S29: lock-free SPSC ring buffer for decoded PCM samples between the WebRTC
-# background thread and the Bevy audio feed system.
 ringbuf = "0.4"
-# S29: tokio async runtime for webrtc-rs on the background thread.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }
-# S29: message channel between Bevy main thread and the WebRTC background thread.
 crossbeam-channel = "0.5"
-# S29: bytes buffer for webrtc Sample (transitively available, declared for direct use).
 bytes = "1"
 
 [features]
-# `debug-names` forwards to Bevy's `debug` feature, which makes bevy_ecs carry
-# real component/system names in errors like B0001 (query conflicts) instead of
-# "<Enable the debug feature to see the name>". Off by default to keep normal
-# native/WASM builds lean; enable it while diagnosing schedule/query panics via
-# `make run-debug` (or `cargo run -p reachlock-client --features debug-names`).
 debug-names = ["bevy/debug"]
 
 [dev-dependencies]
-# S02 integration test only: native, headless, no Bevy. tokio/axum here are
-# fine (dev-dependencies never ship in the binary and never touch wasm32 —
-# iron rule #5 is about `[dependencies]`); they boot the real server crate
-# in-process so the test drives our transport against real wire behavior.
 reachlock-server = { path = "../reachlock-server" }
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

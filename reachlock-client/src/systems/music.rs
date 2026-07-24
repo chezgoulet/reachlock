@@ -70,7 +70,6 @@ impl Default for MusicEngine {
 // -----------------------------------------------------------------------
 // StreamingEngine — different on native vs WASM
 // -----------------------------------------------------------------------
-#[cfg(not(target_arch = "wasm32"))]
 mod engine {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use fundsp::prelude64::*;
@@ -247,12 +246,7 @@ mod engine {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 pub use engine::*;
-
-#[cfg(target_arch = "wasm32")]
-#[derive(Resource)]
-pub struct StreamingEngine;
 
 // -----------------------------------------------------------------------
 // Game-state bridge systems
@@ -321,10 +315,7 @@ pub fn sync_music_params(
 pub fn setup_music(mut commands: Commands) {
     commands.init_resource::<MusicParams>();
     commands.init_resource::<MusicEngine>();
-    #[cfg(not(target_arch = "wasm32"))]
     commands.insert_resource(StreamingEngine::new());
-    #[cfg(target_arch = "wasm32")]
-    commands.insert_resource(StreamingEngine);
 }
 
 /// Tick the music engine — pushes NoteEvents into the fundsp Sequencer.
@@ -333,42 +324,28 @@ pub fn tick_music(
     params: Res<MusicParams>,
     mut streaming: ResMut<StreamingEngine>,
 ) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        streaming.update(
-            params.tempo_scale as f64,
-            params.master_gain as f64,
-            params.intensity as f64,
+    streaming.update(
+        params.tempo_scale as f64,
+        params.master_gain as f64,
+        params.intensity as f64,
+    );
+
+    if !engine.initialized {
+        engine.initialized = true;
+        engine.music_seed = 4242;
+        let intent = generate_music_intent(engine.music_seed, engine.active_mood, 8);
+        info!(
+            "Music engine: mood={:?}, {} notes, {} bpm",
+            engine.active_mood,
+            intent.notes.len(),
+            intent.bpm
         );
-
-        if !engine.initialized {
-            engine.initialized = true;
-            engine.music_seed = 4242;
-            let intent =
-                generate_music_intent(engine.music_seed, engine.active_mood, 8);
-            info!(
-                "Music engine: mood={:?}, {} notes, {} bpm",
-                engine.active_mood,
-                intent.notes.len(),
-                intent.bpm
-            );
-            schedule_intent(&mut streaming.sequencer, &intent, &engine);
-        }
-
-        if engine.mood_changed {
-            engine.mood_changed = false;
-            let intent =
-                generate_music_intent(engine.music_seed, engine.active_mood, 8);
-            schedule_intent(&mut streaming.sequencer, &intent, &engine);
-        }
+        schedule_intent(&mut streaming.sequencer, &intent, &engine);
     }
 
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = streaming;
-        if !engine.initialized {
-            engine.initialized = true;
-            info!("Music engine (WASM fallback) ready");
-        }
+    if engine.mood_changed {
+        engine.mood_changed = false;
+        let intent = generate_music_intent(engine.music_seed, engine.active_mood, 8);
+        schedule_intent(&mut streaming.sequencer, &intent, &engine);
     }
 }

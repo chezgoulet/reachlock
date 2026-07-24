@@ -245,7 +245,6 @@ fn main() {
                 combat::spawn_combat_hud,
                 discovery::spawn_discovery_panel,
                 network::connect_on_enter_playing,
-                #[cfg(not(target_arch = "wasm32"))]
                 voice::start_voice_thread,
                 factions::spawn_reputation_panel,
                 factions::spawn_faction_banner,

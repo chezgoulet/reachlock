@@ -101,20 +101,12 @@ pub struct SaveFile {
     pub interior_layout: Option<reachlock_core::editor::interior::ShipInteriorLayout>,
 }
 
-/// Seconds since the Unix epoch, or `None` where the platform has no wall
-/// clock (`SystemTime::now` panics on wasm32-unknown-unknown).
+/// Seconds since the Unix epoch.
 fn epoch_secs() -> Option<u64> {
-    #[cfg(target_arch = "wasm32")]
-    {
-        None
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .ok()
-            .map(|d| d.as_secs())
-    }
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
 }
 
 /// Write the player's state to disk. Best-effort: a failed write is logged,

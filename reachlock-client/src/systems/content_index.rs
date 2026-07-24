@@ -41,50 +41,11 @@ impl ContentIndex {
             .iter()
             .find(|f| f.asset_type == reachlock_core::content::AssetType::Station && f.seed == seed)
     }
-
-    /// Merge a server-pushed `content.sync` payload into the index (spec §10,
-    /// offline-first: the server *adds*, it never replaces the local loader).
-    /// Last-write-wins on id collisions within the typed maps. Used by wasm
-    /// clients, which have no filesystem to load `mods/` from.
-    #[cfg(target_arch = "wasm32")]
-    pub fn merge_sync(&mut self, sync: ContentSyncPayload) {
-        for file in sync.files {
-            self.files.push(file);
-        }
-        // `ContentSyncPayload` carries the typed maps pre-keyed by id, so the
-        // values are already `(String, T)` pairs.
-        for (id, a) in sync.hostile_archetypes {
-            self.hostile_archetypes.insert(id, a);
-        }
-        for (id, l) in sync.hostile_locations {
-            self.hostile_locations.insert(id, l);
-        }
-        for (id, s) in sync.charted_systems {
-            self.charted_systems.insert(id, s);
-        }
-        if sync.gate_network.is_some() {
-            self.gate_network = sync.gate_network;
-        }
-    }
-}
-
-/// Wire-shaped payload for `ServerMessage::ContentSync`, flattened for the
-/// client so `network.rs` doesn't need to name every field inline.
-#[cfg(target_arch = "wasm32")]
-pub struct ContentSyncPayload {
-    pub files: Vec<ContentFile>,
-    pub hostile_archetypes: HashMap<String, reachlock_core::combat::HostileArchetype>,
-    pub hostile_locations: HashMap<String, reachlock_core::combat::HostileLocation>,
-    pub charted_systems: HashMap<String, reachlock_core::galaxy::ChartedSystem>,
-    pub gate_network: Option<reachlock_core::galaxy::GateNetwork>,
 }
 
 /// Directory that holds test fixtures, not real authored assets.
 const FIXTURES_DIR: &str = "_fixtures";
 
-/// Native loader: walks `mods/` from the working directory, discovering
-/// mod manifests and their authored content.
-#[cfg(not(target_arch = "wasm32"))]
 pub fn load_content_index(mut commands: Commands) {
     let root = std::path::Path::new("mods");
     if !root.is_dir() {
@@ -202,7 +163,6 @@ pub fn load_content_index(mut commands: Commands) {
 }
 
 /// Parse every `.ron` in `dir` into a HashMap<T> keyed by a function.
-#[cfg(not(target_arch = "wasm32"))]
 fn load_typed<T, K>(dir: &std::path::Path, key: K) -> HashMap<String, T>
 where
     T: serde::de::DeserializeOwned,
@@ -231,7 +191,6 @@ where
 }
 
 /// Like `load_typed` but merges into an existing map (last-wins).
-#[cfg(not(target_arch = "wasm32"))]
 fn load_typed_into<T, K>(dir: &std::path::Path, out: &mut HashMap<String, T>, key: K)
 where
     T: serde::de::DeserializeOwned,
@@ -243,7 +202,6 @@ where
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         warn!("content index: failed to read directory {dir:?}");
@@ -286,9 +244,4 @@ fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
     }
 }
 
-/// Wasm loader: no filesystem access, so the index starts (and stays)
-/// empty. Server distribution of overrides (S23) is what fills this in.
-#[cfg(target_arch = "wasm32")]
-pub fn load_content_index(mut commands: Commands) {
-    commands.insert_resource(ContentIndex::default());
-}
+
