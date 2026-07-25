@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8">
+<title>ReachLock Admin</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d1117; color: #c9d1d9; font-family: -apple-system,BlinkMacSystemFont,sans-serif; padding: 2rem; }
+  h1 { color: #58a6ff; margin-bottom: 1.5rem; }
+  nav a { color: #58a6ff; text-decoration: none; margin-right: 1rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; }
+  .card h3 { color: #8b949e; font-size: 0.8rem; text-transform: uppercase; }
+  .card .value { font-size: 1.8rem; font-weight: 600; color: #f0f6fc; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; }
+  th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #30363d; }
+</style>
+</head>
+<body>
+<h1>ReachLock Dashboard</h1>
+<nav>
+  <a href="/admin/dashboard?key={{ key }}">Dashboard</a>
+  <a href="/admin/players?key={{ key }}">Players</a>
+  <a href="/admin/audit?key={{ key }}">Audit Log</a>
+</nav>
+<div class="cards">
+  <div class="card"><h3>Connected</h3><div class="value">{{ connected }}</div></div>
+  <div class="card"><h3>Sessions</h3><div class="value">{{ active_sessions }}</div></div>
+  <div class="card"><h3>Uptime</h3><div class="value">{{ uptime_hms }}</div></div>
+  <div class="card"><h3>Admin Key</h3><div class="value">{{ admin_status }}</div></div>
+</div>
+<section>
+  <h2>Database</h2>
+  <p>{{ db_status }}</p>
+</section>
+<section>
+  <h2>Health Checks</h2>
+  <table>
+    <thead><tr><th>Check</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for row in health_rows %}
+      <tr><td>{{ row.name }}</td><td style="color:{{ row.color }}">{{ row.status }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+<script>
+  const KEY = "{{ key }}";
+  setInterval(async () => {
+    try {
+      const resp = await fetch(`/admin/dashboard?key=${KEY}&partial=1`);
+      const html = await resp.text();
+      document.getElementById('content').innerHTML = html;
+    } catch(e) {}
+  }, 15000);
+</script>
+</body>
+</html>
