@@ -208,12 +208,18 @@ pub fn evaluate_contracts(
     time: Res<Time>,
     mut runtime: ResMut<ContractRuntime>,
     systems: Res<ShipSystems>,
+    roster: Res<crate::systems::crew::CrewRoster>,
     mut log: ResMut<ShipLog>,
     mut deliberation: ResMut<DeliberationState>,
     mode: Res<NetMode>,
     conn: Res<ConnectionState>,
     mut outbox: ResMut<NetOutbox>,
 ) {
+    // An unknown signal is the scientist's call, falling back to the captain.
+    let analyst = match roster.speaker_for("scientist") {
+        Some(m) => m.name.clone(),
+        None => roster.voice_of("captain"),
+    };
     if !runtime.eval_timer.tick(time.delta()).just_finished() {
         return;
     }
@@ -286,7 +292,7 @@ pub fn evaluate_contracts(
                     max_tokens: llm.map(|c| c.max_tokens),
                 });
                 deliberation.active = Some(Deliberation {
-                    crew_member: "Boris".into(),
+                    crew_member: analyst.clone(),
                     context_summary: "Unknown signal detected".into(),
                     remaining: Timer::from_seconds(timeout_ms as f32 / 1000.0, TimerMode::Once),
                     fallback,
@@ -296,7 +302,7 @@ pub fn evaluate_contracts(
             } else {
                 log.log("Boris: my rules don't cover this. Thinking…");
                 deliberation.active = Some(Deliberation {
-                    crew_member: "Boris".into(),
+                    crew_member: analyst.clone(),
                     context_summary: "Unknown signal detected".into(),
                     remaining: Timer::from_seconds(timeout_ms as f32 / 1000.0, TimerMode::Once),
                     fallback,

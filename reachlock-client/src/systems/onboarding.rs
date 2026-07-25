@@ -100,7 +100,7 @@ fn default_steps() -> Vec<OnboardingStep> {
 fn demo_deliberation_stage() -> DeliberationStage {
     DeliberationStage {
         phase: StagePhase::Weighing,
-        crew_member: "Boris".into(),
+        crew_member: "the engineer".into(),
         crew_portrait_id: "boris_default".into(),
         crew_mood: "ANXIOUS".into(),
         trust_with_player: 256,

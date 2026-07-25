@@ -102,7 +102,14 @@ determinism:
 
 # S22 engine-purity guard (iron rule #1).
 #
-# Three checks:
+# Four checks:
+#  0. The engine must not name specific content. v2 is a character-creation
+#     game: the ship, the crew, and the story are things a player picks or a
+#     modder authors. The engine shipped naming one authored ship and one
+#     authored crew in flight, jump, combat, crisis, and character creation —
+#     so every character flew the Loup-Garou and a fixed crew narrated it,
+#     whatever you chose. Systems ask the roster for a ROLE ("pilot"),
+#     never for a person.
 #  1. Content must not import engine code.
 #  2. Core must not reach OUTSIDE ITS OWN CRATE for data. Core embedding its
 #     own fallbacks under `reachlock-core/src/data/` is fine and is what keeps
@@ -117,6 +124,8 @@ determinism:
 #     not. Checking the dependency tree tests the rule directly instead of
 #     inferring it from a target that no longer ships.
 check-purity:
+	@echo "Checking engine for hardcoded content identities..."
+	@python3 scripts/check_decoupling.py
 	@echo "Checking content for engine imports..."
 	@! rg -n 'use bevy|use reachlock_client' mods/reachlock/ || \
 	  (echo "PURITY VIOLATION: content imports engine code"; false)

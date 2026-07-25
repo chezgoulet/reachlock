@@ -459,15 +459,23 @@ fn pick_risk(rng: &mut SeededRng) -> &'static str {
     RISKS[rng.next_below(RISKS.len() as u64) as usize]
 }
 
+/// Participant names for generated dilemmas.
+///
+/// These were the canonical crew, so every procedurally generated dilemma was
+/// cast with the same seven people no matter whose ship it happened on. They
+/// are deliberately generic spacer names now — authored content supplies real
+/// characters; the generator supplies strangers.
 const NAMES: &[&str] = &[
     "Alexander",
-    "Boris",
-    "Tove",
-    "Tib",
-    "Risc",
-    "Prudence",
-    "Keene",
-    "Bardo",
+    "Vasquez",
+    "Okonkwo",
+    "Lindqvist",
+    "Marchetti",
+    "Haddad",
+    "Petrov",
+    "Nakamura",
+    "Duval",
+    "Oyelaran",
 ];
 
 const ASSETS: &[&str] = &[

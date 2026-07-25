@@ -1134,7 +1134,13 @@ pub fn manifest() -> Manifest {
         // v29: added S38 deliberation theater golden entries.
         // v30: added S75 PlayerCharacter round-trip golden entries (RON + JSON).
         // v31: S76: SoulFile gained look: Option<CharacterLookConfig> field.
-        version: 31,
+        // v32: dilemma NAMES no longer draws from the canonical crew. The
+        //      generator cast every procedural dilemma with the same seven
+        //      people regardless of whose ship it happened on; the pool is
+        //      generic spacer names now. This changes the `dilemma` checksum
+        //      deliberately — output is still deterministic, just no longer
+        //      tied to one authored crew.
+        version: 32,
         entries,
     }
 }

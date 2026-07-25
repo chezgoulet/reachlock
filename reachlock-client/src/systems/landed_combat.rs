@@ -254,7 +254,7 @@ fn angle_turns(v: Vec2) -> u16 {
 fn companion_archetype() -> HostileArchetype {
     HostileArchetype {
         id: "companion".into(),
-        display_name: "Tib".into(),
+        display_name: "Companion".into(),
         hp: 9000,
         speed: 288,
         light_attack: AttackWindow {

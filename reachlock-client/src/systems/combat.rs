@@ -835,7 +835,9 @@ pub struct DamageControl {
 impl Default for DamageControl {
     fn default() -> Self {
         DamageControl {
-            contract: damage_control_contract(),
+            // Placeholder persona: `damage_control` rebuilds this once the
+            // roster is known, and again whenever the post changes hands.
+            contract: damage_control_contract("the engineer"),
             timer: Timer::from_seconds(2.0, TimerMode::Repeating),
             last_action: None,
             deliberating: false,
@@ -846,10 +848,13 @@ impl Default for DamageControl {
 /// The authored contract: one fire is routine (rules cover it); two or more
 /// at once is exactly the uncovered edge that forces deliberation —
 /// deliberation under fire is allowed, logged, and has a safe fallback.
-fn damage_control_contract() -> Contract {
+/// `engineer` is whoever currently holds that post — the contract used to
+/// name one canonical crew member in its label and, worse, in its LLM
+/// system prompt, so every ship's damage control spoke as her.
+fn damage_control_contract(engineer: &str) -> Contract {
     Contract {
         id: "damage-control".into(),
-        label: "Tove runs damage control".into(),
+        label: format!("{engineer} runs damage control"),
         trigger: Trigger::Timer {
             interval_secs: 2,
             repeat: true,
@@ -878,26 +883,35 @@ fn damage_control_contract() -> Contract {
             fallback_on_timeout: true,
             timeout_ms: 3000,
             max_tokens: 96,
-            system_prompt: "You are Tove, ship's engineer. Triage: reactor > life \
-                            support > weapons. Answer with the one room to save."
-                .into(),
+            system_prompt: format!(
+                "You are {engineer}, ship's engineer. Triage: reactor > life \
+                 support > weapons. Answer with the one room to save."
+            ),
             fallback_action: Some(Action::verb("repair_nearest")),
         }),
     }
 }
 
 /// Evaluate the damage-control contract against the live fire state. One
-/// fire: Tove hits the worst room without being asked. Multiple fires: her
-/// rules run out and she deliberates (visible, logged), falling back to
+/// fire: the engineer hits the worst room without being asked. Multiple fires:
+/// their rules run out and they deliberate (visible, logged), falling back to
 /// "repair nearest" on timeout — the spec §22 default.
 pub fn damage_control(
     time: Res<Time>,
     mut control: ResMut<DamageControl>,
     mut fires: ResMut<crate::systems::crisis::ShipFires>,
     mut deliberation: ResMut<DeliberationState>,
+    roster: Res<crate::systems::crew::CrewRoster>,
     mut log: ResMut<ShipLog>,
     mut feed: ResMut<crate::systems::comms::CommFeed>,
 ) {
+    // Damage control belongs to whoever holds the engineer's post. Rebuild the
+    // contract when that changes hands so the label and the LLM persona follow
+    // the living crew rather than a name compiled into the engine.
+    let engineer = roster.voice_of("engineer");
+    if !control.contract.label.starts_with(&engineer) {
+        control.contract = damage_control_contract(&engineer);
+    }
     if !control.timer.tick(time.delta()).just_finished() {
         return;
     }
@@ -907,7 +921,7 @@ pub fn damage_control(
     // answer) fired — land the repair now.
     if control.deliberating && deliberation.active.is_none() {
         control.deliberating = false;
-        repair_worst_room(&mut fires, &mut log);
+        repair_worst_room(&mut fires, &mut log, &engineer);
     }
 
     let mut ctx = EvalContext::default();
@@ -930,11 +944,11 @@ pub fn damage_control(
     match decision {
         Decision::Act(kind) => {
             if kind == "repair_nearest" {
-                repair_worst_room(&mut fires, &mut log);
+                repair_worst_room(&mut fires, &mut log, &engineer);
             }
             if control.last_action.as_deref() != Some(kind.as_str()) {
                 if kind == "repair_nearest" {
-                    feed.say("Tove", "On it. One fire is just Tuesday.");
+                    feed.say(&engineer, "On it. One fire is just Tuesday.");
                 }
                 control.last_action = Some(kind);
             }
@@ -948,9 +962,9 @@ pub fn damage_control(
                 return; // someone is already thinking; don't pile on
             }
             control.deliberating = true;
-            log.log("Tove: two fires and one of me. Thinking…");
+            log.log(format!("{engineer}: two fires and one of me. Thinking…"));
             deliberation.active = Some(Deliberation {
-                crew_member: "Tove".into(),
+                crew_member: engineer.clone(),
                 context_summary: format!("{burning} compartment fires at once — triage order?"),
                 remaining: Timer::from_seconds(timeout_ms as f32 / 1000.0, TimerMode::Once),
                 fallback,
@@ -962,7 +976,11 @@ pub fn damage_control(
 }
 
 /// The "repair nearest" default: knock down the most intense fire.
-fn repair_worst_room(fires: &mut crate::systems::crisis::ShipFires, log: &mut ShipLog) {
+fn repair_worst_room(
+    fires: &mut crate::systems::crisis::ShipFires,
+    log: &mut ShipLog,
+    engineer: &str,
+) {
     let worst = fires
         .state
         .burning
@@ -971,7 +989,9 @@ fn repair_worst_room(fires: &mut crate::systems::crisis::ShipFires, log: &mut Sh
         .map(|((deck, room), _)| (*deck, *room));
     if let Some((deck, room)) = worst {
         fires.state.fight(deck, room);
-        log.log(format!("Tove fights the deck-{deck} fire (room {room})."));
+        log.log(format!(
+            "{engineer} fights the deck-{deck} fire (room {room})."
+        ));
     }
 }
 

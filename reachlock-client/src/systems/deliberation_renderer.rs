@@ -348,7 +348,7 @@ pub fn handle_interjection_input(
                 "Captain overrode {crew}: ordered {action}. Trust may shift."
             ));
             let cost_snapshot = CostSnapshot {
-                relationship_deltas: vec![(crew.clone(), -40), ("Tove".into(), 20)],
+                relationship_deltas: vec![(crew.clone(), -40)],
                 hull_damage: None,
                 cargo_loss: None,
             };

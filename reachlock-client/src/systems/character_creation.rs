@@ -149,23 +149,99 @@ pub struct CreationUiRoot;
 #[derive(Component)]
 pub struct StepText;
 
-// ── Hardcoded origins (pending S81) ─────────────────────────────────────
+// ── Origins ─────────────────────────────────────────────────────────────
 
-fn get_available_origins() -> Vec<OriginEntry> {
-    vec![OriginEntry {
-        id: "loup_garou_veteran".into(),
-        name: "Loup-Garou Veteran".into(),
-        description: "A Compact deserter with a grudge and a rustbucket.".into(),
-        starting_location: (16843009, "Aethon Station".into()),
-        ship_template_id: "loup_garou".into(),
-        ship_name: "Loup-Garou".into(),
-        starting_credits: 1500,
-        crew_count: 7,
-        career_path: "military".into(),
-        career_rank: "Veteran".into(),
-        faction_deltas: vec![("compact".into(), -20), ("free_traders".into(), 10)],
-        closed_doors: vec!["compact_military_career".into()],
-    }]
+/// Every origin the player can start from, read from authored content.
+///
+/// This used to return a single hardcoded `loup_garou_veteran` entry while ten
+/// origins sat authored under `origins/` — so character creation offered one
+/// choice and every character began as a Loup-Garou veteran regardless. The
+/// Loup-Garou is now one origin among the rest, not the engine's assumption.
+pub fn get_available_origins() -> Vec<OriginEntry> {
+    let mut out: Vec<OriginEntry> = load_authored_origins()
+        .into_iter()
+        .map(origin_entry_from)
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    if out.is_empty() {
+        // No content at all: one neutral option, so creation still completes.
+        out.push(OriginEntry {
+            id: "drifter".into(),
+            name: "Drifter".into(),
+            description: "No history worth filing. A hull, and whatever you make of it.".into(),
+            starting_location: (0, "Uncharted".into()),
+            ship_template_id: crate::systems::crew::STARTER_HULL_ID.into(),
+            ship_name: "Unnamed".into(),
+            starting_credits: 500,
+            crew_count: 0,
+            career_path: "freelance".into(),
+            career_rank: "Unranked".into(),
+            faction_deltas: vec![],
+            closed_doors: vec![],
+        });
+    }
+    out
+}
+
+/// Read `Origin` payloads from the content tree.
+fn load_authored_origins() -> Vec<reachlock_core::content::origin::Origin> {
+    let mut out = Vec::new();
+    for root in ["mods/reachlock/origins", "../mods/reachlock/origins"] {
+        let dir = std::path::Path::new(root);
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "ron") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            // Origins are authored as ContentFile envelopes, like every other
+            // content type — not as bare `Origin` values.
+            match ron::from_str::<reachlock_core::content::ContentFile>(&text) {
+                Ok(file) => match file.payload {
+                    reachlock_core::content::ContentPayload::Origin(o) => out.push(o),
+                    other => warn!(
+                        "origins: {} is a {:?} payload, not an origin",
+                        path.display(),
+                        std::mem::discriminant(&other)
+                    ),
+                },
+                Err(e) => warn!("origins: {} failed to parse: {e}", path.display()),
+            }
+        }
+        if !out.is_empty() {
+            break;
+        }
+    }
+    out
+}
+
+fn origin_entry_from(o: reachlock_core::content::origin::Origin) -> OriginEntry {
+    let ship_template_id = o
+        .ship_template
+        .unwrap_or_else(|| crate::systems::crew::STARTER_HULL_ID.to_string());
+    OriginEntry {
+        id: o.id,
+        name: o.name,
+        description: o.description,
+        starting_location: (o.start_system.value(), o.start_location),
+        ship_template_id,
+        ship_name: String::new(),
+        starting_credits: o.starting_credits as i64,
+        crew_count: o.starting_crew.len(),
+        career_path: o.starting_career,
+        career_rank: format!("Rank {}", o.starting_rank),
+        faction_deltas: o
+            .faction_deltas
+            .into_iter()
+            .map(|d| (d.faction_id, d.delta))
+            .collect(),
+        closed_doors: vec![],
+    }
 }
 
 // ── Spawn / despawn UI ──────────────────────────────────────────────────
@@ -633,10 +709,14 @@ fn confirm(creation: &CharacterCreationState, next_state: &mut NextState<AppStat
         pronouns,
         species: species_name.to_string(),
         look: creation.look.clone(),
-        origin_id: creation
-            .origin_id
-            .clone()
-            .unwrap_or_else(|| "loup_garou_veteran".into()),
+        // No hardcoded default: an unselected origin takes the first
+        // available one, whatever the content tree offers.
+        origin_id: creation.origin_id.clone().unwrap_or_else(|| {
+            get_available_origins()
+                .first()
+                .map(|o| o.id.clone())
+                .unwrap_or_default()
+        }),
         background_id: String::new(),
         soul,
     };
@@ -764,7 +844,12 @@ mod tests {
 
         state.step = CreationStep::Origin;
         randomize_step(&mut state);
-        assert_eq!(state.origin_id.as_deref(), Some("loup_garou_veteran"));
+        // Randomize must land on *some* authored origin, not a fixed one.
+        let chosen = state.origin_id.clone().expect("randomize picked an origin");
+        assert!(
+            get_available_origins().iter().any(|o| o.id == chosen),
+            "randomize chose {chosen:?}, which is not an offered origin"
+        );
 
         state.step = CreationStep::ShipAndCrew;
         randomize_step(&mut state);
@@ -775,13 +860,31 @@ mod tests {
     }
 
     #[test]
+    /// Origins come from authored content, so this asserts the *shape* of what
+    /// creation offers, not the contents of any one origin file. Pinning the
+    /// old hardcoded values here is what let a single baked-in origin survive
+    /// while ten sat authored on disk.
     fn origin_selection() {
         let origins = get_available_origins();
-        assert!(!origins.is_empty());
-        let lg = origins.iter().find(|o| o.id == "loup_garou_veteran");
-        assert!(lg.is_some());
-        assert_eq!(lg.unwrap().name, "Loup-Garou Veteran");
-        assert_eq!(lg.unwrap().starting_credits, 1500);
+        assert!(
+            !origins.is_empty(),
+            "creation must offer at least one origin"
+        );
+        assert!(
+            origins.len() > 1,
+            "only {} origin(s) loaded — character creation is meant to be a \
+             choice, so a single option means content is not being read",
+            origins.len()
+        );
+        for o in &origins {
+            assert!(!o.id.is_empty(), "origin has no id");
+            assert!(!o.name.is_empty(), "origin {} has no name", o.id);
+        }
+        let ids: Vec<&str> = origins.iter().map(|o| o.id.as_str()).collect();
+        let mut sorted = ids.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), ids.len(), "duplicate origin ids: {ids:?}");
     }
 
     #[test]
@@ -816,12 +919,26 @@ mod tests {
     }
 
     #[test]
+    /// Every offered origin must be complete enough to start a game. Again:
+    /// shape, not content — an origin naming a different ship or career is a
+    /// content decision, not a regression.
     fn origin_entry_fields() {
-        let origins = get_available_origins();
-        let entry = &origins[0];
-        assert_eq!(entry.starting_location.0, 16843009);
-        assert_eq!(entry.ship_template_id, "loup_garou");
-        assert_eq!(entry.career_path, "military");
-        assert!(!entry.closed_doors.is_empty());
+        for entry in get_available_origins() {
+            assert!(
+                !entry.ship_template_id.is_empty(),
+                "origin {} grants no ship",
+                entry.id
+            );
+            assert!(
+                !entry.career_path.is_empty(),
+                "origin {} grants no career",
+                entry.id
+            );
+            assert!(
+                !entry.starting_location.1.is_empty(),
+                "origin {} starts nowhere",
+                entry.id
+            );
+        }
     }
 }

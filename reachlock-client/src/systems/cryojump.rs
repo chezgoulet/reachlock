@@ -101,12 +101,16 @@ pub fn arm_jump(
         let ctx = EvalContext::default();
         match consider_order("run the crossing", &ctx) {
             Consideration::Accept => {
-                log.log("Prudence: \"Vectors are mine. Go to sleep.\"");
-                feed.say("Prudence", "Vectors are mine. Go to sleep.");
+                // Whoever actually flies this ship — not a name the engine
+                // knows. With nobody at the helm this reads "the pilot".
+                let pilot = roster.voice_of("pilot");
+                log.log(format!("{pilot}: \"Vectors are mine. Go to sleep.\""));
+                feed.say(&pilot, "Vectors are mine. Go to sleep.");
             }
             Consideration::Counter { rationale, .. } => {
-                log.log(format!("Prudence: {rationale}"));
-                feed.say("Prudence", rationale);
+                let pilot = roster.voice_of("pilot");
+                log.log(format!("{pilot}: {rationale}"));
+                feed.say(&pilot, rationale);
             }
         }
     }
@@ -182,9 +186,12 @@ pub fn jump_clock(
     transit.anomaly_fired = false;
     transit.dest_seed = dest_seed;
     transit.timer = Timer::from_seconds(TRANSIT_SECS, TimerMode::Once);
-    transit.pilot = "Prudence".into();
+    let pilot = roster.voice_of("pilot");
+    transit.pilot = pilot.clone();
     plan.cryo_wake = true;
-    log.log("The pods seal. Prudence has the ship. The Loup-Garou goes through.");
+    log.log(format!(
+        "The pods seal. {pilot} has the ship. She goes through."
+    ));
     // Entering Hyperspace from any mode is legal; the enter teardown scopes
     // out whatever scene was live.
     if mode.is_some() {
@@ -220,9 +227,12 @@ pub fn revive(
         }
     }
     log.log("The pods open. Med-bay light, recycled antiseptic — arrival.");
-    log.log("Prudence: \"Crossing complete. All sleepers viable. You are welcome.\"");
+    let pilot = roster.voice_of("pilot");
+    log.log(format!(
+        "{pilot}: \"Crossing complete. All sleepers viable. You are welcome.\""
+    ));
     feed.say(
-        "Prudence",
+        &pilot,
         "Crossing complete. All sleepers viable. You are welcome.",
     );
 }

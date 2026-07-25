@@ -345,8 +345,8 @@ pub fn enter_interior(
                 Some(built) => built,
                 None => {
                     // Load the active ship interior from the template catalog.
-                    // Falls back to the Loup-Garou template if no save interior exists.
-                    let ship = crate::systems::crew::load_loup_garou_interior();
+                    // Falls back to the active ship template (the character's own).
+                    let ship = crate::systems::crew::active_ship_interior();
                     let d = deck.index.min(ship.decks.len() - 1);
                     let deck_def = &ship.decks[d];
                     zero_g = deck_def.zero_g;
@@ -832,7 +832,7 @@ fn spawn_props(
                         Transform::from_xyz(c.x, c.y, ysort(c.y - 26.0)),
                         ModeScope(mode),
                         Interactable {
-                            label: "Loup-Garou — board".to_string(),
+                            label: "Your ship — board".to_string(),
                             kind: InteractKind::Board,
                         },
                     ));
@@ -1441,7 +1441,7 @@ pub(crate) fn room_center(layout: &GeneratedLayout, kind: RoomKind) -> Option<Ve
 /// Which deck holds the cryo chamber, and where a revived sleeper stands
 /// when the pods open (the jump-cryo wake beat, SHIPS.md §3 step 4).
 pub fn cryo_wake_spawn() -> Option<(usize, Vec2)> {
-    let ship = crate::systems::crew::load_loup_garou_interior();
+    let ship = crate::systems::crew::active_ship_interior();
     for (deck_index, deck) in ship.decks.iter().enumerate() {
         let layout = scale_layout(&deck.layout, LAYOUT_SCALE);
         if let Some(center) = room_center(&layout, RoomKind::Cryo) {
@@ -1456,7 +1456,7 @@ pub fn cryo_wake_spawn() -> Option<(usize, Vec2)> {
 /// pilot-seat `TakeHelm` interaction). Mirrors the seat placement in
 /// `spawn_props` (`RoomKind::Cockpit`), one tile astern of it.
 pub fn cockpit_seat_spawn() -> Option<(usize, Vec2)> {
-    let ship = crate::systems::crew::load_loup_garou_interior();
+    let ship = crate::systems::crew::active_ship_interior();
     for (deck_index, deck) in ship.decks.iter().enumerate() {
         let layout = scale_layout(&deck.layout, LAYOUT_SCALE);
         if let Some(room) = layout.rooms.iter().find(|r| r.kind == RoomKind::Cockpit) {
@@ -1571,11 +1571,14 @@ mod tests {
     /// S09d "leave the helm": standing up from the pilot seat must land the
     /// avatar on the deck that has the cockpit, on walkable floor inside it.
     #[test]
+    /// The stand-up point must land on walkable cockpit floor whatever ship
+    /// is active. This used to assert the cockpit was on a zero-g upper deck,
+    /// which is one authored ship's layout — true of the Loup-Garou, false of
+    /// a single-deck starter hull, and not something the engine may assume.
     fn cockpit_seat_spawn_is_walkable_cockpit_floor() {
-        let (deck_index, pos) = cockpit_seat_spawn().expect("the Loup-Garou has a cockpit");
-        let ship = crate::systems::crew::load_loup_garou_interior();
+        let (deck_index, pos) = cockpit_seat_spawn().expect("a ship has a cockpit");
+        let ship = crate::systems::crew::active_ship_interior();
         let deck = &ship.decks[deck_index];
-        assert!(deck.zero_g, "the cockpit is Upstairs (docs/SHIPS.md §6)");
         let layout = scale_layout(&deck.layout, LAYOUT_SCALE);
         let cockpit = layout
             .rooms

@@ -71,9 +71,9 @@ pub struct FireRef {
 }
 
 /// The current ship's deck layouts (unscaled grid — indices and doors are
-/// what the fire model needs). Falls back to the Loup-Garou template.
+/// what the fire model needs). Reads the active ship template.
 fn deck_layouts() -> Vec<GeneratedLayout> {
-    crate::systems::crew::load_loup_garou_interior()
+    crate::systems::crew::active_ship_interior()
         .decks
         .into_iter()
         .map(|d| d.layout)

@@ -81,7 +81,9 @@ impl Default for TransitState {
             dest_coord: None,
             jump_count: 0,
             anomaly_fired: false,
-            pilot: "Boris".into(),
+            // Set from the roster when a jump actually starts; no crew
+            // member is the engine's default pilot.
+            pilot: String::new(),
             chosen_gate_id: None,
             gate_awaiting_choice: false,
             gate_choices: Vec::new(),
@@ -121,6 +123,7 @@ pub fn try_gate_jump(
     mut state: ResMut<TransitState>,
     location: Res<CurrentLocation>,
     content: Res<ContentIndex>,
+    roster: Res<crate::systems::crew::CrewRoster>,
     mut next: ResMut<NextState<GameMode>>,
     mut log: ResMut<ShipLog>,
 ) {
@@ -219,7 +222,7 @@ pub fn try_gate_jump(
     state.dest_biome = dest_biome;
     state.dest_is_charted = true;
     state.timer = Timer::from_seconds(TRANSIT_SECS, TimerMode::Once);
-    state.pilot = "Boris".into();
+    state.pilot = roster.voice_of("pilot");
     log.log(format!(
         "Gate transit engaged → {} (stable window; crew stays awake)",
         dest_system
@@ -397,6 +400,7 @@ pub fn self_jump(
     mode: Res<NetMode>,
     mut ftl: ResMut<FtlRoute>,
     mut next: ResMut<NextState<GameMode>>,
+    roster: Res<crate::systems::crew::CrewRoster>,
     mut log: ResMut<ShipLog>,
 ) {
     if state.active || !keys.just_pressed(settings.key(InputAction::OpenMissionBoard)) {
@@ -437,7 +441,7 @@ pub fn self_jump(
         state.dest_coord = Some(coord);
         state.jump_count = state.jump_count.wrapping_add(1);
         state.anomaly_fired = true;
-        state.pilot = "Boris".into();
+        state.pilot = roster.voice_of("pilot");
         state.timer = Timer::from_seconds(TRANSIT_SECS, TimerMode::Once);
         systems.hull_hp = fixed_clamp((systems.hull_hp.0 - 400).max(64));
         if sev >= 2 {
@@ -461,7 +465,7 @@ pub fn self_jump(
         state.dest_is_charted = true;
         state.dest_coord = None;
         state.anomaly_fired = true;
-        state.pilot = "Boris".into();
+        state.pilot = "Test Pilot".into();
         state.timer = Timer::from_seconds(TRANSIT_SECS, TimerMode::Once);
         systems.hull_hp = fixed_clamp((systems.hull_hp.0 - 400).max(64));
         if sev >= 2 {

@@ -110,19 +110,37 @@ pub fn init_souls(content: Res<ContentIndex>, mut registry: ResMut<SoulRegistry>
         info!("souls: loaded {} authored soul(s)", registry.files.len());
     }
 
-    // Load soul mutations from the storylines directory (raw Vec<SoulMutation> RON).
-    let mutation_path = std::path::Path::new("mods/reachlock/storylines/loup_garou_souls.ron");
-    if mutation_path.exists() {
-        match std::fs::read_to_string(mutation_path) {
-            Ok(text) => match ron::from_str::<Vec<reachlock_core::soul::SoulMutation>>(&text) {
-                Ok(mutations) => {
-                    registry.mutations = mutations;
-                    info!("souls: loaded {} mutation arc(s)", registry.mutations.len());
-                }
-                Err(e) => warn!("souls: failed to parse mutations: {e}"),
-            },
-            Err(e) => warn!("souls: failed to read mutations: {e}"),
+    // Soul mutation arcs (raw `Vec<SoulMutation>` RON) from the storylines
+    // directory. Every such file is loaded and the arcs concatenated — this
+    // used to read one hardcoded `loup_garou_souls.ron`, so a mod or a new
+    // storyline could author mutation arcs that were silently never applied.
+    for root in ["mods/reachlock/storylines", "../mods/reachlock/storylines"] {
+        let Ok(entries) = std::fs::read_dir(root) else {
+            continue;
+        };
+        let mut paths: Vec<std::path::PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "ron"))
+            .collect();
+        // Deterministic order: mutation arcs are applied in sequence.
+        paths.sort();
+        for path in paths {
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            // storylines/ also holds `Storyline` files; only the ones that
+            // parse as mutation arcs are ours.
+            if let Ok(mutations) = ron::from_str::<Vec<reachlock_core::soul::SoulMutation>>(&text) {
+                registry.mutations.extend(mutations);
+            }
         }
+        if !registry.mutations.is_empty() {
+            break;
+        }
+    }
+    if !registry.mutations.is_empty() {
+        info!("souls: loaded {} mutation arc(s)", registry.mutations.len());
     }
 }
 

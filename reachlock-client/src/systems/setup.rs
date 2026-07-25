@@ -45,9 +45,13 @@ use crate::systems::starfield;
 
 pub const SYSTEM_SEED: u64 = 0x5EED_0001;
 
-/// Object id the authored Loup-Garou hull (`content/hulls/loup_garou.ron`)
-/// overrides (spec §10 acceptance demo).
-const PLAYER_HULL_ID: &str = "loup_garou";
+/// Object id used when asking the content pipeline for a hull override.
+///
+/// This was pinned to `"loup_garou"`, so every character's ship resolved to
+/// the one authored hull no matter which origin they picked.
+fn player_hull_id() -> String {
+    crate::systems::crew::active_hull_id()
+}
 
 /// Authored flight model. When an artist drops a `.glb` under the client's
 /// `assets/` and names it here, the ship renders as that GLTF scene instead of
@@ -323,7 +327,7 @@ fn spawn_player_ship(
     });
 
     let params = SeedParams {
-        object_id: PLAYER_HULL_ID.into(),
+        object_id: player_hull_id(),
         universe: UniverseTier::Classic,
         now: 0,
     };
@@ -334,8 +338,9 @@ fn spawn_player_ship(
                 ContentPayload::Hull(mesh) => mesh,
                 other => {
                     warn!(
-                        "content override for {PLAYER_HULL_ID} is not a hull payload \
-                         ({other:?}); falling back to the generated corvette"
+                        "content override for {} is not a hull payload \
+                         ({other:?}); falling back to the generated corvette",
+                        player_hull_id()
                     );
                     generator::hull::generate_hull_class(seed ^ 0x51119, HullClass::Corvette)
                 }
@@ -394,14 +399,14 @@ fn spawn_player_ship(
         let scene = asset_server.load(GltfAssetLabel::Scene(0).from_asset(path));
         ship.insert(SceneRoot(scene));
     } else {
-        // The Loup-Garou (docs/LORE.md §IV): a Class-J working corvette
+        // Procedural corvette silhouette (spec §14): the default flight model
         // composed from primitives — fuselage + nose cone, glass canopy,
         // swept delta wings with accent stripes and tip fins, twin engine
         // nacelles, and the chin-mounted mass driver. Everything scales off
         // the physics radius so the model matches the collider, and the
         // palette keeps the seed identity (hull tinted primary, trim in
         // accent). Nose = -Z under the chase-cam.
-        spawn_loup_garou_model(&mut ship, meshes, materials, palette, collider_radius);
+        spawn_ship_model(&mut ship, meshes, materials, palette, collider_radius);
     }
 
     // Engine exhaust: emissive cones welded to the two nacelle nozzles,
@@ -453,9 +458,11 @@ fn blend(a: Color, b: Color, t: f32) -> Color {
     )
 }
 
-/// Compose the Loup-Garou's flight model as children of the ship root.
+/// Compose the ship's flight model as children of the ship root.
+/// Procedural: driven by the palette and collider radius, not by any one
+/// authored hull — only the name was ever ship-specific.
 /// `r` is the collider radius; every dimension hangs off it.
-fn spawn_loup_garou_model(
+fn spawn_ship_model(
     ship: &mut EntityCommands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,

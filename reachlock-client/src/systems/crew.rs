@@ -400,6 +400,49 @@ impl CrewRoster {
             .collect()
     }
 
+    /// Whoever currently fills `role_id`, healthiest first.
+    ///
+    /// Engine systems that need "the pilot" or "the medic" must ask for the
+    /// role, never for a name. Several of them used to hardcode a canonical
+    /// crew member — so on any other ship, with any other crew, the wrong
+    /// person announced your jump and put out your fires.
+    pub fn speaker_for(&self, role_id: &str) -> Option<&CrewMember> {
+        let rank = |h: &CrewHealth| match h {
+            CrewHealth::Healthy => 0,
+            CrewHealth::Injured => 1,
+            CrewHealth::Critical => 2,
+            CrewHealth::Dead => 3,
+        };
+        self.by_role(role_id)
+            .into_iter()
+            .filter(|m| m.health != CrewHealth::Dead)
+            .min_by_key(|m| rank(&m.health))
+    }
+
+    /// Display name of whoever fills `role_id`.
+    ///
+    /// With nobody in the role, falls back to the role itself ("the pilot")
+    /// rather than inventing a crew member. A solo character reads
+    /// "the pilot plots the jump", not the name of somebody else's crew.
+    pub fn voice_of(&self, role_id: &str) -> String {
+        match self.speaker_for(role_id) {
+            Some(m) => m.name.clone(),
+            None => format!(
+                "the {}",
+                CrewRoleRegistry::with_defaults().get(role_id).name
+            )
+            .to_lowercase(),
+        }
+    }
+
+    /// Id of whoever fills `role_id`, for systems keyed on crew id rather than
+    /// display name (soul lookups, relationship deltas).
+    pub fn voice_id_of(&self, role_id: &str) -> String {
+        self.speaker_for(role_id)
+            .map(|m| m.id.clone())
+            .unwrap_or_else(|| role_id.to_string())
+    }
+
     /// Set a crew member's health state.
     pub fn set_health(&mut self, id: &str, health: CrewHealth) {
         if let Some(m) = self.by_id_mut(id) {
@@ -739,27 +782,111 @@ fn route_indexed(layout: &GeneratedLayout, start: usize, goal: usize) -> Vec<Vec
     path
 }
 
-/// Load the Loup-Garou interior from the ship template catalog.
-/// Falls back to a minimal default if the file cannot be read.
-pub fn load_loup_garou_interior() -> reachlock_core::generator::ship::ShipInterior {
-    // Try multiple paths (workspace root vs test runner root).
-    let candidates = [
-        "mods/reachlock/hulls/loup_garou_interior.ron",
-        "../mods/reachlock/hulls/loup_garou_interior.ron",
-    ];
-    for path_str in &candidates {
-        let path = std::path::Path::new(path_str);
-        if path.exists() {
-            match std::fs::read_to_string(path) {
-                Ok(text) => match ron::from_str::<reachlock_core::crew::ShipTemplate>(&text) {
-                    Ok(template) => return template.interior,
-                    Err(e) => warn!("failed to parse loup_garou template: {e}"),
-                },
-                Err(e) => warn!("failed to read loup_garou template: {e}"),
+/// The ship the player is currently flying, set once the character (and so
+/// their origin) is known. `None` means "not chosen yet" — the engine then
+/// uses a neutral starter hull rather than any particular authored ship.
+///
+/// This is a process-wide holder rather than a Bevy resource because the
+/// callers that need it (`cryo_wake_spawn`, `cockpit_seat_spawn`,
+/// `crisis::deck_layouts`) are plain functions, not systems. Same pattern as
+/// the editor's content root.
+static ACTIVE_SHIP: std::sync::RwLock<Option<reachlock_core::crew::ShipTemplate>> =
+    std::sync::RwLock::new(None);
+
+/// Every ship template authored under `<content root>/hulls/`.
+pub fn ship_template_catalog() -> Vec<reachlock_core::crew::ShipTemplate> {
+    let mut out = Vec::new();
+    for root in ["mods/reachlock/hulls", "../mods/reachlock/hulls"] {
+        let dir = std::path::Path::new(root);
+        if !dir.is_dir() {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "ron") {
+                continue;
+            }
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                // hulls/ also holds frames and room templates; only the files
+                // that parse as a ShipTemplate are ships.
+                if let Ok(t) = ron::from_str::<reachlock_core::crew::ShipTemplate>(&text) {
+                    out.push(t);
+                }
             }
         }
+        if !out.is_empty() {
+            break;
+        }
     }
-    // Minimal fallback: single deck with a corridor.
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
+}
+
+/// Select the ship the player flies, by template id (from their origin, or a
+/// save). Unknown ids leave the neutral starter in place and warn — an origin
+/// naming a ship nobody authored must not silently hand the player some other
+/// character's ship.
+pub fn set_active_ship_template(id: &str) -> bool {
+    let catalog = ship_template_catalog();
+    match catalog.into_iter().find(|t| t.id == id) {
+        Some(template) => {
+            info!("ship: flying \"{}\" ({id})", template.name);
+            if let Ok(mut g) = ACTIVE_SHIP.write() {
+                *g = Some(template);
+            }
+            true
+        }
+        None => {
+            warn!(
+                "ship template \"{id}\" is not authored under hulls/ — \
+                 falling back to the starter hull"
+            );
+            false
+        }
+    }
+}
+
+/// Clear the active ship (new game / character reset).
+pub fn clear_active_ship() {
+    if let Ok(mut g) = ACTIVE_SHIP.write() {
+        *g = None;
+    }
+}
+
+/// The active ship's hull id, for content overrides and the flight model.
+pub fn active_hull_id() -> String {
+    ACTIVE_SHIP
+        .read()
+        .ok()
+        .and_then(|g| g.as_ref().map(|t| t.hull_id.clone()))
+        .unwrap_or_else(|| STARTER_HULL_ID.to_string())
+}
+
+/// Hull id used when the character has no ship of their own yet.
+pub const STARTER_HULL_ID: &str = "starter";
+
+/// The interior of the ship the player is flying.
+///
+/// This used to be `active_ship_interior()`, hardwired to one authored
+/// ship. Because it was also the fallback for every unresolved case, every
+/// origin whose `ship_template` was not authored quietly put the player aboard
+/// the Loup-Garou.
+pub fn active_ship_interior() -> reachlock_core::generator::ship::ShipInterior {
+    if let Ok(g) = ACTIVE_SHIP.read() {
+        if let Some(t) = g.as_ref() {
+            return t.interior.clone();
+        }
+    }
+    starter_interior()
+}
+
+/// A neutral one-deck hull: a corridor and a cockpit. Deliberately generic —
+/// it is what a character flies before their origin grants them anything, and
+/// it must not resemble any authored ship.
+pub fn starter_interior() -> reachlock_core::generator::ship::ShipInterior {
     reachlock_core::generator::ship::ShipInterior {
         decks: vec![reachlock_core::generator::ship::ShipDeck {
             name: "MAIN DECK".into(),
