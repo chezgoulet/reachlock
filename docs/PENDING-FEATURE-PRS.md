@@ -46,9 +46,41 @@ would dump the v1 prototype back into v2.
 - **Action:** design the save-slot ring against v2 state (likely a new
   `reachlock-core`/`reachlock-client` module). Port the idea, not the branch.
 
-## Recommended process
-1. Keep these remote branches as reference only.
-2. For each, open a fresh v2 branch from `testing`, cherry-pick/re-implement the
-   v2-relevant commit, and open a targeted PR.
-3. Confirm `godot/` and Go `server/` are absent from the resulting diff before
-   requesting review.
+## Status: branches deleted 2026-07-25
+
+`main` is now the v2 tree (the v1 → v2 cutover), and every v1-era remote branch
+was deleted so nothing drags the Godot/Go prototype back in. **This document is
+now the only record of what those branches contained** — the commits below are
+unreachable and will be garbage-collected.
+
+| Branch (deleted) | Commit | Disposition |
+|---|---|---|
+| `feat/pre-commit-hook-74` | `b470ee8` | **Done.** The hook idea shipped in v2 as `.githooks/pre-commit`, which runs the whole `make check` gate. |
+| `feature/mission-gate-self-jump-103` | `7fc6b53` | **Open.** See below. |
+| `feature/save-slot-ring-104` | `753391b` | **Open.** See below. |
+| `tracking/stale-feature-prs` | — | Superseded; this file lives on `main`. |
+| `wave-0/engineering-backbone`, `wave-0/three-ring-architecture` | — | v1-era CI and architecture guard; v2's equivalent is `make check` + `make check-purity`. |
+
+The full v1 prototype remains on **`archive-v1`**, which is deliberately kept.
+Note that the three feature branches above were cut from old `main`, not from
+`archive-v1`, so their *diffs* are gone even though the prototype they sat on
+is preserved.
+
+## Still to do in v2
+
+Two behaviours were described on those branches and have **not** been
+implemented in the Rust client. Neither is a port — both need designing against
+v2 state.
+
+### Gate the self-jump route behind a story flag (was #103)
+`reachlock-client/src/systems/jump.rs::self_jump` currently has no story
+precondition — confirmed by grep: no `doss_deal_struck` or equivalent flag
+exists anywhere in v2. The v1 fix gated the route so the player could not skip
+ahead of the narrative. v2 needs an equivalent, most likely reading a storyline
+or faction flag rather than a bare boolean.
+
+### Rotating save-slot ring (was #104)
+v2 saves to a single `save/player.ron` (`reachlock-client/src/save_backend.rs`),
+so a corrupt or bad write loses everything. The v1 design rotated five
+checkpoint slots. Worth doing against `SaveFile`, and it pairs naturally with
+the character-creation work (a per-character save set).
