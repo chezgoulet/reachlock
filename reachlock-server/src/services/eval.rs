@@ -97,7 +97,7 @@ pub mod pg {
             let eval = eval.clone();
             // block_on is safe: only ever called from a `spawn_blocking` task
             // (VerifyService::submit is dispatched off the async worker).
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 // Upsert the player then insert the accepted signature in one
                 // statement so we never pull the UUID into Rust.
                 sqlx::query(
@@ -124,7 +124,7 @@ pub mod pg {
 
         fn load_heads(&self) -> Vec<HeadRecord> {
             let pool = self.pool.clone();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let rows: Vec<(String, String, String, i64)> = sqlx::query_as(
                     "SELECT DISTINCT ON (e.player_id, e.contract_id)
                             p.username, e.contract_id, e.signature, e.tick

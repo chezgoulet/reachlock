@@ -694,8 +694,14 @@ pub fn verify_split_token(full: &str, stored_hash: &str) -> bool {
 
 fn hash_password(password: &str, cfg: &AuthConfig) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
+    // `Params::new`'s m_cost is already in KiB, so the config value goes in
+    // as-is. Multiplying by 1024 asked for 64 GiB (65536 KiB × 1024), and the
+    // allocation failure aborts the process rather than returning an error —
+    // an unauthenticated request to /auth/register killed the server. It had
+    // never been caught because no test ever hashed a password with a real
+    // AuthConfig.
     let params = argon2::Params::new(
-        cfg.argon2_memory_kib * 1024,
+        cfg.argon2_memory_kib,
         cfg.argon2_iterations,
         cfg.argon2_parallelism,
         Some(32),
@@ -1908,7 +1914,7 @@ pub mod pg {
             let username = username.to_string();
             let email = email.to_string();
             let hash = hash.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let row: Result<(String,), sqlx::Error> = sqlx::query_as(
                     "INSERT INTO players (username, email, password_hash)
                      VALUES ($1, $2, $3) RETURNING id",
@@ -1948,7 +1954,7 @@ pub mod pg {
         fn by_login(&self, login: &str) -> Option<PlayerRecord> {
             let pool = self.pool.clone();
             let login = login.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 sqlx::query_as::<
                     _,
                     (
@@ -1966,7 +1972,7 @@ pub mod pg {
                         i64,
                     ),
                 >(
-                    "SELECT id, username, email, password_hash, role,
+                    "SELECT id, username, email, password_hash, role::text,
                             EXTRACT(EPOCH FROM verified_at)::bigint,
                             EXTRACT(EPOCH FROM deleted_at)::bigint,
                             EXTRACT(EPOCH FROM banned_at)::bigint,
@@ -2018,14 +2024,15 @@ pub mod pg {
         fn by_id(&self, id: &str) -> Option<PlayerRecord> {
             let pool = self.pool.clone();
             let id = id.to_string();
-            self.runtime
-                .block_on(async move { fetch_player_by_id(&pool, &id).await })
+            crate::services::blocking::block_on_async(&self.runtime, async move {
+                fetch_player_by_id(&pool, &id).await
+            })
         }
 
         fn by_email(&self, email: &str) -> Option<PlayerRecord> {
             let pool = self.pool.clone();
             let email = email.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 sqlx::query_as::<
                     _,
                     (
@@ -2043,7 +2050,7 @@ pub mod pg {
                         i64,
                     ),
                 >(
-                    "SELECT id, username, email, password_hash, role,
+                    "SELECT id, username, email, password_hash, role::text,
                             EXTRACT(EPOCH FROM verified_at)::bigint,
                             EXTRACT(EPOCH FROM deleted_at)::bigint,
                             EXTRACT(EPOCH FROM banned_at)::bigint,
@@ -2095,7 +2102,7 @@ pub mod pg {
             let pool = self.pool.clone();
             let provider = provider.to_string();
             let provider_uid = provider_uid.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let pid: Option<(String,)> = sqlx::query_as(
                     "SELECT player_id FROM oauth_accounts WHERE provider = $1 AND provider_user_id = $2",
                 )
@@ -2121,7 +2128,7 @@ pub mod pg {
             let prov = provider.to_string();
             let uid = provider_uid.to_string();
             let email = provider_email.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query(
                     "INSERT INTO oauth_accounts (player_id, provider, provider_user_id, provider_email)
                      VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
@@ -2139,7 +2146,7 @@ pub mod pg {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
             let hash = hash.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query("UPDATE players SET password_hash = $1 WHERE id = $2")
                     .bind(&hash)
                     .bind(&pid)
@@ -2151,7 +2158,7 @@ pub mod pg {
         fn inc_fails(&self, player_id: &str) {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query(
                     "UPDATE players SET failed_login_attempts = failed_login_attempts + 1 WHERE id = $1",
                 )
@@ -2164,7 +2171,7 @@ pub mod pg {
         fn clear_fails(&self, player_id: &str) {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query(
                     "UPDATE players SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1",
                 )
@@ -2177,7 +2184,7 @@ pub mod pg {
         fn set_verified(&self, player_id: &str) {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query("UPDATE players SET verified_at = NOW() WHERE id = $1")
                     .bind(&pid)
                     .execute(&pool)
@@ -2188,7 +2195,7 @@ pub mod pg {
         fn set_deleted(&self, player_id: &str) {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query("UPDATE players SET deleted_at = NOW() WHERE id = $1")
                     .bind(&pid)
                     .execute(&pool)
@@ -2199,7 +2206,7 @@ pub mod pg {
         fn cancel_deletion(&self, player_id: &str) {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query("UPDATE players SET deleted_at = NULL WHERE id = $1")
                     .bind(&pid)
                     .execute(&pool)
@@ -2210,7 +2217,7 @@ pub mod pg {
         fn set_lock(&self, player_id: &str, locked_until: i64) {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query(
                     "UPDATE players SET locked_until = to_timestamp($1::double precision) WHERE id = $2",
                 )
@@ -2225,7 +2232,7 @@ pub mod pg {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
             let reason = reason.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query(
                     "UPDATE players SET banned_at = NOW(), banned_reason = $1 WHERE id = $2",
                 )
@@ -2239,7 +2246,7 @@ pub mod pg {
         fn unban(&self, player_id: &str) {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query(
                     "UPDATE players SET banned_at = NULL, banned_reason = NULL WHERE id = $1",
                 )
@@ -2253,7 +2260,7 @@ pub mod pg {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
             let role = role.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query("UPDATE players SET role = $1::auth_role WHERE id = $2")
                     .bind(&role)
                     .bind(&pid)
@@ -2266,7 +2273,7 @@ pub mod pg {
             let pool = self.pool.clone();
             let offset = ((page.saturating_sub(1)) * per_page) as i64;
             let limit = per_page as i64;
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 sqlx::query_as::<
                     _,
                     (
@@ -2284,7 +2291,7 @@ pub mod pg {
                         i64,
                     ),
                 >(
-                    "SELECT id, username, email, password_hash, role,
+                    "SELECT id, username, email, password_hash, role::text,
                             EXTRACT(EPOCH FROM verified_at)::bigint,
                             EXTRACT(EPOCH FROM deleted_at)::bigint,
                             EXTRACT(EPOCH FROM banned_at)::bigint,
@@ -2337,7 +2344,7 @@ pub mod pg {
 
         fn count(&self) -> usize {
             let pool = self.pool.clone();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM players")
                     .fetch_one(&pool)
                     .await
@@ -2365,7 +2372,7 @@ pub mod pg {
                 i64,
             ),
         >(
-            "SELECT id, username, email, password_hash, role,
+            "SELECT id, username, email, password_hash, role::text,
                     EXTRACT(EPOCH FROM verified_at)::bigint,
                     EXTRACT(EPOCH FROM deleted_at)::bigint,
                     EXTRACT(EPOCH FROM banned_at)::bigint,
@@ -2378,6 +2385,10 @@ pub mod pg {
         .bind(id)
         .fetch_optional(pool)
         .await
+        // Log rather than swallow: `.ok()?` turns a decode error into a
+        // silent "no such player", which is how the role-enum mismatch below
+        // went unnoticed through an entire sprint.
+        .inspect_err(|e| tracing::error!("fetch_player_by_id({id}) failed: {e}"))
         .ok()?
         .map(
             |(
@@ -2436,7 +2447,7 @@ pub mod pg {
         /// feature in CI, so it went unnoticed.
         fn active_sessions(&self) -> usize {
             let pool = self.pool.clone();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM sessions")
                     .fetch_one(&pool)
                     .await
@@ -2450,7 +2461,7 @@ pub mod pg {
             let token2 = token.clone();
             let pid = info.player_id;
             let universe = info.universe.as_str().to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query(
                     "INSERT INTO sessions (token, player_id, universe) VALUES ($1, $2, $3::universe_tier)",
                 )
@@ -2466,7 +2477,7 @@ pub mod pg {
         fn resolve(&self, token: &str) -> Option<SessionInfo> {
             let pool = self.pool.clone();
             let t = token.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let row: Option<(String, String)> = sqlx::query_as(
                     "SELECT player_id, universe::text FROM sessions
                      WHERE token = $1 AND expires_at > NOW()",
@@ -2487,7 +2498,7 @@ pub mod pg {
         fn revoke(&self, token: &str) {
             let pool = self.pool.clone();
             let t = token.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query("DELETE FROM sessions WHERE token = $1")
                     .bind(&t)
                     .execute(&pool)
@@ -2498,7 +2509,7 @@ pub mod pg {
         fn revoke_all_for_player(&self, player_id: &str) {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let _ = sqlx::query("DELETE FROM sessions WHERE player_id = $1")
                     .bind(&pid)
                     .execute(&pool)
@@ -2511,6 +2522,35 @@ pub mod pg {
 #[cfg(test)]
 mod hardening_tests {
     use super::*;
+
+    /// Hashing with the shipped defaults must actually work.
+    ///
+    /// `Params::new` takes m_cost in KiB; the code multiplied the already-KiB
+    /// config by 1024 and asked for 64 GiB. Allocation failure aborts the
+    /// process, so an unauthenticated POST /auth/register killed the server.
+    #[test]
+    fn hashing_with_default_params_does_not_explode() {
+        let cfg = AuthConfig::default();
+        let hash = hash_password("correct-horse-battery", &cfg).expect("hash with defaults");
+        assert!(hash.starts_with("$argon2id$"), "got {hash}");
+        assert!(verify_password("correct-horse-battery", &hash));
+        assert!(!verify_password("wrong", &hash));
+    }
+
+    /// The configured memory cost must reach Argon2 unscaled.
+    #[test]
+    fn argon2_memory_cost_is_kib_not_bytes() {
+        let cfg = AuthConfig {
+            argon2_memory_kib: 8,
+            argon2_iterations: 1,
+            argon2_parallelism: 1,
+            ..AuthConfig::default()
+        };
+        // 8 KiB is legal; 8 * 1024 KiB would still work, so assert on the
+        // encoded parameter rather than on success alone.
+        let hash = hash_password("pw", &cfg).expect("hash");
+        assert!(hash.contains("m=8,"), "expected m=8 in {hash}");
+    }
 
     fn hdr(pairs: &[(&str, &str)]) -> axum::http::HeaderMap {
         let mut h = axum::http::HeaderMap::new();
@@ -2636,5 +2676,163 @@ mod hardening_tests {
             !url.contains("reachlock.example"),
             "placeholder domain leaked into email links: {url}"
         );
+    }
+}
+
+/// Live-Postgres battery for the auth stores. Skipped (passes trivially)
+/// unless `REACHLOCK_TEST_DB` points at a reachable Postgres — `make db-test`
+/// sets it.
+///
+/// `PgSeedStore` was the only Pg store with a live test, which is how the
+/// entire Postgres path came to be shipped without ever having run: the
+/// migrations did not apply, and the first query after that failed on a
+/// uuid/text mismatch. These cover the two stores every authenticated request
+/// touches.
+#[cfg(all(test, feature = "postgres"))]
+mod pg_auth_tests {
+    use super::pg::{PgPlayerStore, PgSessionStore};
+    use super::*;
+
+    async fn fresh_pool() -> Option<sqlx::PgPool> {
+        let Ok(url) = std::env::var("REACHLOCK_TEST_DB") else {
+            eprintln!("REACHLOCK_TEST_DB unset — skipping live Postgres auth battery");
+            return None;
+        };
+        let pool = sqlx::PgPool::connect(&url)
+            .await
+            .expect("connect REACHLOCK_TEST_DB");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("run migrations");
+        // CASCADE: sessions/tokens/totp all reference players.
+        sqlx::query("TRUNCATE players, sessions CASCADE")
+            .execute(&pool)
+            .await
+            .expect("clean auth tables");
+        Some(pool)
+    }
+
+    /// The store round-trips a player and every mutation the auth handlers use.
+    #[tokio::test]
+    async fn pg_player_store_round_trips() {
+        let Some(pool) = fresh_pool().await else {
+            return;
+        };
+        let store = PgPlayerStore::new(pool);
+        tokio::task::spawn_blocking(move || {
+            let rec = store
+                .create("alice", "alice@example.test", "hash-1")
+                .expect("create player");
+            assert!(!rec.id.is_empty(), "a player id must come back");
+            assert_eq!(rec.username, "alice");
+
+            // Every lookup path the handlers use.
+            let by_id = store.by_id(&rec.id).expect("by_id");
+            assert_eq!(by_id.username, "alice");
+            assert_eq!(
+                store.by_login("alice").map(|p| p.id.clone()),
+                Some(rec.id.clone())
+            );
+            assert_eq!(
+                store.by_email("alice@example.test").map(|p| p.id.clone()),
+                Some(rec.id.clone())
+            );
+            assert!(store.by_id("no-such-player").is_none());
+
+            // Duplicate username/email must be refused, not silently accepted.
+            assert!(
+                store
+                    .create("alice", "other@example.test", "hash-2")
+                    .is_err(),
+                "duplicate username must be rejected"
+            );
+
+            // Lockout bookkeeping.
+            store.inc_fails(&rec.id);
+            store.inc_fails(&rec.id);
+            assert_eq!(store.by_id(&rec.id).unwrap().failed_login_attempts, 2);
+            store.clear_fails(&rec.id);
+            assert_eq!(store.by_id(&rec.id).unwrap().failed_login_attempts, 0);
+
+            // Verification, password change, ban/unban, soft delete.
+            assert!(store.by_id(&rec.id).unwrap().verified_at.is_none());
+            store.set_verified(&rec.id);
+            assert!(store.by_id(&rec.id).unwrap().verified_at.is_some());
+
+            store.update_hash(&rec.id, "hash-rotated");
+            assert_eq!(
+                store.by_id(&rec.id).unwrap().password_hash.as_deref(),
+                Some("hash-rotated")
+            );
+
+            store.ban(&rec.id, "testing");
+            assert!(store.by_id(&rec.id).unwrap().banned_at.is_some());
+            store.unban(&rec.id);
+            assert!(store.by_id(&rec.id).unwrap().banned_at.is_none());
+
+            store.set_deleted(&rec.id);
+            assert!(store.by_id(&rec.id).unwrap().deleted_at.is_some());
+            store.cancel_deletion(&rec.id);
+            assert!(store.by_id(&rec.id).unwrap().deleted_at.is_none());
+
+            store.set_role(&rec.id, "admin");
+            assert_eq!(store.by_id(&rec.id).unwrap().role, "admin");
+
+            // OAuth linkage.
+            store.link_provider(&rec.id, "github", "gh-123", "alice@example.test");
+            assert_eq!(
+                store.by_provider("github", "gh-123").map(|p| p.id),
+                Some(rec.id.clone())
+            );
+
+            assert_eq!(store.count(), 1);
+            assert_eq!(store.list(1, 10).len(), 1);
+        })
+        .await
+        .expect("pg player battery");
+    }
+
+    /// Sessions must issue, resolve, revoke, and mass-revoke.
+    #[tokio::test]
+    async fn pg_session_store_round_trips() {
+        let Some(pool) = fresh_pool().await else {
+            return;
+        };
+        let store = PgSessionStore::new(pool);
+        tokio::task::spawn_blocking(move || {
+            let info = SessionInfo {
+                player_id: "p-alpha".into(),
+                universe: UniverseTier::Classic,
+            };
+            let token = store.issue(info.clone());
+            assert!(!token.is_empty());
+            assert_eq!(store.resolve(&token), Some(info.clone()));
+            assert!(store.resolve("not-a-token").is_none());
+            assert_eq!(store.active_sessions(), 1, "issued session is counted");
+
+            store.revoke(&token);
+            assert!(
+                store.resolve(&token).is_none(),
+                "revoked token must not resolve"
+            );
+
+            // Password reset / ban revokes every session a player holds.
+            let a = store.issue(info.clone());
+            let b = store.issue(info.clone());
+            let other = store.issue(SessionInfo {
+                player_id: "p-beta".into(),
+                universe: UniverseTier::Classic,
+            });
+            store.revoke_all_for_player("p-alpha");
+            assert!(store.resolve(&a).is_none());
+            assert!(store.resolve(&b).is_none());
+            assert!(
+                store.resolve(&other).is_some(),
+                "another player's session must survive"
+            );
+        })
+        .await
+        .expect("pg session battery");
     }
 }

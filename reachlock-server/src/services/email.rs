@@ -134,8 +134,12 @@ impl EmailBackend for SmtpEmailBackend {
             .body(html_body.to_string())
             .map_err(|e| format!("email body: {e}"))?;
 
+        // Same hazard as the Postgres stores: a bare `block_on` here panics
+        // the worker thread. It fired mid-registration, after the player row
+        // was written but before the response, so the client saw a dropped
+        // connection and the account existed anyway.
         let rt = tokio::runtime::Handle::current();
-        rt.block_on(async { self.sender.send(email).await })
+        crate::services::blocking::block_on_async(&rt, async { self.sender.send(email).await })
             .map_err(|e| format!("send email: {e}"))?;
         tracing::info!(target: "email", to, subject, "sent via SMTP");
         Ok(())

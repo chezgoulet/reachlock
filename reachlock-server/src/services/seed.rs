@@ -163,7 +163,7 @@ pub mod pg {
             let tier = universe.as_str();
             let seed_value = tentative.value() as i64;
             let discoverer_id = discoverer.map(String::from);
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 // First-write-wins: INSERT with discoverer_id on first write.
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -198,7 +198,12 @@ pub mod pg {
                     Option<String>,
                     Option<i64>,
                 ) = sqlx::query_as(
-                    "SELECT seed, diffs, discoverer_id, discovered_at FROM seeds
+                    // Discovery carries epoch seconds, not a timestamp type —
+                    // extract it in SQL rather than pulling chrono into the
+                    // decode path for a single column.
+                    "SELECT seed, diffs, discoverer_id,
+                            EXTRACT(EPOCH FROM discovered_at)::bigint
+                     FROM seeds
                      WHERE universe = $1::universe_tier AND system_id = $2
                        AND object_key = ''",
                 )
@@ -221,9 +226,9 @@ pub mod pg {
             let pool = self.pool.clone();
             let system = system.0.clone();
             let tier = universe.as_str();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let result = sqlx::query(
-                    "UPDATE seeds SET diffs = diffs || $3, modified = NOW()
+                    "UPDATE seeds SET diffs = diffs || $3, modified_at = NOW()
                      WHERE universe = $1::universe_tier AND system_id = $2
                        AND object_key = ''",
                 )

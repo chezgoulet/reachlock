@@ -244,7 +244,7 @@ pub mod pg {
                 "key_b64": b64(&key_encrypted),
             })
             .to_string();
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let mut tx = pool.begin().await.expect("begin byok tx");
                 let (pid,): (Uuid,) = sqlx::query_as(
                     "INSERT INTO players (username) VALUES ($1)
@@ -277,18 +277,19 @@ pub mod pg {
         fn get(&self, player_id: &str) -> Option<ByokRow> {
             let pool = self.pool.clone();
             let username = player_id.to_string();
-            let envelope: Option<(String,)> = self.runtime.block_on(async move {
-                sqlx::query_as(
-                    "SELECT k.api_key_encrypted FROM byok_keys k
+            let envelope: Option<(String,)> =
+                crate::services::blocking::block_on_async(&self.runtime, async move {
+                    sqlx::query_as(
+                        "SELECT k.api_key_encrypted FROM byok_keys k
                      JOIN players p ON p.id = k.player_id
                      WHERE p.username = $1 AND k.is_active
                      ORDER BY k.created_at DESC LIMIT 1",
-                )
-                .bind(&username)
-                .fetch_optional(&pool)
-                .await
-                .expect("select byok key")
-            });
+                    )
+                    .bind(&username)
+                    .fetch_optional(&pool)
+                    .await
+                    .expect("select byok key")
+                });
             let (text,) = envelope?;
             let value: serde_json::Value = serde_json::from_str(&text).ok()?;
             Some((

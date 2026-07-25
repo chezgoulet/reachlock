@@ -16,7 +16,7 @@ ALTER TABLE players
 
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     token_hash VARCHAR(256) NOT NULL,
     selector VARCHAR(32) NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     token_hash VARCHAR(256) NOT NULL,
     selector VARCHAR(32) NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 
 CREATE TABLE IF NOT EXISTS oauth_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     provider VARCHAR(32) NOT NULL,
     provider_user_id VARCHAR(256) NOT NULL,
     provider_email VARCHAR(256),
@@ -45,14 +45,14 @@ CREATE TABLE IF NOT EXISTS oauth_accounts (
 
 CREATE TABLE IF NOT EXISTS totp_secrets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id UUID NOT NULL UNIQUE REFERENCES players(id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL UNIQUE REFERENCES players(id) ON DELETE CASCADE,
     secret_encrypted TEXT NOT NULL,
     enabled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS totp_recovery_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     code_hash VARCHAR(256) NOT NULL,
     used BOOLEAN NOT NULL DEFAULT false
 );

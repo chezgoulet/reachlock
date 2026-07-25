@@ -38,7 +38,7 @@ impl RedisPool {
         Fut::Output: Send,
     {
         let mgr = self.mgr.lock().expect("redis pool lock").clone();
-        self.runtime.block_on(f(mgr))
+        crate::services::blocking::block_on_async(&self.runtime, f(mgr))
     }
 }
 

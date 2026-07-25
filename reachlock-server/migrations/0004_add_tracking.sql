@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    admin_player_id UUID REFERENCES players(id),
+    admin_player_id TEXT REFERENCES players(id),
     action          VARCHAR(256) NOT NULL,
     target_type     VARCHAR(64),
     target_id       VARCHAR(128),
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     provider            VARCHAR(64),
     model               VARCHAR(128),
-    player_id           UUID REFERENCES players(id),
+    player_id           TEXT REFERENCES players(id),
     contract_id         VARCHAR(128),
     tokens_input        INTEGER NOT NULL DEFAULT 0,
     tokens_output       INTEGER NOT NULL DEFAULT 0,
@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_health_time ON health_checks(checked_at DESC);
 
 CREATE TABLE IF NOT EXISTS offline_entitlements (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id   UUID NOT NULL REFERENCES players(id),
+    player_id   TEXT NOT NULL REFERENCES players(id),
     token       VARCHAR(256) UNIQUE NOT NULL,
     tier        universe_tier NOT NULL,
     issued_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),

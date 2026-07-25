@@ -77,7 +77,7 @@ pub mod pg {
             // block_on is safe here: this trait is only invoked from a
             // `spawn_blocking` task in the WS handler, never on an async
             // worker thread (see handler.rs).
-            self.runtime.block_on(async move {
+            crate::services::blocking::block_on_async(&self.runtime, async move {
                 let mut tx = pool.begin().await.expect("begin contract sync tx");
                 let (pid,): (Uuid,) = sqlx::query_as(
                     "INSERT INTO players (username) VALUES ($1)

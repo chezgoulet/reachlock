@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS careers (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id       UUID NOT NULL REFERENCES players(id),
+    player_id       TEXT NOT NULL REFERENCES players(id),
     path_id         VARCHAR(128) NOT NULL,
     current_rank    INTEGER NOT NULL DEFAULT 1,
     total_prestige  BIGINT NOT NULL DEFAULT 0,
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS careers (
 
 CREATE TABLE IF NOT EXISTS reputation (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id   UUID NOT NULL REFERENCES players(id),
+    player_id   TEXT NOT NULL REFERENCES players(id),
     faction_id  VARCHAR(128) NOT NULL,
     universe    universe_tier NOT NULL,
     standing    INTEGER NOT NULL DEFAULT 0,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS reputation (
 
 CREATE TABLE IF NOT EXISTS criminal_records (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id       UUID NOT NULL REFERENCES players(id),
+    player_id       TEXT NOT NULL REFERENCES players(id),
     universe        universe_tier NOT NULL,
     crime_type      VARCHAR(128),
     description     TEXT,

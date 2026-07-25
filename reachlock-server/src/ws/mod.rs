@@ -252,7 +252,10 @@ impl AppState {
             None => return,
         };
         let rt = tokio::runtime::Handle::current();
-        let pool = match rt.block_on(crate::services::redis::RedisPool::new(&url)) {
+        let pool = match crate::services::blocking::block_on_async(
+            &rt,
+            crate::services::redis::RedisPool::new(&url),
+        ) {
             Ok(p) => std::sync::Arc::new(p),
             Err(e) => {
                 tracing::warn!("REACHLOCK_REDIS_URL failed: {e}, falling back to in-memory");
@@ -281,7 +284,7 @@ impl AppState {
         use crate::services::seed::pg::PgSeedStore;
 
         let rt = tokio::runtime::Handle::current();
-        let pool = rt.block_on(async {
+        let pool = crate::services::blocking::block_on_async(&rt, async {
             let pool = sqlx::PgPool::connect(url)
                 .await
                 .expect("REACHLOCK_DB: connect failed");
