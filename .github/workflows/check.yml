@@ -1,0 +1,41 @@
+# ReachLock CI — run on every PR and push to testing.
+name: Check
+on:
+  push:
+    branches: [testing]
+  pull_request:
+    branches: [testing]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: System deps (Bevy on Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwayland-dev libxkbcommon-dev libudev-dev libasound2-dev
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      # --all-targets so test and bench code is linted too. Without it a test
+      # file can stop compiling while CI still reports green.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test (all)
+        run: cargo test --workspace
+
+      # Iron rule #1. Replaces the old "client compiles to wasm32" gate, which
+      # was really a proxy for "core has no rendering/IO deps" and went away
+      # with web distribution.
+      - name: Engine purity
+        run: make check-purity

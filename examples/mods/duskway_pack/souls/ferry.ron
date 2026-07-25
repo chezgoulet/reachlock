@@ -1,0 +1,12 @@
+// Example community mod soul (S22). A disgraced navigator with a
+// gambling problem and a talent for finding gaps in the gate network.
+// See mods/reachlock/souls/ for the canonical soul format.
+ContentFile(
+    id: "ferry",
+    display_name: "Ferry",
+    asset_type: Soul,
+    seed: 0xFERRY_0001,
+    universe: Classic,
+    priority: 0,
+    payload: Soul(soul_seed: 0xFERRY_0001),
+)

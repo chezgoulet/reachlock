@@ -1,0 +1,14 @@
+// Example community mod economy override (S22). Adjusts the Compact's
+// arms trade pricing to make Aethon a slightly better market for sellers.
+// The content_overrides in the manifest declare this as an override on
+// system "aethon", object "compact_arms". The actual override data is
+// game-specific — this file is illustrative.
+ContentFile(
+    id: "compact_arms_tweak",
+    display_name: "Compact Arms — Duskway Edition",
+    asset_type: Station,
+    seed: 0xC0MP_ACT_OVR1,
+    universe: Classic,
+    priority: 0,
+    payload: Station(station_seed: 0xC0MP_ACT_OVR1),
+)

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Ecosystem Content File",
+  "description": "An authored ecosystem override — full taxonomy and food web per biome",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "asset_type", "seed", "universe", "priority", "payload"],
+  "properties": {
+    "id": { "type": "string" },
+    "display_name": { "type": "string" },
+    "asset_type": { "type": "string", "enum": ["ecosystem"] },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "universe": { "type": "string" },
+    "priority": { "type": "string", "enum": ["procedural", "curated", "event", "authoritative"] },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ecosystem"],
+      "properties": {
+        "ecosystem": { "type": "object" }
+      }
+    }
+  }
+}

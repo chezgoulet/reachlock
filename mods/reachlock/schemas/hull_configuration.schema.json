@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Hull Configuration (S17/S19 Hull Editor)",
+  "description": "How a specific hull is outfitted against a HullFrame: hardpoints with mounted items, engine reference, armor plating zones, paint scheme, and decals. Loaded from mods/reachlock/hulls/*.ron into reachlock_core::editor::exterior::HullConfiguration. The hull_id must reference an existing hull frame by id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["hull_id", "seed", "hardpoints", "engine", "plating", "paint", "decals"],
+  "properties": {
+    "hull_id": {
+      "type": "string",
+      "description": "References a content/hulls/* frame by envelope id"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Drives the base hull silhouette and the paint palette"
+    },
+    "hardpoints": {
+      "type": "array",
+      "description": "Mounted hardpoints",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slot_id", "item", "size_class"],
+        "properties": {
+          "slot_id": { "type": "string", "description": "Hardpoint slot id (matches a frame slot)" },
+          "item": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["seed", "item_type", "tier", "faction", "biome"],
+            "description": "Mounted item seed (same shape as item.schema.json's ItemSeed)",
+            "properties": {
+              "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "item_type": { "type": "object", "minProperties": 1, "maxProperties": 1 },
+              "tier": { "type": "integer", "minimum": 1, "maximum": 10 },
+              "faction": { "type": "string" },
+              "biome": { "type": "string" }
+            }
+          },
+          "size_class": { "type": "string", "enum": ["small", "medium", "large"] }
+        }
+      }
+    },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seed", "item_type", "tier", "faction", "biome"],
+      "description": "Engine item reference (same shape as item.schema.json's ItemSeed)",
+      "properties": {
+        "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "item_type": { "type": "object", "minProperties": 1, "maxProperties": 1 },
+        "tier": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "faction": { "type": "string" },
+        "biome": { "type": "string" }
+      }
+    },
+    "plating": {
+      "type": "array",
+      "description": "Armor segments per zone",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["zone_id", "mass"],
+        "properties": {
+          "zone_id": { "type": "string", "description": "Armor zone id (matches a frame zone)" },
+          "mass": { "type": "integer", "minimum": 0, "description": "Segment mass" }
+        }
+      }
+    },
+    "paint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary", "secondary", "accent"],
+      "description": "Paint scheme: each slot is one of primary/accent/structure",
+      "properties": {
+        "primary": { "type": "string", "enum": ["primary", "accent", "structure"] },
+        "secondary": { "type": "string", "enum": ["primary", "accent", "structure"] },
+        "accent": { "type": "string", "enum": ["primary", "accent", "structure"] }
+      }
+    },
+    "decals": {
+      "type": "array",
+      "description": "Applied decals",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slot_id", "decal_id"],
+        "properties": {
+          "slot_id": { "type": "string", "description": "Frame decal slot id" },
+          "decal_id": { "type": "string", "description": "Decal asset id" }
+        }
+      }
+    }
+  }
+}

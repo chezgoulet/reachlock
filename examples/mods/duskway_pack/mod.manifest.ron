@@ -1,0 +1,17 @@
+ModManifest(
+    id: "duskway_pack",
+    name: "Duskway Pack",
+    version: (1, 0, 0),
+    author: "Community Example",
+    description: "An example community mod showing how to add content and override existing items.",
+    dependencies: ["reachlock"],
+    conflicts: [],
+    load_order: 128,
+    content_adds: [
+        (type: "station", id: "duskway_hub"),
+        (type: "soul", id: "ferry"),
+    ],
+    content_overrides: [
+        (system_id: "aethon", object_id: "compact_arms", load_order: 128),
+    ],
+)

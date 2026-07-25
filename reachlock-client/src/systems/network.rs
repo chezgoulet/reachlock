@@ -1,0 +1,554 @@
+//! Online-mode network systems (S02, extended S21): connect on entering
+//! Playing, poll the transport every frame (never block), and route protocol
+//! messages. On connect, the current system id is read from
+//! `CurrentLocation::system_id` rather than a hardcoded spike. Multi-system
+//! support via the gate network: every transit sets the destination id on
+//! CurrentLocation before discovery fires.
+
+use std::time::Duration;
+
+use bevy::prelude::*;
+use reachlock_core::network::{ClientMessage, ServerMessage};
+use reachlock_core::seed::types::{Seed, SystemId};
+
+use crate::net::{handshake_url, ConnectionState, NetMode, NetOutbox, TransportEvent, WsTransport};
+use crate::settings::Settings;
+use crate::states::CurrentLocation;
+
+use crate::systems::career::CareerResource;
+use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog};
+use crate::systems::contract_library::ContractLibraryState;
+use crate::systems::discovery::{DiscoveryLog, DiscoveryLogEntry, NotificationQueue};
+use crate::systems::presence::PresenceEvents;
+use crate::systems::ship::ShipSystems;
+use crate::systems::ticker::UniverseTicker;
+use crate::systems::voice;
+use bevy::ecs::system::SystemParam;
+use reachlock_core::career::{record_progress, ProgressionCriterionType};
+
+/// Owns the live socket, if any. `None` whenever offline, still connecting
+/// via backoff, or between "dropped" and "reconnected".
+///
+/// Not a `Resource`: `ewebsock::WsReceiver` wraps a `std::sync::mpsc::Receiver`,
+/// which is `Send` but not `Sync`, so it can't satisfy Bevy's `Resource`
+/// bound. It's registered as a `NonSend` resource instead (see `main.rs`)
+/// and read via `NonSend`/`NonSendMut` — fine for a single client socket
+/// that only ever needs main-thread access.
+#[derive(Default)]
+pub struct NetworkClient {
+    transport: Option<WsTransport>,
+}
+
+/// Server-pushed state the network system folds into the world: the content
+/// index (server-pushed content distribution) and presence events (S23).
+/// Bundled into one `SystemParam` to keep `poll_network` under Bevy's 16-arg
+/// limit.
+#[derive(SystemParam)]
+pub struct IncomingState<'w> {
+    pub presence: ResMut<'w, PresenceEvents>,
+    pub library: ResMut<'w, ContractLibraryState>,
+    pub discover_log: ResMut<'w, DiscoveryLog>,
+    pub notif_queue: ResMut<'w, NotificationQueue>,
+    pub career: ResMut<'w, CareerResource>,
+    pub known_systems: ResMut<'w, crate::systems::galaxy_map::KnownSystems>,
+}
+
+/// Exponential-ish reconnect backoff (1s, 2s, 4s, 8s, 16s, capped at 30s).
+#[derive(Resource)]
+pub struct ReconnectBackoff {
+    timer: Timer,
+    attempt: u32,
+}
+
+impl Default for ReconnectBackoff {
+    fn default() -> Self {
+        ReconnectBackoff {
+            timer: Timer::new(Duration::from_secs(1), TimerMode::Once),
+            attempt: 0,
+        }
+    }
+}
+
+impl ReconnectBackoff {
+    const MAX_SECS: u64 = 30;
+
+    fn schedule_next(&mut self) {
+        self.attempt = self.attempt.saturating_add(1);
+        let secs = (1u64 << self.attempt.min(5)).min(Self::MAX_SECS);
+        self.timer = Timer::new(Duration::from_secs(secs), TimerMode::Once);
+    }
+
+    fn reset(&mut self) {
+        self.attempt = 0;
+        self.timer = Timer::new(Duration::from_secs(1), TimerMode::Once);
+    }
+}
+
+/// Discovery/adoption state for the system currently rendered (spec §4).
+/// `current_system` is set from `CurrentLocation::system_id` on connect
+/// and updated whenever the player arrives in a new system.
+#[derive(Resource, Default)]
+pub struct SeedState {
+    pub current_system: Option<SystemId>,
+    pub adopted: Option<Seed>,
+    /// S85: discoverer name for the current system (from canonical response).
+    pub discoverer_name: Option<String>,
+    pub discovered_at: Option<i64>,
+}
+
+/// OnEnter(Playing), online mode only: opens the socket. The handshake
+/// itself completes asynchronously (background thread on native, the
+/// the transport's event loop) — `poll_network` picks up `Opened` once it
+/// lands.
+pub fn connect_on_enter_playing(
+    mode: Res<NetMode>,
+    settings: Res<Settings>,
+    mut client: NonSendMut<NetworkClient>,
+    mut conn: ResMut<ConnectionState>,
+    mut log: ResMut<ShipLog>,
+) {
+    let NetMode::Online {
+        url,
+        player,
+        universe,
+    } = &*mode
+    else {
+        return; // offline: never opens a socket
+    };
+    // S31: the persisted server URL + auto-connect preference can override the
+    // env-derived one (NetMode stays frozen; this only chooses the target).
+    let effective_url = if settings.network.auto_connect && !settings.network.server_url.is_empty()
+    {
+        settings.network.server_url.as_str()
+    } else {
+        url.as_str()
+    };
+    let target = handshake_url(effective_url, player, *universe);
+    match WsTransport::connect(&target) {
+        Ok(t) => {
+            client.transport = Some(t);
+            *conn = ConnectionState::Connecting;
+            log.log(format!("Connecting to {url}…"));
+        }
+        Err(e) => {
+            *conn = ConnectionState::Errored;
+            log.log(format!("Could not reach {url}: {e}. Flying offline."));
+        }
+    }
+}
+
+/// Update, online mode only: drains every buffered transport event (never
+/// blocks) and routes it. Also flushes `NetOutbox` once actually connected.
+#[allow(clippy::too_many_arguments)]
+pub fn poll_network(
+    mode: Res<NetMode>,
+    mut client: NonSendMut<NetworkClient>,
+    mut conn: ResMut<ConnectionState>,
+    mut backoff: ResMut<ReconnectBackoff>,
+    mut seed_state: ResMut<SeedState>,
+    location: Res<CurrentLocation>,
+    mut outbox: ResMut<NetOutbox>,
+    mut log: ResMut<ShipLog>,
+    mut deliberation: ResMut<DeliberationState>,
+    mut ship: ResMut<ShipSystems>,
+    mut runtime: ResMut<ContractRuntime>,
+    mut ticker: Option<ResMut<UniverseTicker>>,
+    mut souls: ResMut<crate::systems::soul::SoulRegistry>,
+    mut dialogue: ResMut<crate::systems::dialogue::DialogueSession>,
+    mut feed: ResMut<crate::systems::comms::CommFeed>,
+    mut incoming: IncomingState,
+) {
+    let NetMode::Online { universe, .. } = &*mode else {
+        return;
+    };
+    // Own the transport locally for this call so we never hold a `&mut`
+    // into `client.transport` while also wanting to clear it on
+    // disconnect — see the borrow note below.
+    let Some(mut transport) = client.transport.take() else {
+        return; // nothing to poll — `reconnect_backoff` owns re-opening it
+    };
+
+    let mut lost_connection = false;
+
+    for event in transport.poll() {
+        match event {
+            TransportEvent::Opened => {
+                *conn = ConnectionState::Connected;
+                backoff.reset();
+                log.log("Link established.");
+                let system_id = location.system_id.clone();
+                seed_state.current_system = Some(system_id.clone());
+                transport.send(&ClientMessage::SeedDiscover {
+                    universe: *universe,
+                    system_id,
+                    seed: Seed::new(location.system_seed),
+                });
+                // Server-pushed content distribution: a client with no local
+                // so they ask the server for authored content over the wire.
+                // Pause the local universe ticker — server is authoritative.
+                if let Some(ref mut ticker) = ticker {
+                    ticker.online_mode = true;
+                }
+            }
+            TransportEvent::Message(ServerMessage::SeedCanonical {
+                system_id,
+                seed,
+                you_discovered,
+                discoverer_name,
+                discovered_at,
+                ..
+            }) => {
+                if seed_state.adopted != Some(seed) {
+                    seed_state.adopted = Some(seed);
+                    seed_state.discoverer_name = discoverer_name.clone();
+                    seed_state.discovered_at = discovered_at;
+                    // Sync into KnownSystems for galaxy map attribution.
+                    incoming.known_systems.map.insert(
+                        system_id.clone(),
+                        crate::systems::galaxy_map::KnownSystemInfo {
+                            seed: seed.value(),
+                            discoverer_name: discoverer_name.clone(),
+                            discovered_at,
+                        },
+                    );
+                    if you_discovered {
+                        log.log(format!(
+                            "{} — canonical seed adopted (ours, {:#x}).",
+                            system_id.0,
+                            seed.value()
+                        ));
+                        // Add to discovery log.
+                        let entry = DiscoveryLogEntry {
+                            system_name: system_id.0.clone(),
+                            galaxy_coord: reachlock_core::galaxy::GalaxyCoord { x: 0, y: 0, z: 0 },
+                            discovered_at: discovered_at.unwrap_or_else(|| {
+                                std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_secs() as i64)
+                                    .unwrap_or(0)
+                            }),
+                            system_id: system_id.0.clone(),
+                        };
+                        incoming.discover_log.push(entry);
+                        // Toast notification.
+                        incoming
+                            .notif_queue
+                            .0
+                            .push(format!("System charted: {}", system_id.0));
+                        // Career progression: increment systems_discovered.
+                        if let Some(ref mut pc) = incoming.career.0 {
+                            let updated = record_progress(
+                                pc.clone(),
+                                ProgressionCriterionType::SystemsDiscovered,
+                                1,
+                            );
+                            *pc = updated;
+                        }
+                    } else {
+                        log.log(format!(
+                            "{} — canonical seed adopted ({:#x}); diverges from local.",
+                            system_id.0,
+                            seed.value()
+                        ));
+                        let name = discoverer_name.as_deref().unwrap_or("another player");
+                        incoming
+                            .notif_queue
+                            .0
+                            .push(format!("System already charted by {name}",));
+                    }
+                }
+            }
+            TransportEvent::Message(ServerMessage::EvalVerified { .. }) => {
+                // Routine confirmations are silent; only rejections are
+                // worth a ship's-log line.
+            }
+            TransportEvent::Message(ServerMessage::EvalRejected { eval_id, reason }) => {
+                log.log(format!("Eval {eval_id} rejected: {reason}"));
+            }
+            TransportEvent::Message(ServerMessage::LlmDeliberating { call_id }) => {
+                if let Some(active) = deliberation.active.as_mut() {
+                    if active.call_id.as_deref() == Some(call_id.as_str()) {
+                        active.overlay_visible = true;
+                    }
+                }
+            }
+            TransportEvent::Message(ServerMessage::LlmResponse {
+                call_id,
+                action,
+                reasoning,
+            }) => {
+                // S16: dialogue calls resolve into the open conversation
+                // (shaped in the soul's voice); superseded calls are
+                // ignored quietly.
+                if let Some(t) = ticker.as_deref() {
+                    if crate::systems::dialogue::resolve_dialogue_response(
+                        &mut dialogue,
+                        &mut souls,
+                        t,
+                        &call_id,
+                        &reasoning,
+                    ) {
+                        continue;
+                    }
+                }
+                let matches_active = deliberation
+                    .active
+                    .as_ref()
+                    .is_some_and(|d| d.call_id.as_deref() == Some(call_id.as_str()));
+                if matches_active {
+                    // S15: the deliberating crew member's trust shifts the
+                    // outcome odds (S13 bridge); unknown souls read as 0.
+                    let trust = deliberation
+                        .active
+                        .as_ref()
+                        .and_then(|d| souls.states.get(&d.crew_member.to_lowercase()))
+                        .and_then(|s| s.relationship("player").map(|r| r.trust))
+                        .unwrap_or(0);
+                    contract::resolve_response(
+                        &mut deliberation,
+                        &mut ship,
+                        &mut log,
+                        &mut runtime,
+                        &mut outbox,
+                        &mut feed,
+                        &action,
+                        &reasoning,
+                        *universe,
+                        trust,
+                    );
+                }
+            }
+            TransportEvent::Message(ServerMessage::LlmFailed { call_id, reason }) => {
+                if let Some(t) = ticker.as_deref() {
+                    if crate::systems::dialogue::resolve_dialogue_failure(
+                        &mut dialogue,
+                        &souls,
+                        t,
+                        &call_id,
+                        &mut log,
+                        &reason,
+                    ) {
+                        continue;
+                    }
+                }
+                let matches_active = deliberation
+                    .active
+                    .as_ref()
+                    .is_some_and(|d| d.call_id.as_deref() == Some(call_id.as_str()));
+                if matches_active {
+                    // S15: failure categories read distinctly in the log
+                    // (a timeout and a collapse are different stories).
+                    contract::resolve_failed(
+                        &mut deliberation,
+                        &mut ship,
+                        &mut log,
+                        &runtime,
+                        &mut feed,
+                        &reason,
+                    );
+                }
+            }
+            TransportEvent::Message(ServerMessage::PlayerEntered { .. }) => {
+                // S23 (presence/chat) territory — nothing to show yet.
+            }
+            TransportEvent::Message(ServerMessage::Hello { .. }) => {
+                // S29: request TURN credentials for WebRTC voice.
+                outbox.push(ClientMessage::RequestTurnConfig);
+            }
+            TransportEvent::Message(ServerMessage::PlayerJoined { player_id, .. }) => {
+                incoming.presence.joined.push(player_id);
+            }
+            TransportEvent::Message(ServerMessage::PlayerLeft { player_id, .. }) => {
+                incoming.presence.left.push(player_id);
+            }
+            TransportEvent::Message(ServerMessage::ChatMessage { from_player, text }) => {
+                incoming.presence.chat_messages.push((from_player, text));
+            }
+            TransportEvent::Message(ServerMessage::ContentUpdate { .. }) => {}
+            TransportEvent::Message(ServerMessage::VoiceSignal {
+                from_player,
+                signal,
+            }) => {
+                voice::push_signal(from_player, signal);
+            }
+            TransportEvent::Message(ServerMessage::TurnConfig {
+                url,
+                username,
+                password,
+                ttl_secs,
+            }) => {
+                voice::push_turn_config(url, username, password, ttl_secs);
+            }
+            TransportEvent::Message(ServerMessage::UniverseEvent { event }) => {
+                // Online mode: the server is the tick authority. An
+                // `EconomyTick` marks one authoritative tick — replaying it
+                // locally with the shared canonical seed reproduces the
+                // server's step exactly (prices, standings, news; see the
+                // `parity_offline_vs_server` test). The other event kinds
+                // are regenerated by that replay, so appending them here too
+                // would double-log them — they're ignored.
+                if let Ok(sim) = serde_json::from_value::<reachlock_core::sim::SimEvent>(event) {
+                    if let (reachlock_core::sim::SimEvent::EconomyTick { .. }, Some(ticker)) =
+                        (&sim, ticker.as_mut())
+                    {
+                        ticker.replay_server_tick();
+                    }
+                }
+            }
+            TransportEvent::Message(ServerMessage::LibraryListResponse { entries }) => {
+                incoming.library.total = entries.len() as u32;
+                incoming.library.entries = entries;
+                log.log(format!(
+                    "Library: {} contract(s) synced",
+                    incoming.library.entries.len()
+                ));
+            }
+            TransportEvent::Message(ServerMessage::LibraryPublished { success, message }) => {
+                if success {
+                    log.log("Contract published to library.");
+                } else {
+                    log.log(format!("Library publish failed: {message}"));
+                }
+            }
+            TransportEvent::Message(ServerMessage::LibrarySyncResponse {
+                entries,
+                total,
+                page,
+            }) => {
+                incoming.library.entries = entries;
+                incoming.library.total = total;
+                incoming.library.page = page;
+                log.log(format!(
+                    "Library: {} contract(s) synced (page {}, {} total)",
+                    incoming.library.entries.len(),
+                    page + 1,
+                    total,
+                ));
+            }
+            TransportEvent::Message(ServerMessage::LibraryPublishResponse {
+                ok,
+                share_code,
+                error,
+            }) => {
+                if ok {
+                    let code = share_code.as_deref().unwrap_or("unknown");
+                    log.log(format!("Contract published! Share code: {code}"));
+                    incoming
+                        .notif_queue
+                        .0
+                        .push(format!("Published! Share code: {code}"));
+                } else {
+                    let msg = error.as_deref().unwrap_or("unknown error");
+                    log.log(format!("Publish failed: {msg}"));
+                }
+            }
+            TransportEvent::Message(ServerMessage::LibraryShareResponse { entry }) => {
+                if let Some(e) = entry {
+                    incoming.library.entries.push(e);
+                    incoming.library.status = "contract imported from share code".into();
+                    log.log("Contract imported from share code.");
+                } else {
+                    incoming.library.status = "no contract found with that share code".into();
+                    log.log("No contract found with that share code.");
+                }
+            }
+            TransportEvent::Message(ServerMessage::LibraryStoryAck { success, story_id }) => {
+                if success {
+                    log.log(format!("Story submitted (id {story_id})."));
+                } else {
+                    log.log("Story submission failed.");
+                }
+            }
+            TransportEvent::Message(ServerMessage::Pong) => {
+                // S57: heartbeat — silently handled.
+            }
+            TransportEvent::Message(ServerMessage::PlayerJumped { .. }) => {
+                // S57: another player jumped systems — presence handles it.
+            }
+            TransportEvent::Message(ServerMessage::PlayerDisconnected { .. }) => {
+                // S57: another player disconnected — presence handles it.
+            }
+            TransportEvent::Message(ServerMessage::SystemNotice { message }) => {
+                // S28: subscription notice (grace period, etc.).
+                log.log(format!("System notice: {message}"));
+            }
+            TransportEvent::Message(ServerMessage::Error { message }) => {
+                log.log(format!("Server error: {message}"));
+            }
+            TransportEvent::Unparseable(reason) => {
+                warn!("{reason}");
+            }
+            TransportEvent::Error(e) => {
+                *conn = ConnectionState::Errored;
+                backoff.schedule_next();
+                log.log(format!("Connection error: {e}. Flying offline; retrying…"));
+                lost_connection = true;
+                if let Some(ref mut ticker) = ticker {
+                    ticker.online_mode = false;
+                }
+            }
+            TransportEvent::Closed => {
+                *conn = ConnectionState::Errored;
+                backoff.schedule_next();
+                log.log("Connection closed. Flying offline; retrying…");
+                lost_connection = true;
+                if let Some(ref mut ticker) = ticker {
+                    ticker.online_mode = false;
+                }
+            }
+        }
+    }
+
+    if lost_connection {
+        return; // transport dropped; client.transport stays None
+    }
+
+    if matches!(*conn, ConnectionState::Connected) {
+        for msg in outbox.drain() {
+            transport.send(&msg);
+        }
+    }
+
+    client.transport = Some(transport);
+}
+
+/// Update, online mode only: when the socket is down, waits out the backoff
+/// timer and tries again. The game keeps playing locally the whole time
+/// (iron rule #3) — this system only ever touches connection bookkeeping.
+pub fn reconnect_backoff(
+    time: Res<Time>,
+    mode: Res<NetMode>,
+    mut client: NonSendMut<NetworkClient>,
+    mut conn: ResMut<ConnectionState>,
+    mut backoff: ResMut<ReconnectBackoff>,
+    mut log: ResMut<ShipLog>,
+) {
+    let NetMode::Online {
+        url,
+        player,
+        universe,
+    } = &*mode
+    else {
+        return;
+    };
+    if client.transport.is_some() || !matches!(*conn, ConnectionState::Errored) {
+        return;
+    }
+    if !backoff.timer.tick(time.delta()).is_finished() {
+        return;
+    }
+
+    let target = handshake_url(url, player, *universe);
+    let attempt = backoff.attempt + 1;
+    match WsTransport::connect(&target) {
+        Ok(t) => {
+            client.transport = Some(t);
+            *conn = ConnectionState::Connecting;
+            log.log(format!("Reconnect attempt {attempt}…"));
+        }
+        Err(e) => {
+            log.log(format!("Reconnect attempt {attempt} failed: {e}"));
+            backoff.schedule_next();
+        }
+    }
+}

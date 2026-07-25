@@ -1,0 +1,116 @@
+// Ludger Thibodeaux — Tib, captain of the Loup-Garou (docs/LORE.md §V, §X).
+// Tib is the player avatar; his soul exists so the format generalizes to the
+// player-facing crew record, and so mutations (loup_garou_souls.ron) have a
+// target. All values fixed-point (1024 = 1.0).
+(
+    id: "tib",
+    display_name: "Tib",
+    asset_type: soul,
+    seed: 1366939381392214,
+    universe: "all",
+    priority: authoritative,
+    payload: soul((
+        id: "tib",
+        name: "Ludger Thibodeaux",
+        species: human,
+        portrait_id: "portraits/tib",
+        identity: (
+            origin: "Québécois by heritage and temperament",
+            faction_affiliation: "The crew of the Loup-Garou",
+            role: "Captain",
+            public_bio: "Tib has been in the Reach long enough to stop being surprised by it, and started being scared of it again. That second fear is the useful one. He named the ship. He hasn't explained it.",
+        ),
+        personality: (
+            traits: ["Stubborn", "Loyal", "Deflecting"],
+            values: ["TheCrew", "TheShip", "TheShortList"],
+            speaking_style: wry,
+            quirks: [
+                "Flies with full commitment and a very short list of things he won't do",
+                "Uses the full name Loup-Garou when it matters",
+                "Has never been seen looking directly at the second memorial on Sorrow Station",
+                "The dark humor arrives precisely when things are worst",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 307,
+            triggers: [
+                (
+                    condition: compare(field: "event.quebec_mentioned", op: eq, value: 1),
+                    mood: withdrawn,
+                    intensity: 768,
+                    priority: 9,
+                ),
+                (
+                    condition: compare(field: "event.crew_member_injured", op: eq, value: 1),
+                    mood: protective,
+                    intensity: 819,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "ship.damage", op: gt, value: 512),
+                    mood: focused,
+                    intensity: 700,
+                    priority: 5,
+                ),
+                (
+                    condition: compare(field: "event.predecessor_site_mentioned", op: eq, value: 1),
+                    mood: tense,
+                    intensity: 640,
+                    priority: 7,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-renaming",
+                event_type: "renaming",
+                player_involved: false,
+                emotional_weight: 1024,
+                timestamp: 0,
+                summary: "The registry was scrubbed. A new identity needed to replace what had been. He chose a creature from a folklore they tried to burn. The name is the explanation.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "tove", trust: 921, familiarity: 972, history: []),
+            (target_id: "prudence", trust: 870, familiarity: 819, history: []),
+            (target_id: "boris", trust: 717, familiarity: 819, history: []),
+        ],
+        goals: [
+            (id: "keep_the_crew_alive", priority: constant, description: "The list of things he won't do has gotten shorter. This one is still on it."),
+            (id: "sit_with_what_he_knows", priority: constant, description: "The full version of the Predecessor encounter, and what Prudence logged in the Veil, stay with him. For reasons he believes are good."),
+        ],
+        breaking_points: [
+            (
+                id: "crew_sold_out",
+                trigger: compare(field: "event.crew_betrayed_to_compact", op: eq, value: 1),
+                reaction: confront,
+            ),
+        ],
+        contracts: [],
+        backstory: "He carries the Second Battle of Abraham the way Quebec carried the first one — not loudly, but as the thing underneath everything else. He is, in the most literal sense, what survived. He does not yet know what the Predecessors were, or whose city answered for it.",
+        secrets: [
+            (
+                id: "the_encounter",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 900),
+                    compare(field: "event.pressed_about_the_encounter", op: eq, value: 1),
+                ]),
+                content: "Tib was inside the previous Predecessor encounter. He is the one person on this ship who doesn't have an incomplete version of that story. He decided the complete version stays with him.",
+            ),
+            (
+                id: "the_veil_log",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 819),
+                    compare(field: "event.asked_about_the_veil", op: eq, value: 1),
+                ]),
+                content: "Eleven weeks ago Prudence logged an unregistered drive signature in the Veil and told him. He told no one else. He is sitting with it, and the weight is visible to anyone who has known him long enough.",
+            ),
+            (
+                id: "quebec_city",
+                reveal_condition: compare(field: "event.stopped_at_the_quebec_memorial", op: eq, value: 1),
+                content: "He has never stopped in front of the second memorial. Not once, in all the transits through Sorrow Station. Tove stops there. He knows she stops there. Neither has ever said so.",
+            ),
+        ],
+    )),
+)

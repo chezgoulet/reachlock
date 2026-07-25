@@ -2,57 +2,97 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, testing]
   pull_request:
 
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  server:
-    name: Go server (build, vet, test)
+  test:
+    name: Build, lint, test (x86_64)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          go-version: '1.22'
-          cache: false
-      - run: go build ./...
-      - run: go vet ./...
-      - run: go test -race -count=1 ./...
+          components: rustfmt, clippy
+      - name: System deps (Bevy on Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwayland-dev libxkbcommon-dev libudev-dev libasound2-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo test --workspace
+      - name: Postgres feature compiles
+        run: cargo check -p reachlock-server --features postgres
+      - name: Emit determinism manifest (x86_64)
+        run: cargo run -p reachlock-cli -- determinism emit > manifest-x86_64.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-x86_64
+          path: manifest-x86_64.json
 
-  godot:
-    name: Godot project import
-    runs-on: ubuntu-latest
-    env:
-      GODOT_VERSION: 4.7-stable
+  determinism-arm:
+    name: Determinism manifest (aarch64)
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
-      - name: Install Godot ${{ env.GODOT_VERSION }} (headless)
-        run: |
-          ASSET="Godot_v${GODOT_VERSION}_linux.x86_64"
-          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${ASSET}.zip"
-          unzip -q "${ASSET}.zip"
-          sudo mv "${ASSET}" /usr/local/bin/godot
-          sudo chmod +x /usr/local/bin/godot
-          godot --version
-      - name: Import & validate project
-        run: |
-          set -o pipefail
-          godot --headless --path godot/ --import 2>&1 | tee import.log
-          if grep -qE "SCRIPT ERROR|Parse Error|ERROR:.*\.gd" import.log; then
-            echo "::error::Godot import produced script/parse errors"
-            exit 1
-          fi
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Emit determinism manifest (aarch64)
+        run: cargo run -p reachlock-cli -- determinism emit > manifest-aarch64.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-aarch64
+          path: manifest-aarch64.json
 
-  mod-data:
-    name: Mod data JSON validation
+  determinism-i686:
+    name: Determinism manifest (i686, 32-bit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate mod JSON files parse
-        run: python3 scripts/validate_mod_data.py
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+      - name: 32-bit cross deps
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-multilib libc6-dev-i386
+      # A 32-bit target in the matrix is what catches pointer-width and usize
+      # assumptions; x86_64 and aarch64 are both 64-bit and would agree on a
+      # bug that only shows up at 32 bits.
+      - name: Emit determinism manifest (i686)
+        run: |
+          cargo run -p reachlock-cli --target i686-unknown-linux-gnu -- \
+            determinism emit > manifest-i686.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-i686
+          path: manifest-i686.json
+
+  determinism-compare:
+    name: Cross-platform determinism gate (spec §5)
+    needs: [test, determinism-arm, determinism-i686]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Manifests must be bit-identical across targets
+        run: |
+          set -e
+          for other in manifest-aarch64.json manifest-i686.json; do
+            if ! diff -u manifest-x86_64.json "$other"; then
+              echo "::error::determinism divergence between x86_64 and $other"
+              exit 1
+            fi
+          done
+          echo "x86_64 == aarch64 == i686: bit-identical"

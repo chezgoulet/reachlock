@@ -1,0 +1,12 @@
+// Example community mod station (S22). A wayside trading post on the
+// frontier fringe — content_adds references this by its station id.
+// For the actual station format, see mods/reachlock/stations/.
+ContentFile(
+    id: "duskway_hub",
+    display_name: "Duskway Hub",
+    asset_type: Station,
+    seed: 0xD15K_WAY_0001,
+    universe: Classic,
+    priority: 0,
+    payload: Station(station_seed: 0xD15K_WAY_0001),
+)

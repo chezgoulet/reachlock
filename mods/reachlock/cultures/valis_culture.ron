@@ -1,0 +1,53 @@
+// S47: sample authored planet culture — Valis Prime.
+(
+    id: "valis_culture",
+    display_name: "Valis Prime Culture",
+    asset_type: planet_culture,
+    seed: 4242,
+    universe: "all",
+    priority: authoritative,
+    payload: planet_culture((
+        cultural_id: "valis_culture",
+        language: (
+            base_language: "Compact Standard",
+            drift_intensity: 25,
+            accent_name: "drawling",
+            unique_terms: ["valisword1", "valisword2", "valisword3"],
+            greeting: "Well met, traveler",
+            farewell: "Safe stars",
+        ),
+        customs: [
+            (custom_type: greeting, description: "Offer a closed fist to the chest", trigger: "first meeting"),
+            (custom_type: taboo, description: "Never name the dead aloud", trigger: "funeral"),
+        ],
+        social_structure: egalitarian,
+        architecture: (
+            style_name: "terraced vernacular",
+            materials: ["local stone", "imported alloy"],
+            dominant_shape: "terraced",
+            color_palette: (
+                primary: (r: 120, g: 180, b: 100, a: 255),
+                secondary: (r: 80, g: 120, b: 180, a: 255),
+                accent: (r: 200, g: 100, b: 60, a: 255),
+                preference: earth,
+            ),
+            adapted_to: ["open skies"],
+        ),
+        clothing: (
+            style_name: "terraced-weave",
+            primary_material: "synthetic fiber",
+            dominant_colors: (
+                primary: (r: 120, g: 180, b: 100, a: 255),
+                secondary: (r: 80, g: 120, b: 180, a: 255),
+                accent: (r: 200, g: 100, b: 60, a: 255),
+                preference: earth,
+            ),
+            practicality_level: 40,
+            adapted_to: [],
+        ),
+        attitude_toward_outsiders: curious,
+        faction_allegiance: loyal(faction_id: ("compact"), intensity: 120),
+        dominant_values: [honor, community],
+        cultural_quirk: "pays debts in stories",
+    )),
+)

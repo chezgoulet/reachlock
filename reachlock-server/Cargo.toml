@@ -1,0 +1,68 @@
+[package]
+name = "reachlock-server"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# Postgres-backed stores. Off by default so the server builds and runs
+# (in-memory) with zero infrastructure; CI checks this feature compiles.
+postgres = ["dep:sqlx"]
+# Redis-backed stores for sessions, rate limiting, and presence.
+# Enables when REACHLOCK_REDIS_URL is set.
+redis = ["dep:redis"]
+
+[dependencies]
+reachlock-core = { path = "../reachlock-core" }
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures = "0.3"
+# S10 content distribution: parse authored `.ron` files for clients.
+ron = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
+# S14: real LLM providers. rustls (not openssl) keeps builds portable.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# S14: BYOK keys encrypted at rest (real crypto, not base64).
+chacha20poly1305 = "0.10"
+# S29: TURN REST API credential generation (HMAC-SHA256 — coturn-compatible).
+hmac = "0.12"
+base64 = "0.22"
+# M16: percent-decoding for WS query string parameters.
+urlencoding = "2"
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json", "chrono", "uuid"], optional = true }
+# S26: TraceId generation (UUIDv7) and Prometheus metrics.
+uuid = { version = "1", features = ["v7", "v4"] }
+prometheus = { version = "0.13", features = [] }
+sha256 = "1"
+# S28: HMAC-SHA256 for offline entitlement tokens + Stripe webhook verification.
+sha2 = "0.10"
+hex = "0.4"
+# S28: DateTime types for subscription periods.
+chrono = { version = "0.4", features = ["serde"] }
+# S51: Argon2id password hashing (OWASP recommended).
+argon2 = "0.5"
+# S51: TOTP two-factor authentication.
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+# S51: AES-256-GCM for TOTP secret encryption at rest.
+aes-gcm = "0.10"
+# S51: SMTP email sending.
+lettre = { version = "0.11", features = ["rustls-tls", "tokio1-rustls-tls", "builder", "smtp-transport"], default-features = false }
+rand = "0.8"
+cfg-if = "1"
+# S51: QR code generation for TOTP setup URIs.
+qrcode = "0.14"
+image = "0.25"
+# S50: Redis connection management.
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager", "aio"], optional = true }
+# S63: constant-time comparison primitives.
+subtle = "2"
+tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
+
+[dev-dependencies]
+tokio-tungstenite = "0.26"
+futures-util = "0.3"

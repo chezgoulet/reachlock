@@ -1,0 +1,926 @@
+//! REACHLOCK mode 1 economy (spec §14). Pure and IO-free.
+//!
+//! Two layers:
+//!   1. Authored catalogue — [`Good`] + [`GoodsCatalog`], the static
+//!      reference data (base price, mass, category, legality) authored as
+//!      `content/economy/goods.ron` and validated by the CLI.
+//!   2. Live runtime — [`EconomyState`] + [`StationEconomy`], the seeded,
+//!      ticking market each station instance runs. `tick` nudges prices
+//!      toward base and toward last-trade pressure (mean reversion + a
+//!      memoryless drift term); `price` reads the current mid, buy, and
+//!      sell quotes behind the client's `PriceSource` seam so the market UI
+//!      never changes when the economy gains teeth.
+//!
+//! Gameplay money stays integer credits; `tariff_numer` (fixed-point
+//! 1/1024, 1024 == 1.0) is the only fractional knob and it's applied at
+//! quote time, not stored in the economy. No floats in any persisted value.
+
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+
+use crate::item::types::Rarity;
+use crate::util::rng::SeededRng;
+use crate::util::Fixed;
+
+/// Fixed-point scale for the tariff multiplier. `1024` reads as `1.0`
+/// (no tariff). Tariffs are introduced by faction standing (S11); the
+/// knob exists here so the seam is stable.
+pub const TARIFF_ONE: i64 = 1024;
+
+/// String newtype for a trade-good id. S07 froze this; S10 attaches the
+/// real [`Good`] definition keyed by it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct GoodId(pub String);
+
+/// Static per-station price table: good → current mid price (credits).
+pub type PriceTable = BTreeMap<GoodId, i64>;
+
+/// Seam the market UI talks to. S07 shipped the static backend; S10 provides
+/// the live [`EconomyState`] behind the same trait so the UI (and the client
+/// `market.rs` system) never changes when the economy gains teeth.
+pub trait PriceSource {
+    /// Prices for a station, deterministic in `seed`.
+    fn price_table(&self, seed: u64) -> PriceTable;
+}
+
+/// A trade good's static reference data (authored).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Good {
+    /// Stable id, e.g. `"water"`. Also the map key in [`GoodsCatalog`].
+    pub id: GoodId,
+    /// Human label for market UI.
+    pub name: String,
+    /// Reference mid-price in credits (the "base" every quote pivots on).
+    pub base_price: i64,
+    /// Mass per unit in arbitrary cargo units (drives cargo capacity, S08).
+    pub mass: i64,
+    /// Coarse bucket for UI grouping / legality rules.
+    pub category: GoodCategory,
+    /// Whether selling it to a core-lawful station is a crime (S11+).
+    #[serde(default)]
+    pub contraband: bool,
+    /// Weight per unit in Fixed (1/1024). For cargo mass calculations.
+    #[serde(default)]
+    pub weight: Option<Fixed>,
+    /// Rarity tier (Common…Legendary).
+    #[serde(default)]
+    pub rarity: Option<Rarity>,
+    /// Production sources (stations that produce this good).
+    #[serde(default)]
+    pub production: Vec<ProductionSource>,
+    /// Consumption sinks (stations that consume this good).
+    #[serde(default)]
+    pub consumption: Vec<ConsumptionSink>,
+    /// Optional multi-step production chain.
+    #[serde(default)]
+    pub production_chain: Option<ProductionChain>,
+    /// Luxury tier (1-10), if applicable.
+    #[serde(default)]
+    pub luxury_tier: Option<u8>,
+    /// Legality per faction (faction_id -> status).
+    #[serde(default)]
+    pub legality: std::collections::HashMap<String, LegalityStatus>,
+    /// Trade bonuses that affect pricing/trade.
+    #[serde(default)]
+    pub trade_bonuses: Vec<TradeBonus>,
+}
+
+/// Buckets goods fall into. Authored; used by UI and by future legality
+/// and tariff tables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GoodCategory {
+    Consumable,
+    Fuel,
+    Material,
+    Manufactured,
+    Medical,
+    Luxury,
+    Contraband,
+    RawMineral,
+    RawOrganic,
+    RawEnergy,
+    RefinedMetal,
+    RefinedOrganic,
+    ManufacturedComponent,
+    ElectronicComponent,
+    LuxuryGood,
+    Clothing,
+    Cybernetic,
+    Weapon,
+    ExplorationTool,
+    ShipComponent,
+    StationModule,
+    ResearchEquipment,
+}
+
+impl GoodCategory {
+    /// Every variant, for exhaustive iteration (catalog completeness checks).
+    pub const ALL: [GoodCategory; 22] = [
+        GoodCategory::Consumable,
+        GoodCategory::Fuel,
+        GoodCategory::Material,
+        GoodCategory::Manufactured,
+        GoodCategory::Medical,
+        GoodCategory::Luxury,
+        GoodCategory::Contraband,
+        GoodCategory::RawMineral,
+        GoodCategory::RawOrganic,
+        GoodCategory::RawEnergy,
+        GoodCategory::RefinedMetal,
+        GoodCategory::RefinedOrganic,
+        GoodCategory::ManufacturedComponent,
+        GoodCategory::ElectronicComponent,
+        GoodCategory::LuxuryGood,
+        GoodCategory::Clothing,
+        GoodCategory::Cybernetic,
+        GoodCategory::Weapon,
+        GoodCategory::ExplorationTool,
+        GoodCategory::ShipComponent,
+        GoodCategory::StationModule,
+        GoodCategory::ResearchEquipment,
+    ];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            GoodCategory::Consumable => "consumable",
+            GoodCategory::Fuel => "fuel",
+            GoodCategory::Material => "material",
+            GoodCategory::Manufactured => "manufactured",
+            GoodCategory::Medical => "medical",
+            GoodCategory::Luxury => "luxury",
+            GoodCategory::Contraband => "contraband",
+            GoodCategory::RawMineral => "raw_mineral",
+            GoodCategory::RawOrganic => "raw_organic",
+            GoodCategory::RawEnergy => "raw_energy",
+            GoodCategory::RefinedMetal => "refined_metal",
+            GoodCategory::RefinedOrganic => "refined_organic",
+            GoodCategory::ManufacturedComponent => "manufactured_component",
+            GoodCategory::ElectronicComponent => "electronic_component",
+            GoodCategory::LuxuryGood => "luxury_good",
+            GoodCategory::Clothing => "clothing",
+            GoodCategory::Cybernetic => "cybernetic",
+            GoodCategory::Weapon => "weapon",
+            GoodCategory::ExplorationTool => "exploration_tool",
+            GoodCategory::ShipComponent => "ship_component",
+            GoodCategory::StationModule => "station_module",
+            GoodCategory::ResearchEquipment => "research_equipment",
+        }
+    }
+}
+
+/// The authored set of goods. Serialized as `content/economy/goods.ron`
+/// and validated by `reachlock content validate`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GoodsCatalog {
+    /// Bump when the catalogue shape changes in a way old saves can't read.
+    pub version: u32,
+    /// Goods keyed by id (BTreeMap keeps deterministic ordering).
+    pub goods: BTreeMap<GoodId, Good>,
+}
+
+impl GoodsCatalog {
+    /// Look up a good by id.
+    pub fn get(&self, id: &GoodId) -> Option<&Good> {
+        self.goods.get(id)
+    }
+
+    /// Every good id, sorted (deterministic iteration for tests/manifest).
+    pub fn ids(&self) -> Vec<GoodId> {
+        self.goods.keys().cloned().collect()
+    }
+
+    /// Authoring-time check: ids unique (guaranteed by the map), base
+    /// prices positive, mass positive, categories known. Returns a list of
+    /// human-readable problems (empty == clean).
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+        if self.version == 0 {
+            errors.push("catalogue version must be >= 1".into());
+        }
+        for (id, good) in &self.goods {
+            if good.base_price <= 0 {
+                errors.push(format!("good {} has non-positive base_price", id.0));
+            }
+            if good.mass <= 0 {
+                errors.push(format!("good {} has non-positive mass", id.0));
+            }
+            if good.contraband && good.category != GoodCategory::Contraband {
+                errors.push(format!(
+                    "good {} is contraband but category is {}",
+                    id.0,
+                    good.category.as_str()
+                ));
+            }
+        }
+        errors
+    }
+}
+
+/// The live economy for one station instance.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StationEconomy {
+    /// Current mid price per good (credits). Seeded at base; drifts on tick.
+    pub prices: BTreeMap<GoodId, i64>,
+    /// Storage capacity per good (units on hand). Caps how much the station
+    /// will buy before the price collapses.
+    pub storage: BTreeMap<GoodId, i64>,
+    /// Last-trade pressure accumulator per good: +buy / -sell, decays each
+    /// tick. Drives short-term moves independent of the base pull.
+    pub pressure: BTreeMap<GoodId, i64>,
+    /// Controlling faction id, if any. Wired by the client at boot from the
+    /// station-to-faction mapping; empty means no tariff modifiers apply.
+    #[serde(default)]
+    pub station_faction: Option<String>,
+}
+
+impl StationEconomy {
+    /// Seeded initial state from a catalogue. `seed` makes each station's
+    /// starting prices + storage differ deterministically. `faction_id` is the
+    /// controlling faction (empty means no tariff modifiers apply).
+    pub fn new(
+        catalog: &GoodsCatalog,
+        seed: u64,
+        kind: StationKind,
+        faction_id: Option<String>,
+    ) -> Self {
+        let mut rng = SeededRng::new(seed ^ 0xEC010);
+        let mut prices = BTreeMap::new();
+        let mut storage = BTreeMap::new();
+        let mut pressure = BTreeMap::new();
+        let storage_scale = kind.storage_scale();
+        for (id, good) in &catalog.goods {
+            // Start within ±10% of base so no station opens wildly off.
+            let delta = (good.base_price * 10 / 100).max(1) as u64;
+            let off = rng.next_below(delta * 2 + 1) as i64 - delta as i64;
+            prices.insert(id.clone(), (good.base_price + off).max(1));
+            storage.insert(
+                id.clone(),
+                (good.base_price * storage_scale / 100).max(good.mass),
+            );
+            pressure.insert(id.clone(), 0);
+        }
+        Self {
+            prices,
+            storage,
+            pressure,
+            station_faction: faction_id,
+        }
+    }
+
+    /// Mid (fair) price for one good right now.
+    pub fn mid(&self, id: &GoodId) -> i64 {
+        *self.prices.get(id).unwrap_or(&0)
+    }
+
+    /// Player *pays* to buy one unit: mid plus spread, times tariff.
+    pub fn buy_price(&self, id: &GoodId, tariff_numer: i64) -> i64 {
+        let mid = self.mid(id);
+        apply_tariff(((mid * 110 + 50) / 100).max(1), tariff_numer)
+    }
+
+    /// Player *receives* to sell one unit: mid minus spread, times tariff.
+    pub fn sell_price(&self, id: &GoodId, tariff_numer: i64) -> i64 {
+        let mid = self.mid(id);
+        apply_tariff((mid * 90 / 100).max(1), tariff_numer)
+    }
+
+    /// Advance the market one step. Mean-reverts prices toward base and
+    /// bleeds off trade pressure. Pure in (`self`, `catalog`, `seed`);
+    /// deterministic given equal inputs.
+    pub fn tick(&mut self, catalog: &GoodsCatalog, seed: u64) {
+        let mut rng = SeededRng::new(seed ^ 0x71C0);
+        for (id, good) in &catalog.goods {
+            let mid = *self.prices.get(id).unwrap_or(&good.base_price);
+            let press = *self.pressure.get(id).unwrap_or(&0);
+
+            // Pressure pulls the mid; base pulls it back. Both bounded so a
+            // single tick can't run away.
+            let pull = ((good.base_price - mid) * 5 / 100).clamp(-good.base_price, good.base_price);
+            let push = (press * 3 / 100).clamp(-good.base_price, good.base_price);
+            let drift = (rng.next_below(3) as i64 - 1) * (good.base_price / 200).max(1);
+            let next = (mid + pull + push + drift)
+                .clamp(1, good.base_price * 4)
+                .max(1);
+
+            self.prices.insert(id.clone(), next);
+            // Pressure decays toward zero a little each tick.
+            let new_press = press * 90 / 100;
+            self.pressure.insert(id.clone(), new_press);
+        }
+    }
+
+    /// Record a trade so subsequent ticks reflect it. `qty` is signed:
+    /// positive = player bought from the station (price pressure up),
+    /// negative = player sold (pressure down). Ignored if `qty == 0`.
+    pub fn record_trade(&mut self, id: &GoodId, qty: i64) {
+        if qty == 0 {
+            return;
+        }
+        let entry = self.pressure.entry(id.clone()).or_insert(0);
+        *entry += qty;
+    }
+}
+
+/// Multiply a quote by a fixed-point tariff (1024 == 1.0). Rounds toward
+/// the player-disadvantageous side for non-1.0 tariffs so tariffs always
+/// cost *something*.
+pub fn apply_tariff(price: i64, tariff_numer: i64) -> i64 {
+    if tariff_numer <= 0 {
+        return price;
+    }
+    let scaled = price * tariff_numer;
+    // Ceil division for the player-facing quote.
+    (scaled + TARIFF_ONE - 1) / TARIFF_ONE
+}
+
+/// What kind of station this is — drives starting storage depth. Authored
+/// by the station generator (S04/S05); mirrored here as a plain enum so the
+/// economy can be seeded without pulling in station structs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StationKind {
+    Refinery,
+    Agri,
+    Hub,
+    Outpost,
+    BlackMarket,
+}
+
+impl StationKind {
+    /// Storage expressed as a percentage of base price per good. A refinery
+    /// sits on materials; a hub keeps deep shelves of everything.
+    fn storage_scale(&self) -> i64 {
+        match self {
+            StationKind::Refinery => 400,
+            StationKind::Agri => 300,
+            StationKind::Hub => 600,
+            StationKind::Outpost => 150,
+            StationKind::BlackMarket => 200,
+        }
+    }
+}
+
+/// The whole mode-1 economy: the catalogue plus one [`StationEconomy`] per
+/// station, keyed by a string station id (deterministic order via BTreeMap).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EconomyState {
+    pub catalog: GoodsCatalog,
+    pub stations: BTreeMap<String, StationEconomy>,
+}
+
+impl EconomyState {
+    /// Build a fresh economy: each station seeded from the catalogue with a
+    /// distinct seed so their opening books differ but reproduce exactly.
+    /// Each seed tuple is `(id, seed, kind, station_faction)`.
+    pub fn new(
+        catalog: GoodsCatalog,
+        station_seeds: &[(String, u64, StationKind, Option<String>)],
+    ) -> Self {
+        let stations = station_seeds
+            .iter()
+            .map(|(id, seed, kind, faction)| {
+                (
+                    id.clone(),
+                    StationEconomy::new(&catalog, *seed, *kind, faction.clone()),
+                )
+            })
+            .collect();
+        Self { catalog, stations }
+    }
+
+    /// Tick every station. `seed` is mixed per station inside
+    /// [`StationEconomy::tick`], so a single global seed is fine.
+    pub fn tick(&mut self, seed: u64) {
+        for (i, (_, econ)) in self.stations.iter_mut().enumerate() {
+            econ.tick(&self.catalog, seed.wrapping_add(i as u64 * 0x9E3779B1));
+        }
+    }
+
+    /// Convenience quote for a station/good behind the client seam.
+    pub fn buy_price(&self, station: &str, id: &GoodId, tariff_numer: i64) -> i64 {
+        self.stations
+            .get(station)
+            .map(|e| e.buy_price(id, tariff_numer))
+            .unwrap_or(0)
+    }
+
+    pub fn sell_price(&self, station: &str, id: &GoodId, tariff_numer: i64) -> i64 {
+        self.stations
+            .get(station)
+            .map(|e| e.sell_price(id, tariff_numer))
+            .unwrap_or(0)
+    }
+}
+
+/// Price the player *pays* to buy one unit at a mid `base` (slightly above).
+pub fn buy_price(base: i64) -> i64 {
+    ((base * 110 + 50) / 100).max(1)
+}
+
+/// Price the player *receives* to sell one unit at a mid `base` (slightly
+/// below).
+pub fn sell_price(base: i64) -> i64 {
+    ((base * 90) / 100).max(1)
+}
+
+/// Can the player afford `qty` units at mid `base`?
+pub fn can_buy(credits: i64, base: i64, qty: u32) -> bool {
+    let total = buy_price(base) * qty as i64;
+    credits >= total
+}
+
+/// Apply a buy. Caller must have checked [`can_buy`] and cargo capacity.
+/// Returns `(new_credits, new_cargo_qty)`.
+pub fn apply_buy(credits: i64, cargo_qty: u32, base: i64, qty: u32) -> (i64, u32) {
+    let total = buy_price(base) * qty as i64;
+    (credits - total, cargo_qty + qty)
+}
+
+/// Can the player sell `qty` units they hold `cargo_qty` of?
+pub fn can_sell(cargo_qty: u32, qty: u32) -> bool {
+    cargo_qty >= qty
+}
+
+/// Apply a sell. Caller must have checked [`can_sell`].
+/// Returns `(new_credits, new_cargo_qty)`.
+pub fn apply_sell(credits: i64, cargo_qty: u32, base: i64, qty: u32) -> (i64, u32) {
+    let total = sell_price(base) * qty as i64;
+    (credits + total, cargo_qty - qty)
+}
+
+/// Starter catalogue baked into the engine so the economy works before any
+/// authored `goods.ron` is loaded (and so tests have a stable fixture).
+/// The authored file *overrides* this wholesale when present.
+pub fn starter_catalog() -> GoodsCatalog {
+    let mut goods = BTreeMap::new();
+    let add = |goods: &mut BTreeMap<GoodId, Good>,
+               id: &str,
+               name: &str,
+               base: i64,
+               mass: i64,
+               cat: GoodCategory,
+               contraband: bool| {
+        goods.insert(
+            GoodId(id.into()),
+            Good {
+                id: GoodId(id.into()),
+                name: name.into(),
+                base_price: base,
+                mass,
+                category: cat,
+                contraband,
+                weight: None,
+                rarity: None,
+                production: vec![],
+                consumption: vec![],
+                production_chain: None,
+                luxury_tier: None,
+                legality: std::collections::HashMap::new(),
+                trade_bonuses: vec![],
+            },
+        );
+    };
+    add(
+        &mut goods,
+        "water",
+        "Water",
+        12,
+        1,
+        GoodCategory::Consumable,
+        false,
+    );
+    add(
+        &mut goods,
+        "food",
+        "Food Rations",
+        28,
+        1,
+        GoodCategory::Consumable,
+        false,
+    );
+    add(
+        &mut goods,
+        "fuel",
+        "Reaction Fuel",
+        40,
+        1,
+        GoodCategory::Fuel,
+        false,
+    );
+    add(
+        &mut goods,
+        "alloy",
+        "Alloy Plate",
+        80,
+        2,
+        GoodCategory::Material,
+        false,
+    );
+    add(
+        &mut goods,
+        "ore",
+        "Raw Ferric Ore",
+        22,
+        3,
+        GoodCategory::Material,
+        false,
+    );
+    add(
+        &mut goods,
+        "medicine",
+        "Medicine",
+        140,
+        1,
+        GoodCategory::Medical,
+        false,
+    );
+    add(
+        &mut goods,
+        "electronics",
+        "Electronics",
+        210,
+        1,
+        GoodCategory::Manufactured,
+        false,
+    );
+    add(
+        &mut goods,
+        "machinery",
+        "Machinery",
+        260,
+        4,
+        GoodCategory::Manufactured,
+        false,
+    );
+    add(
+        &mut goods,
+        "luxury",
+        "Luxury Goods",
+        340,
+        1,
+        GoodCategory::Luxury,
+        false,
+    );
+    add(
+        &mut goods,
+        "art",
+        "Artifact",
+        520,
+        1,
+        GoodCategory::Luxury,
+        false,
+    );
+    add(
+        &mut goods,
+        "narcotics",
+        "Narcotics",
+        600,
+        1,
+        GoodCategory::Contraband,
+        true,
+    );
+    add(
+        &mut goods,
+        "weapons",
+        "Arms",
+        720,
+        2,
+        GoodCategory::Contraband,
+        true,
+    );
+    GoodsCatalog { version: 2, goods }
+}
+
+/// The client market UI's seam. `EconomyState` is itself a `PriceSource`,
+/// so swapping the S07 static backend for the live engine required no change
+/// to `market.rs` beyond which resource it reads.
+impl PriceSource for EconomyState {
+    fn price_table(&self, seed: u64) -> PriceTable {
+        // The live economy already holds the seeded, ticked prices; `seed`
+        // is ignored (it only mattered for the static jitter backend). The
+        // market reads the *current* book for whatever station it's at.
+        let _ = seed;
+        self.stations
+            .values()
+            .next()
+            .map(|e| e.prices.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// Load the authored goods catalogue embedded at compile time. Falls back to
+/// the [`starter_catalog`] if the embedded RON ever fails to parse (it
+/// shouldn't — `make check` validates it — but this keeps a release bootable
+/// even if the asset is stripped).
+pub fn load_goods_catalog() -> GoodsCatalog {
+    match ron::from_str::<GoodsCatalog>(GOODS_CATALOG_RON) {
+        Ok(cat) if cat.validate().is_empty() => cat,
+        _ => starter_catalog(),
+    }
+}
+
+// --------------------------------------------------------------------------
+// S44 — Advanced Economy: production chains, trade bonuses, infrastructure
+// --------------------------------------------------------------------------
+
+/// How a good is produced at a station type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductionSource {
+    pub station_kind: StationKind,
+    pub production_rate: Fixed,
+    pub production_cost: u64,
+    pub inputs: Vec<ProductionInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductionInput {
+    pub good_id: GoodId,
+    pub quantity: Fixed,
+}
+
+/// How a good is consumed at a station type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConsumptionSink {
+    pub station_kind: StationKind,
+    pub consumption_rate: Fixed,
+    pub consumption_elasticity: Fixed,
+}
+
+/// A multi-step production chain that transforms inputs into outputs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductionChain {
+    pub chain_id: String,
+    pub steps: Vec<ProductionChainStep>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductionChainStep {
+    pub good_id: GoodId,
+    pub inputs: Vec<(GoodId, Fixed)>,
+    pub output_quantity: Fixed,
+    pub production_time_ticks: u64,
+}
+
+/// Legality of a good in a faction's jurisdiction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LegalityStatus {
+    Legal,
+    Restricted { license_required: String },
+    Contraband,
+}
+
+/// A bonus that applies to a trade route or transaction.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeBonus {
+    pub condition: TradeBonusCondition,
+    pub bonus_type: TradeBonusType,
+    pub magnitude: Fixed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TradeBonusCondition {
+    RouteBetween {
+        faction_a: String,
+        faction_b: String,
+    },
+    DuringEvent {
+        event_type: String,
+    },
+    WithCareerRank {
+        path_type: String,
+        min_rank: u8,
+    },
+    UnderBlockade,
+    Smuggled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TradeBonusType {
+    PriceMultiplier,
+    DemandMultiplier,
+    ReputationGain,
+    CareerProgress,
+}
+
+/// Player's investment portfolio in station production.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlayerInfrastructure {
+    pub investments: Vec<InfrastructureInvestment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InfrastructureInvestment {
+    pub station_id: String,
+    pub production_good_id: GoodId,
+    #[serde(default)]
+    pub shares_owned: u32,
+    #[serde(default)]
+    pub invested_credits: u64,
+    #[serde(default)]
+    pub dividend_rate: Fixed,
+    #[serde(default)]
+    pub total_dividends_earned: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductionOutput {
+    pub produced: BTreeMap<GoodId, u64>,
+    pub consumed: BTreeMap<GoodId, u64>,
+}
+
+/// Compute production for a station given its catalog and universe state.
+/// Pure & deterministic.
+pub fn compute_production(
+    station_kind: StationKind,
+    catalog: &GoodsCatalog,
+    seed: u64,
+) -> ProductionOutput {
+    let mut rng = SeededRng::new(seed);
+    let mut produced = BTreeMap::new();
+    let mut consumed = BTreeMap::new();
+    for (id, good) in &catalog.goods {
+        for src in &good.production {
+            if src.station_kind != station_kind {
+                continue;
+            }
+            let rate = rng.next_below(1024);
+            let boost = Fixed(rate as i64);
+            let qty = (src.production_rate.0 * boost.0 / 1024).max(1);
+            *produced.entry(id.clone()).or_insert(0) += qty as u64;
+        }
+        for sink in &good.consumption {
+            if sink.station_kind != station_kind {
+                continue;
+            }
+            let rate = rng.next_below(1024);
+            let boost = Fixed(rate as i64);
+            let qty = (sink.consumption_rate.0 * boost.0 / 1024).max(1);
+            *consumed.entry(id.clone()).or_insert(0) += qty as u64;
+        }
+    }
+    ProductionOutput { produced, consumed }
+}
+
+/// Compute a price given supply, demand, tariffs, and events.
+/// Pure & deterministic.
+pub fn compute_price(base_price: u64, supply: u64, demand: u64, tariff_numer: i64) -> u64 {
+    let sf = supply.max(1);
+    let df = demand.max(1);
+    if df > sf {
+        let ratio = (df * TARIFF_ONE as u64) / sf;
+        let price = (base_price * ratio) / TARIFF_ONE as u64;
+        apply_tariff(price as i64, tariff_numer) as u64
+    } else {
+        let ratio = (sf * TARIFF_ONE as u64) / df;
+        let price = (base_price * TARIFF_ONE as u64) / ratio;
+        apply_tariff(price as i64, tariff_numer) as u64
+    }
+}
+
+/// Core-owned *fallback* goods catalogue. Embedded so an offline
+/// client has a working economy with zero IO.
+///
+/// This is not the authored content: `mods/reachlock/economy/goods.ron` is,
+/// and it wins whenever the content pipeline has loaded it. Core embeds its
+/// own copy under `src/data/` rather than reaching into `mods/` so the crate
+/// stays self-contained (iron rule #1, enforced by `make check-purity`).
+/// `default_goods_matches_authored_content` keeps the two from drifting.
+const GOODS_CATALOG_RON: &str = include_str!("data/default_goods.ron");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Core embeds its own fallback copy of the goods catalogue so it never
+    /// reaches into `mods/`. That copy must not drift from the authored file
+    /// the content pipeline actually ships. Skipped when `mods/` is absent
+    /// (packaged crate), so this never breaks a published build.
+    #[test]
+    fn default_goods_matches_authored_content() {
+        let authored = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../mods/reachlock/economy/goods.ron");
+        let Ok(text) = std::fs::read_to_string(&authored) else {
+            return;
+        };
+        assert_eq!(
+            text.trim_end(),
+            GOODS_CATALOG_RON.trim_end(),
+            "reachlock-core/src/data/default_goods.ron has drifted from \
+             mods/reachlock/economy/goods.ron — copy the authored file over it"
+        );
+    }
+
+    #[test]
+    fn tariff_identity() {
+        assert_eq!(apply_tariff(100, TARIFF_ONE), 100);
+    }
+
+    #[test]
+    fn tariff_raises_price() {
+        // 10% tariff on 100 -> ceil(110) = 110.
+        assert_eq!(apply_tariff(100, 1126), 110);
+    }
+
+    #[test]
+    fn station_seeded_deterministic() {
+        let cat = starter_catalog();
+        let a = StationEconomy::new(&cat, 12345, StationKind::Hub, None);
+        let b = StationEconomy::new(&cat, 12345, StationKind::Hub, None);
+        assert_eq!(a, b, "same seed => same opening book");
+        let c = StationEconomy::new(&cat, 99999, StationKind::Hub, None);
+        assert_ne!(a, c, "different seed => different book");
+    }
+
+    #[test]
+    fn station_prices_start_near_base() {
+        let cat = starter_catalog();
+        let e = StationEconomy::new(&cat, 7, StationKind::Refinery, None);
+        for (id, good) in &cat.goods {
+            let p = e.mid(id);
+            let delta = (good.base_price * 10 / 100).max(1);
+            assert!(
+                (good.base_price - delta..=good.base_price + delta).contains(&p),
+                "{} opened at {p}, outside ±10% of {}",
+                id.0,
+                good.base_price
+            );
+            // Buy quote >= sell quote, both positive.
+            assert!(e.buy_price(id, TARIFF_ONE) >= e.sell_price(id, TARIFF_ONE));
+            assert!(e.sell_price(id, TARIFF_ONE) >= 1);
+        }
+    }
+
+    #[test]
+    fn tick_is_stable_and_bounded() {
+        let cat = starter_catalog();
+        let mut a = StationEconomy::new(&cat, 42, StationKind::Hub, None);
+        let mut b = StationEconomy::new(&cat, 42, StationKind::Hub, None);
+        for step in 0..50 {
+            a.tick(&cat, step);
+            b.tick(&cat, step);
+        }
+        assert_eq!(a, b, "tick is deterministic");
+        for (id, good) in &cat.goods {
+            let p = a.mid(id);
+            assert!((1..=good.base_price * 4).contains(&p), "{p} out of bounds");
+        }
+    }
+
+    #[test]
+    fn trade_pressure_moves_then_decay() {
+        let cat = starter_catalog();
+        let mut e = StationEconomy::new(&cat, 1, StationKind::Hub, None);
+        let id = GoodId("water".into());
+        let before = e.mid(&id);
+        // Player sells a lot -> pressure negative -> mid should drop after
+        // a tick that lets the push act.
+        e.record_trade(&id, -100);
+        e.tick(&cat, 2);
+        let after = e.mid(&id);
+        assert!(after <= before, "selling pressure should not raise price");
+        // Pressure decays: a quiet tick series returns toward base.
+        for step in 10..60 {
+            e.tick(&cat, step);
+        }
+        let settled = e.mid(&id);
+        let base = cat.get(&id).unwrap().base_price;
+        assert!((settled - base).abs() <= base, "decayed back toward base");
+    }
+
+    #[test]
+    fn economy_state_multistation_deterministic() {
+        let cat = starter_catalog();
+        let seeds = vec![
+            ("hub-1".into(), 11u64, StationKind::Hub, None),
+            ("ref-1".into(), 22u64, StationKind::Refinery, None),
+        ];
+        let a = EconomyState::new(cat.clone(), &seeds);
+        let b = EconomyState::new(cat.clone(), &seeds);
+        assert_eq!(a, b);
+        let mut a = a;
+        a.tick(5);
+        let mut b = b;
+        b.tick(5);
+        assert_eq!(a, b, "global tick deterministic across stations");
+    }
+
+    #[test]
+    fn starter_catalog_validates_clean() {
+        assert!(starter_catalog().validate().is_empty());
+    }
+
+    #[test]
+    fn catalog_rejects_bad_base() {
+        let mut cat = starter_catalog();
+        cat.goods
+            .get_mut(&GoodId("water".into()))
+            .unwrap()
+            .base_price = 0;
+        assert!(!cat.validate().is_empty());
+    }
+}

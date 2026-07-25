@@ -1,0 +1,30 @@
+ContentFile(
+    id: "freelancer",
+    display_name: "Freelancer",
+    asset_type: origin,
+    seed: 32000001,
+    universe: "all",
+    priority: authoritative,
+    payload: origin((
+        id: "freelancer",
+        name: "Freelancer",
+        description: "Generic start for maximum flexibility. A default ship, modest gear, and no faction ties. Your past is your own business — what matters is what you do next. The Reach is wide open, and every station has a job board.",
+        icon: "star",
+        starting_career: "freelance",
+        starting_rank: 1,
+        faction_deltas: [],
+        starting_credits: 3000,
+        ship_template: None,
+        ship_seed: None,
+        starting_gear: [
+            (item_id: "basic_toolkit", count: 1),
+        ],
+        starting_crew: [],
+        known_systems: [],
+        start_system: 32000001,
+        start_location: "Central Station",
+        opening_log_entries: [
+            (title: "A Fresh Start", body: "The ship is fueled, the accounts are open, and the galaxy is waiting. Time to see what's out there.", tick_offset: 0),
+        ],
+    )),
+)

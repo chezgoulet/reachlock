@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Gate Network (S21)",
+  "description": "The authored gate network graph for charted space. Each gate is a directed edge between two charted systems.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["gates"],
+  "properties": {
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to", "status"],
+        "properties": {
+          "from": { "type": "string", "description": "Origin system id" },
+          "to": { "type": "string", "description": "Destination system id" },
+          "status": {
+            "type": "string",
+            "enum": ["active", "blockaded", "restricted", "contested", "destroyed"]
+          },
+          "controlled_by": {
+            "type": "string",
+            "description": "Faction id that controls this gate (for blockaded/restricted)"
+          }
+        }
+      }
+    }
+  }
+}

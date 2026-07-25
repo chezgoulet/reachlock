@@ -1,0 +1,101 @@
+(
+    id: "alexandre_dubois",
+    display_name: "Alexandre Dubois",
+    asset_type: soul,
+    seed: 0x1A3B5C7D,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "alexandre_dubois",
+        name: "Alexandre Dubois",
+        species: human,
+        portrait_id: "",
+        identity: (
+            origin: "Quebec System, Compact Space",
+            faction_affiliation: "Compact Intelligence Service (former)",
+            role: "Captain",
+            public_bio: "Former ISC officer turned privateer. Commands the Loup-Garou with steady discipline earned through fifteen years of service to the Compact. Speaks plainly, acts decisively, and expects the same from crew.",
+        ),
+        personality: (
+            traits: ["Disciplined", "Protective", "Pragmatic", "Loyal"],
+            values: ["CrewSafety", "ContractCompletion", "CompactLaw"],
+            speaking_style: formal,
+            quirks: ["Taps command console three times before engaging thrust"],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 384,
+            triggers: [
+                (
+                    condition: compare(field: "ship.damage", op: gt, value: 512),
+                    mood: focused,
+                    intensity: 640,
+                    priority: 5,
+                ),
+                (
+                    condition: compare(field: "crew.injuries", op: gt, value: 0),
+                    mood: protective,
+                    intensity: 512,
+                    priority: 8,
+                ),
+            ],
+        ),
+        memory_tree: [],
+        relationship_graph: [
+            (target_id: "player", trust: 512, familiarity: 384, history: []),
+            (target_id: "boris", trust: 640, familiarity: 512, history: []),
+            (target_id: "tib", trust: 256, familiarity: 384, history: []),
+            (target_id: "tove", trust: 512, familiarity: 512, history: []),
+            (target_id: "doss_grey", trust: 400, familiarity: 384, history: []),
+            (target_id: "grissom", trust: 550, familiarity: 384, history: []),
+            (target_id: "yael", trust: 350, familiarity: 256, history: []),
+        ],
+        goals: [
+            (
+                id: "alexandre_protect_crew",
+                priority: constant,
+                description: "Protect the crew and return everyone home safe.",
+            ),
+            (
+                id: "alexandre_complete_contract",
+                priority: constant,
+                description: "Complete every contract with professionalism and discretion.",
+            ),
+            (
+                id: "alexandre_clear_name",
+                priority: situational,
+                description: "Clear his name regarding the Charlevoix Incident.",
+            ),
+        ],
+        breaking_points: [
+            (
+                id: "alexandre_abandon_crew",
+                trigger: compare(field: "event.ordered_to_abandon_crew", op: eq, value: 1),
+                reaction: refuse_orders,
+            ),
+            (
+                id: "alexandre_captain_compromised",
+                trigger: compare(field: "trust.player", op: lt, value: -512),
+                reaction: confront,
+            ),
+        ],
+        contracts: ["cryo-pilot", "combat-tactical", "emergency-procedures"],
+        backstory: "Alexandre Dubois served as an intelligence officer in the Compact Intelligence Service for fifteen years. He was involved in the Charlevoix Incident, a covert operation that went wrong and left a colony exposed to raider attack. Though cleared by internal review, the stain on his record ended his ISC career. He took command of the Loup-Garou under a privateering charter, keeping his crew close and his past closer. He remains a Compact loyalist, believing the system failed the colony rather than the agents on the ground.",
+        secrets: [
+            (
+                id: "alexandre_charlevoix",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 717),
+                    compare(field: "event.asked_about_charlevoix", op: eq, value: 1),
+                ]),
+                content: "The Charlevoix Incident was a deliberate sacrifice ordered by ISC command to protect a larger asset. Alexandre was the officer who transmitted the order. He has never told anyone the truth — that he obeyed an order he knew would cost civilian lives.",
+            ),
+        ],
+        dialogue: None,
+        deflections: [
+            "The past is logged and sealed, captain. Keep us on course.",
+            "Charlevoix is a closed file. I suggest we keep it that way.",
+            "Every officer has missions they don't discuss over dinner.",
+        ],
+    )),
+)

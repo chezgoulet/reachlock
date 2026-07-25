@@ -1,0 +1,70 @@
+// S42: Compact Navy career path — sample authored content.
+(
+    id: "compact_navy",
+    display_name: "Compact Navy",
+    asset_type: career,
+    seed: 42,
+    universe: "all",
+    priority: authoritative,
+    payload: career((
+        id: "compact_navy",
+        path_type: military,
+        name: "Compact Navy",
+        description: "Serve in the Compact Fleet — honor, discipline, and firepower.",
+        faction_id: Some("compact"),
+        ranks: [
+            (
+                rank: 1,
+                title: "Ensign",
+                required_criteria: [(criterion_type: combat_victories, threshold: 3)],
+                rank_perks: ["nav_boost"],
+                faction_standing_bonus: 10,
+            ),
+            (
+                rank: 2,
+                title: "Lieutenant",
+                required_criteria: [(criterion_type: combat_victories, threshold: 10)],
+                rank_perks: ["shipyard_access"],
+                faction_standing_bonus: 25,
+            ),
+            (
+                rank: 3,
+                title: "Commander",
+                required_criteria: [
+                    (criterion_type: combat_victories, threshold: 25),
+                    (criterion_type: missions_completed, threshold: 10),
+                ],
+                rank_perks: ["strike_group_command"],
+                faction_standing_bonus: 50,
+            ),
+        ],
+        progression_criteria: [
+            (criterion_type: combat_victories, target: "*", threshold: 25, weight: 1024),
+            (criterion_type: missions_completed, target: "*", threshold: 10, weight: 512),
+        ],
+        perks: [
+            (
+                id: "nav_boost",
+                name: "Nav Boost",
+                description: "Kinetic weapon damage +5%",
+                perk_type: combat_bonus(damage_type: "kinetic", pct: 5120),
+                magnitude: 5120,
+            ),
+            (
+                id: "shipyard_access",
+                name: "Shipyard Access",
+                description: "Unlock restricted navy shipyard",
+                perk_type: restricted_area_access(area_id: "nav_shipyard"),
+                magnitude: 1024,
+            ),
+            (
+                id: "strike_group_command",
+                name: "Strike Group Command",
+                description: "Tactical combat bonus for wingmen",
+                perk_type: combat_bonus(damage_type: "all", pct: 2560),
+                magnitude: 2560,
+            ),
+        ],
+        conflicting_paths: ["reach_pirates", "isc_free_traders"],
+    )),
+)

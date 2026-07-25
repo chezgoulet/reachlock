@@ -1,0 +1,46 @@
+# ReachLock Release — triggered by tag push v2.*.
+# Builds the native Linux binary and publishes to GitHub Releases.
+name: Release
+on:
+  push:
+    tags: ['v2.*']
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  native-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: System deps (Bevy on Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwayland-dev libxkbcommon-dev libudev-dev libasound2-dev
+
+      - name: Build Linux binary
+        run: cargo build --release -p reachlock-client
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reachlock-linux
+          path: target/release/reachlock-client
+
+  release:
+    needs: [native-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            reachlock-linux/**
+          generate_release_notes: true

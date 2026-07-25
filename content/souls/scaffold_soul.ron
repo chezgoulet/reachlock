@@ -1,0 +1,25 @@
+//! Scaffold soul content file.
+//! Edit with the ReachLock Soul editor for the best experience.
+(
+    id: "scaffold_soul",
+    display_name: "Scaffold Crew",
+    asset_type: "soul",
+    seed: 0x0A1B2C3D,
+    universe: "all",
+    priority: curated,
+    payload: Soul((
+        id: "scaffold_soul",
+        display_name: "Scaffold Crew",
+        species: "Human",
+        portrait_id: 0xABCD,
+        personality: (openness: 512, conscientiousness: 512, extraversion: 512, agreeableness: 512, neuroticism: 512),
+        emotional_volatility: 256,
+        voice_params: (pitch: 512, speed: 512, accent: "en-us"),
+        backstory: "A crew member with a mysterious past.".to_string(),
+        goals: [],
+        secrets: [],
+        breaking_points: [],
+        contract_refs: [],
+        starting_relationships: {},
+    )),
+)

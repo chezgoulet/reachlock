@@ -1,0 +1,36 @@
+ContentFile(
+    id: "compact_militia",
+    display_name: "Compact Militia",
+    asset_type: origin,
+    seed: 26000001,
+    universe: "all",
+    priority: authoritative,
+    payload: origin((
+        id: "compact_militia",
+        name: "Compact Militia",
+        description: "Born and raised in the Compact, you enlisted as soon as you came of age. Basic training, patrol duty, and a field commission to Ensign. You know the Compact Navy from the inside — its protocols, its politics, its weak points. Your light frigate is a standard-issue Compact vessel, and your standing with the Compact reflects your service.",
+        icon: "shield",
+        starting_career: "compact_navy",
+        starting_rank: 1,
+        faction_deltas: [
+            (faction_id: "compact", delta: 25),
+            (faction_id: "reach_pirates", delta: -15),
+        ],
+        starting_credits: 2000,
+        ship_template: Some("compact_frigate"),
+        ship_seed: None,
+        starting_gear: [
+            (item_id: "compact_sidearm", count: 1),
+            (item_id: "uniform", count: 1),
+        ],
+        starting_crew: [
+            Authored(soul_id: "marcus_ensign", role: "pilot"),
+        ],
+        known_systems: [],
+        start_system: 26000001,
+        start_location: "Compact Station Rho-7",
+        opening_log_entries: [
+            (title: "First Posting", body: "Ensign, reporting for duty. Compact Station Rho-7 is a bustling hub on the frontier. Your frigate is docked and provisioned. The sector is quiet — for now.", tick_offset: 0),
+        ],
+    )),
+)

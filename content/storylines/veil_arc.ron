@@ -1,0 +1,43 @@
+[
+    (
+        faction: ("reach_remnant"),
+        chapters: [
+            (
+                id: "rumors",
+                trigger: Some(tick_after(5)),
+                narration: "Rumors of a blockade around Earth reach the crew.",
+                events: [],
+            ),
+            (
+                id: "evidence",
+                trigger: Some(chapter_complete("rumors")),
+                narration: "Evidence of the Veil's true nature emerges.",
+                events: [],
+            ),
+            (
+                id: "gate_found",
+                trigger: Some(player_reputation(faction: ("reach_remnant"), trust: 30)),
+                narration: "A secret jump gate into the Veil is discovered.",
+                events: [],
+            ),
+            (
+                id: "earth_briefing",
+                trigger: Some(chapter_complete("gate_found")),
+                narration: "Earth Remnant makes contact.",
+                events: [],
+            ),
+            (
+                id: "breach_choice",
+                trigger: Some(chapter_complete("earth_briefing")),
+                narration: "The captain must choose: breach the Veil or maintain isolation.",
+                events: [],
+            ),
+            (
+                id: "aftermath",
+                trigger: Some(chapter_complete("breach_choice")),
+                narration: "The consequences of the captain's choice unfold.",
+                events: [],
+            ),
+        ],
+    ),
+]

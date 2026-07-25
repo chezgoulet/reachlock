@@ -1,0 +1,22 @@
+// TODO: id — unique identifier for this contract
+id: "new_contract"
+// TODO: label — display name
+label: "New Contract"
+// TODO: trigger — what activates this contract (Timer, Event, StateChange, Manual)
+trigger: Manual
+// TODO: rules — list of condition → action rules
+rules: [
+    Rule(
+        // TODO: condition — when this rule fires
+        condition: Always,
+        // TODO: action — what happens when the condition is true
+        action: Action(
+            kind: "set_flag",
+            params: {
+                "flag": "example_flag",
+                "value": 1,
+            },
+        ),
+        priority: 0,
+    ),
+]

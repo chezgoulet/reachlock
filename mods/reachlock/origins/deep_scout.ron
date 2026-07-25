@@ -1,0 +1,38 @@
+ContentFile(
+    id: "deep_scout",
+    display_name: "Deep Scout",
+    asset_type: origin,
+    seed: 28000001,
+    universe: "all",
+    priority: authoritative,
+    payload: origin((
+        id: "deep_scout",
+        name: "Deep Scout",
+        description: "Frontier surveyor who spent years charting uncharted systems. You know how to survive in the black — emergency protocols, ration discipline, and a sixth sense for danger. Your long-range scout ship is fitted for deep-space endurance, and you've got partial gate-network data from your last survey mission.",
+        icon: "compass",
+        starting_career: "surveyor",
+        starting_rank: 1,
+        faction_deltas: [
+            (faction_id: "compact", delta: 5),
+        ],
+        starting_credits: 3000,
+        ship_template: Some("long_range_scout"),
+        ship_seed: None,
+        starting_gear: [
+            (item_id: "survey_scanner", count: 1),
+            (item_id: "survival_kit", count: 1),
+            (item_id: "ration_pack", count: 10),
+        ],
+        starting_crew: [],
+        known_systems: [
+            28000001,
+            28000002,
+            28000003,
+        ],
+        start_system: 28000001,
+        start_location: "Survey Camp Omega",
+        opening_log_entries: [
+            (title: "Survey Complete", body: "The last survey beacon is placed. Data packets are compressed and ready for delivery. Command wants you back at Survey Camp Omega for debriefing. They mentioned something about a 'special assignment' — never a good sign.", tick_offset: 0),
+        ],
+    )),
+)

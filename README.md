@@ -2,41 +2,62 @@
 
 > *A game about surviving the frontier, choosing your allegiances, and living with the consequences of a universe that doesn't wait for you.*
 
-REACHLOCK is a dual-mode space game built in Godot 4. It plays like Escape Velocity, Stardew Valley, FTL, and Star Fox 64 had a child raised on a frontier station.
+A procedurally-generated spacefaring MMO. The universe is generated from seeds, player-authored automations run your ship with LLMs as the fallback at deterministic-tree leaf nodes, and the server is a ledger, not a simulator.
 
-**Single-Player:** You fly the *Loup-Garou* with its crew of seven — Tib, Tove, Bardo, Doc Keene, Prudence, Risc, and Boris. Their story. The Veil. The Duskway. The Predecessor revelation. Played offline or online, with your own AI inference — local (llama.cpp), a cloud key, or our proxy service.
+**v2 is being built fresh** — Rust · Bevy · Postgres · Redis. The full design is in [docs/REACHLOCK-V2-SPEC.md](docs/REACHLOCK-V2-SPEC.md).
 
-**Online MMO:** A persistent shared universe. Same factions, same economy, same soul system — but the universe state is shared. Player actions collectively reshape the galaxy. The Helldivers 2 model: coordinated persistent war, single timeline, every player contributes.
+## Repository Layout
 
-## Architecture
+| Path | What it is |
+|---|---|
+| `docs/REACHLOCK-V2-SPEC.md` | The v2 comprehensive specification (design draft, rev 2) |
+| `docs/sprints/` | The spec broken into fleet-distributable sprint briefs — start at [00-INDEX.md](docs/sprints/00-INDEX.md) for the dependency waves and the playbook |
+| `reachlock-core/` | Shared library, zero rendering deps: generators, seed protocol, contract engine, signed evaluations, universe tiers, network messages, determinism manifest. Everything integer-math, everything golden-tested |
+| `reachlock-client/` | Bevy client: menu → a flyable generated system (hull, station, planet, ambient music — all from seeds through the bridge layer), contract engine at the helm, deliberation overlay when rules run out |
+| `reachlock-server/` | Axum WebSocket ledger on `127.0.0.1:40711`: first-write-wins seed discovery, signed-evaluation verification, tier-gated LLM proxy (stub responder), non-blocking universe tick. In-memory stores by default; Postgres behind the `postgres` feature (`migrations/0001_init.sql`) |
+| `reachlock-cli/` | `reachlock` binary: `gen hull\|station\|planet\|music\|ui-panel` with SVG/PPM/WAV preview exports; `determinism emit\|check` |
+| `archive/v1/` | **ReachLock v1, archived.** Godot 4 client, Go server, Pan soul engine, all sprint docs and demo ledgers. Kept for inspiration. Not maintained, not built by CI |
 
-Three modes, each feeding into the next:
+The pre-archive tree is also tagged as `v1` — `git checkout v1` restores the original v1 layout.
 
-- **Landed** — Stardew × Zelda × Pokémon. Stations, planets, farming, dungeons, crafting, and the people who make a place home.
-- **On Board** — FTL × Among Us (Deeper). The ship as a physical space. Rooms, subsystems, crew management, boarding actions.
-- **Space Flight** — Star Fox 64. Arcade-style dogfighting with meaningful consequences.
+## Quick start
 
-## Technology Stack
+```sh
+make run          # launch the game (native)
+make server       # launch the ledger server
+make test         # workspace tests
+make check        # fmt + clippy + tests + engine purity
+make determinism  # local generator-determinism self-check
+```
 
-| Layer | Language | Role |
-|---|---|---|
-| Game client | GDScript / C# (Godot 4) | Rendering, input, UI |
-| NPC soul engine | Rust (Pan) | Inference decisions, behavior trees |
-| MMO server | Go | State relay, coordination, matchmaking |
-| Knowledge layer | Ragamuffin | Persistent memory, lore, faction state |
+In flight: `W/↑` thrust, `A/D` turn, `X` inject an anomaly no rule covers —
+watch Boris deliberate and, offline, time out into his fallback routine.
 
-## Modding-First
+CI enforces the two invariants that define the project: `reachlock-core`
+stays free of rendering/IO dependencies (`make check-purity`), and the
+determinism manifest is bit-identical across x86_64, aarch64, and i686 —
+the 32-bit target is there to catch pointer-width assumptions the two
+64-bit targets would both agree on.
 
-REACHLOCK is built to be modded from the ground up. Three layers:
+ReachLock is a **native desktop game**. There is no browser build: web
+distribution was cut, and the WASM targets, size budget, and bundle
+pipeline were removed with it.
 
-- **Ring 0 — Core:** The engine, netcode, and base systems. Changed rarely.
-- **Ring 1 — Content:** Ships, weapons, factions, missions. Loaded from data files. Anyone can add.
-- **Ring 2 — Soul:** NPC personality, dialogue, decision weights. Plain text prompts and markdown skills.
+## What carries forward from v1
 
-## License
+The ideas, not the code:
 
-AGPL-3.0 — see [LICENSE](LICENSE).
+- **The crew of the Loup-Garou** — Tib, Tove, Bardo, Doc Keene, Prudence, Risc, and Boris
+- **Contract-first automation** — player-authored rules with LLM fallback (v1's soul/contract system, redesigned in spec §6)
+- **Fail states are valid outcomes** — emergent stories over scripted safety
+- **The universe moves without you** — v1's universe tick, redesigned in spec §8
 
----
+## Status
 
-*Built by chezgoulet / The House.*
+**Spike #1 passed (2026-07-10):** the full plugin stack — bevy + bevy_rapier3d + bevy_prototype_lyon + bevy_audio — compiles and runs natively. Version note: rapier lags bevy by one release, so the workspace pins **bevy 0.18.1 + rapier 0.34 + lyon 0.16**; bump to bevy 0.19 when rapier 0.35 ships.
+
+Native Linux builds need the usual Bevy system deps:
+
+```sh
+sudo apt-get install -y libwayland-dev libxkbcommon-dev libudev-dev libasound2-dev
+```

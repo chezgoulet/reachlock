@@ -1,0 +1,33 @@
+//! reachlock-core — shared library, no rendering deps (spec §3).
+//!
+//! Everything here is pure and deterministic: generators, the seed
+//! protocol, the contract engine, universe tiers, and the network message
+//! vocabulary. The client wraps this in Bevy; the server wraps it in Axum;
+//! neither adds gameplay logic of its own.
+
+pub mod agency;
+pub mod career;
+pub mod combat;
+pub mod content;
+pub mod contract;
+pub mod crew;
+pub mod crisis;
+pub mod determinism;
+pub mod dialogue;
+pub mod economy;
+pub mod editor;
+pub mod faction;
+pub mod galaxy;
+pub mod generator;
+pub mod identity;
+pub mod item;
+pub mod mod_manifest;
+pub mod network;
+pub mod seed;
+pub mod sim;
+pub mod soul;
+pub mod tutorial;
+pub mod universe;
+pub mod util;
+
+pub use util::{Fixed, SeededRng};

@@ -1,0 +1,23 @@
+//! Scaffold dungeon content file — Predecessor ruins.
+//! Edit with the ReachLock Dungeon editor.
+(
+    id: "scaffold_dungeon",
+    display_name: "Scaffold Predecessor Vault",
+    asset_type: "dungeon",
+    seed: 0x0C1D2E3F,
+    universe: "all",
+    priority: curated,
+    payload: Dungeon(Dungeon(
+        title: Some("Scaffold Predecessor Vault"),
+        description: Some("A small vault with three rooms."),
+        rooms: [
+            (id: "entrance", position: (x: 0, y: 0), size: (width: 5, height: 5), tags: ["entrance"], puzzle: None, rewards: None, enemies: None),
+            (id: "puzzle_room", position: (x: 6, y: 0), size: (width: 5, height: 5), tags: ["puzzle"], puzzle: Some((puzzle_type: symbol_matching, parameters: {})), rewards: None, enemies: None),
+            (id: "treasure", position: (x: 12, y: 0), size: (width: 5, height: 5), tags: ["treasure"], puzzle: None, rewards: Some((items: Some(["predecessor_core"]), credits: Some(500), reputation: None, lore_fragments: Some(["The Builders' Lament"]))), enemies: None),
+        ],
+        connections: [
+            (from: "entrance", to: "puzzle_room", direction: east, condition: None),
+            (from: "puzzle_room", to: "treasure", direction: east, condition: None),
+        ],
+    )),
+)

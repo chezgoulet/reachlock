@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Dungeon Layout Content File",
+  "description": "An authored Predecessor dungeon layout with rooms, puzzles, and rewards (S55)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "asset_type", "seed", "universe", "priority", "payload"],
+  "properties": {
+    "id": { "type": "string" },
+    "display_name": { "type": "string" },
+    "asset_type": { "type": "string", "enum": ["dungeon"] },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "universe": { "type": "string" },
+    "priority": { "type": "string", "enum": ["procedural", "curated", "event", "authoritative"] },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rooms", "connections"],
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "rooms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "position", "size"],
+            "properties": {
+              "id": { "type": "string" },
+              "position": {
+                "type": "object",
+                "required": ["x", "y"],
+                "properties": {
+                  "x": { "type": "integer" },
+                  "y": { "type": "integer" }
+                }
+              },
+              "size": {
+                "type": "object",
+                "required": ["width", "height"],
+                "properties": {
+                  "width": { "type": "integer", "minimum": 1 },
+                  "height": { "type": "integer", "minimum": 1 }
+                }
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["entrance", "boss", "puzzle", "treasure", "lore", "empty", "encounter", "shop"]
+                }
+              },
+              "puzzle": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "puzzle_type": {
+                    "type": "string",
+                    "enum": ["lever_sequence", "symbol_matching", "navigation_maze", "combat_encounter", "exploration_find"]
+                  },
+                  "parameters": { "type": "object" }
+                }
+              },
+              "rewards": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "credits": { "type": "integer", "minimum": 0 },
+                  "reputation": { "type": "object" },
+                  "lore_fragments": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              },
+              "enemies": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "archetype": { "type": "string" },
+                    "count": { "type": "integer", "minimum": 1 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "connections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to"],
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "direction": {
+                "type": "string",
+                "enum": ["north", "south", "east", "west", "bidirectional"]
+              },
+              "condition": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

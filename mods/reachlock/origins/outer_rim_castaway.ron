@@ -1,0 +1,36 @@
+ContentFile(
+    id: "outer_rim_castaway",
+    display_name: "Outer Rim Castaway",
+    asset_type: origin,
+    seed: 33000001,
+    universe: "all",
+    priority: authoritative,
+    payload: origin((
+        id: "outer_rim_castaway",
+        name: "Outer Rim Castaway",
+        description: "Shipwrecked and stranded on the Outer Rim. You lost everything — your ship, your savings, most of your crew. What you have left is a beat-up escape pod with a jury-rigged sublight drive, one loyal crew member, and barely enough credits for a meal. High risk, high reward — if you survive.",
+        icon: "wreck",
+        starting_career: "freelance",
+        starting_rank: 1,
+        faction_deltas: [
+            (faction_id: "compact", delta: -5),
+        ],
+        starting_credits: 200,
+        ship_template: Some("salvaged_shuttle"),
+        ship_seed: Some(33000001),
+        starting_gear: [
+            (item_id: "salvage_tool", count: 1),
+        ],
+        starting_crew: [
+            Procedural(seed: 33000002, species: "Human", role: "survivor"),
+        ],
+        known_systems: [
+            33000001,
+        ],
+        start_system: 33000001,
+        start_location: "Rim Station Beta",
+        opening_log_entries: [
+            (title: "Lost and Found", body: "The distress beacon brought a salvage tug. They pulled you out of the wreck and dropped you at Rim Station Beta. You owe the tug captain everything — and nothing. Time to rebuild from scratch.", tick_offset: 0),
+        ],
+    )),
+)

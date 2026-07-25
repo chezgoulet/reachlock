@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Room Templates Content File",
+  "description": "The authored room template set the interior editor (spec §19) places on the hull grid — sizes in cells, required systems, furniture slots, and adjacency-bonus pairings. One file carries the whole set.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "asset_type", "seed", "universe", "priority", "payload"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for this template set"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name for display in the editor UI"
+    },
+    "asset_type": {
+      "type": "string",
+      "enum": ["room_templates"],
+      "description": "Must be 'room_templates' for this schema"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Canonical seed (hash of content_override, system_id, object_id)"
+    },
+    "universe": {
+      "type": "string",
+      "description": "'all' or a universe tier name (classic, fair_play, spectrum, byok)"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["procedural", "curated", "event", "authoritative"],
+      "description": "Priority level for this content"
+    },
+    "expires_at": {
+      "type": "integer",
+      "description": "Optional expiration timestamp (only meaningful when priority is 'event')"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["room_templates"],
+      "properties": {
+        "room_templates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "kind", "label", "width", "height", "required_systems", "furniture_slots"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Template id, unique within the set (PlacedRoom.template_id references it)"
+              },
+              "kind": {
+                "$ref": "#/definitions/room_kind",
+                "description": "The realized RoomKind, unique within the set (crew duty rooms map by kind)"
+              },
+              "label": {
+                "type": "string",
+                "description": "Display name in the editor palette"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 255,
+                "description": "Unrotated width in placement cells (1 cell = 8 grid units)"
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 255,
+                "description": "Unrotated height in placement cells"
+              },
+              "required_systems": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Ship systems this room needs to function (inert pipes until their systems exist)"
+              },
+              "furniture_slots": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Slot ids furniture can fill, unique within the template (PlacedFurniture.slot_id references them)"
+              },
+              "adjacent_pairs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/room_kind"
+                },
+                "description": "Room kinds this template gains an adjacency bonus next to"
+              }
+            }
+          },
+          "description": "The template set the editor palette cycles through"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "room_kind": {
+      "type": "string",
+      "enum": [
+        "hangar", "corridor", "quarters", "bar", "market", "shipyard",
+        "reactor", "bridge", "cockpit", "tech_bay", "scanner", "med_bay",
+        "cryo", "hydroponics", "armory", "brig"
+      ],
+      "description": "A RoomKind token (snake_case)"
+    }
+  }
+}

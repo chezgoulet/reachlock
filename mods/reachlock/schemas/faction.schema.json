@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Faction Content File",
+  "description": "A canon faction definition with doctrine, tariff posture, internal divisions, and relationships",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "factions"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "factions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "description": "Unique faction identifier" },
+          "name": { "type": "string" },
+          "color": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "minItems": 4, "maxItems": 4
+          },
+          "territory": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["system", "influence"],
+              "properties": {
+                "system": { "type": "string" },
+                "influence": { "type": "integer", "minimum": 0 }
+              }
+            }
+          },
+          "resources": {
+            "type": "object",
+            "properties": {
+              "stock": {
+                "type": "object",
+                "additionalProperties": { "type": "integer" }
+              }
+            }
+          },
+          "relationships": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["affinity", "status_snapshot"],
+              "properties": {
+                "affinity": { "type": "integer", "minimum": -100, "maximum": 100 },
+                "status_snapshot": {
+                  "type": "string",
+                  "enum": ["allied", "friendly", "neutral", "hostile", "war"]
+                },
+                "treaty": { "type": "string" },
+                "war_goal": { "type": "string" }
+              }
+            }
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "description"],
+              "properties": {
+                "id": { "type": "string" },
+                "description": { "type": "string" }
+              }
+            }
+          },
+          "internal_divisions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "name", "influence"],
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "influence": { "type": "number", "minimum": 0, "maximum": 1 },
+                "agenda": {
+                  "type": "string",
+                  "enum": ["hawkish", "dovish", "mercantile", "isolationist"]
+                },
+                "player_standing": { "type": "integer", "minimum": -100, "maximum": 100 }
+              }
+            }
+          },
+          "doctrine": {
+            "type": "string",
+            "enum": ["military", "economic", "diplomatic", "expansionist"]
+          },
+          "tariff_policy": {
+            "oneOf": [
+              { "type": "string", "enum": ["dynamic", "none"] },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["regulated"],
+                "properties": {
+                  "regulated": {
+                    "type": "object",
+                    "required": ["foreign_mult", "own_mult"],
+                    "properties": {
+                      "foreign_mult": { "type": "integer" },
+                      "own_mult": { "type": "integer" }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["flat"],
+                "properties": {
+                  "flat": {
+                    "type": "object",
+                    "required": ["mult"],
+                    "properties": { "mult": { "type": "integer" } }
+                  }
+                }
+              }
+            ]
+          },
+          "produces": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

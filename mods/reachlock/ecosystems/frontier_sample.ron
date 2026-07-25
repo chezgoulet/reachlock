@@ -1,0 +1,41 @@
+// S39: sample authored ecosystem override — frontier biome with a few species.
+(
+    id: "frontier_valis",
+    display_name: "Valis Frontier Ecosystem",
+    asset_type: ecosystem,
+    seed: 12345,
+    universe: "all",
+    priority: authoritative,
+    payload: ecosystem((
+        planet_seed: 12345,
+        biomes: [
+            (
+                biome: frontier,
+                species: [
+                    (
+                        id: "frontier-0-0",
+                        taxonomy: (kingdom: "Animalia", phylum: "Xara", class: "Voria", order: "Lariformes", family: "Goridae", genus: "Armex", species: "primas"),
+                        common_name: "pale lurker",
+                        scientific_name: "Armex primas",
+                        ecological_role: primary_producer,
+                        size_class: small,
+                        habitat: "frontier",
+                        rarity: common,
+                        visual: (silhouette: 42, primary_color: (r:120,g:180,b:100,a:255), secondary_color: (r:60,g:100,b:200,a:255), body_plan: radial, size_hint: "fist-sized"),
+                        discoverable: true,
+                        research_value: 20,
+                        edibility: edible(nutrition_value: 30),
+                        medicinal_potential: 5,
+                        danger_level: 0,
+                    ),
+                ],
+                food_web: (edges: []),
+                keystone_species: [],
+            ),
+        ],
+        global_species_count: 1,
+        endemic_species_count: 1,
+        ecological_complexity: simple,
+        baseline_recorded: false,
+    )),
+)

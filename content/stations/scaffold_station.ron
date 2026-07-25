@@ -1,0 +1,20 @@
+//! Scaffold station content file.
+//! Comments will be lost on round-trip through the editor.
+(
+    id: "scaffold_station",
+    display_name: "Scaffold Station",
+    asset_type: "station",
+    seed: 0x4A7B3C2D,
+    universe: "all",
+    priority: curated,
+    payload: Station((
+        seed: 0x4A7B3C2D,
+        rooms: [
+            (id: "hangar", position: (0, 0), size: (256, 128), connectors: ["main_hall"]),
+            (id: "main_hall", position: (0, 128), size: (512, 64), connectors: ["hangar", "bar"]),
+            (id: "bar", position: (-128, 192), size: (128, 64), connectors: ["main_hall"]),
+        ],
+        npc_spawns: [],
+        contracts: [],
+    )),
+)

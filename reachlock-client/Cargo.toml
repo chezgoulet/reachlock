@@ -1,0 +1,38 @@
+[package]
+name = "reachlock-client"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reachlock-core = { path = "../reachlock-core" }
+fundsp = "0.23"
+bevy = { workspace = true, features = ["wav"] }
+bevy_ecs = "0.18.1"
+bevy_prototype_lyon = { workspace = true }
+bevy_rapier3d = { workspace = true }
+ron = "0.12"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ewebsock = { version = "0.8", default-features = false, features = ["tls"] }
+# S29: WebRTC peer connection for native voice chat.
+webrtc = "0.11"
+opus = "0.3"
+cpal = "0.15"
+ringbuf = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }
+crossbeam-channel = "0.5"
+bytes = "1"
+
+[features]
+default = ["editor"]
+editor = []
+debug-names = ["bevy/debug"]
+tts = []
+
+[dev-dependencies]
+reachlock-server = { path = "../reachlock-server" }
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

@@ -1,0 +1,18 @@
+//! Scaffold gate network entry.
+//! Defines a jump gate connecting two systems.
+(
+    id: "scaffold_gate",
+    display_name: "Scaffold Gate",
+    asset_type: "gate_network",
+    seed: 0x0F1A2B3C,
+    universe: "all",
+    priority: curated,
+    payload: GateNetwork((
+        gate_id: "scaffold_gate",
+        system_id: "sys-alpha",
+        connections: ["sys-beta"],
+        difficulty: 1.0,
+        requires_clearance: false,
+        clearance_faction: None,
+    )),
+)

@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Hostile Archetype (S20 Landed Combat)",
+  "description": "A data-driven humanoid combatant class (spec §22). Loaded straight from content/combat/*.ron into reachlock_core::combat::HostileArchetype — no wrapper envelope. All timing is integer ticks at the 10 Hz combat rate; all damage/range/speed is fixed-point i64 (1024 = 1.0). Keeping every number here means balancing is a content edit, never a recompile.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "display_name",
+    "hp",
+    "speed",
+    "light_attack",
+    "heavy_attack",
+    "block",
+    "dodge",
+    "chase_radius",
+    "disengage_radius",
+    "flee_hp_frac"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique archetype id; spawns reference it by this string"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name for HUD/log"
+    },
+    "hp": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Max hit points (fixed-point i64)"
+    },
+    "speed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Move speed per tick (fixed-point i64, 1024 = 1.0)"
+    },
+    "light_attack": { "$ref": "#/definitions/attack_window" },
+    "heavy_attack": { "$ref": "#/definitions/attack_window" },
+    "block": { "$ref": "#/definitions/block_window" },
+    "dodge": { "$ref": "#/definitions/dodge_window" },
+    "chase_radius": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Target inside this radius (world units) wakes Idle/Patrol into Chase"
+    },
+    "disengage_radius": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Target beyond this radius (world units) ends the fight"
+    },
+    "flee_hp_frac": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1024,
+      "description": "Hull fraction (0..=1024) below which the humanoid flees; 0 = fearless"
+    }
+  },
+  "definitions": {
+    "attack_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startup_ticks", "active_ticks", "recovery_ticks", "damage", "range"],
+      "properties": {
+        "startup_ticks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Telegraph ticks before the swing can connect"
+        },
+        "active_ticks": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Ticks during which the arc can land a hit"
+        },
+        "recovery_ticks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Punishable recovery ticks after the active window"
+        },
+        "damage": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Hit points removed on a clean connect (fixed-point i64)"
+        },
+        "range": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Reach in world units (fixed-point i64)"
+        }
+      }
+    },
+    "block_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active_ticks", "cooldown_ticks", "parry_ticks"],
+      "properties": {
+        "active_ticks": { "type": "integer", "minimum": 0, "description": "Ticks the guard soaks damage" },
+        "cooldown_ticks": { "type": "integer", "minimum": 0, "description": "Ticks before the guard can be raised again" },
+        "parry_ticks": { "type": "integer", "minimum": 0, "description": "Front window during which a hit is negated entirely" }
+      }
+    },
+    "dodge_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["i_frame_ticks", "recovery_ticks", "distance"],
+      "properties": {
+        "i_frame_ticks": { "type": "integer", "minimum": 0, "description": "Invulnerable ticks during the roll" },
+        "recovery_ticks": { "type": "integer", "minimum": 0, "description": "Committed recovery ticks after the roll" },
+        "distance": { "type": "integer", "minimum": 0, "description": "Roll distance in world units (fixed-point i64)" }
+      }
+    }
+  }
+}

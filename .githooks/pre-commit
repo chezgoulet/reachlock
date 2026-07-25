@@ -1,13 +1,17 @@
 #!/bin/sh
 #
-# Pre-commit hook: run the three-ring architecture guard.
+# Pre-commit hook: run the full v2 gate (fmt, clippy -D warnings, all
+# tests, engine purity, server feature builds) — the iron rule is "make
+# check before every commit; never push red", so the hook makes the rule
+# mechanical.
 #
 # Opt in with:
 #   git config core.hooksPath .githooks
 #
-# See https://github.com/chezgoulet/reachlock/issues/74
+# Ported from PR #74's architecture-guard hook (v1); v2's equivalent
+# guard is the whole check gate.
 
 set -e
 
-echo "=== Architecture guard ==="
-make check-arch
+echo "=== make check (pre-commit gate) ==="
+make check

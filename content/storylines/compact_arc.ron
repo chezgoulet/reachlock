@@ -1,0 +1,37 @@
+[
+    (
+        faction: ("compact"),
+        chapters: [
+            (
+                id: "mobilization",
+                trigger: Some(tick_after(2)),
+                narration: "The Compact mobilizes its fleet.",
+                events: [],
+            ),
+            (
+                id: "supply_lines",
+                trigger: Some(chapter_complete("mobilization")),
+                narration: "Supply lines established.",
+                events: [],
+            ),
+            (
+                id: "first_contact",
+                trigger: Some(chapter_complete("supply_lines")),
+                narration: "First contact with ISC patrol.",
+                events: [],
+            ),
+            (
+                id: "player_briefing",
+                trigger: Some(player_reputation(faction: ("compact"), trust: 50)),
+                narration: "The captain is briefed on the Compact's plans.",
+                events: [],
+            ),
+            (
+                id: "armada_ready",
+                trigger: Some(chapter_complete("player_briefing")),
+                narration: "The armada is ready for deployment.",
+                events: [],
+            ),
+        ],
+    ),
+]

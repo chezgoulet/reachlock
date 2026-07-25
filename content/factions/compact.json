@@ -1,0 +1,23 @@
+{
+  "id": "compact",
+  "name": "Compact",
+  "doctrine": "diplomatic",
+  "territory": [],
+  "resources": { "stock": {} },
+  "relationships": {
+    "isc": {
+      "affinity": 100,
+      "status_snapshot": "allied"
+    }
+  },
+  "goals": [],
+  "internal_divisions": [],
+  "produces": ["manufactured"],
+  "color": [30, 144, 255, 255],
+  "tariff_policy": {
+    "regulated": {
+      "foreign_mult": 1229,
+      "own_mult": 871
+    }
+  }
+}

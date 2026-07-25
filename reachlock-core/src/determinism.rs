@@ -1,0 +1,1195 @@
+//! Cross-platform determinism manifest (spec §5, adversarial finding #3).
+//!
+//! `manifest()` runs every generator over a canonical seed set and hashes
+//! the outputs. CI builds this on x86_64, aarch64, and i686 and compares
+//! the manifests bit-for-bit — any divergence fails the merge.
+
+use serde::{Deserialize, Serialize};
+
+use crate::generator;
+use crate::item;
+use crate::seed::types::Biome;
+use crate::util::{color, noise};
+
+/// The canonical seed battery. Edge values on purpose.
+pub const CANONICAL_SEEDS: [u64; 6] = [
+    0,
+    1,
+    42,
+    0xDEAD_BEEF,
+    Seed53_MAX,
+    7_928_794_229_254_937, // the seed-resolver golden
+];
+#[allow(non_upper_case_globals)]
+const Seed53_MAX: u64 = (1 << 53) - 1;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Entry {
+    pub generator: String,
+    pub seed: u64,
+    pub checksum: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Manifest {
+    /// Format version: bump when adding generators so old manifests don't
+    /// false-negative against new binaries.
+    pub version: u32,
+    pub entries: Vec<Entry>,
+}
+
+/// FNV-1a running hasher for output canonicalization.
+struct Hasher(u64);
+
+impl Hasher {
+    fn new() -> Self {
+        Hasher(0xCBF2_9CE4_8422_2325)
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 ^= b as u64;
+            self.0 = self.0.wrapping_mul(0x0000_0100_0000_01B3);
+        }
+    }
+    fn write_i64(&mut self, v: i64) {
+        self.write(&v.to_le_bytes());
+    }
+    fn finish(self) -> u64 {
+        self.0
+    }
+}
+
+/// Hash any serializable generator output by its canonical JSON encoding.
+/// Deterministic because these generators use only integer/fixed-point
+/// values (no floats) and BTreeMap-backed maps, so serde_json emits
+/// byte-identical output on every target.
+fn hash_serde<T: Serialize>(value: &T) -> u64 {
+    let bytes = serde_json::to_vec(value).expect("generator output serializes");
+    let mut h = Hasher::new();
+    h.write(&bytes);
+    h.finish()
+}
+
+fn hash_mesh(mesh: &generator::GeneratedMesh) -> u64 {
+    let mut h = Hasher::new();
+    for v in &mesh.vertices {
+        h.write_i64(v.x.0);
+        h.write_i64(v.y.0);
+    }
+    for &i in &mesh.indices {
+        h.write(&i.to_le_bytes());
+    }
+    h.finish()
+}
+
+fn hash_layout(layout: &generator::GeneratedLayout) -> u64 {
+    let mut h = Hasher::new();
+    for room in &layout.rooms {
+        h.write(&[room.kind as u8]);
+        for v in [room.x, room.y, room.width, room.height] {
+            h.write(&v.to_le_bytes());
+        }
+    }
+    for door in &layout.doors {
+        h.write(&door.from.to_le_bytes());
+        h.write(&door.to.to_le_bytes());
+        h.write(&door.x.to_le_bytes());
+        h.write(&door.y.to_le_bytes());
+    }
+    h.finish()
+}
+
+pub fn manifest() -> Manifest {
+    let mut entries = Vec::new();
+
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "hull".into(),
+            seed,
+            checksum: hash_mesh(&generator::generate_hull(seed)),
+        });
+
+        let station = generator::generate_station(seed, generator::station::StationKind::Trade, 2);
+        let mut h = Hasher::new();
+        h.write_i64(hash_mesh(&station.exterior) as i64);
+        h.write_i64(hash_layout(&station.layout) as i64);
+        entries.push(Entry {
+            generator: "station".into(),
+            seed,
+            checksum: h.finish(),
+        });
+
+        // S06 — ship interior layout (the On-Board scene's one source of
+        // truth). Corvette is the player's default hull class.
+        entries.push(Entry {
+            generator: "hull_interior".into(),
+            seed,
+            checksum: hash_layout(&generator::station::generate_hull_interior(
+                seed,
+                generator::hull::HullClass::Corvette,
+            )),
+        });
+
+        let planet = generator::generate_planet(seed, 100, Biome::Frontier);
+        let mut h = Hasher::new();
+        h.write_i64(hash_mesh(&planet.disc) as i64);
+        h.write(&planet.surface.pixels);
+        entries.push(Entry {
+            generator: "planet".into(),
+            seed,
+            checksum: h.finish(),
+        });
+
+        let audio = generator::generate_music(seed, generator::Mood::Tense, 1);
+        let mut h = Hasher::new();
+        for s in &audio.samples {
+            h.write(&s.to_le_bytes());
+        }
+        entries.push(Entry {
+            generator: "music".into(),
+            seed,
+            checksum: h.finish(),
+        });
+
+        entries.push(Entry {
+            generator: "ui_panel".into(),
+            seed,
+            checksum: hash_layout(&generator::generate_ui_panel(
+                seed,
+                generator::ui::PanelType::StationServices,
+                320,
+                240,
+            )),
+        });
+
+        let mut h = Hasher::new();
+        for i in 0..64i64 {
+            h.write(&noise::fbm(seed, i * 97, i * 61, 4).to_le_bytes());
+        }
+        entries.push(Entry {
+            generator: "noise".into(),
+            seed,
+            checksum: h.finish(),
+        });
+
+        let palette = color::generate_palette(seed);
+        let mut h = Hasher::new();
+        for c in [palette.primary, palette.accent, palette.structure] {
+            h.write(&[c.r, c.g, c.b, c.a]);
+        }
+        entries.push(Entry {
+            generator: "palette".into(),
+            seed,
+            checksum: h.finish(),
+        });
+
+        // S04 — whole-system generator, both fidelities.
+        entries.push(Entry {
+            generator: "system_full".into(),
+            seed,
+            checksum: hash_serde(&generator::system::generate_system(
+                seed,
+                Biome::Frontier,
+                generator::system::Fidelity::Full,
+            )),
+        });
+        entries.push(Entry {
+            generator: "system_sparse".into(),
+            seed,
+            checksum: hash_serde(&generator::system::generate_system(
+                seed,
+                Biome::DeepSpace,
+                generator::system::Fidelity::Sparse,
+            )),
+        });
+
+        // S05 — item generator (representative family; the icon texture is
+        // part of the hashed output).
+        entries.push(Entry {
+            generator: "item_kinetic".into(),
+            seed,
+            checksum: hash_serde(&item::generate_item(&item::ItemSeed {
+                seed,
+                item_type: item::ItemFamily::KineticWeapon.representative_item_type(),
+                tier: 4,
+                faction: "compact".into(),
+                biome: "frontier".into(),
+            })),
+        });
+        // S17 — exterior composition over a fixture config: reference
+        // corvette frame, one kinetic hardpoint, a tier-4 engine, plated
+        // nose. Hashes the composed mesh, the resolved paint, and the
+        // derived handling so drift in any of the three is caught.
+        {
+            use crate::editor::exterior;
+            let frame = exterior::HullFrame::reference(generator::hull::HullClass::Corvette);
+            let item_ref = |item_type: item::ItemType, tier: u8| {
+                exterior::ItemRef(item::ItemSeed {
+                    seed: seed ^ 0x17,
+                    item_type,
+                    tier,
+                    faction: "compact".into(),
+                    biome: "frontier".into(),
+                })
+            };
+            let config = exterior::HullConfiguration {
+                hull_id: "frame_corvette".into(),
+                seed,
+                hardpoints: vec![exterior::Hardpoint {
+                    slot_id: "nose".into(),
+                    item: item_ref(
+                        item::ItemFamily::KineticWeapon.representative_item_type(),
+                        3,
+                    ),
+                    size_class: exterior::SizeClass::Small,
+                }],
+                engine: item_ref(item::ItemType::Equipment(item::EquipmentKind::Engine), 4),
+                plating: vec![exterior::ArmorSegment {
+                    zone_id: "nose".into(),
+                    mass: 8 * 1024,
+                }],
+                paint: exterior::PaintScheme::default(),
+                decals: vec![],
+            };
+            let composed = exterior::compose_hull(&config, &frame);
+            let h = exterior::handling(&config, &frame);
+            let mut hasher = Hasher::new();
+            hasher.write_i64(hash_mesh(&composed.mesh) as i64);
+            for c in [
+                composed.paint.primary,
+                composed.paint.secondary,
+                composed.paint.accent,
+            ] {
+                hasher.write(&[c.r, c.g, c.b, c.a]);
+            }
+            for v in [
+                h.mass,
+                h.thrust,
+                h.turn_rate,
+                h.drift_damping,
+                h.boost_mult,
+                h.fuel_burn,
+            ] {
+                hasher.write_i64(v);
+            }
+            entries.push(Entry {
+                generator: "hull_config".into(),
+                seed,
+                checksum: hasher.finish(),
+            });
+        }
+
+        // S18 — interior realization over a fixture placement: the six-room
+        // corvette layout with one corridor, realized through the reference
+        // template set. Hashes the walkable GeneratedLayout so drift in the
+        // door pass, corridor legs, or cell math is caught cross-platform.
+        {
+            use crate::editor::interior;
+            let place = |template_id: &str, x: u8, y: u8| interior::PlacedRoom {
+                template_id: template_id.into(),
+                position: (x, y),
+                rotation: 0,
+            };
+            let layout = interior::ShipInteriorLayout {
+                hull_id: "frame_corvette".into(),
+                rooms: vec![
+                    place("airlock", 0, 0),
+                    place("cockpit", 0, 2),
+                    place("galley", 2, 0),
+                    place("quarters", 3, 2),
+                    place("engineering", 0, 6),
+                    place("cargo_hold", 4, 6),
+                ],
+                corridors: vec![interior::Corridor {
+                    from: (1, 4),
+                    to: (1, 5),
+                }],
+                furniture: vec![interior::PlacedFurniture {
+                    slot_id: "galley".into(),
+                    room_idx: 2,
+                    kind: interior::FurnitureKind::GalleyUnit,
+                }],
+                seed,
+            };
+            let bounds =
+                crate::editor::exterior::HullFrame::reference(generator::hull::HullClass::Corvette)
+                    .grid_bounds;
+            let realized =
+                interior::realize(&layout, &interior::RoomTemplate::reference_set(), bounds)
+                    .expect("fixture layout realizes");
+            entries.push(Entry {
+                generator: "ship_interior".into(),
+                seed,
+                checksum: hash_layout(&realized),
+            });
+        }
+
+        // S10 — economy engine. Hash the starter catalogue plus a seeded,
+        // ticked `EconomyState` so any drift in price/tick math is caught
+        // cross-platform (iron rule #3: new generator ⇒ golden entry).
+        let catalog = crate::economy::starter_catalog();
+        entries.push(Entry {
+            generator: "economy_catalog".into(),
+            seed,
+            checksum: hash_serde(&catalog),
+        });
+        let station_seeds = vec![
+            (
+                "hub-1".to_string(),
+                seed ^ 0x111,
+                crate::economy::StationKind::Hub,
+                None,
+            ),
+            (
+                "ref-1".to_string(),
+                seed ^ 0x222,
+                crate::economy::StationKind::Refinery,
+                None,
+            ),
+            (
+                "bm-1".to_string(),
+                seed ^ 0x333,
+                crate::economy::StationKind::BlackMarket,
+                None,
+            ),
+        ];
+        let mut state = crate::economy::EconomyState::new(catalog, &station_seeds);
+        for step in 0..8 {
+            state.tick(seed.wrapping_add(step));
+        }
+        entries.push(Entry {
+            generator: "economy_state".into(),
+            seed,
+            checksum: hash_serde(&state),
+        });
+
+        // S11 — faction engine. Hash a canonical catalog ticked forward (drift
+        // + diplomacy) and a representative tariff quote so any change to the
+        // faction/tariff math is caught cross-platform (iron rule #3).
+        let catalog = crate::faction::FactionCatalog {
+            version: 1,
+            factions: vec![
+                crate::faction::Faction {
+                    id: crate::faction::FactionId("compact".into()),
+                    name: "Compact".into(),
+                    territory: vec![],
+                    resources: crate::faction::FactionResources {
+                        stock: std::collections::BTreeMap::new(),
+                    },
+                    relationships: {
+                        let mut m = std::collections::BTreeMap::new();
+                        m.insert(
+                            crate::faction::FactionId("isc".into()),
+                            crate::faction::DiplomaticStanding {
+                                affinity: 100,
+                                status_snapshot: crate::faction::RelationStatus::Allied,
+                                treaty: None,
+                                war_goal: None,
+                            },
+                        );
+                        m
+                    },
+                    goals: vec![],
+                    internal_divisions: vec![],
+                    doctrine: crate::faction::Doctrine::Diplomatic,
+                    tariff_policy: crate::faction::TariffPolicy::Regulated {
+                        foreign_mult: 1229,
+                        own_mult: 871,
+                    },
+                    produces: vec![],
+                    color: [0x88, 0x88, 0x88, 0xFF],
+                },
+                crate::faction::Faction {
+                    id: crate::faction::FactionId("isc".into()),
+                    name: "ISC".into(),
+                    territory: vec![],
+                    resources: crate::faction::FactionResources {
+                        stock: std::collections::BTreeMap::new(),
+                    },
+                    relationships: std::collections::BTreeMap::new(),
+                    goals: vec![],
+                    internal_divisions: vec![],
+                    doctrine: crate::faction::Doctrine::Economic,
+                    tariff_policy: crate::faction::TariffPolicy::Flat { mult: 1075 },
+                    produces: vec![],
+                    color: [0x88, 0x88, 0x88, 0xFF],
+                },
+            ],
+        };
+        let mut fstate = crate::faction::FactionState::new(catalog);
+        for _ in 0..8 {
+            fstate = crate::faction::tick_factions(fstate).0;
+        }
+        entries.push(Entry {
+            generator: "faction_state".into(),
+            seed,
+            checksum: hash_serde(&fstate),
+        });
+        let tariff = crate::faction::tariff(
+            &fstate.catalog.factions[0],
+            crate::economy::GoodCategory::Consumable,
+            50 * crate::economy::TARIFF_ONE,
+            1024,
+        );
+        entries.push(Entry {
+            generator: "faction_tariff".into(),
+            seed,
+            checksum: tariff as u64,
+        });
+        // evaluate_storylines golden: hash the fired chapter IDs for a
+        // canonical storyline (Compact arc) at a fixed tick.
+        let canonical_stories = vec![crate::faction::Storyline {
+            faction: crate::faction::FactionId("compact".into()),
+            chapters: vec![
+                crate::faction::Chapter {
+                    id: "arc1".into(),
+                    trigger: Some(crate::faction::ChapterTrigger::TickAfter(2)),
+                    narration: "The Compact mobilizes.".into(),
+                    events: vec![],
+                },
+                crate::faction::Chapter {
+                    id: "arc2".into(),
+                    trigger: Some(crate::faction::ChapterTrigger::ChapterComplete(
+                        "arc1".into(),
+                    )),
+                    narration: "First contact established.".into(),
+                    events: vec![],
+                },
+                crate::faction::Chapter {
+                    id: "arc3".into(),
+                    trigger: Some(crate::faction::ChapterTrigger::PlayerReputation {
+                        faction: crate::faction::FactionId("compact".into()),
+                        trust: 50 * crate::faction::REP_ONE,
+                    }),
+                    narration: "Trust earned.".into(),
+                    events: vec![],
+                },
+            ],
+        }];
+        let fired = crate::faction::evaluate_storylines(&fstate, &canonical_stories);
+        let mut h = crate::determinism::Hasher::new();
+        for s in &fired {
+            h.write(s.as_bytes());
+        }
+        entries.push(Entry {
+            generator: "faction_storylines".into(),
+            seed,
+            checksum: h.finish(),
+        });
+
+        // S19 — combat. Encounters for the canonical Frontier system, the
+        // per-class weapon rolls, and a scripted apply_hit exchange, so any
+        // drift in spawn/damage math is caught cross-platform.
+        let sys = generator::system::generate_system(
+            seed,
+            Biome::Frontier,
+            generator::system::Fidelity::Full,
+        );
+        entries.push(Entry {
+            generator: "combat_encounters".into(),
+            seed,
+            checksum: hash_serde(&crate::combat::generate_encounters(seed, &sys)),
+        });
+        let mut vessel = crate::combat::EnemyClass::Bomber.vessel(6);
+        let gun = crate::combat::EnemyClass::Interceptor.weapon(seed, 6);
+        let mut results = Vec::new();
+        for target in [
+            None,
+            Some(crate::combat::SubsystemKind::Engines),
+            Some(crate::combat::SubsystemKind::Drive),
+        ] {
+            for _ in 0..4 {
+                results.push(crate::combat::apply_hit(&mut vessel, &gun, target));
+            }
+        }
+        let mut h = Hasher::new();
+        h.write_i64(hash_serde(&gun) as i64);
+        h.write_i64(hash_serde(&vessel) as i64);
+        h.write_i64(hash_serde(&results) as i64);
+        entries.push(Entry {
+            generator: "combat_damage".into(),
+            seed,
+            checksum: h.finish(),
+        });
+
+        // S21: deep_space_seed is frozen protocol (joining derive_seed).
+        // Test three distinct coords per seed so any FNV-1a derivation drift
+        // across platforms is caught.
+        for coord in &[
+            crate::galaxy::GalaxyCoord { x: 0, y: 0, z: 0 },
+            crate::galaxy::GalaxyCoord {
+                x: 1000,
+                y: 2000,
+                z: 3000,
+            },
+            crate::galaxy::GalaxyCoord {
+                x: -500,
+                y: 8000,
+                z: -12000,
+            },
+        ] {
+            entries.push(Entry {
+                generator: format!("deep_space_seed_{}_{}_{}", coord.x, coord.y, coord.z),
+                seed,
+                checksum: crate::galaxy::deep_space_seed(
+                    *coord,
+                    crate::universe::tier::UniverseTier::Classic,
+                )
+                .value(),
+            });
+        }
+
+        // S20 — landed (humanoid) combat. Drive `humanoid_step` through a
+        // fixed engagement (Idle → Chase → repeated swings) with a
+        // seed-derived patrol, capturing (state, intent) at ticks 0/10/20/
+        // 50/100 so any drift in the state machine or its tick math is caught
+        // cross-platform. Same SeededRng pattern the behavior tree uses.
+        {
+            use crate::combat::humanoid::{
+                humanoid_step, AttackWindow, BlockWindow, DodgeWindow, HostileArchetype,
+                HumanoidSenses, HumanoidState,
+            };
+            let mut rng = crate::util::rng::SeededRng::new(seed ^ 0x5A5A_1234);
+            let mut waypoints = [(0i64, 0i64); 4];
+            for wp in &mut waypoints {
+                *wp = (
+                    (rng.next_below(20_000) as i64) - 10_000,
+                    (rng.next_below(20_000) as i64) - 10_000,
+                );
+            }
+            let win = |s: u32, a: u32, r: u32, d: i64, rng: i64| AttackWindow {
+                startup_ticks: s,
+                active_ticks: a,
+                recovery_ticks: r,
+                damage: d,
+                range: rng,
+            };
+            let arch = HostileArchetype {
+                id: "manifest_raider".into(),
+                display_name: "Manifest Raider".into(),
+                hp: 8192,
+                speed: 256,
+                light_attack: win(8, 4, 12, 1024, 2048),
+                heavy_attack: win(16, 6, 20, 2048, 2560),
+                block: BlockWindow {
+                    active_ticks: 20,
+                    cooldown_ticks: 30,
+                    parry_ticks: 4,
+                },
+                dodge: DodgeWindow {
+                    i_frame_ticks: 8,
+                    recovery_ticks: 12,
+                    distance: 3072,
+                },
+                chase_radius: 8192,
+                disengage_radius: 16000,
+                flee_hp_frac: 256,
+            };
+            let senses = HumanoidSenses {
+                to_target: crate::generator::FixedVec2 {
+                    x: crate::util::rng::Fixed(3 * 1024),
+                    y: crate::util::rng::Fixed(2 * 1024),
+                },
+                dist_to_target: 3600,
+                hp_frac: 1024,
+                weapon_ready: true,
+                target_in_range: true,
+                target_telegraphing: false,
+                under_attack: false,
+                ally_count: 1,
+                patrol_waypoints: waypoints,
+                waypoint_index: (seed % 4) as u32,
+            };
+            let mut state = HumanoidState::Idle;
+            let mut timer = 0u32;
+            let mut captures = Vec::new();
+            for tick in 0..=100u32 {
+                let intent = humanoid_step(&mut state, &mut timer, &senses, &arch);
+                if matches!(tick, 0 | 10 | 20 | 50 | 100) {
+                    captures.push((state, intent));
+                }
+            }
+            entries.push(Entry {
+                generator: "combat_humanoid".into(),
+                seed,
+                checksum: hash_serde(&captures),
+            });
+        }
+
+        // S25 — character sprite generator. Hash both a fully seed-derived
+        // sprite and one with every property pinned, so drift in the hair
+        // style vocabulary, color overrides, or RNG-order is caught
+        // cross-platform (iron rule #3: generator change ⇒ golden entry).
+        use crate::generator::sprite::{CharacterLookConfig, HAIR_STYLE_COUNT};
+        for species in ["Human", "Synthetic", "Robot", "Voidborn", "Xenotype"] {
+            entries.push(Entry {
+                generator: format!("sprite_{species}"),
+                seed,
+                checksum: hash_serde(&generator::sprite::generate_character_sprite(
+                    seed,
+                    &CharacterLookConfig::seed_derived(species),
+                )),
+            });
+        }
+        // Fully-overridden look across every hair style.
+        for style in 0..HAIR_STYLE_COUNT {
+            let mut cfg = CharacterLookConfig::seed_derived("Human");
+            cfg.hair_style = Some(style);
+            cfg.hair_color = Some([20, 20, 20]);
+            cfg.skin_color = Some([240, 200, 180]);
+            cfg.shirt_color = Some([40, 80, 160]);
+            cfg.pants_color = Some([40, 40, 40]);
+            cfg.jacket_enabled = Some(true);
+            cfg.jacket_color = Some([200, 40, 40]);
+            entries.push(Entry {
+                generator: format!("sprite_override_style_{style}"),
+                seed: 0xABCD,
+                checksum: hash_serde(&generator::sprite::generate_character_sprite(0xABCD, &cfg)),
+            });
+        }
+    }
+
+    // S75 — PlayerCharacter round-trip (RON and JSON). Pins the
+    // serialized form so any field change is caught by the determinism gate.
+    for &seed in &CANONICAL_SEEDS {
+        let soul = crate::generator::generate_soul(seed, "Human");
+        let sf_soul = crate::soul::SoulFile {
+            id: format!("player_soul_{seed}"),
+            name: soul.name.clone(),
+            species: crate::soul::types::Species::Human,
+            portrait_id: String::new(),
+            identity: crate::soul::types::Identity {
+                origin: String::new(),
+                faction_affiliation: String::new(),
+                role: "Captain".into(),
+                public_bio: String::new(),
+            },
+            personality: crate::soul::types::Personality {
+                traits: vec![],
+                values: vec![],
+                speaking_style: crate::soul::types::SpeakingStyle::Terse,
+                quirks: vec![],
+            },
+            emotional_state: crate::soul::types::EmotionalState {
+                dominant_mood: crate::soul::types::Mood::Stable,
+                intensity: 512,
+                triggers: vec![],
+            },
+            memory_tree: vec![],
+            relationship_graph: vec![],
+            goals: vec![],
+            breaking_points: vec![],
+            contracts: vec![],
+            backstory: soul.backstory,
+            secrets: vec![],
+            dialogue: None,
+            deflections: vec![],
+            look: None,
+        };
+        let pc = crate::identity::PlayerCharacter {
+            id: crate::identity::EntityId(seed),
+            name: soul.name,
+            pronouns: "they/them".into(),
+            species: "Human".into(),
+            look: crate::generator::sprite::CharacterLookConfig::seed_derived("Human"),
+            origin_id: String::new(),
+            background_id: String::new(),
+            soul: sf_soul,
+        };
+        let ron_text = ron::to_string(&pc).expect("PlayerCharacter RON");
+        let pc_from_ron: crate::identity::PlayerCharacter =
+            ron::from_str(&ron_text).expect("PlayerCharacter from RON");
+        entries.push(Entry {
+            generator: format!("player_character_ron_{seed}"),
+            seed,
+            checksum: hash_serde(&pc_from_ron),
+        });
+        let json_text = serde_json::to_string(&pc).expect("PlayerCharacter JSON");
+        let pc_from_json: crate::identity::PlayerCharacter =
+            serde_json::from_str(&json_text).expect("PlayerCharacter from JSON");
+        entries.push(Entry {
+            generator: format!("player_character_json_{seed}"),
+            seed,
+            checksum: hash_serde(&pc_from_json),
+        });
+    }
+
+    // S36 — procedural dilemma generator (frontier system).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "dilemma".into(),
+            seed,
+            checksum: hash_serde(&generator::dilemma::generate_dilemma(seed, true, 5, 3)),
+        });
+    }
+
+    // S46 — mission engine.
+    for &seed in &CANONICAL_SEEDS {
+        let ctx = generator::mission::MissionGenerationContext {
+            seed,
+            system_kind: "frontier".into(),
+            threat_level: 30,
+            station_faction: "compact".into(),
+            player_career_ranks: vec![],
+            player_notoriety: crate::career::piracy::NotorietyLevel::Clean,
+            player_credits: 1000,
+            tick: 50000,
+        };
+        let missions = generator::generate_missions(&ctx);
+        entries.push(Entry {
+            generator: "mission".into(),
+            seed,
+            checksum: hash_serde(&missions),
+        });
+    }
+
+    // S48 — procedural audio engine (MusicIntent generator + theme variation).
+    for &seed in &CANONICAL_SEEDS {
+        let intent = crate::generator::generate_music_intent(seed, crate::generator::Mood::Calm, 4);
+        entries.push(Entry {
+            generator: "music_intent".into(),
+            seed,
+            checksum: hash_serde(&intent),
+        });
+        let theme = crate::generator::music::Theme {
+            id: "test".into(),
+            notes: vec![crate::generator::music::NoteEvent {
+                degree: 0,
+                octave: 1,
+                velocity: 80,
+                start_tick: 0,
+                duration_ticks: 24,
+            }],
+            scale: crate::generator::music::Scale::MinorPentatonic,
+            bpm_range: (60, 120),
+            allowed_variations: crate::generator::music::VariationMask(u16::MAX),
+        };
+        let themed = crate::generator::generate_themed_music(
+            seed,
+            crate::generator::Mood::Tense,
+            &theme,
+            4,
+            2,
+        );
+        entries.push(Entry {
+            generator: "music_themed".into(),
+            seed,
+            checksum: hash_serde(&themed),
+        });
+    }
+
+    // S39 — ecosystem & life generator (plus event application).
+    for &seed in &CANONICAL_SEEDS {
+        let biomes = vec![Biome::Frontier, Biome::Nebula, Biome::Core];
+        let params = generator::ecosystem::PlanetParams {
+            habitability: 180,
+            age_ticks: 5000,
+            biome_diversity: 3,
+        };
+        let eco = generator::generate_ecosystem(seed, biomes.clone(), params);
+        entries.push(Entry {
+            generator: "ecosystem".into(),
+            seed,
+            checksum: hash_serde(&eco),
+        });
+        let first = eco
+            .biomes
+            .first()
+            .and_then(|b| b.species.first())
+            .map(|s| s.id.clone())
+            .unwrap_or_default();
+        let evt = generator::ecosystem_events::EcosystemEvent {
+            event_type: generator::ecosystem_events::EcosystemEventType::Extinction {
+                cause: "determinism".into(),
+            },
+            affected_biomes: biomes.clone(),
+            affected_species: vec![first],
+            magnitude: 3,
+            description_template: "x".into(),
+        };
+        let after = generator::apply_ecosystem_event(&eco, &evt);
+        entries.push(Entry {
+            generator: "ecosystem_event".into(),
+            seed,
+            checksum: hash_serde(&after),
+        });
+    }
+
+    // S40 — trope engine templates.
+    for &seed in &CANONICAL_SEEDS {
+        use crate::generator::trope::LocationType;
+        let mut gs = std::collections::BTreeMap::new();
+        gs.insert("factions".into(), vec!["compact".into()]);
+        gs.insert("species".into(), vec!["pale_lurker".into()]);
+        gs.insert("planet_names".into(), vec!["Velaris".into()]);
+        // Use a known template — field-matches the authored schema.
+        let template = crate::generator::trope::TropeTemplate {
+            id: "test_trope".into(),
+            trope_type: crate::generator::trope::TropeType::DerelictShip,
+            title_template: "The {ship}".into(),
+            narrative_template: "A {ship} drifts near {planet}.".into(),
+            slots: vec![
+                crate::generator::trope::TropeSlot {
+                    slot_name: "ship".into(),
+                    slot_kind: crate::generator::trope::SlotKind::Text {
+                        options: vec!["Grief".into()],
+                    },
+                    constraints: vec![],
+                },
+                crate::generator::trope::TropeSlot {
+                    slot_name: "planet".into(),
+                    slot_kind: crate::generator::trope::SlotKind::PlanetName,
+                    constraints: vec![],
+                },
+            ],
+            branches: vec![],
+            base_frequency: crate::util::Fixed::from_int(1),
+            location_types: vec![LocationType::DeepSpace],
+            min_threat_level: 1,
+            max_threat_level: 5,
+            dilemma_chance: crate::util::Fixed(102),
+        };
+        entries.push(Entry {
+            generator: "trope_instantiation".into(),
+            seed,
+            checksum: hash_serde(&crate::generator::instantiate_trope(
+                &template,
+                seed,
+                &gs,
+                LocationType::DeepSpace,
+            )),
+        });
+    }
+
+    // S47 — planet scale & culture (wraps S04's GeneratedPlanet).
+    for &seed in &CANONICAL_SEEDS {
+        let mut fmap = std::collections::HashMap::new();
+        fmap.insert(crate::faction::FactionId("compact".into()), 120u8);
+        let sys = generator::planet_extended::SystemParams {
+            kind: "frontier".into(),
+            threat_level: 30,
+        };
+        let planet = generator::generate_planet_extended(seed, Biome::Frontier, 100, &sys, &fmap);
+        entries.push(Entry {
+            generator: "planet_extended".into(),
+            seed,
+            checksum: hash_serde(&planet),
+        });
+        let culture = generator::generate_culture(
+            seed ^ 0x5151,
+            60,
+            &[],
+            &crate::faction::FactionId("compact".into()),
+            generator::planet_extended::SettlementWave::FirstWave,
+            &fmap,
+            20,
+        );
+        entries.push(Entry {
+            generator: "culture".into(),
+            seed,
+            checksum: hash_serde(&culture),
+        });
+    }
+
+    // S52 — generator golden entries for S25, S37, S38, S41, S49 modules
+    // that had generation code but no determinism manifest entries.
+
+    // S25 — soul (seed + species → NPC personality).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "soul".into(),
+            seed,
+            checksum: hash_serde(&generator::generate_soul(seed, "Human")),
+        });
+    }
+
+    // S76 — generate_soul_with_look (pins a CharacterLookConfig on the soul).
+    for &seed in &CANONICAL_SEEDS {
+        let mut cfg = crate::generator::sprite::CharacterLookConfig::seed_derived("Human");
+        cfg.hair_style = Some(3);
+        cfg.hair_color = Some([180, 120, 60]);
+        entries.push(Entry {
+            generator: "soul_with_look".into(),
+            seed,
+            checksum: hash_serde(&generator::soul::generate_soul_with_look(
+                seed, "Human", cfg,
+            )),
+        });
+    }
+
+    // S25 — storyline (seed + chapter count → episodic narrative).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "storyline".into(),
+            seed,
+            checksum: hash_serde(&generator::generate_storyline(seed, 5)),
+        });
+    }
+
+    // S25 — enemy (seed + class → stats).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "enemy".into(),
+            seed,
+            checksum: hash_serde(&generator::generate_enemy(seed, "drone")),
+        });
+    }
+
+    // S25 — location (seed + size → name/counts).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "location".into(),
+            seed,
+            checksum: hash_serde(&generator::generate_location(seed, "medium")),
+        });
+    }
+
+    // S25 — contract (seed + kind → contract data).
+    for &seed in &CANONICAL_SEEDS {
+        entries.push(Entry {
+            generator: "contract".into(),
+            seed,
+            checksum: hash_serde(&generator::generate_contract(seed, "bounty")),
+        });
+    }
+
+    // S41 — scripted encounter (encounter + game state → evaluation).
+    for &seed in &CANONICAL_SEEDS {
+        use crate::generator::scripted_encounter::{
+            EncounterChoice, EncounterScene, EncounterTrigger, ScriptedEncounter,
+            ScriptedEncounterType,
+        };
+        let encounter = ScriptedEncounter {
+            id: "golden_test".into(),
+            title: "Golden Test".into(),
+            encounter_type: ScriptedEncounterType::StoryBeat,
+            trigger: EncounterTrigger::Manual,
+            prerequisites: vec![],
+            scenes: vec![EncounterScene {
+                scene_id: "opening".into(),
+                narrative: "A {ship} appears.".into(),
+                speaker: Some("AI".into()),
+                choices: vec![EncounterChoice {
+                    label: "Approach".into(),
+                    condition: None,
+                    outcome_scene: "opening".into(),
+                    immediate_consequences: vec![],
+                    narrative_response: "You move closer.".into(),
+                }],
+                time_pressure: None,
+            }],
+            on_complete: vec![],
+            repeatable: false,
+            cooldown_ticks: None,
+        };
+        let mut gs = std::collections::BTreeMap::new();
+        gs.insert("ship".into(), "Grief".into());
+        entries.push(Entry {
+            generator: "scripted_encounter".into(),
+            seed,
+            checksum: hash_serde(&generator::scripted_encounter::evaluate_scripted_encounter(
+                &encounter, &gs,
+            )),
+        });
+    }
+
+    // S49 — procedural SFX (seed + kind → PCM i16 buffer).
+    for &seed in &CANONICAL_SEEDS {
+        for (kind, label) in &[
+            (generator::SfxKind::UiConfirm, "sfx_ui_confirm"),
+            (generator::SfxKind::Alarm, "sfx_alarm"),
+            (generator::SfxKind::WeaponFire, "sfx_weapon_fire"),
+        ] {
+            let audio = generator::generate_sfx(seed, *kind);
+            let mut h = Hasher::new();
+            for s in &audio.samples {
+                h.write(&s.to_le_bytes());
+            }
+            entries.push(Entry {
+                generator: (*label).into(),
+                seed,
+                checksum: h.finish(),
+            });
+        }
+    }
+
+    // S37 — log entry template narrative (deterministic offline fallback).
+    for &seed in &CANONICAL_SEEDS {
+        use crate::agency::log::{LogMoment, LogMomentType, LoggableEvent};
+        let events = vec![
+            LoggableEvent {
+                tick: seed,
+                kind: "deliberation".into(),
+                crew_involved: vec!["boris".into(), "tove".into()],
+                summary: "Crew debated repair priorities.".into(),
+            },
+            LoggableEvent {
+                tick: seed + 1,
+                kind: "dilemma".into(),
+                crew_involved: vec!["boris".into()],
+                summary: "Dilemma resolved: saved crew.".into(),
+            },
+        ];
+        let moments = vec![
+            LogMoment {
+                tick: seed,
+                moment_type: LogMomentType::CrewDeliberation,
+                summary: "Crew debated repair priorities.".into(),
+                significance: 7,
+            },
+            LogMoment {
+                tick: seed + 1,
+                moment_type: LogMomentType::DilemmaResolved,
+                summary: "Dilemma resolved: saved crew.".into(),
+                significance: 8,
+            },
+        ];
+        entries.push(Entry {
+            generator: "log_entry".into(),
+            seed,
+            checksum: hash_serde(&crate::agency::log_generation::template_narrative(
+                &events, &moments,
+            )),
+        });
+    }
+
+    // S38 — deliberation theater (multi-crew deliberation state machine).
+    for &seed in &CANONICAL_SEEDS {
+        use crate::contract::theater::{DeliberationTheater, TheaterSpeaker, TheaterTrigger};
+        let mut theater = DeliberationTheater::new(
+            "repair_priority".into(),
+            TheaterTrigger::PlayerCalled {
+                reason: "needs discussion".into(),
+            },
+            vec![
+                TheaterSpeaker {
+                    crew_id: "boris".into(),
+                    role: "Engineer".into(),
+                    relationship_to_topic: "hull integrity is my responsibility".into(),
+                    speaking_order: 1,
+                    spoke: false,
+                    position: None,
+                },
+                TheaterSpeaker {
+                    crew_id: "tove".into(),
+                    role: "Medic".into(),
+                    relationship_to_topic: "crew safety comes first".into(),
+                    speaking_order: 2,
+                    spoke: false,
+                    position: None,
+                },
+                TheaterSpeaker {
+                    crew_id: "prudence".into(),
+                    role: "Pilot".into(),
+                    relationship_to_topic: "we need to be flight-ready".into(),
+                    speaking_order: 3,
+                    spoke: false,
+                    position: None,
+                },
+            ],
+            true,
+        );
+        for _ in 0..3 {
+            let _ = theater.step();
+        }
+        entries.push(Entry {
+            generator: "theater".into(),
+            seed,
+            checksum: hash_serde(&theater),
+        });
+    }
+
+    Manifest {
+        // v3: added S06 hull_interior (ship interior layout) generator.
+        // v4: added S10 economy engine golden entries.
+        // v5: added S11 faction engine golden entries.
+        // v6: added S19 combat golden entries (encounters + damage model).
+        // v7: added S17 hull_config (exterior composition) golden entry.
+        //     (S17 and S19 both bumped 5->6 on their branches; the merge
+        //     carries both entry sets, so the merged manifest is v7.)
+        // v8: added S18 ship_interior (interior realization) golden entry.
+        // v9: added S21 deep_space_seed (frozen protocol) and S20 combat_humanoid.
+        // v10: added S20 hostile_locations to GeneratedSystem (system POIs).
+        // v11: added S25 character sprite generator (seed-derived + fully
+        //      overridden hair-style sweep) golden entries.
+        // v12: added S36 procedural dilemma generator golden entries.
+        // v13: added S39 ecosystem & life generator golden entries
+        //      (generation + event application).
+        // v14: added S47 planet scale & culture golden entries
+        //      (planet_extended wraps S04's GeneratedPlanet; culture).
+        // v15: added S40 trope engine template instantiation golden entries.
+        // v16: added S46 mission engine golden entries.
+        // v17: added S25 soul generator golden entries.
+        // v18: skipped S09 transit (gameplay rolls — S09 gotcha ledger).
+        // v19: added S41 scripted encounter evaluation golden entries.
+        // v20: added S25 storyline chapter generator golden entries.
+        // v21: added S25 enemy archetype generator golden entries.
+        // v22: skipped ship (authored deck plan — not a seeded generator).
+        // v23: added S25 location generator golden entries.
+        // v24: added S49 procedural SFX generator golden entries (3 kinds).
+        // v25: added S25 contract generator golden entries.
+        // v26: skipped career (authored content — no seeded generation func).
+        // v27: skipped piracy (state machine — no seeded generation func).
+        // v28: added S37 log entry template narrative golden entries.
+        // v29: added S38 deliberation theater golden entries.
+        // v30: added S75 PlayerCharacter round-trip golden entries (RON + JSON).
+        // v31: S76: SoulFile gained look: Option<CharacterLookConfig> field.
+        version: 31,
+        entries,
+    }
+}
+
+/// Compare two manifests, returning human-readable mismatch lines.
+pub fn diff(ours: &Manifest, theirs: &Manifest) -> Vec<String> {
+    let mut problems = Vec::new();
+    if ours.version != theirs.version {
+        problems.push(format!(
+            "manifest version mismatch: {} vs {}",
+            ours.version, theirs.version
+        ));
+        return problems;
+    }
+    if ours.entries.len() != theirs.entries.len() {
+        problems.push(format!(
+            "entry count mismatch: {} vs {}",
+            ours.entries.len(),
+            theirs.entries.len()
+        ));
+    }
+    for (a, b) in ours.entries.iter().zip(&theirs.entries) {
+        if a != b {
+            problems.push(format!(
+                "{}(seed {:#x}): {:#018x} vs {:#018x}",
+                a.generator, a.seed, a.checksum, b.checksum
+            ));
+        }
+    }
+    problems
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest_is_stable_within_a_run() {
+        assert_eq!(manifest(), manifest());
+    }
+
+    #[test]
+    fn diff_reports_divergence() {
+        let a = manifest();
+        let mut b = manifest();
+        // Flip a stable generator (music sits at a fixed index regardless of
+        // generators added before it).
+        let music_idx = b
+            .entries
+            .iter()
+            .position(|e| e.generator == "music")
+            .expect("music entry present");
+        b.entries[music_idx].checksum ^= 1;
+        let problems = diff(&a, &b);
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].contains("music"));
+    }
+}

@@ -1,0 +1,26 @@
+{
+  "id": "corporate_charters",
+  "name": "Corporate Charters",
+  "doctrine": "economic",
+  "territory": [],
+  "resources": { "stock": {} },
+  "relationships": {
+    "compact": {
+      "affinity": 0,
+      "status_snapshot": "neutral"
+    },
+    "isc": {
+      "affinity": 0,
+      "status_snapshot": "neutral"
+    },
+    "reach_remnant": {
+      "affinity": -30,
+      "status_snapshot": "hostile"
+    }
+  },
+  "goals": [],
+  "internal_divisions": [],
+  "produces": [],
+  "color": [231, 76, 60, 255],
+  "tariff_policy": "dynamic"
+}

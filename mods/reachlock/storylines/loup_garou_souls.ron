@@ -1,0 +1,37 @@
+// Soul mutation arcs for the Loup-Garou crew (S13, spec §15). Fired-once
+// narrative changes, applied through `soul::apply_mutation`. Canon:
+// docs/LORE.md §V — Boris's mark, §IX central tensions.
+[
+    // The mark on Boris's forearm. Nobody has asked. At some point someone
+    // will — and if they've earned it, the answer changes things.
+    (
+        id: "boris_the_mark_earned",
+        soul_id: "boris",
+        trigger: all([
+            compare(field: "trust.player", op: gt, value: 819),
+            compare(field: "event.player_showed_trust_during_crisis", op: eq, value: 1),
+        ]),
+        changes: [
+            add_trait("Devoted"),
+            set_relationship(target: "player", trust: 870, familiarity: 700),
+            unlock_secret("the_mark"),
+            add_goal((
+                id: "protect_the_captain_specifically",
+                priority: constant,
+                description: "Ludger Thibodeaux does not die on an EVA. Operationally refined parameter.",
+            )),
+        ],
+    ),
+    // Tib and the second memorial at Sorrow Station: stopping in front of
+    // it, once, with the crew watching, is a door that only opens one way.
+    (
+        id: "tib_memorial_acknowledged",
+        soul_id: "tib",
+        trigger: compare(field: "event.stopped_at_the_quebec_memorial", op: eq, value: 1),
+        changes: [
+            remove_trait("Deflecting"),
+            add_trait("Unburdening"),
+            unlock_secret("quebec_city"),
+        ],
+    ),
+]

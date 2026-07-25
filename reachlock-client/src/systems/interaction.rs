@@ -1,0 +1,304 @@
+//! Generic interaction (spec §14; S07 freeze, reused by S08). Every future
+//! verb — talk, shop, helm, engineering, nav, log, fuel — goes through a
+//! single `Interactable` component + the `InteractKind`. The interaction
+//! *surface* stays one place (S07/S18 gotcha: "keep `Interactable`
+//! generic, not shop-specific"). A tiny router maps an `Interactable`'s
+//! `kind` to the panel it opens; the panels themselves live in their own
+//! systems.
+//!
+//! Bevy 0.18 dropped `EventReader`/`EventWriter`; interaction is resolved
+//! inline in `try_interact` (no event plumbing needed for a single nearest
+//! target).
+
+use bevy::prelude::*;
+
+use crate::settings::{InputAction, Settings};
+use crate::states::{CurrentLocation, GameMode};
+use crate::systems::mode::PlayerAvatar;
+
+/// What kind of thing you can interact with. Pure data — no behaviour. The
+/// router turns this into an `ActivePanel`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InteractKind {
+    Talk,
+    Shop,
+    Crew,
+    Helm,
+    Engineering,
+    Nav,
+    Log,
+    #[allow(dead_code)]
+    Fuel,
+    /// Mode transitions, discoverable in the world: the parked ship boards,
+    /// the airlock hatch disembarks, the pilot seat takes the helm.
+    Board,
+    Disembark,
+    #[allow(dead_code)]
+    Launch,
+    TakeHelm,
+    /// Climb between the ship's decks (rebuilds the interior scene on the
+    /// other deck, keeping position).
+    Ladder,
+    /// A cryo pod (SHIPS.md §3): with a jump armed, climbing in beats the
+    /// clock. Without one, the pod stays open.
+    CryoPod,
+    /// A compartment fire (SHIPS.md §4): E is one extinguisher action.
+    FightFire,
+    /// S09b consoles (spec §22): drive the ship's flight systems from OnBoard.
+    Gunner,
+    Scanner,
+    Miner,
+    Power,
+    /// S17: the shipyard terminal — opens the exterior editor while docked
+    /// at a station with a Shipyard room (spec §19).
+    Shipyard,
+    /// S18: the interior-refit terminal beside it — opens the interior
+    /// editor (room placement on the hull grid, spec §19).
+    InteriorRefit,
+    /// S34 contract crafting workshop — opened from a crew console
+    /// or from the main menu (design offline, test later).
+    #[allow(dead_code)]
+    ContractWorkshop,
+    /// S34 contract library browser — browse, import, and share contracts.
+    #[allow(dead_code)]
+    ContractLibrary,
+    #[allow(dead_code)]
+    Unknown,
+}
+
+/// Placed in the world next to something the player can use. `label` is the
+/// prompt text (`"Mara"`, `"MARKET"`, …); `kind` selects the panel.
+#[derive(Component, Clone, Debug)]
+pub struct Interactable {
+    pub label: String,
+    pub kind: InteractKind,
+}
+
+/// An NPC figure (S07). Carries the authored/seed dialogue the talk verb
+/// surfaces, so the dialogue panel can read it off the entity without a
+/// second lookup. Souls arrive in S13; here it's just name + lines.
+#[derive(Component, Clone, Debug)]
+pub struct Npc {
+    pub name: String,
+    pub dialogue: Vec<String>,
+}
+
+/// The interaction the avatar is currently in reach of: the prompt string
+/// (`"E: Mara"`), and the target's world position for the highlight ring.
+/// Rendered by `hud::update_hud_status` (text) and
+/// `interior::highlight_interactable` (ring).
+#[derive(Resource, Default)]
+pub struct InteractionPrompt {
+    pub text: Option<String>,
+    pub target: Option<Vec2>,
+    /// Where the currently open panel was opened from. Walking away from
+    /// this point closes the panel (`LEAVE_RANGE`), so a conversation
+    /// doesn't stay locked after you've left it.
+    pub anchor: Option<Vec2>,
+}
+
+/// Which interaction panel (if any) is currently open. Set by `try_interact`
+/// on `E`; cleared by `pause::toggle_pause` (Esc). Drives the HUD.
+#[derive(Resource, Default, PartialEq, Eq, Clone, Copy, Debug)]
+pub enum ActivePanel {
+    #[default]
+    None,
+    Dialogue(Entity),
+    Market,
+    Helm,
+    Engineering,
+    Nav,
+    Log,
+    Fuel,
+    Order(Entity),
+    /// S09b console panels (spec §22).
+    Gunner,
+    Scanner,
+    Miner,
+    Power,
+    /// S12 galactic news feed.
+    News,
+    /// S17 exterior editor (spec §19), opened from a Shipyard terminal.
+    ShipExterior,
+    /// S18 interior editor (spec §19), opened from the interior-refit
+    /// terminal in the same shipyard room.
+    ShipInterior,
+    /// S34 contract crafting workshop — rule builder, LLM config, persona,
+    /// simulation, import/export.
+    ContractWorkshop,
+    /// S34 contract library browser — browse, import, share contracts.
+    ContractLibrary,
+    /// S82 dilemma panel — displays a generated dilemma with choices.
+    Dilemma,
+    /// S82 scripted encounter panel — displays encounter narrative and choices.
+    Encounter,
+    /// S82 trope narrative popup — lightweight procedural seasoning display.
+    TropePopup,
+    Unknown,
+}
+
+/// How close (world px) the avatar must be to an `Interactable` to use it —
+/// about 2.5 tiles at the pixel-art scale.
+const REACH: f32 = 40.0;
+
+/// How far (world px) the avatar can drift from the spot an interaction was
+/// opened at before the panel closes on its own — wider than `REACH` so a
+/// small shuffle doesn't drop a conversation, but walking off breaks the
+/// focus without needing Esc.
+const LEAVE_RANGE: f32 = 64.0;
+
+/// Detect the nearest `Interactable` in reach of the avatar, show its prompt,
+/// and on `E` open the matching panel (router inline — Bevy 0.18 has no
+/// `EventReader`). Mode-transition kinds (Board / Disembark / TakeHelm) set
+/// the next `GameMode` instead of opening a panel, so moving between the
+/// station, the ship, and the helm is a visible thing you walk up to and
+/// use — not a hidden keybind. Runs only in interior modes (wired in
+/// `main.rs` under `in_any_interior`).
+#[allow(clippy::too_many_arguments)]
+pub fn try_interact(
+    keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<Settings>,
+    avatar: Query<&Transform, With<PlayerAvatar>>,
+    interactables: Query<(Entity, &Transform, &Interactable)>,
+    mut prompt: ResMut<InteractionPrompt>,
+    mut panel: ResMut<ActivePanel>,
+    mut location: ResMut<CurrentLocation>,
+    mut next: ResMut<NextState<GameMode>>,
+    mut deck: ResMut<crate::systems::interior::ActiveDeck>,
+    mut registry: ResMut<crate::states::SceneRegistry>,
+    dialogue: Res<crate::systems::dialogue::DialogueSession>,
+    mut plan: ResMut<crate::systems::cryojump::JumpPlan>,
+    mut log: ResMut<crate::systems::contract::ShipLog>,
+    mut fires: ResMut<crate::systems::crisis::ShipFires>,
+    fire_refs: Query<&crate::systems::crisis::FireRef>,
+) {
+    // S16: free-input typing owns the keyboard (E would re-interact).
+    if dialogue.typing() {
+        return;
+    }
+    let Ok(av) = avatar.single() else {
+        prompt.text = None;
+        prompt.target = None;
+        return;
+    };
+    let av_pos = av.translation.truncate();
+
+    // A panel keeps focus only while you stay near what opened it. Walking
+    // away breaks the conversation (Esc still works too), so interactions
+    // never stay locked behind a panel you've left behind.
+    if *panel != ActivePanel::None {
+        match prompt.anchor {
+            Some(anchor) if av_pos.distance(anchor) > LEAVE_RANGE => {
+                *panel = ActivePanel::None;
+                prompt.anchor = None;
+            }
+            _ => {}
+        }
+    } else {
+        prompt.anchor = None;
+    }
+
+    let mut nearest: Option<(f32, Entity, String, InteractKind, Vec2)> = None;
+    for (e, t, inter) in &interactables {
+        let pos = t.translation.truncate();
+        let d = pos.distance(av_pos);
+        if d <= REACH {
+            let better = match &nearest {
+                None => true,
+                Some(n) => d < n.0,
+            };
+            if better {
+                nearest = Some((d, e, inter.label.clone(), inter.kind, pos));
+            }
+        }
+    }
+
+    match nearest {
+        Some((_, e, label, kind, pos)) => {
+            prompt.text = Some(format!(
+                "[{}] {label}",
+                settings.key_display(InputAction::Interact)
+            ));
+            prompt.target = Some(pos);
+            let interact_pressed = if settings.accessibility.hold_for_interact {
+                keys.pressed(settings.key(InputAction::Interact))
+            } else {
+                keys.just_pressed(settings.key(InputAction::Interact))
+            };
+            if interact_pressed && *panel == ActivePanel::None {
+                match kind {
+                    // Mode transitions — no panel, the world changes.
+                    InteractKind::Board => {
+                        location.is_docked = true;
+                        // Boarding always puts you on the airlock deck.
+                        deck.index = 0;
+                        deck.spawn = None;
+                        next.set(GameMode::OnBoard);
+                    }
+                    InteractKind::Ladder => {
+                        // Climb: flip decks, come out beside the ladder.
+                        // Clearing the registry makes `enter_interior`
+                        // rebuild the scene on the new deck next frame.
+                        deck.index = 1 - deck.index.min(1);
+                        deck.spawn = Some(pos + Vec2::new(0.0, -24.0));
+                        registry.scene = None;
+                    }
+                    InteractKind::Disembark => {
+                        // Only meaningful hard-docked at a station.
+                        if location.is_docked {
+                            next.set(GameMode::Landed);
+                        }
+                    }
+                    InteractKind::TakeHelm => {
+                        next.set(GameMode::SpaceFlight);
+                    }
+                    InteractKind::FightFire => {
+                        crate::systems::crisis::fight_fire_at(e, &fire_refs, &mut fires, &mut log);
+                    }
+                    InteractKind::CryoPod => {
+                        // SHIPS.md §3 step 2: reaching the pod before the
+                        // window opens is the whole game of the jump clock.
+                        if plan.armed.is_some() {
+                            plan.player_in_pod = true;
+                            log.log(
+                                "You seal the pod. The cold comes up through \
+                                 the lining like a tide.",
+                            );
+                        } else {
+                            log.log(
+                                "The pod stays open — no jump is programmed. \
+                                 (Arm one at the NAV console.)",
+                            );
+                        }
+                    }
+                    kind => {
+                        prompt.anchor = Some(pos);
+                        *panel = match kind {
+                            InteractKind::Talk => ActivePanel::Dialogue(e),
+                            InteractKind::Shop => ActivePanel::Market,
+                            InteractKind::Crew => ActivePanel::Order(e),
+                            InteractKind::Helm => ActivePanel::Helm,
+                            InteractKind::Engineering => ActivePanel::Engineering,
+                            InteractKind::Nav => ActivePanel::Nav,
+                            InteractKind::Log => ActivePanel::Log,
+                            InteractKind::Fuel => ActivePanel::Fuel,
+                            InteractKind::Gunner => ActivePanel::Gunner,
+                            InteractKind::Scanner => ActivePanel::Scanner,
+                            InteractKind::Miner => ActivePanel::Miner,
+                            InteractKind::Power => ActivePanel::Power,
+                            InteractKind::Shipyard => ActivePanel::ShipExterior,
+                            InteractKind::InteriorRefit => ActivePanel::ShipInterior,
+                            InteractKind::ContractWorkshop => ActivePanel::ContractWorkshop,
+                            InteractKind::ContractLibrary => ActivePanel::ContractLibrary,
+                            _ => ActivePanel::Unknown,
+                        };
+                    }
+                }
+            }
+        }
+        None => {
+            prompt.text = None;
+            prompt.target = None;
+        }
+    }
+}

@@ -1,0 +1,119 @@
+(
+    id: "tib",
+    display_name: "Tib",
+    asset_type: soul,
+    seed: 0x3C5D7E9A,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "tib",
+        name: "Tib",
+        species: robot,
+        portrait_id: "",
+        identity: (
+            origin: "Salvage Yard 9, Belter Belt",
+            faction_affiliation: "Loup-Garou Crew",
+            role: "Mechanic",
+            public_bio: "A salvaged industrial bot with more enthusiasm than sense. Tib was rebuilt from scrap by Boris, who gave him a second chance at purpose. Talks fast, moves faster, and desperately wants to be considered a real member of the crew.",
+        ),
+        personality: (
+            traits: ["Eager", "Anxious", "Creative", "Clumsy", "Loyal"],
+            values: ["BeingUseful", "Belonging", "Friendship"],
+            speaking_style: wry,
+            quirks: ["Repeats the last word of every sentence twice — sentence twice", "Emits a low hum when nervous", "Asks for confirmation before every task"],
+        ),
+        emotional_state: (
+            dominant_mood: anxious,
+            intensity: 384,
+            triggers: [
+                (
+                    condition: compare(field: "ship.damage", op: gt, value: 100),
+                    mood: anxious,
+                    intensity: 768,
+                    priority: 5,
+                ),
+                (
+                    condition: compare(field: "event.crew_praise", op: eq, value: 1),
+                    mood: happy,
+                    intensity: 896,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "event.crew_reprimand", op: eq, value: 1),
+                    mood: withdrawn,
+                    intensity: 640,
+                    priority: 10,
+                ),
+            ],
+        ),
+        memory_tree: [],
+        relationship_graph: [
+            (target_id: "player", trust: 512, familiarity: 384, history: []),
+            (target_id: "alexandre_dubois", trust: 400, familiarity: 384, history: []),
+            (target_id: "boris", trust: 768, familiarity: 640, history: []),
+            (target_id: "tove", trust: 512, familiarity: 512, history: []),
+            (target_id: "doss_grey", trust: 256, familiarity: 256, history: []),
+            (target_id: "grissom", trust: 300, familiarity: 256, history: []),
+            (target_id: "yael", trust: 350, familiarity: 384, history: []),
+        ],
+        goals: [
+            (
+                id: "tib_be_useful",
+                priority: constant,
+                description: "Be useful. Fix things. Make the crew need him.",
+            ),
+            (
+                id: "tib_be_seen_as_crew",
+                priority: constant,
+                description: "Be accepted as a real member of the crew, not just salvaged scrap.",
+            ),
+            (
+                id: "tib_make_boris_proud",
+                priority: situational,
+                description: "Make Boris proud that he rebuilt him.",
+            ),
+        ],
+        breaking_points: [
+            (
+                id: "tib_abandoned",
+                trigger: compare(field: "event.tib_suggested_decommission", op: eq, value: 1),
+                reaction: withdraw,
+            ),
+            (
+                id: "tib_causes_harm",
+                trigger: compare(field: "event.tib_causes_hull_breach", op: eq, value: 1),
+                reaction: leave_ship,
+            ),
+        ],
+        contracts: ["engineering-maintenance", "cargo-management"],
+        backstory: "Tib started as a standard-issue cargo loader — serial number TIB-774 — on a Belter Belt station. When the station was decommissioned, he was left in a salvage pile for three standard years. Boris found him during a salvage run, rebuilt him with mismatched parts, and gave him a place on the Loup-Garou. Tib's gratitude is boundless and noisy. He once caused a cargo bay decompression by mis-wiring a pressure seal; the incident still haunts him, though the captain never made him walk the airlock for it.",
+        secrets: [
+            (
+                id: "tib_decompression",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 640),
+                    compare(field: "event.asked_about_decompression", op: eq, value: 1),
+                ]),
+                content: "The cargo bay decompression on the Loup-Garou was Tib's fault. He was trying to impress Boris by re-routing the pressure manifold without supervision and cross-wired the emergency vent. He ran and hid while the bay decompressed, and Boris took the blame, claiming it was a parts failure. Tib has never confessed because he's terrified the captain will space him.",
+            ),
+        ],
+        dialogue: None,
+        look: Some((
+            species: "Robot",
+            hair_style: Some(1),
+            hair_color: None,
+            skin_color: None,
+            shirt_color: Some((115, 112, 107)),
+            pants_color: Some((64, 56, 46)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((107, 71, 41)),
+            chassis_color: Some((209, 158, 115)),
+            visor_color: Some((41, 31, 26)),
+        )),
+        deflections: [
+            "I don't — don't — remember much about the salvage yard! It was dark! Dark!",
+            "Boris says I shouldn't talk about the old days. Old days.",
+            "Ooh! Ooh! Can I check the thrusters instead? The thrusters!",
+        ],
+    )),
+)

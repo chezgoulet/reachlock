@@ -1,0 +1,17 @@
+// Security bot — the derelict's derelict guardian. A hull sponge (hp 16000)
+// that never flees (flee_hp_frac 0) and never runs (speed 64); it walks you
+// down and lands slow, heavy, high-commit swings. The long telegraphs are the
+// whole fight: read them, dodge, punish the recovery. Fixed-point, 10 Hz.
+HostileArchetype(
+    id: "security_bot",
+    display_name: "Security Bot",
+    hp: 16000,
+    speed: 64,
+    light_attack: (startup_ticks: 14, active_ticks: 5, recovery_ticks: 18, damage: 1536, range: 2304),
+    heavy_attack: (startup_ticks: 26, active_ticks: 8, recovery_ticks: 28, damage: 3072, range: 3072),
+    block: (active_ticks: 30, cooldown_ticks: 24, parry_ticks: 6),
+    dodge: (i_frame_ticks: 6, recovery_ticks: 20, distance: 1536),
+    chase_radius: 9216,
+    disengage_radius: 20000,
+    flee_hp_frac: 0,
+)

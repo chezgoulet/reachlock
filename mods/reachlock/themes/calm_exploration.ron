@@ -1,0 +1,24 @@
+// S48: sample music theme — calm exploration mood.
+// The generator will riff on this theme using the allowed variation operators.
+Theme(
+    id: "calm_exploration",
+    notes: [
+        // Phrase 1 — rising call
+        (degree: 3, octave: 0, velocity: 80, start_tick: 0, duration_ticks: 12),
+        (degree: 5, octave: 0, velocity: 72, start_tick: 12, duration_ticks: 12),
+        (degree: 6, octave: 0, velocity: 72, start_tick: 24, duration_ticks: 12),
+        (degree: 5, octave: 0, velocity: 64, start_tick: 36, duration_ticks: 12),
+        (degree: 3, octave: 0, velocity: 72, start_tick: 48, duration_ticks: 24),
+        // rest
+        (degree: 0, octave: 0, velocity: 0, start_tick: 72, duration_ticks: 12),
+        // Phrase 2 — answering fall
+        (degree: 6, octave: 0, velocity: 80, start_tick: 84, duration_ticks: 12),
+        (degree: 8, octave: 0, velocity: 72, start_tick: 96, duration_ticks: 12),
+        (degree: 10, octave: 0, velocity: 80, start_tick: 108, duration_ticks: 24),
+        (degree: 8, octave: 0, velocity: 64, start_tick: 132, duration_ticks: 12),
+        (degree: 6, octave: 0, velocity: 60, start_tick: 144, duration_ticks: 12),
+    ],
+    scale: minor_pentatonic,
+    bpm_range: (60, 80),
+    allowed_variations: 65535,  // all bits set — full variation
+)

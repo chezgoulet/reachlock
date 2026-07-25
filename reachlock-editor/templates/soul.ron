@@ -1,0 +1,46 @@
+// TODO: id — unique identifier for this soul (e.g. "mara")
+id: "new_soul"
+// TODO: name — NPC display name
+name: "New NPC"
+// TODO: species — Human, Android, Robot, Voidborn, or Xenotype
+species: Human
+// TODO: portrait_id — optional reference to a generated portrait asset
+portrait_id: ""
+// TODO: identity — who they are
+identity: Identity(
+    // TODO: origin — homeworld or birthplace
+    origin: "",
+    // TODO: faction_affiliation — faction id this NPC is aligned with
+    faction_affiliation: "compact",
+    // TODO: role — job title or role description
+    role: "",
+    // TODO: public_bio — what they tell you on inspection
+    public_bio: "",
+)
+// TODO: personality — voice, traits, values, quirks
+personality: Personality(
+    traits: [],
+    values: [],
+    speaking_style: Terse,
+    quirks: [],
+)
+// TODO: emotional_state — baseline mood
+emotional_state: EmotionalState(
+    dominant_mood: Stable,
+    intensity: 512,
+    triggers: [],
+)
+// TODO: memory_tree — formative memories
+memory_tree: []
+// TODO: relationship_graph — relationships with other NPCs
+relationship_graph: []
+// TODO: goals — what this NPC wants
+goals: []
+// TODO: breaking_points — trauma triggers
+breaking_points: []
+// TODO: contracts — contract ids this soul can execute
+contracts: []
+// TODO: backstory — author reference (not an LLM prompt)
+backstory: ""
+// TODO: secrets — hidden knowledge
+secrets: []

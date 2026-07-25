@@ -1,0 +1,23 @@
+// TODO: version — schema version number
+version: 1
+// TODO: factions — list of faction definitions
+factions: [
+    Faction(
+        id: FactionId("new_faction"),
+        name: "New Faction",
+        territory: [],
+        resources: FactionResources(
+            treasury: 10000,
+            influence: 500,
+            fleet_capacity: 10,
+            production_capacity: 5,
+        ),
+        relationships: {},
+        goals: [],
+        internal_divisions: [],
+        doctrine: Diplomatic,
+        tariff_policy: None,
+        produces: [],
+        color: [0x88, 0x88, 0x88, 0xFF],
+    ),
+]

@@ -1,0 +1,24 @@
+//! Scaffold event content file.
+//! A simple event with one stage and one trigger.
+(
+    id: "scaffold_event",
+    display_name: "Scaffold Event",
+    asset_type: "event",
+    seed: 0x0E1F2A3B,
+    universe: "all",
+    priority: curated,
+    payload: Event(Event(
+        title: Some("Scaffold Event"),
+        description: Some("A simple test event."),
+        stages: [(
+            stage_id: Some("stage_1"),
+            narrative: "The event triggers.",
+            trigger: Some((type: TickAfter, params: {"ticks": U64(100)})),
+            consequences: [(type: SetFlag, params: {"flag": String("scaffold_event_triggered")})],
+            dialogue: None,
+        )],
+        expires_at_tick: None,
+        expires_after_event: None,
+        repeatable: Some(false),
+    )),
+)

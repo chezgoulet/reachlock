@@ -1,0 +1,27 @@
+GateNetwork(
+    gates: [
+        // Aethon — the Compact's seat — is the hub of the core region.
+        // Three gates out to the inner frontier; all active.
+        (from: "aethon", to: "verne", status: active),
+        (from: "aethon", to: "cadence", status: active),
+        (from: "aethon", to: "sorrow", status: active),
+        // Verne — a research outpost on the veil's edge.
+        (from: "verne", to: "cadence", status: active),
+        (from: "verne", to: "the_veil", status: restricted, controlled_by: Some("compact")),
+        // Cadence — trade hub, connects to the fringe.
+        (from: "cadence", to: "sorrow", status: active),
+        (from: "cadence", to: "fringe_a", status: active),
+        // Sorrow — the fall: a once-thriving colony system, now derelict.
+        // Blockaded by the Earth Remnant.
+        (from: "sorrow", to: "earth", status: blockaded, controlled_by: Some("earth_remnant")),
+        (from: "sorrow", to: "fringe_b", status: active),
+        // Earth — homeworld, lost. The Remnant holds the gate shut.
+        (from: "earth", to: "fringe_b", status: blockaded, controlled_by: Some("earth_remnant")),
+        // The Veil — a nebula system, Compact scientific expedition.
+        (from: "the_veil", to: "fringe_a", status: active),
+        (from: "the_veil", to: "fringe_b", status: active),
+        // Fringe systems — the frontier edge.
+        (from: "fringe_a", to: "fringe_b", status: active),
+        (from: "fringe_b", to: "fringe_a", status: active),
+    ],
+)

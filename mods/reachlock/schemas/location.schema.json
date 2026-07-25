@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Hostile Location (S20 Landed Combat)",
+  "description": "A hostile interior location (derelict ship, bunker, space station). A graph of rooms with enemy spawns, props, walkable connections between rooms, and an optional keycard gate. Loaded from content/combat/*.ron into reachlock_core::combat::HostileLocation — no wrapper envelope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "rooms"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique location id"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name for the map/UI"
+    },
+    "rooms": {
+      "type": "array",
+      "description": "Rooms in this location",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "width", "height", "kind"],
+        "properties": {
+          "id": { "type": "string", "description": "Room id, referenced by connections" },
+          "width": { "type": "integer", "minimum": 1, "description": "Room width in cells" },
+          "height": { "type": "integer", "minimum": 1, "description": "Room height in cells" },
+          "kind": {
+            "type": "string",
+            "enum": ["empty", "corridor", "arena", "boss", "reward"],
+            "description": "Free-form room role"
+          },
+          "spawns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["archetype", "pos"],
+              "properties": {
+                "archetype": { "type": "string", "description": "Archetype id resolved against the loaded combat set" },
+                "pos": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2, "description": "[x, y] cell within the room" },
+                "patrol": { "type": "array", "items": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 }, "description": "Patrol waypoints (room cells); empty means hold position" }
+              }
+            }
+          },
+          "props": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "pos"],
+              "properties": {
+                "kind": { "type": "string", "enum": ["barrel", "crate"], "description": "Prop kind" },
+                "pos": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2, "description": "[x, y] cell within the room" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "connections": {
+      "type": "array",
+      "description": "Room-id pairs that are walkable neighbours (undirected)",
+      "items": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 2,
+        "maxItems": 2
+      }
+    },
+    "keycard": {
+      "type": "object",
+      "description": "Optional keycard gate on one of the connections",
+      "additionalProperties": false,
+      "required": ["door", "key_name"],
+      "properties": {
+        "door": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2, "description": "The connection (room id pair) this key unlocks" },
+        "key_name": { "type": "string", "description": "Item/flag name the player must hold to pass" }
+      }
+    }
+  }
+}
