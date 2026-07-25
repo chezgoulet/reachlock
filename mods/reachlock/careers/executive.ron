@@ -1,0 +1,77 @@
+// Corporate Executive career path. Referenced by the origins (or by another
+// career's conflict set) — see `reachlock content check`.
+// Perk magnitudes are fixed-point: 1024 = 1.0 = 100%.
+(
+    id: "executive",
+    display_name: "Corporate Executive",
+    asset_type: career,
+    seed: 48,
+    universe: "all",
+    priority: authoritative,
+    payload: career((
+        id: "executive",
+        path_type: trade,
+        name: "Corporate Executive",
+        description: "Charter does not employ you so much as hold your account. The distinction is in the paperwork and nowhere else.",
+        faction_id: Some("corp"),
+        ranks: [
+            (
+                rank: 1,
+                title: "Associate",
+                required_criteria: [
+                    (criterion_type: trade_volume, threshold: 20000),
+                ],
+                rank_perks: ["expense_account"],
+                faction_standing_bonus: 10,
+            ),
+            (
+                rank: 2,
+                title: "Director",
+                required_criteria: [
+                    (criterion_type: trade_volume, threshold: 100000),
+                    (criterion_type: missions_completed, threshold: 12),
+                ],
+                rank_perks: ["charter_yards"],
+                faction_standing_bonus: 25,
+            ),
+            (
+                rank: 3,
+                title: "Vice President",
+                required_criteria: [
+                    (criterion_type: trade_volume, threshold: 400000),
+                    (criterion_type: faction_reputation_gained, threshold: 5000),
+                ],
+                rank_perks: ["board_seat"],
+                faction_standing_bonus: 40,
+            ),
+        ],
+        progression_criteria: [
+            (criterion_type: trade_volume, target: "*", threshold: 400000, weight: 1024),
+            (criterion_type: faction_reputation_gained, target: "corp", threshold: 5000, weight: 512),
+        ],
+        perks: [
+            (
+                id: "expense_account",
+                name: "Expense Account",
+                description: "Charter covers your docking",
+                perk_type: station_discount(faction_id: "corp", pct: 2048),
+                magnitude: 2048,
+            ),
+            (
+                id: "charter_yards",
+                name: "Charter Yards",
+                description: "Access to Charter shipyards",
+                perk_type: restricted_area_access(area_id: "charter_yard"),
+                magnitude: 1024,
+            ),
+            (
+                id: "board_seat",
+                name: "Board Seat",
+                description: "Charter contracts open to you alone",
+                perk_type: exclusive_contract(contract_id: "charter_board"),
+                magnitude: 1024,
+            ),
+        ],
+        conflicting_paths: ["outlaw"],
+    )),
+)

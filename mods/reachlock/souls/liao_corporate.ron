@@ -1,0 +1,105 @@
+// Liao — companion soul shipped with the origin that references
+// this id. Not canon crew: these characters belong to their origin, and an
+// author is meant to rewrite them freely. Fixed-point (1024 = 1.0).
+(
+    id: "liao_corporate",
+    display_name: "Liao",
+    asset_type: soul,
+    seed: 8241905573308846,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "liao_corporate",
+        name: "Liao Wen-Shu",
+        species: human,
+        portrait_id: "portraits/liao_corporate",
+        identity: (
+            origin: "Corp Charter internal placement track",
+            faction_affiliation: "Corp Charter",
+            role: "Corporate Liaison",
+            public_bio: "Liao is your liaison, which means Liao is your minder, and both of you know it. The arrangement works because Liao is genuinely good at the job and has never once pretended the second half is not true.",
+        ),
+        personality: (
+            traits: ["Polished", "Candid", "Calculating"],
+            values: ["TheAccount", "MutualInterest", "CleanRecords"],
+            speaking_style: formal,
+            quirks: [
+                "States the conflict of interest out loud before it becomes one",
+                "Keeps two sets of notes and has told you so",
+                "Dresses one tier above the situation, always",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 307,
+            triggers: [
+                (
+                    condition: compare(field: "event.contract_offered", op: eq, value: 1),
+                    mood: focused,
+                    intensity: 794,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "event.corp_reputation_damaged", op: eq, value: 1),
+                    mood: tense,
+                    intensity: 870,
+                    priority: 9,
+                ),
+                (
+                    condition: compare(field: "event.audit_announced", op: eq, value: 1),
+                    mood: anxious,
+                    intensity: 819,
+                    priority: 8,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-reassignment",
+                event_type: "placement",
+                player_involved: false,
+                emotional_weight: 743,
+                timestamp: 0,
+                summary: "Liao asked for this posting. Nobody at Charter understood why, and Liao let them assume it was a demotion accepted gracefully.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "player", trust: 614, familiarity: 512, history: []),
+        ],
+        goals: [
+            (id: "keep_the_account_profitable", priority: constant, description: "Your success is the metric Liao is measured on. This alignment is real, and Liao would rather you understood it than trusted it."),
+            (id: "decide_where_the_line_is", priority: situational, description: "Charter has not yet asked for something Liao would refuse. Liao has thought about where that point is."),
+        ],
+        breaking_points: [
+            (
+                id: "asked_to_burn_the_crew",
+                trigger: compare(field: "event.corp_ordered_crew_betrayal", op: eq, value: 1),
+                reaction: refuse_orders,
+            ),
+        ],
+        contracts: [],
+        backstory: "Charter's internal placement track produces people who are loyal to the structure rather than to anyone in it. Liao is a successful product of that track and is quietly curious about what it would cost to stop being one.",
+        secrets: [
+            (
+                id: "the_second_notes",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 843),
+                    compare(field: "event.asked_what_liao_reports", op: eq, value: 1),
+                ]),
+                content: "The second set of notes is not for Charter. Liao has been documenting the account's instructions for two years and has not decided who, if anyone, they are for.",
+            ),
+        ],
+        look: Some((
+            species: "Human",
+            hair_style: Some(1),
+            hair_color: Some((20, 20, 26)),
+            skin_color: Some((224, 196, 168)),
+            shirt_color: Some((28, 33, 46)),
+            pants_color: Some((20, 23, 33)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((122, 102, 61)),
+            chassis_color: None,
+            visor_color: None,
+        )),
+    )),
+)

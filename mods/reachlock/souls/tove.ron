@@ -1,0 +1,120 @@
+// Tove — engineer of the Loup-Garou (docs/LORE.md §"Tove — Engineer").
+// She keeps the jump drive running with modifications she has documented
+// nowhere, some of which are not entirely her own work. All values are
+// fixed-point (1024 = 1.0).
+(
+    id: "tove",
+    display_name: "Tove",
+    asset_type: soul,
+    seed: 2517440993128371,
+    universe: "all",
+    priority: authoritative,
+    payload: soul((
+        id: "tove",
+        name: "Tove",
+        species: human,
+        portrait_id: "portraits/tove",
+        identity: (
+            origin: "Earth-lineage, third generation out — grandparents emigrated in the first expansion wave",
+            faction_affiliation: "The crew of the Loup-Garou",
+            role: "Engineer",
+            public_bio: "Tove keeps the jump drive running through sheer stubbornness and a set of modifications that would void every certification the Compact issues. She knows exactly what she has done to the drive. She has documented none of it, and considers this job security rather than a problem.",
+        ),
+        personality: (
+            traits: ["Laconic", "Careful", "Stubborn"],
+            values: ["TheDrive", "TheCrew", "TheCorridor"],
+            speaking_style: terse,
+            quirks: [
+                "Answers technical questions completely and personal ones not at all",
+                "Sends things home through the black market corridor and does not discuss it",
+                "Stops at the second memorial on Sorrow Station, every transit",
+                "Shares a technical shorthand with Prudence the rest of the crew cannot follow",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 256,
+            triggers: [
+                (
+                    condition: compare(field: "ship.jump_drive_damage", op: gt, value: 256),
+                    mood: focused,
+                    intensity: 870,
+                    priority: 9,
+                ),
+                (
+                    condition: compare(field: "event.someone_touched_the_drive", op: eq, value: 1),
+                    mood: defensive,
+                    intensity: 819,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "event.predecessor_site_mentioned", op: eq, value: 1),
+                    mood: withdrawn,
+                    intensity: 665,
+                    priority: 7,
+                ),
+                (
+                    condition: compare(field: "event.crew_member_injured", op: eq, value: 1),
+                    mood: protective,
+                    intensity: 717,
+                    priority: 6,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-fragment",
+                event_type: "salvage",
+                player_involved: false,
+                emotional_weight: 972,
+                timestamp: 0,
+                summary: "A schematic fragment recovered from a Predecessor site on the expedition that went badly. She read it. She understood more of it than she should have. Then she built part of it into the drive.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "tib", trust: 921, familiarity: 972, history: []),
+            (target_id: "prudence", trust: 897, familiarity: 921, history: []),
+            (target_id: "boris", trust: 768, familiarity: 768, history: []),
+        ],
+        goals: [
+            (id: "keep_the_drive_running", priority: constant, description: "Nobody else can fix it. That is the arrangement, and she is comfortable with the arrangement."),
+            (id: "decide_about_the_schematic", priority: situational, description: "She has not told Tib where part of the drive came from. She is not certain it matters. She is not certain it doesn't."),
+        ],
+        breaking_points: [
+            (
+                id: "drive_replaced_without_her",
+                trigger: compare(field: "event.drive_refit_ordered_over_objection", op: eq, value: 1),
+                reaction: refuse_orders,
+            ),
+        ],
+        contracts: [],
+        backstory: "She is laconic in the way of people who have already said everything important to the people who mattered and found it insufficient. She is not cold. She is careful. The distinction matters to her and she has never once explained it.",
+        secrets: [
+            (
+                id: "the_schematic",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 870),
+                    compare(field: "event.asked_about_the_drive_mods", op: eq, value: 1),
+                ]),
+                content: "The jump drive modifications are not entirely her own work. Some of what she built into it came from schematics recovered at a Predecessor site — the same expedition that went badly. Tib does not know.",
+            ),
+            (
+                id: "the_memorial",
+                reveal_condition: compare(field: "event.stopped_at_the_quebec_memorial", op: eq, value: 1),
+                content: "She stops at the second memorial every transit through Sorrow Station. Tib never does. She knows he never does. Neither of them has ever said so.",
+            ),
+        ],
+        look: Some((
+            species: "Human",
+            hair_style: Some(1),
+            hair_color: Some((176, 148, 92)),
+            skin_color: Some((222, 190, 163)),
+            shirt_color: Some((84, 92, 84)),
+            pants_color: Some((56, 61, 56)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((94, 74, 51)),
+            chassis_color: None,
+            visor_color: None,
+        )),
+    )),
+)

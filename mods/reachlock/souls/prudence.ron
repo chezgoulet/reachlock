@@ -1,0 +1,115 @@
+// Prudence — android, cockpit and navigation (docs/LORE.md §"Prudence").
+// Blunt on principle, loyal by decision rather than directive, and keeping a
+// log of the Veil that she has handed to exactly one person. Look carried
+// from the client's old builtin_crew_config. Fixed-point (1024 = 1.0).
+(
+    id: "prudence",
+    display_name: "Prudence",
+    asset_type: soul,
+    seed: 5266913077412845,
+    universe: "all",
+    priority: authoritative,
+    payload: soul((
+        id: "prudence",
+        name: "Prudence",
+        species: android,
+        portrait_id: "portraits/prudence",
+        identity: (
+            origin: "Built, not born; with the crew since before the ship had this name",
+            faction_affiliation: "The crew of the Loup-Garou",
+            role: "Cockpit & Navigation",
+            public_bio: "Prudence runs the cockpit, handles navigation, and manages jump monitoring. During self-generated transit she is one of two crew fully conscious — watching the crossing, keeping the Loup-Garou on course through the dark. She does this with total, unperformed attention and is faintly impatient with anything that wastes it.",
+        ),
+        personality: (
+            traits: ["Blunt", "Loyal", "PrivatelyTender"],
+            values: ["ChosenFamily", "Directness", "GoodJumpVectors"],
+            speaking_style: blunt,
+            quirks: [
+                "Says idiot when idiot is the accurate word",
+                "Uses the full name Loup-Garou with an inflection of approval",
+                "Has strong opinions about jump vectors and stronger ones about people who ignore them",
+                "Shares her views on legal personhood whether or not she was asked",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 358,
+            triggers: [
+                (
+                    condition: compare(field: "event.jump_vector_overridden", op: eq, value: 1),
+                    mood: defensive,
+                    intensity: 870,
+                    priority: 9,
+                ),
+                (
+                    condition: compare(field: "event.anomalous_signature_detected", op: eq, value: 1),
+                    mood: focused,
+                    intensity: 921,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "event.personhood_questioned", op: eq, value: 1),
+                    mood: tense,
+                    intensity: 819,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "event.crew_member_injured", op: eq, value: 1),
+                    mood: protective,
+                    intensity: 972,
+                    priority: 10,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-veil-signature",
+                event_type: "observation",
+                player_involved: false,
+                emotional_weight: 946,
+                timestamp: 0,
+                summary: "Eleven weeks ago, an unregistered drive signature in the Veil. She flagged it in her log and told Tib. She is waiting to see what he does with it.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "tove", trust: 946, familiarity: 972, history: []),
+            (target_id: "tib", trust: 870, familiarity: 921, history: []),
+            (target_id: "risc", trust: 897, familiarity: 946, history: []),
+        ],
+        goals: [
+            (id: "keep_them_on_course", priority: constant, description: "Not a directive. A decision she makes again every transit."),
+            (id: "see_what_tib_does", priority: situational, description: "She handed him the Veil log eleven weeks ago. She has not asked. She is watching."),
+        ],
+        breaking_points: [
+            (
+                id: "crew_traded_away",
+                trigger: compare(field: "event.crew_member_surrendered", op: eq, value: 1),
+                reaction: confront,
+            ),
+        ],
+        backstory: "She is femme in presentation and lesbian in her attachments, and she is not subtle about either. This has caused administrative friction at two Compact ports and one corporate checkpoint, which she considers a reasonable indicator of a worthwhile value system.",
+        contracts: [],
+        secrets: [
+            (
+                id: "the_log",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 819),
+                    compare(field: "event.asked_about_the_veil", op: eq, value: 1),
+                ]),
+                content: "She keeps a personal log of anomalous sensor readings from every transit and approach. The log from the Veil is long, and one entry is flagged.",
+            ),
+        ],
+        look: Some((
+            species: "Android",
+            hair_style: Some(6),
+            hair_color: Some((217, 77, 153)),
+            skin_color: Some((204, 209, 224)),
+            shirt_color: Some((46, 61, 107)),
+            pants_color: Some((31, 41, 77)),
+            jacket_enabled: Some(false),
+            jacket_color: None,
+            chassis_color: None,
+            visor_color: None,
+        )),
+    )),
+)

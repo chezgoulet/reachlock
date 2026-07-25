@@ -1,0 +1,59 @@
+// Ship template referenced by the origins (see docs/CONTENT-READINESS.md).
+// Layout convention: a spine corridor at x 0..8 with rooms hanging off
+// each side and a cap room across the top; every door sits on the spine
+// wall at its room's mid-height, so no room is unreachable.
+ShipTemplate(
+    id: "long_range_scout",
+    name: "Sable-Class Scout",
+    description: "Endurance over comfort. Hydroponics feeds the crew, cryo keeps the ones who are not on watch, and the scanner array is the largest single room aboard.",
+    hull_id: "long_range_scout",
+    interior: (
+        decks: [
+            (
+                name: "OBSERVATION DECK",
+                zero_g: false,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 54),
+                        (kind: scanner, x: -14, y: 54, width: 36, height: 20),
+                        (kind: hydroponics, x: -24, y: 30, width: 24, height: 24),
+                        (kind: quarters, x: -20, y: 16, width: 20, height: 14),
+                        (kind: reactor, x: -22, y: 0, width: 22, height: 16),
+                        (kind: cryo, x: 8, y: 30, width: 24, height: 24),
+                        (kind: galley, x: 8, y: 16, width: 20, height: 14),
+                        (kind: engineering, x: 8, y: 0, width: 22, height: 16),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 54),
+                        (from: 0, to: 2, x: 0, y: 42),
+                        (from: 0, to: 3, x: 0, y: 23),
+                        (from: 0, to: 4, x: 0, y: 8),
+                        (from: 0, to: 5, x: 8, y: 42),
+                        (from: 0, to: 6, x: 8, y: 23),
+                        (from: 0, to: 7, x: 8, y: 8),
+                    ],
+                ),
+                ladder: (4, 46),
+            ),
+            (
+                name: "FLIGHT DECK",
+                zero_g: true,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 26),
+                        (kind: cockpit, x: -12, y: 26, width: 32, height: 16),
+                        (kind: tech_bay, x: -26, y: 0, width: 26, height: 26),
+                        (kind: cargo_hold, x: 8, y: 0, width: 24, height: 26),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 26),
+                        (from: 0, to: 2, x: 0, y: 13),
+                        (from: 0, to: 3, x: 8, y: 13),
+                    ],
+                ),
+                ladder: (4, 18),
+            ),
+        ],
+    ),
+    default_system_seed: 55667788,
+)

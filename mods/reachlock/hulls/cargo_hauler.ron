@@ -1,0 +1,61 @@
+// Ship template referenced by the origins (see docs/CONTENT-READINESS.md).
+// Layout convention: a spine corridor at x 0..8 with rooms hanging off
+// each side and a cap room across the top; every door sits on the spine
+// wall at its room's mid-height, so no room is unreachable.
+ShipTemplate(
+    id: "cargo_hauler",
+    name: "Kestrel-Class Hauler",
+    description: "Bulk freight, thin margins. Two decks of cargo hold wrapped around a spine barely wide enough to carry a pallet. The crew space is an afterthought and everyone aboard knows it.",
+    hull_id: "cargo_hauler",
+    interior: (
+        decks: [
+            (
+                name: "MAIN DECK",
+                zero_g: false,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 56),
+                        (kind: bridge, x: -12, y: 56, width: 32, height: 16),
+                        (kind: cargo_hold, x: -24, y: 30, width: 24, height: 26),
+                        (kind: quarters, x: -20, y: 16, width: 20, height: 14),
+                        (kind: reactor, x: -22, y: 0, width: 22, height: 16),
+                        (kind: cargo_hold, x: 8, y: 30, width: 24, height: 26),
+                        (kind: galley, x: 8, y: 16, width: 20, height: 14),
+                        (kind: hangar, x: 8, y: 0, width: 22, height: 16),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 56),
+                        (from: 0, to: 2, x: 0, y: 43),
+                        (from: 0, to: 3, x: 0, y: 23),
+                        (from: 0, to: 4, x: 0, y: 8),
+                        (from: 0, to: 5, x: 8, y: 43),
+                        (from: 0, to: 6, x: 8, y: 23),
+                        (from: 0, to: 7, x: 8, y: 8),
+                    ],
+                ),
+                ladder: (4, 48),
+            ),
+            (
+                name: "CARGO DECK",
+                zero_g: false,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 52),
+                        (kind: cargo_hold, x: -28, y: 18, width: 28, height: 34),
+                        (kind: workshop, x: -22, y: 0, width: 22, height: 18),
+                        (kind: cargo_hold, x: 8, y: 18, width: 28, height: 34),
+                        (kind: cargo_hold, x: 8, y: 0, width: 28, height: 18),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 0, y: 35),
+                        (from: 0, to: 2, x: 0, y: 9),
+                        (from: 0, to: 3, x: 8, y: 35),
+                        (from: 0, to: 4, x: 8, y: 9),
+                    ],
+                ),
+                ladder: (4, 44),
+            ),
+        ],
+    ),
+    default_system_seed: 16843009,
+)

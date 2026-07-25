@@ -1,0 +1,77 @@
+// Diplomat career path. Referenced by the origins (or by another
+// career's conflict set) — see `reachlock content check`.
+// Perk magnitudes are fixed-point: 1024 = 1.0 = 100%.
+(
+    id: "diplomat",
+    display_name: "Diplomat",
+    asset_type: career,
+    seed: 47,
+    universe: "all",
+    priority: authoritative,
+    payload: career((
+        id: "diplomat",
+        path_type: political,
+        name: "Diplomat",
+        description: "Every border is a conversation that has not finished. You are there to keep it from finishing badly.",
+        faction_id: None,
+        ranks: [
+            (
+                rank: 1,
+                title: "Attaché",
+                required_criteria: [
+                    (criterion_type: faction_reputation_gained, threshold: 500),
+                ],
+                rank_perks: ["safe_passage"],
+                faction_standing_bonus: 0,
+            ),
+            (
+                rank: 2,
+                title: "Envoy",
+                required_criteria: [
+                    (criterion_type: faction_reputation_gained, threshold: 2500),
+                    (criterion_type: missions_completed, threshold: 10),
+                ],
+                rank_perks: ["neutral_ground"],
+                faction_standing_bonus: 15,
+            ),
+            (
+                rank: 3,
+                title: "Ambassador",
+                required_criteria: [
+                    (criterion_type: faction_reputation_gained, threshold: 8000),
+                    (criterion_type: story_missions_completed, threshold: 5),
+                ],
+                rank_perks: ["immunity"],
+                faction_standing_bonus: 30,
+            ),
+        ],
+        progression_criteria: [
+            (criterion_type: faction_reputation_gained, target: "*", threshold: 8000, weight: 1024),
+            (criterion_type: story_missions_completed, target: "*", threshold: 5, weight: 512),
+        ],
+        perks: [
+            (
+                id: "safe_passage",
+                name: "Safe Passage",
+                description: "Compact checkpoints wave you through",
+                perk_type: restricted_area_access(area_id: "compact_transit"),
+                magnitude: 1024,
+            ),
+            (
+                id: "neutral_ground",
+                name: "Neutral Ground",
+                description: "Negotiation contracts pay more",
+                perk_type: mission_bonus(mission_type: "diplomatic", bonus_pct: 1536),
+                magnitude: 1536,
+            ),
+            (
+                id: "immunity",
+                name: "Diplomatic Immunity",
+                description: "Compact cannot hold you",
+                perk_type: diplomatic_immunity(faction_id: "compact"),
+                magnitude: 1024,
+            ),
+        ],
+        conflicting_paths: ["outlaw"],
+    )),
+)

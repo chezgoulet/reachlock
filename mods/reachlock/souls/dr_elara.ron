@@ -1,0 +1,105 @@
+// Dr. Elara — companion soul shipped with the origin that references
+// this id. Not canon crew: these characters belong to their origin, and an
+// author is meant to rewrite them freely. Fixed-point (1024 = 1.0).
+(
+    id: "dr_elara",
+    display_name: "Dr. Elara",
+    asset_type: soul,
+    seed: 7788219034551627,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "dr_elara",
+        name: "Elara Vosk",
+        species: human,
+        portrait_id: "portraits/dr_elara",
+        identity: (
+            origin: "Compact research station, remote posting",
+            faction_affiliation: "Compact Research Directorate (former)",
+            role: "Science Officer",
+            public_bio: "Elara was three years into a posting she had chosen for its isolation when the isolation stopped being the point. She left with partial gate-network data and a habit of finishing other people's sentences with the correct answer.",
+        ),
+        personality: (
+            traits: ["Precise", "Impatient", "Haunted"],
+            values: ["TheData", "Disclosure", "GettingItRight"],
+            speaking_style: technical,
+            quirks: [
+                "Corrects imprecise statements reflexively and apologises afterwards",
+                "Will not discuss what the station was actually researching",
+                "Sleeps badly and works through it rather than around it",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 307,
+            triggers: [
+                (
+                    condition: compare(field: "event.compact_research_mentioned", op: eq, value: 1),
+                    mood: tense,
+                    intensity: 897,
+                    priority: 9,
+                ),
+                (
+                    condition: compare(field: "event.anomalous_signature_detected", op: eq, value: 1),
+                    mood: focused,
+                    intensity: 921,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "event.pursued_by_compact", op: eq, value: 1),
+                    mood: anxious,
+                    intensity: 843,
+                    priority: 8,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-last-shift",
+                event_type: "escape",
+                player_involved: false,
+                emotional_weight: 1024,
+                timestamp: 0,
+                summary: "She was on shift when the containment protocol changed without an announcement. She read the new protocol, understood what it implied, and was off the station inside ninety minutes.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "player", trust: 614, familiarity: 512, history: []),
+        ],
+        goals: [
+            (id: "finish_the_analysis", priority: constant, description: "The gate-network data is partial. She is convinced the missing part is the part that matters."),
+            (id: "stay_ahead_of_them", priority: situational, description: "The Directorate does not consider her departure resolved."),
+        ],
+        breaking_points: [
+            (
+                id: "data_handed_back",
+                trigger: compare(field: "event.research_returned_to_compact", op: eq, value: 1),
+                reaction: betray,
+            ),
+        ],
+        contracts: [],
+        backstory: "She chose the remote posting because she wanted to work without being managed. She got exactly that, for three years, and then found out why the posting had been available.",
+        secrets: [
+            (
+                id: "what_the_station_was_for",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 897),
+                    compare(field: "event.pressed_about_the_station", op: eq, value: 1),
+                ]),
+                content: "The research was not on the gate network. The gate network was how the subjects were being moved.",
+            ),
+        ],
+        look: Some((
+            species: "Human",
+            hair_style: Some(3),
+            hair_color: Some((94, 84, 122)),
+            skin_color: Some((212, 194, 178)),
+            shirt_color: Some((199, 204, 214)),
+            pants_color: Some((64, 71, 84)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((240, 242, 245)),
+            chassis_color: None,
+            visor_color: None,
+        )),
+    )),
+)

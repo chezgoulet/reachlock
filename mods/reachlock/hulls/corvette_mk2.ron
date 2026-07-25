@@ -1,0 +1,63 @@
+// Ship template referenced by the origins (see docs/CONTENT-READINESS.md).
+// Layout convention: a spine corridor at x 0..8 with rooms hanging off
+// each side and a cap room across the top; every door sits on the spine
+// wall at its room's mid-height, so no room is unreachable.
+ShipTemplate(
+    id: "corvette_mk2",
+    name: "Meridian Mk II",
+    description: "A corporate courier with the interior budget of a flagship. The bar is larger than the reactor room and the quarters have actual doors. Someone is paying for your loyalty in furniture.",
+    hull_id: "corvette_mk2",
+    interior: (
+        decks: [
+            (
+                name: "EXECUTIVE DECK",
+                zero_g: false,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 52),
+                        (kind: bridge, x: -12, y: 52, width: 32, height: 16),
+                        (kind: bar, x: -24, y: 30, width: 24, height: 22),
+                        (kind: galley, x: -20, y: 16, width: 20, height: 14),
+                        (kind: quarters, x: -20, y: 0, width: 20, height: 16),
+                        (kind: quarters, x: 8, y: 30, width: 24, height: 22),
+                        (kind: med_bay, x: 8, y: 16, width: 20, height: 14),
+                        (kind: cargo_hold, x: 8, y: 0, width: 22, height: 16),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 52),
+                        (from: 0, to: 2, x: 0, y: 41),
+                        (from: 0, to: 3, x: 0, y: 23),
+                        (from: 0, to: 4, x: 0, y: 8),
+                        (from: 0, to: 5, x: 8, y: 41),
+                        (from: 0, to: 6, x: 8, y: 23),
+                        (from: 0, to: 7, x: 8, y: 8),
+                    ],
+                ),
+                ladder: (4, 44),
+            ),
+            (
+                name: "OPERATIONS DECK",
+                zero_g: false,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 38),
+                        (kind: cockpit, x: -12, y: 38, width: 32, height: 16),
+                        (kind: scanner, x: -20, y: 20, width: 20, height: 18),
+                        (kind: reactor, x: -22, y: 0, width: 22, height: 20),
+                        (kind: workshop, x: 8, y: 20, width: 22, height: 18),
+                        (kind: hangar, x: 8, y: 0, width: 24, height: 20),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 38),
+                        (from: 0, to: 2, x: 0, y: 29),
+                        (from: 0, to: 3, x: 0, y: 10),
+                        (from: 0, to: 4, x: 8, y: 29),
+                        (from: 0, to: 5, x: 8, y: 10),
+                    ],
+                ),
+                ladder: (4, 30),
+            ),
+        ],
+    ),
+    default_system_seed: 33445566,
+)

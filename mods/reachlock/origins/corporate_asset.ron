@@ -13,9 +13,9 @@ ContentFile(
         starting_career: "executive",
         starting_rank: 1,
         faction_deltas: [
-            (faction_id: "megacorp", delta: 40),
+            (faction_id: "corp", delta: 40),
             (faction_id: "compact", delta: -15),
-            (faction_id: "free_traders", delta: -10),
+            (faction_id: "isc", delta: -10),
         ],
         starting_credits: 20000,
         ship_template: Some("corvette_mk2"),

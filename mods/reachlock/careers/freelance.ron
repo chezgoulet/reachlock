@@ -1,0 +1,76 @@
+// Freelancer career path. Referenced by the origins (or by another
+// career's conflict set) — see `reachlock content check`.
+// Perk magnitudes are fixed-point: 1024 = 1.0 = 100%.
+(
+    id: "freelance",
+    display_name: "Freelancer",
+    asset_type: career,
+    seed: 43,
+    universe: "all",
+    priority: authoritative,
+    payload: career((
+        id: "freelance",
+        path_type: freelance,
+        name: "Freelancer",
+        description: "No flag, no fleet, no standing orders. You take the work you want and answer for it yourself.",
+        faction_id: None,
+        ranks: [
+            (
+                rank: 1,
+                title: "Drifter",
+                required_criteria: [
+                    (criterion_type: missions_completed, threshold: 3),
+                ],
+                rank_perks: ["odd_jobs"],
+                faction_standing_bonus: 0,
+            ),
+            (
+                rank: 2,
+                title: "Regular",
+                required_criteria: [
+                    (criterion_type: missions_completed, threshold: 12),
+                ],
+                rank_perks: ["known_face"],
+                faction_standing_bonus: 5,
+            ),
+            (
+                rank: 3,
+                title: "Name in the Lanes",
+                required_criteria: [
+                    (criterion_type: missions_completed, threshold: 30),
+                    (criterion_type: crew_trust_built, threshold: 500),
+                ],
+                rank_perks: ["own_terms"],
+                faction_standing_bonus: 10,
+            ),
+        ],
+        progression_criteria: [
+            (criterion_type: missions_completed, target: "*", threshold: 30, weight: 1024),
+            (criterion_type: crew_trust_built, target: "*", threshold: 500, weight: 512),
+        ],
+        perks: [
+            (
+                id: "odd_jobs",
+                name: "Odd Jobs",
+                description: "Any station will find you something",
+                perk_type: mission_bonus(mission_type: "any", bonus_pct: 512),
+                magnitude: 512,
+            ),
+            (
+                id: "known_face",
+                name: "Known Face",
+                description: "Repeat clients pay better",
+                perk_type: mission_bonus(mission_type: "any", bonus_pct: 1024),
+                magnitude: 1024,
+            ),
+            (
+                id: "own_terms",
+                name: "Own Terms",
+                description: "You set the rate and they accept it",
+                perk_type: mission_bonus(mission_type: "any", bonus_pct: 2048),
+                magnitude: 2048,
+            ),
+        ],
+        conflicting_paths: [],
+    )),
+)

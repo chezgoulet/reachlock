@@ -14,7 +14,7 @@ ContentFile(
         starting_rank: 1,
         faction_deltas: [
             (faction_id: "compact", delta: 25),
-            (faction_id: "reach_pirates", delta: -15),
+            (faction_id: "reach", delta: -15),
         ],
         starting_credits: 2000,
         ship_template: Some("compact_frigate"),

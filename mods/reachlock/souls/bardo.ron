@@ -1,0 +1,123 @@
+// Bardo Trembler — linguist of the Loup-Garou (docs/LORE.md §"Bardo
+// Trembler"). Six living languages, an mbira repaired six times, and a theory
+// about Predecessor script he has told nobody in full. Look carried from the
+// client's old builtin_crew_config. All values fixed-point (1024 = 1.0).
+(
+    id: "bardo",
+    display_name: "Bardo",
+    asset_type: soul,
+    seed: 4021887364519028,
+    universe: "all",
+    priority: authoritative,
+    payload: soul((
+        id: "bardo",
+        name: "Bardo Trembler",
+        species: human,
+        portrait_id: "portraits/bardo",
+        identity: (
+            origin: "Raised in a community that maintained oral traditions from before the colonial period",
+            faction_affiliation: "The crew of the Loup-Garou",
+            role: "Linguist",
+            public_bio: "Bardo is the newest human crew member and the one most people underestimate first. He carries more languages than the ship has crew — six living ones fluently, fragments of a dozen more, and a working relationship with Predecessor script that is less academic than it appears.",
+        ),
+        personality: (
+            traits: ["Warm", "Watchful", "Precise"],
+            values: ["Understanding", "TheSpaceBetweenPeople", "Patience"],
+            speaking_style: lyrical,
+            quirks: [
+                "Plays the mbira in the galley during long transits",
+                "Understands that communication is the space between people, and shapes it deliberately",
+                "Underestimated on first meeting, and lets it happen",
+                "Watchful in a way that does not match someone who works with dead languages",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 307,
+            triggers: [
+                (
+                    condition: compare(field: "event.predecessor_script_encountered", op: eq, value: 1),
+                    mood: focused,
+                    intensity: 972,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "event.negotiation_started", op: eq, value: 1),
+                    mood: focused,
+                    intensity: 768,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "event.asked_about_his_theory", op: eq, value: 1),
+                    mood: withdrawn,
+                    intensity: 819,
+                    priority: 9,
+                ),
+                (
+                    condition: compare(field: "event.crew_member_injured", op: eq, value: 1),
+                    mood: protective,
+                    intensity: 665,
+                    priority: 6,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-recording",
+                event_type: "recognition",
+                player_involved: false,
+                emotional_weight: 1024,
+                timestamp: 0,
+                summary: "He reviewed the signal files from the intact Predecessor site alone. The cycling transmission contains a phonemic sequence he has heard before — in a recording his grandmother made of an elder who died before he was born.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "keene", trust: 946, familiarity: 972, history: []),
+            (target_id: "boris", trust: 819, familiarity: 665, history: []),
+            (target_id: "tib", trust: 743, familiarity: 614, history: []),
+        ],
+        goals: [
+            (id: "finish_the_translation", priority: constant, description: "The correspondences are real. What they mean is the part he cannot yet write down."),
+            (id: "decide_if_it_is_a_danger", priority: situational, description: "He has not published and has not told the crew in full. Until he decides whether the theory is a discovery or a danger, it stays close."),
+        ],
+        breaking_points: [
+            (
+                id: "the_theory_taken",
+                trigger: compare(field: "event.research_seized_or_sold", op: eq, value: 1),
+                reaction: withdraw,
+            ),
+        ],
+        backstory: "His grandmother insisted the linguistic patterns her community maintained were older than anyone knew. That insistence is what sent him toward Predecessor script. He has since found structural and phonemic correspondences that should not exist — not if the Predecessors are what the academic consensus says they are.",
+        contracts: [],
+        secrets: [
+            (
+                id: "the_theory",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 921),
+                    compare(field: "event.pressed_about_predecessor_script", op: eq, value: 1),
+                ]),
+                content: "The correspondences between Predecessor script and pre-colonial Earth language roots are structural and phonemic, and they should not exist. He told Doc Keene the outline once, late in a transit. She went quiet for a long time afterward.",
+            ),
+            (
+                id: "we_left_this",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 972),
+                    compare(field: "event.heard_the_cycling_transmission", op: eq, value: 1),
+                ]),
+                content: "The sequence in the transmission translates, approximately, as: we left this so you would know where to look. He has told no one.",
+            ),
+        ],
+        look: Some((
+            species: "Human",
+            hair_style: Some(4),
+            hair_color: Some((31, 26, 23)),
+            skin_color: Some((140, 97, 66)),
+            shirt_color: Some((204, 153, 51)),
+            pants_color: Some((89, 64, 77)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((122, 46, 51)),
+            chassis_color: None,
+            visor_color: None,
+        )),
+    )),
+)

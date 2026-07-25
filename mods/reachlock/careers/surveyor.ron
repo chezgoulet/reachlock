@@ -1,0 +1,76 @@
+// Surveyor career path. Referenced by the origins (or by another
+// career's conflict set) — see `reachlock content check`.
+// Perk magnitudes are fixed-point: 1024 = 1.0 = 100%.
+(
+    id: "surveyor",
+    display_name: "Surveyor",
+    asset_type: career,
+    seed: 45,
+    universe: "all",
+    priority: authoritative,
+    payload: career((
+        id: "surveyor",
+        path_type: exploration,
+        name: "Surveyor",
+        description: "Chart what is not on the chart. The pay is thin and the first look at a system is yours.",
+        faction_id: None,
+        ranks: [
+            (
+                rank: 1,
+                title: "Scout",
+                required_criteria: [
+                    (criterion_type: systems_discovered, threshold: 3),
+                ],
+                rank_perks: ["deep_scan"],
+                faction_standing_bonus: 0,
+            ),
+            (
+                rank: 2,
+                title: "Cartographer",
+                required_criteria: [
+                    (criterion_type: systems_discovered, threshold: 12),
+                ],
+                rank_perks: ["survey_grant"],
+                faction_standing_bonus: 10,
+            ),
+            (
+                rank: 3,
+                title: "Pathfinder",
+                required_criteria: [
+                    (criterion_type: systems_discovered, threshold: 30),
+                    (criterion_type: species_scanned, threshold: 20),
+                ],
+                rank_perks: ["first_look"],
+                faction_standing_bonus: 20,
+            ),
+        ],
+        progression_criteria: [
+            (criterion_type: systems_discovered, target: "*", threshold: 30, weight: 1024),
+            (criterion_type: species_scanned, target: "*", threshold: 20, weight: 512),
+        ],
+        perks: [
+            (
+                id: "deep_scan",
+                name: "Deep Scan",
+                description: "Scanner range extended",
+                perk_type: scanner_boost(pct: 1024),
+                magnitude: 1024,
+            ),
+            (
+                id: "survey_grant",
+                name: "Survey Grant",
+                description: "Discovery bounties pay more",
+                perk_type: mission_bonus(mission_type: "survey", bonus_pct: 1536),
+                magnitude: 1536,
+            ),
+            (
+                id: "first_look",
+                name: "First Look",
+                description: "Long-range anomaly resolution",
+                perk_type: scanner_boost(pct: 2560),
+                magnitude: 2560,
+            ),
+        ],
+        conflicting_paths: [],
+    )),
+)

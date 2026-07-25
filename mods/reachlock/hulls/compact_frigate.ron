@@ -1,0 +1,63 @@
+// Ship template referenced by the origins (see docs/CONTENT-READINESS.md).
+// Layout convention: a spine corridor at x 0..8 with rooms hanging off
+// each side and a cap room across the top; every door sits on the spine
+// wall at its room's mid-height, so no room is unreachable.
+ShipTemplate(
+    id: "compact_frigate",
+    name: "Lance-Class Frigate",
+    description: "Compact Navy patrol frigate. Armory forward, brig aft, and a bridge with sightlines to both. Built to be crewed by people who were told where to stand.",
+    hull_id: "compact_frigate",
+    interior: (
+        decks: [
+            (
+                name: "COMMAND DECK",
+                zero_g: false,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 64),
+                        (kind: bridge, x: -13, y: 64, width: 34, height: 18),
+                        (kind: armory, x: -22, y: 46, width: 22, height: 18),
+                        (kind: quarters, x: -20, y: 30, width: 20, height: 16),
+                        (kind: med_bay, x: -20, y: 16, width: 20, height: 14),
+                        (kind: reactor, x: -22, y: 0, width: 22, height: 16),
+                        (kind: scanner, x: 8, y: 46, width: 20, height: 18),
+                        (kind: quarters, x: 8, y: 30, width: 20, height: 16),
+                        (kind: brig, x: 8, y: 16, width: 18, height: 14),
+                        (kind: engineering, x: 8, y: 0, width: 22, height: 16),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 64),
+                        (from: 0, to: 2, x: 0, y: 55),
+                        (from: 0, to: 3, x: 0, y: 38),
+                        (from: 0, to: 4, x: 0, y: 23),
+                        (from: 0, to: 5, x: 0, y: 8),
+                        (from: 0, to: 6, x: 8, y: 55),
+                        (from: 0, to: 7, x: 8, y: 38),
+                        (from: 0, to: 8, x: 8, y: 23),
+                        (from: 0, to: 9, x: 8, y: 8),
+                    ],
+                ),
+                ladder: (4, 56),
+            ),
+            (
+                name: "FLIGHT DECK",
+                zero_g: true,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 30),
+                        (kind: cockpit, x: -12, y: 30, width: 32, height: 16),
+                        (kind: tech_bay, x: -26, y: 0, width: 26, height: 30),
+                        (kind: hangar, x: 8, y: 0, width: 26, height: 30),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 30),
+                        (from: 0, to: 2, x: 0, y: 15),
+                        (from: 0, to: 3, x: 8, y: 15),
+                    ],
+                ),
+                ladder: (4, 22),
+            ),
+        ],
+    ),
+    default_system_seed: 21567088,
+)

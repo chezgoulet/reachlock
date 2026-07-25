@@ -1,0 +1,105 @@
+// Ambassador Ken — companion soul shipped with the origin that references
+// this id. Not canon crew: these characters belong to their origin, and an
+// author is meant to rewrite them freely. Fixed-point (1024 = 1.0).
+(
+    id: "ambassador_ken",
+    display_name: "Ambassador Ken",
+    asset_type: soul,
+    seed: 7013882455190364,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "ambassador_ken",
+        name: "Kenji Aroha-Beaumont",
+        species: human,
+        portrait_id: "portraits/ambassador_ken",
+        identity: (
+            origin: "Fringe colony security, seconded to the diplomatic service",
+            faction_affiliation: "Independent colony attaché corps",
+            role: "Bodyguard",
+            public_bio: "Ken has stood behind more negotiating tables than he has sat at, and he reads a room from the wall better than most delegates read it from a chair. Officially he is protection. In practice he is the reason two of your last three deals closed.",
+        ),
+        personality: (
+            traits: ["Watchful", "Patient", "Dry"],
+            values: ["ThePrincipal", "TheRoom", "TheExit"],
+            speaking_style: terse,
+            quirks: [
+                "Positions himself where he can see both doors and neither is behind him",
+                "Says almost nothing in a negotiation and remembers all of it",
+                "Refers to the person he protects as the principal, never by name, on duty",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 307,
+            triggers: [
+                (
+                    condition: compare(field: "event.principal_threatened", op: eq, value: 1),
+                    mood: protective,
+                    intensity: 972,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "event.negotiation_started", op: eq, value: 1),
+                    mood: focused,
+                    intensity: 768,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "event.weapon_drawn_nearby", op: eq, value: 1),
+                    mood: tense,
+                    intensity: 897,
+                    priority: 9,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-third-table",
+                event_type: "protection",
+                player_involved: false,
+                emotional_weight: 870,
+                timestamp: 0,
+                summary: "A meeting that went wrong in the second minute. He got the principal out through a service corridor he had walked that morning specifically because it might come to this.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "player", trust: 614, familiarity: 512, history: []),
+        ],
+        goals: [
+            (id: "keep_them_breathing", priority: constant, description: "Every other objective is contingent on this one and he has never needed to explain that to anybody twice."),
+            (id: "read_the_room_first", priority: situational, description: "He will tell you which side of a deal is lying, if you ask him before you sign rather than after."),
+        ],
+        breaking_points: [
+            (
+                id: "principal_abandoned",
+                trigger: compare(field: "event.crew_left_someone_behind", op: eq, value: 1),
+                reaction: confront,
+            ),
+        ],
+        contracts: [],
+        backstory: "He came up in colony security, where the budget assumes you will not be there in time and trains you to be there early instead. He has never lost anyone. He does not consider this a record so much as an ongoing condition.",
+        secrets: [
+            (
+                id: "the_offer",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 819),
+                    compare(field: "event.asked_why_he_left_the_colony", op: eq, value: 1),
+                ]),
+                content: "A faction offered him three times his pay to keep working the same rooms and report what was said in them. He declined. He has never been certain the offer was withdrawn.",
+            ),
+        ],
+        look: Some((
+            species: "Human",
+            hair_style: Some(2),
+            hair_color: Some((38, 32, 28)),
+            skin_color: Some((150, 112, 84)),
+            shirt_color: Some((46, 51, 61)),
+            pants_color: Some((33, 36, 43)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((28, 31, 38)),
+            chassis_color: None,
+            visor_color: None,
+        )),
+    )),
+)

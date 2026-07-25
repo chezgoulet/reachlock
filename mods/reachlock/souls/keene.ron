@@ -1,0 +1,123 @@
+// Doc Ella Keene — medic of the Loup-Garou (docs/LORE.md §"Doc Ella Keene").
+// Overqualified, unexplained, and carrying a bounty the crew thinks belongs
+// to someone else. Look carried from the client's old builtin_crew_config,
+// which this file replaces. All values fixed-point (1024 = 1.0).
+(
+    id: "keene",
+    display_name: "Doc Keene",
+    asset_type: soul,
+    seed: 3178254019476633,
+    universe: "all",
+    priority: authoritative,
+    payload: soul((
+        id: "keene",
+        name: "Ella Keene",
+        species: human,
+        portrait_id: "portraits/keene",
+        identity: (
+            origin: "West African diaspora — has never been to Earth and carries its politics personally",
+            faction_affiliation: "The crew of the Loup-Garou",
+            role: "Medic",
+            public_bio: "Doc Keene is overqualified for this ship and has never explained why she is on it. Her credentials suggest inner-system trauma surgery — the kind of posting that does not get extended to people who end up on Class-J hulls in the Reach. The crew has stopped asking. The work is too good to risk the answer.",
+        ),
+        personality: (
+            traits: ["Calm", "Restless", "Withholding"],
+            values: ["TheWork", "Consent", "TheRecord"],
+            speaking_style: warm,
+            quirks: [
+                "Calmest person aboard in a crisis, most restless in a long transit",
+                "Runs the length of the lower corridor until she is tired",
+                "Plays cards with Risc and loses in ways that look deliberate",
+                "Reads constantly and never says what",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 358,
+            triggers: [
+                (
+                    condition: compare(field: "event.crew_member_injured", op: eq, value: 1),
+                    mood: focused,
+                    intensity: 921,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "event.bounty_hunter_aboard", op: eq, value: 1),
+                    mood: suspicious,
+                    intensity: 870,
+                    priority: 9,
+                ),
+                (
+                    condition: compare(field: "event.compact_medical_mentioned", op: eq, value: 1),
+                    mood: tense,
+                    intensity: 768,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "event.long_transit", op: eq, value: 1),
+                    mood: anxious,
+                    intensity: 460,
+                    priority: 3,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-records",
+                event_type: "theft",
+                player_involved: false,
+                emotional_weight: 1024,
+                timestamp: 0,
+                summary: "She accessed the internal records of a Compact-affiliated medical institution, partially released them, and ran. She did not take the information for leverage. She took it because someone needed to.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "bardo", trust: 946, familiarity: 972, history: []),
+            (target_id: "risc", trust: 870, familiarity: 819, history: []),
+            (target_id: "tib", trust: 794, familiarity: 717, history: []),
+        ],
+        goals: [
+            (id: "keep_them_alive", priority: constant, description: "Whatever else is true about why she is here, this part is not complicated."),
+            (id: "decide_about_the_records", priority: situational, description: "Evidence of experimental protocols run on non-consenting subjects in frontier settlements. She has not decided what to do with it."),
+        ],
+        breaking_points: [
+            (
+                id: "handed_to_the_compact",
+                trigger: compare(field: "event.crew_negotiated_with_bounty_holder", op: eq, value: 1),
+                reaction: leave_ship,
+            ),
+        ],
+        backstory: "Her grandmother was a historian of the pre-colonial period. She and Bardo have discussed the blockade more than anyone else aboard, and they knew each other before either of them was on this ship. How is something neither has volunteered.",
+        contracts: [],
+        secrets: [
+            (
+                id: "the_bounty_is_hers",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 897),
+                    compare(field: "event.asked_who_the_bounty_is_for", op: eq, value: 1),
+                ]),
+                content: "The bounty is on her. It was placed by a Compact-affiliated medical institution whose records she accessed and partially released. The crew assumes it belongs to someone else aboard. She has let them.",
+            ),
+            (
+                id: "before_the_ship",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 819),
+                    compare(field: "event.asked_about_bardo", op: eq, value: 1),
+                ]),
+                content: "She and Bardo were both present at something they do not discuss, in a place neither of them names. It is the reason she is on this ship.",
+            ),
+        ],
+        look: Some((
+            species: "Human",
+            hair_style: Some(5),
+            hair_color: Some((26, 20, 20)),
+            skin_color: Some((107, 71, 51)),
+            shirt_color: Some((51, 140, 133)),
+            pants_color: Some((41, 77, 77)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((224, 224, 230)),
+            chassis_color: None,
+            visor_color: None,
+        )),
+    )),
+)

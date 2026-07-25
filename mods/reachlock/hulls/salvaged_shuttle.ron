@@ -1,0 +1,37 @@
+// Ship template referenced by the origins (see docs/CONTENT-READINESS.md).
+// Layout convention: a spine corridor at x 0..8 with rooms hanging off
+// each side and a cap room across the top; every door sits on the spine
+// wall at its room's mid-height, so no room is unreachable.
+ShipTemplate(
+    id: "salvaged_shuttle",
+    name: "Unnamed Salvage",
+    description: "Whatever this was, someone else abandoned it first. One deck, four rooms, and a reactor held together by a workshop that has never once been empty.",
+    hull_id: "salvaged_shuttle",
+    interior: (
+        decks: [
+            (
+                name: "SINGLE DECK",
+                zero_g: false,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 34),
+                        (kind: cockpit, x: -10, y: 34, width: 28, height: 14),
+                        (kind: quarters, x: -20, y: 16, width: 20, height: 18),
+                        (kind: reactor, x: -20, y: 0, width: 20, height: 16),
+                        (kind: workshop, x: 8, y: 16, width: 22, height: 18),
+                        (kind: cargo_hold, x: 8, y: 0, width: 20, height: 16),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 34),
+                        (from: 0, to: 2, x: 0, y: 25),
+                        (from: 0, to: 3, x: 0, y: 8),
+                        (from: 0, to: 4, x: 8, y: 25),
+                        (from: 0, to: 5, x: 8, y: 8),
+                    ],
+                ),
+                ladder: (4, 26),
+            ),
+        ],
+    ),
+    default_system_seed: 66778899,
+)

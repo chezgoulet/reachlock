@@ -65,6 +65,6 @@
                 magnitude: 2560,
             ),
         ],
-        conflicting_paths: ["reach_pirates", "isc_free_traders"],
+        conflicting_paths: ["reach_pirates", "isc_free_traders", "outlaw"],
     )),
 )

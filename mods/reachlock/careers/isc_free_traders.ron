@@ -1,0 +1,77 @@
+// ISC Free Traders career path. Referenced by the origins (or by another
+// career's conflict set) — see `reachlock content check`.
+// Perk magnitudes are fixed-point: 1024 = 1.0 = 100%.
+(
+    id: "isc_free_traders",
+    display_name: "ISC Free Traders",
+    asset_type: career,
+    seed: 51,
+    universe: "all",
+    priority: authoritative,
+    payload: career((
+        id: "isc_free_traders",
+        path_type: trade,
+        name: "ISC Free Traders",
+        description: "The Syndicate does not own your ship. It owns the lane you fly it down, and it charges accordingly — unless you are one of its own.",
+        faction_id: Some("isc"),
+        ranks: [
+            (
+                rank: 1,
+                title: "Chartered",
+                required_criteria: [
+                    (criterion_type: trade_volume, threshold: 15000),
+                ],
+                rank_perks: ["syndicate_rates"],
+                faction_standing_bonus: 10,
+            ),
+            (
+                rank: 2,
+                title: "Factor",
+                required_criteria: [
+                    (criterion_type: trade_volume, threshold: 90000),
+                    (criterion_type: missions_completed, threshold: 10),
+                ],
+                rank_perks: ["bonded_cargo"],
+                faction_standing_bonus: 20,
+            ),
+            (
+                rank: 3,
+                title: "Syndic",
+                required_criteria: [
+                    (criterion_type: trade_volume, threshold: 350000),
+                    (criterion_type: faction_reputation_gained, threshold: 4000),
+                ],
+                rank_perks: ["lane_rights"],
+                faction_standing_bonus: 35,
+            ),
+        ],
+        progression_criteria: [
+            (criterion_type: trade_volume, target: "*", threshold: 350000, weight: 1024),
+            (criterion_type: faction_reputation_gained, target: "isc", threshold: 4000, weight: 512),
+        ],
+        perks: [
+            (
+                id: "syndicate_rates",
+                name: "Syndicate Rates",
+                description: "ISC tariffs applied at own-flag rate",
+                perk_type: station_discount(faction_id: "isc", pct: 2048),
+                magnitude: 2048,
+            ),
+            (
+                id: "bonded_cargo",
+                name: "Bonded Cargo",
+                description: "Sealed holds pass inspection",
+                perk_type: mission_bonus(mission_type: "haulage", bonus_pct: 1024),
+                magnitude: 1024,
+            ),
+            (
+                id: "lane_rights",
+                name: "Lane Rights",
+                description: "Priority routing on Syndicate lanes",
+                perk_type: restricted_area_access(area_id: "isc_priority_lane"),
+                magnitude: 1024,
+            ),
+        ],
+        conflicting_paths: ["compact_navy"],
+    )),
+)

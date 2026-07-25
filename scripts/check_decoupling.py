@@ -51,12 +51,6 @@ CREW = re.compile(
 # design: an entry here means content is missing, not that the engine is
 # allowed to name people.
 EXEMPT = {
-    # Four of the seven canonical crew have no authored soul file, so their
-    # appearance still lives in code. Cosmetic and opt-in by soul id — it
-    # cannot override a player's choice the way the ship and speaker coupling
-    # did — but it goes away the moment those souls are authored with a
-    # `look:` block, as tib/tove/boris already have.
-    ("reachlock-client/src/systems/interior.rs", "builtin_crew_config"),
     # Synthetic inputs to the determinism manifest: these strings are hashed,
     # never shown, and never reach gameplay. Renaming them would move golden
     # checksums for no behavioural gain, so they stay — but the gate names

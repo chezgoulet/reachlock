@@ -1,0 +1,63 @@
+// Ship template referenced by the origins (see docs/CONTENT-READINESS.md).
+// Layout convention: a spine corridor at x 0..8 with rooms hanging off
+// each side and a cap room across the top; every door sits on the spine
+// wall at its room's mid-height, so no room is unreachable.
+ShipTemplate(
+    id: "science_vessel",
+    name: "Corvus-Class Research Vessel",
+    description: "Two science labs, a med bay rated for isolation, and a brig nobody will explain. The manifest lists it as a survey ship.",
+    hull_id: "science_vessel",
+    interior: (
+        decks: [
+            (
+                name: "LAB DECK",
+                zero_g: false,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 52),
+                        (kind: science_lab, x: -14, y: 52, width: 36, height: 20),
+                        (kind: science_lab, x: -24, y: 30, width: 24, height: 22),
+                        (kind: hydroponics, x: -22, y: 14, width: 22, height: 16),
+                        (kind: quarters, x: -20, y: 0, width: 20, height: 14),
+                        (kind: med_bay, x: 8, y: 30, width: 22, height: 22),
+                        (kind: brig, x: 8, y: 14, width: 18, height: 16),
+                        (kind: galley, x: 8, y: 0, width: 20, height: 14),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 52),
+                        (from: 0, to: 2, x: 0, y: 41),
+                        (from: 0, to: 3, x: 0, y: 22),
+                        (from: 0, to: 4, x: 0, y: 7),
+                        (from: 0, to: 5, x: 8, y: 41),
+                        (from: 0, to: 6, x: 8, y: 22),
+                        (from: 0, to: 7, x: 8, y: 7),
+                    ],
+                ),
+                ladder: (4, 44),
+            ),
+            (
+                name: "OPERATIONS DECK",
+                zero_g: false,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 36),
+                        (kind: bridge, x: -12, y: 36, width: 32, height: 16),
+                        (kind: scanner, x: -20, y: 18, width: 20, height: 18),
+                        (kind: reactor, x: -22, y: 0, width: 22, height: 18),
+                        (kind: workshop, x: 8, y: 18, width: 22, height: 18),
+                        (kind: cargo_hold, x: 8, y: 0, width: 22, height: 18),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 36),
+                        (from: 0, to: 2, x: 0, y: 27),
+                        (from: 0, to: 3, x: 0, y: 9),
+                        (from: 0, to: 4, x: 8, y: 27),
+                        (from: 0, to: 5, x: 8, y: 9),
+                    ],
+                ),
+                ladder: (4, 28),
+            ),
+        ],
+    ),
+    default_system_seed: 77889900,
+)

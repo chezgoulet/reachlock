@@ -10,6 +10,7 @@ use clap::Subcommand;
 use reachlock_core::content::{validate_content, AssetType, ContentFile, ContentPayload};
 use reachlock_core::economy::GoodsCatalog;
 use reachlock_core::faction::{load_faction_catalog, validate_storylines, FactionCatalog};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::gen;
@@ -46,6 +47,24 @@ pub enum ContentCommand {
     Validate {
         /// Path to a `.ron` content file.
         path: PathBuf,
+    },
+    /// Check the whole content tree, not one file: every id a file references
+    /// must be defined somewhere, by something of the right kind.
+    ///
+    /// `validate` cannot do this — it sees one file and a file that points at
+    /// a nonexistent ship is perfectly well-formed. That is how ten origins
+    /// came to name eight ship templates nobody had authored.
+    ///
+    /// Exit 0 if the tree is consistent, 1 on dangling references, duplicate
+    /// ids, or files that parse as no known payload.
+    Check {
+        /// Content root to walk (the directory holding `origins/`, `souls/`, …).
+        #[arg(default_value = "mods/reachlock")]
+        root: PathBuf,
+        /// Also list content that nothing references. Not a failure — a lead:
+        /// an orphan is usually either unreachable or simply not wired up yet.
+        #[arg(long)]
+        orphans: bool,
     },
     /// Validate the authored economy catalogue (`content/economy/goods.ron`):
     /// every good has a positive base price and mass, contraband goods are
@@ -98,6 +117,7 @@ pub enum ContentCommand {
 
 pub fn run(cmd: ContentCommand) -> Result<(), String> {
     match cmd {
+        ContentCommand::Check { root, orphans } => cmd_check(&root, orphans),
         ContentCommand::ValidateGoods { path } => {
             let catalog = load_goods(&path)?;
             let errors = catalog.validate();
@@ -469,4 +489,95 @@ fn load_goods(path: &Path) -> Result<GoodsCatalog, String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
     ron::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))
+}
+
+/// `reachlock content check` — whole-tree reference integrity.
+///
+/// Output is grouped by failure kind and sorted, so a diff between two runs
+/// shows what actually changed rather than reshuffled directory order.
+fn cmd_check(root: &Path, show_orphans: bool) -> Result<(), String> {
+    use reachlock_core::content::ContentTree;
+
+    if !root.is_dir() {
+        return Err(format!(
+            "content root {} does not exist — pass the directory that holds origins/, souls/, …",
+            root.display()
+        ));
+    }
+
+    let tree = ContentTree::scan(root);
+    let report = tree.check();
+
+    println!(
+        "scanned {}: {} ids defined, {} references",
+        root.display(),
+        tree.definitions.len(),
+        tree.references.len()
+    );
+
+    if !report.unparseable.is_empty() {
+        println!("\nUNPARSEABLE ({}):", report.unparseable.len());
+        println!("  These files are skipped by every loader — the content is not in the game.");
+        for u in &report.unparseable {
+            println!("  {}\n      {}", u.file.display(), u.reason);
+        }
+    }
+
+    if !report.duplicates.is_empty() {
+        println!("\nDUPLICATE IDS ({}):", report.duplicates.len());
+        println!("  Which file wins depends on directory order, so this is a coin flip.");
+        for (kind, id, files) in &report.duplicates {
+            println!("  {} \"{}\" defined in:", kind.label(), id);
+            for f in files {
+                println!("      {}", f.display());
+            }
+        }
+    }
+
+    if !report.dangling.is_empty() {
+        // Group by what is missing rather than by who asked: eight origins
+        // wanting eight different ships is eight problems, but eight origins
+        // wanting one missing ship is one.
+        let mut by_target: BTreeMap<(&str, &str), Vec<&reachlock_core::content::Ref>> =
+            BTreeMap::new();
+        for r in &report.dangling {
+            by_target
+                .entry((r.target_kind.label(), r.target_id.as_str()))
+                .or_default()
+                .push(r);
+        }
+        println!(
+            "\nDANGLING REFERENCES ({} refs → {} missing ids):",
+            report.dangling.len(),
+            by_target.len()
+        );
+        for ((kind, id), refs) in &by_target {
+            println!("  no {kind} with id \"{id}\" — referenced by:");
+            for r in refs {
+                println!("      {} ({})", r.source_id, r.field);
+            }
+        }
+    }
+
+    if show_orphans && !report.orphans.is_empty() {
+        println!(
+            "\nORPHANS ({}) — defined, referenced by nothing:",
+            report.orphans.len()
+        );
+        for d in &report.orphans {
+            println!("  {} \"{}\"  {}", d.kind.label(), d.id, d.file.display());
+        }
+    }
+
+    if report.is_clean() {
+        println!("\ncontent tree OK");
+        Ok(())
+    } else {
+        Err(format!(
+            "content tree has {} dangling reference(s), {} duplicate id(s), {} unparseable file(s)",
+            report.dangling.len(),
+            report.duplicates.len(),
+            report.unparseable.len()
+        ))
+    }
 }

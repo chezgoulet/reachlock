@@ -1,0 +1,77 @@
+// Researcher career path. Referenced by the origins (or by another
+// career's conflict set) — see `reachlock content check`.
+// Perk magnitudes are fixed-point: 1024 = 1.0 = 100%.
+(
+    id: "researcher",
+    display_name: "Researcher",
+    asset_type: career,
+    seed: 46,
+    universe: "all",
+    priority: authoritative,
+    payload: career((
+        id: "researcher",
+        path_type: science,
+        name: "Researcher",
+        description: "The questions are more interesting than the funding, which is fortunate, because there is very little funding.",
+        faction_id: None,
+        ranks: [
+            (
+                rank: 1,
+                title: "Field Analyst",
+                required_criteria: [
+                    (criterion_type: research_points_earned, threshold: 500),
+                ],
+                rank_perks: ["lab_access"],
+                faction_standing_bonus: 0,
+            ),
+            (
+                rank: 2,
+                title: "Investigator",
+                required_criteria: [
+                    (criterion_type: research_points_earned, threshold: 3000),
+                    (criterion_type: species_scanned, threshold: 15),
+                ],
+                rank_perks: ["sample_rights"],
+                faction_standing_bonus: 10,
+            ),
+            (
+                rank: 3,
+                title: "Principal",
+                required_criteria: [
+                    (criterion_type: research_points_earned, threshold: 12000),
+                    (criterion_type: artifacts_recovered, threshold: 5),
+                ],
+                rank_perks: ["publication"],
+                faction_standing_bonus: 20,
+            ),
+        ],
+        progression_criteria: [
+            (criterion_type: research_points_earned, target: "*", threshold: 12000, weight: 1024),
+            (criterion_type: artifacts_recovered, target: "*", threshold: 5, weight: 640),
+        ],
+        perks: [
+            (
+                id: "lab_access",
+                name: "Lab Access",
+                description: "Use of station research facilities",
+                perk_type: restricted_area_access(area_id: "station_lab"),
+                magnitude: 1024,
+            ),
+            (
+                id: "sample_rights",
+                name: "Sample Rights",
+                description: "Keep what you scan",
+                perk_type: mission_bonus(mission_type: "research", bonus_pct: 1024),
+                magnitude: 1024,
+            ),
+            (
+                id: "publication",
+                name: "Publication",
+                description: "Your findings move markets",
+                perk_type: trade_bonus(good_category: "data", pct: 2048),
+                magnitude: 2048,
+            ),
+        ],
+        conflicting_paths: [],
+    )),
+)

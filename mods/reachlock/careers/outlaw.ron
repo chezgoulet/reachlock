@@ -1,0 +1,77 @@
+// Outlaw career path. Referenced by the origins (or by another
+// career's conflict set) — see `reachlock content check`.
+// Perk magnitudes are fixed-point: 1024 = 1.0 = 100%.
+(
+    id: "outlaw",
+    display_name: "Outlaw",
+    asset_type: career,
+    seed: 49,
+    universe: "all",
+    priority: authoritative,
+    payload: career((
+        id: "outlaw",
+        path_type: criminal,
+        name: "Outlaw",
+        description: "The registry has your old name on it. Everything since has been your own arrangement with the lanes.",
+        faction_id: None,
+        ranks: [
+            (
+                rank: 1,
+                title: "Runner",
+                required_criteria: [
+                    (criterion_type: contraband_smuggled, threshold: 20),
+                ],
+                rank_perks: ["blind_eye"],
+                faction_standing_bonus: 0,
+            ),
+            (
+                rank: 2,
+                title: "Operator",
+                required_criteria: [
+                    (criterion_type: contraband_smuggled, threshold: 120),
+                    (criterion_type: ships_captured, threshold: 3),
+                ],
+                rank_perks: ["fence_network"],
+                faction_standing_bonus: 0,
+            ),
+            (
+                rank: 3,
+                title: "Ghost",
+                required_criteria: [
+                    (criterion_type: contraband_smuggled, threshold: 400),
+                    (criterion_type: ships_captured, threshold: 12),
+                ],
+                rank_perks: ["no_record"],
+                faction_standing_bonus: 0,
+            ),
+        ],
+        progression_criteria: [
+            (criterion_type: contraband_smuggled, target: "*", threshold: 400, weight: 1024),
+            (criterion_type: ships_captured, target: "*", threshold: 12, weight: 640),
+        ],
+        perks: [
+            (
+                id: "blind_eye",
+                name: "Blind Eye",
+                description: "Reach ports do not check your manifest",
+                perk_type: bounty_pass(faction_id: "reach"),
+                magnitude: 1024,
+            ),
+            (
+                id: "fence_network",
+                name: "Fence Network",
+                description: "Contraband sells at better rates",
+                perk_type: trade_bonus(good_category: "contraband", pct: 1536),
+                magnitude: 1536,
+            ),
+            (
+                id: "no_record",
+                name: "No Record",
+                description: "Reach havens forgive everything",
+                perk_type: bounty_pass(faction_id: "reach"),
+                magnitude: 2048,
+            ),
+        ],
+        conflicting_paths: ["compact_navy", "diplomat", "executive"],
+    )),
+)

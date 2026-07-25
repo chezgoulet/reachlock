@@ -1,0 +1,41 @@
+// Ship template referenced by the origins (see docs/CONTENT-READINESS.md).
+// Layout convention: a spine corridor at x 0..8 with rooms hanging off
+// each side and a cap room across the top; every door sits on the spine
+// wall at its room's mid-height, so no room is unreachable.
+ShipTemplate(
+    id: "diplomatic_shuttle",
+    name: "Envoy-Class Shuttle",
+    description: "One deck, no weapons, and a room designed so two delegations can sit without either being closer to the door. Every surface is neutral grey by treaty.",
+    hull_id: "diplomatic_shuttle",
+    interior: (
+        decks: [
+            (
+                name: "SINGLE DECK",
+                zero_g: false,
+                layout: (
+                    rooms: [
+                        (kind: corridor, x: 0, y: 0, width: 8, height: 52),
+                        (kind: cockpit, x: -12, y: 52, width: 32, height: 16),
+                        (kind: bar, x: -26, y: 28, width: 26, height: 24),
+                        (kind: galley, x: -20, y: 14, width: 20, height: 14),
+                        (kind: reactor, x: -20, y: 0, width: 20, height: 14),
+                        (kind: quarters, x: 8, y: 28, width: 22, height: 24),
+                        (kind: med_bay, x: 8, y: 14, width: 20, height: 14),
+                        (kind: cargo_hold, x: 8, y: 0, width: 20, height: 14),
+                    ],
+                    doors: [
+                        (from: 0, to: 1, x: 4, y: 52),
+                        (from: 0, to: 2, x: 0, y: 40),
+                        (from: 0, to: 3, x: 0, y: 21),
+                        (from: 0, to: 4, x: 0, y: 7),
+                        (from: 0, to: 5, x: 8, y: 40),
+                        (from: 0, to: 6, x: 8, y: 21),
+                        (from: 0, to: 7, x: 8, y: 7),
+                    ],
+                ),
+                ladder: (4, 44),
+            ),
+        ],
+    ),
+    default_system_seed: 44556677,
+)

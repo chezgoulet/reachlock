@@ -1,0 +1,105 @@
+// Zara — companion soul shipped with the origin that references
+// this id. Not canon crew: these characters belong to their origin, and an
+// author is meant to rewrite them freely. Fixed-point (1024 = 1.0).
+(
+    id: "zara_trade",
+    display_name: "Zara",
+    asset_type: soul,
+    seed: 8912774451336290,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "zara_trade",
+        name: "Zara Okonjo-Vance",
+        species: human,
+        portrait_id: "portraits/zara_trade",
+        identity: (
+            origin: "Trade lanes — third generation hauler family",
+            faction_affiliation: "Independent traders",
+            role: "Co-Pilot",
+            public_bio: "Zara grew up in a cargo hold and can price a manifest by looking at it. She flies second seat because the first seat is where the paperwork lives, and she has strong feelings about paperwork.",
+        ),
+        personality: (
+            traits: ["Quick", "Frank", "Superstitious"],
+            values: ["TheMargin", "TheLanes", "PayingCrewFirst"],
+            speaking_style: sarcastic,
+            quirks: [
+                "Prices anything she looks at, out loud, unprompted",
+                "Will not launch on the thirteenth without touching the hull first",
+                "Knows which ports are safe and will list the ones that are not, alphabetically",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 307,
+            triggers: [
+                (
+                    condition: compare(field: "event.cargo_lost", op: eq, value: 1),
+                    mood: grieving,
+                    intensity: 819,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "event.market_opportunity", op: eq, value: 1),
+                    mood: happy,
+                    intensity: 717,
+                    priority: 6,
+                ),
+                (
+                    condition: compare(field: "event.boarded_by_authorities", op: eq, value: 1),
+                    mood: suspicious,
+                    intensity: 870,
+                    priority: 9,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-seized-run",
+                event_type: "loss",
+                player_involved: false,
+                emotional_weight: 897,
+                timestamp: 0,
+                summary: "A full hold, a clean manifest, and a tariff inspector who had already decided. Her family did not recover the run and did not recover the year either.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "player", trust: 614, familiarity: 512, history: []),
+        ],
+        goals: [
+            (id: "clear_the_margin", priority: constant, description: "Not greed. She has watched what happens to a hauler family that runs one bad quarter."),
+            (id: "keep_the_manifest_honest", priority: situational, description: "She will run cargo she was not told about exactly once, and then there is a conversation."),
+        ],
+        breaking_points: [
+            (
+                id: "crew_shorted",
+                trigger: compare(field: "event.crew_pay_withheld", op: eq, value: 1),
+                reaction: leave_ship,
+            ),
+        ],
+        contracts: [],
+        backstory: "Third generation on the lanes. Her grandmother's hauler is still registered somewhere and Zara has never gone to look, on the grounds that she already knows what condition it is in.",
+        secrets: [
+            (
+                id: "the_registry",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 794),
+                    compare(field: "event.asked_about_her_family", op: eq, value: 1),
+                ]),
+                content: "The family hauler was not lost. It was sold to cover the seizure, and she was the one who signed the transfer, at nineteen, because her mother could not.",
+            ),
+        ],
+        look: Some((
+            species: "Human",
+            hair_style: Some(4),
+            hair_color: Some((46, 33, 28)),
+            skin_color: Some((122, 84, 58)),
+            shirt_color: Some((179, 92, 51)),
+            pants_color: Some((66, 56, 46)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((84, 71, 56)),
+            chassis_color: None,
+            visor_color: None,
+        )),
+    )),
+)

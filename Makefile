@@ -2,13 +2,21 @@
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
 .PHONY: test check fmt clippy run run-debug server server-db determinism clean \
-	db db-down db-reset db-psql db-test dev-secrets check-features
+	db db-down db-reset db-psql db-test dev-secrets check-features check-content
 
 test:
 	cargo test --workspace
 
-check: fmt clippy test check-purity check-features
+check: fmt clippy test check-purity check-features check-content
 	@echo "all gates green"
+
+# Whole-tree content integrity (iron rule #8: a system nobody can reach is
+# not done). Per-file validation cannot catch a reference to an id that does
+# not exist, because that is a property of the tree — which is how ten origins
+# came to name eight ship templates, nine careers and ten souls that had never
+# been authored. Each of those files was individually valid.
+check-content:
+	cargo run -q -p reachlock-cli -- content check mods/reachlock
 
 # The `postgres` and `redis` features are off by default, so nothing in the
 # default build ever compiles them — and they rotted unnoticed: PgSessionStore

@@ -24,6 +24,7 @@ pub mod faction_loader;
 pub mod origin;
 pub mod priority;
 pub mod recipe;
+pub mod refs;
 pub mod resolve;
 pub mod seed;
 pub mod validate;
@@ -38,6 +39,7 @@ pub use origin::{
 };
 pub use priority::Priority;
 pub use recipe::{Ingredient, OutputConfig, Recipe, SkillRequirement};
+pub use refs::{CheckReport, ContentTree, Definition, Ref, RefKind};
 pub use resolve::{resolve, Resolved, SeedParams};
 pub use seed::content_seed;
 pub use validate::{validate_content, ValidationError};

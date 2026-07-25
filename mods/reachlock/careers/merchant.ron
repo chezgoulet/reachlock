@@ -1,0 +1,76 @@
+// Merchant career path. Referenced by the origins (or by another
+// career's conflict set) — see `reachlock content check`.
+// Perk magnitudes are fixed-point: 1024 = 1.0 = 100%.
+(
+    id: "merchant",
+    display_name: "Merchant",
+    asset_type: career,
+    seed: 44,
+    universe: "all",
+    priority: authoritative,
+    payload: career((
+        id: "merchant",
+        path_type: trade,
+        name: "Merchant",
+        description: "Buy low, haul far, sell high, and know which ports will bleed you dry before you dock at one.",
+        faction_id: None,
+        ranks: [
+            (
+                rank: 1,
+                title: "Peddler",
+                required_criteria: [
+                    (criterion_type: trade_volume, threshold: 5000),
+                ],
+                rank_perks: ["bulk_rates"],
+                faction_standing_bonus: 0,
+            ),
+            (
+                rank: 2,
+                title: "Trader",
+                required_criteria: [
+                    (criterion_type: trade_volume, threshold: 40000),
+                ],
+                rank_perks: ["port_standing"],
+                faction_standing_bonus: 10,
+            ),
+            (
+                rank: 3,
+                title: "Merchant Prince",
+                required_criteria: [
+                    (criterion_type: trade_volume, threshold: 200000),
+                    (criterion_type: missions_completed, threshold: 15),
+                ],
+                rank_perks: ["private_berth"],
+                faction_standing_bonus: 25,
+            ),
+        ],
+        progression_criteria: [
+            (criterion_type: trade_volume, target: "*", threshold: 200000, weight: 1024),
+            (criterion_type: missions_completed, target: "*", threshold: 15, weight: 384),
+        ],
+        perks: [
+            (
+                id: "bulk_rates",
+                name: "Bulk Rates",
+                description: "Better prices on volume purchases",
+                perk_type: trade_bonus(good_category: "all", pct: 512),
+                magnitude: 512,
+            ),
+            (
+                id: "port_standing",
+                name: "Port Standing",
+                description: "Docking fees reduced sector-wide",
+                perk_type: station_discount(faction_id: "isc", pct: 1024),
+                magnitude: 1024,
+            ),
+            (
+                id: "private_berth",
+                name: "Private Berth",
+                description: "A reserved bay at any ISC port",
+                perk_type: restricted_area_access(area_id: "isc_private_berth"),
+                magnitude: 1024,
+            ),
+        ],
+        conflicting_paths: [],
+    )),
+)

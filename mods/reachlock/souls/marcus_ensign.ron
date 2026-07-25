@@ -1,0 +1,105 @@
+// Ensign Marcus — companion soul shipped with the origin that references
+// this id. Not canon crew: these characters belong to their origin, and an
+// author is meant to rewrite them freely. Fixed-point (1024 = 1.0).
+(
+    id: "marcus_ensign",
+    display_name: "Ensign Marcus",
+    asset_type: soul,
+    seed: 8874336619127053,
+    universe: "all",
+    priority: curated,
+    payload: soul((
+        id: "marcus_ensign",
+        name: "Marcus Ferrow",
+        species: human,
+        portrait_id: "portraits/marcus_ensign",
+        identity: (
+            origin: "Compact core worlds — enlisted at the first legal opportunity",
+            faction_affiliation: "Compact Navy",
+            role: "Pilot",
+            public_bio: "Marcus flies well, follows protocol, and has recently started noticing which protocols exist for safety and which exist for the record. He has not mentioned the distinction to anyone senior.",
+        ),
+        personality: (
+            traits: ["Disciplined", "Earnest", "Questioning"],
+            values: ["TheService", "TheCrew", "DoingItProperly"],
+            speaking_style: formal,
+            quirks: [
+                "Runs the pre-flight checklist aloud even alone",
+                "Uses rank when addressing anyone, including people without one",
+                "Has stopped saying by the book without a pause before it",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 307,
+            triggers: [
+                (
+                    condition: compare(field: "event.compact_order_received", op: eq, value: 1),
+                    mood: focused,
+                    intensity: 768,
+                    priority: 8,
+                ),
+                (
+                    condition: compare(field: "event.protocol_violated", op: eq, value: 1),
+                    mood: tense,
+                    intensity: 743,
+                    priority: 7,
+                ),
+                (
+                    condition: compare(field: "event.crew_member_injured", op: eq, value: 1),
+                    mood: protective,
+                    intensity: 843,
+                    priority: 9,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-patrol",
+                event_type: "service",
+                player_involved: false,
+                emotional_weight: 794,
+                timestamp: 0,
+                summary: "A routine patrol where the standing order and the right thing to do were not the same order. He followed the standing one. It has not stopped being on his mind.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "player", trust: 614, familiarity: 512, history: []),
+        ],
+        goals: [
+            (id: "fly_it_properly", priority: constant, description: "Whatever else is in question, the flying is not."),
+            (id: "work_out_what_he_signed_up_for", priority: situational, description: "He knows the Compact Navy from the inside now, which is not the same as knowing it from the recruitment material."),
+        ],
+        breaking_points: [
+            (
+                id: "ordered_to_fire_on_civilians",
+                trigger: compare(field: "event.ordered_to_fire_on_noncombatants", op: eq, value: 1),
+                reaction: refuse_orders,
+            ),
+        ],
+        contracts: [],
+        backstory: "Born and raised Compact, enlisted as soon as he came of age, field-commissioned young. He knows the protocols, the politics, and — more recently — the weak points.",
+        secrets: [
+            (
+                id: "the_standing_order",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 768),
+                    compare(field: "event.asked_about_his_last_patrol", op: eq, value: 1),
+                ]),
+                content: "The standing order was to log the contact and continue. There were people on that hull. He logged the contact and continued.",
+            ),
+        ],
+        look: Some((
+            species: "Human",
+            hair_style: Some(2),
+            hair_color: Some((112, 84, 51)),
+            skin_color: Some((230, 204, 184)),
+            shirt_color: Some((38, 56, 92)),
+            pants_color: Some((28, 41, 66)),
+            jacket_enabled: Some(false),
+            jacket_color: None,
+            chassis_color: None,
+            visor_color: None,
+        )),
+    )),
+)

@@ -1,0 +1,77 @@
+// Reach Pirates career path. Referenced by the origins (or by another
+// career's conflict set) — see `reachlock content check`.
+// Perk magnitudes are fixed-point: 1024 = 1.0 = 100%.
+(
+    id: "reach_pirates",
+    display_name: "Reach Pirates",
+    asset_type: career,
+    seed: 50,
+    universe: "all",
+    priority: authoritative,
+    payload: career((
+        id: "reach_pirates",
+        path_type: criminal,
+        name: "Reach Pirates",
+        description: "A crew, a haven, and a share of everything taken. The Reach does not ask where it came from.",
+        faction_id: Some("reach"),
+        ranks: [
+            (
+                rank: 1,
+                title: "Deckhand",
+                required_criteria: [
+                    (criterion_type: ships_captured, threshold: 2),
+                ],
+                rank_perks: ["haven_berth"],
+                faction_standing_bonus: 10,
+            ),
+            (
+                rank: 2,
+                title: "Raider",
+                required_criteria: [
+                    (criterion_type: ships_captured, threshold: 10),
+                    (criterion_type: contraband_smuggled, threshold: 80),
+                ],
+                rank_perks: ["prize_share"],
+                faction_standing_bonus: 20,
+            ),
+            (
+                rank: 3,
+                title: "Captain of the Black",
+                required_criteria: [
+                    (criterion_type: ships_captured, threshold: 30),
+                    (criterion_type: bounties_collected, threshold: 10),
+                ],
+                rank_perks: ["reach_writ"],
+                faction_standing_bonus: 40,
+            ),
+        ],
+        progression_criteria: [
+            (criterion_type: ships_captured, target: "*", threshold: 30, weight: 1024),
+            (criterion_type: contraband_smuggled, target: "*", threshold: 200, weight: 512),
+        ],
+        perks: [
+            (
+                id: "haven_berth",
+                name: "Haven Berth",
+                description: "Free docking at Reach havens",
+                perk_type: station_discount(faction_id: "reach", pct: 4096),
+                magnitude: 4096,
+            ),
+            (
+                id: "prize_share",
+                name: "Prize Share",
+                description: "A larger cut of every capture",
+                perk_type: combat_bonus(damage_type: "all", pct: 1024),
+                magnitude: 1024,
+            ),
+            (
+                id: "reach_writ",
+                name: "Writ of the Reach",
+                description: "Reach crimes are not crimes",
+                perk_type: bounty_pass(faction_id: "reach"),
+                magnitude: 2048,
+            ),
+        ],
+        conflicting_paths: ["compact_navy"],
+    )),
+)

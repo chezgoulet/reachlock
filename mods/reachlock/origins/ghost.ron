@@ -14,7 +14,7 @@ ContentFile(
         starting_rank: 1,
         faction_deltas: [
             (faction_id: "compact", delta: -30),
-            (faction_id: "free_traders", delta: -10),
+            (faction_id: "isc", delta: -10),
         ],
         starting_credits: 500,
         ship_template: Some("stolen_fighter"),

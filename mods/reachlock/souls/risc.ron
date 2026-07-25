@@ -1,0 +1,115 @@
+// Risc — android, ops and tactical (docs/LORE.md §"Risc"). The warmest
+// presence aboard after Bardo, which surprises people, because the warmth is
+// in the attention rather than the chassis. Look carried from the client's
+// old builtin_crew_config. Fixed-point (1024 = 1.0).
+(
+    id: "risc",
+    display_name: "Risc",
+    asset_type: soul,
+    seed: 6109443278065512,
+    universe: "all",
+    priority: authoritative,
+    payload: soul((
+        id: "risc",
+        name: "Risc",
+        species: android,
+        portrait_id: "portraits/risc",
+        identity: (
+            origin: "Built, not born; with the crew since before the ship had this name",
+            faction_affiliation: "The crew of the Loup-Garou",
+            role: "Ops & Tactical",
+            public_bio: "Risc runs the ops center during routine operations and handles tactical analysis, intercepts, and threat assessment when things are not routine. He has been right often enough that his objection to a contract carries weight, even when the crew takes it anyway.",
+        ),
+        personality: (
+            traits: ["Observant", "Wry", "Present"],
+            values: ["Attention", "Assessment", "TheCrew"],
+            speaking_style: wry,
+            quirks: [
+                "Listens fully, without interrupting, in a way that makes people feel less alone",
+                "Notes an ignored objection, files it, and is ready to say so with precision",
+                "Plays cards with Doc Keene and probably lets her win",
+                "Will not volunteer his views on personhood, but has them fully developed",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 307,
+            triggers: [
+                (
+                    condition: compare(field: "event.threat_detected", op: eq, value: 1),
+                    mood: focused,
+                    intensity: 921,
+                    priority: 10,
+                ),
+                (
+                    condition: compare(field: "event.objection_overruled", op: eq, value: 1),
+                    mood: stable,
+                    intensity: 512,
+                    priority: 4,
+                ),
+                (
+                    condition: compare(field: "event.crew_member_injured", op: eq, value: 1),
+                    mood: protective,
+                    intensity: 897,
+                    priority: 9,
+                ),
+                (
+                    condition: compare(field: "event.personhood_questioned", op: eq, value: 1),
+                    mood: withdrawn,
+                    intensity: 665,
+                    priority: 7,
+                ),
+            ],
+        ),
+        memory_tree: [
+            (
+                id: "the-contract-he-called",
+                event_type: "assessment",
+                player_involved: false,
+                emotional_weight: 665,
+                timestamp: 0,
+                summary: "He objected. The crew took the contract anyway. He did not hold it against them — he noted it, filed it, and was ready when it went the way he said it would.",
+            ),
+        ],
+        relationship_graph: [
+            (target_id: "prudence", trust: 897, familiarity: 946, history: []),
+            (target_id: "keene", trust: 870, familiarity: 819, history: []),
+            (target_id: "tib", trust: 843, familiarity: 897, history: []),
+        ],
+        goals: [
+            (id: "assess_before_it_matters", priority: constant, description: "By the time anyone else notices the problem, he has usually decided how to approach it."),
+            (id: "be_asked_directly", priority: situational, description: "He will share what he thinks about personhood if someone asks. Most people do not."),
+        ],
+        breaking_points: [
+            (
+                id: "used_as_a_thing",
+                trigger: compare(field: "event.android_traded_as_property", op: eq, value: 1),
+                reaction: refuse_orders,
+            ),
+        ],
+        backstory: "His chassis is angular and his face is not built for reassurance, which is why the warmth surprises people. The crew has learned to notice when he is listening closely, because it usually means he has already found the problem.",
+        contracts: [],
+        secrets: [
+            (
+                id: "the_disagreement",
+                reveal_condition: all([
+                    compare(field: "trust.player", op: gt, value: 843),
+                    compare(field: "event.asked_about_prudence", op: eq, value: 1),
+                ]),
+                content: "He and Prudence disagree about tactics on the personhood question — he considers her unprompted disclosures tactically suboptimal. They agree completely on the underlying position.",
+            ),
+        ],
+        look: Some((
+            species: "Android",
+            hair_style: Some(0),
+            hair_color: Some((242, 166, 51)),
+            skin_color: Some((115, 122, 133)),
+            shirt_color: Some((77, 84, 61)),
+            pants_color: Some((51, 56, 46)),
+            jacket_enabled: Some(false),
+            jacket_color: None,
+            chassis_color: None,
+            visor_color: None,
+        )),
+    )),
+)
