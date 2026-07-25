@@ -79,7 +79,7 @@
                 reaction: confront,
             ),
         ],
-        contracts: ["cryo-pilot", "combat-tactical", "emergency-procedures"],
+        contracts: ["combat-tactical", "emergency-procedures"],
         backstory: "Alexandre Dubois served as an intelligence officer in the Compact Intelligence Service for fifteen years. He was involved in the Charlevoix Incident, a covert operation that went wrong and left a colony exposed to raider attack. Though cleared by internal review, the stain on his record ended his ISC career. He took command of the Loup-Garou under a privateering charter, keeping his crew close and his past closer. He remains a Compact loyalist, believing the system failed the colony rather than the agents on the ground.",
         secrets: [
             (

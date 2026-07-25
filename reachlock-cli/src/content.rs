@@ -35,8 +35,7 @@ const EVENT_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/event.sche
 const RECIPE_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/recipe.schema.json");
 const ORIGIN_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/origin.schema.json");
 
-// Dialogue schema is pending from S53 — use ecosystem as placeholder.
-const DIALOGUE_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/ecosystem.schema.json");
+const DIALOGUE_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/dialogue.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -382,6 +381,31 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                     );
                     return Ok(());
                 }
+                ContentPayload::CrewPackage(pkg) => {
+                    println!(
+                        "{}: crew package \"{}\" — {} member(s)",
+                        path.display(),
+                        pkg.name,
+                        pkg.members.len(),
+                    );
+                    return Ok(());
+                }
+                ContentPayload::SoulMutations(mutations) => {
+                    println!(
+                        "{}: soul mutations — {} arc(s)",
+                        path.display(),
+                        mutations.len(),
+                    );
+                    return Ok(());
+                }
+                ContentPayload::Storylines(stories) => {
+                    println!(
+                        "{}: faction storyline — {} story(s)",
+                        path.display(),
+                        stories.len(),
+                    );
+                    return Ok(());
+                }
             };
             let out = out.unwrap_or_else(|| path.with_extension("svg"));
             std::fs::write(&out, svg).map_err(|e| format!("writing {}: {e}", out.display()))?;
@@ -439,6 +463,9 @@ fn validate_schema(
         AssetType::Event => EVENT_SCHEMA,
         AssetType::Recipe => RECIPE_SCHEMA,
         AssetType::Origin => ORIGIN_SCHEMA,
+        AssetType::CrewPackage => "",
+        AssetType::SoulMutations => "",
+        AssetType::Storyline => "",
     };
 
     let schema = serde_json::from_str::<serde_json::Value>(schema_text)

@@ -293,6 +293,69 @@ pub fn autosave_system(
     }
 }
 
+#[derive(Resource, Default)]
+pub struct InventoryPanelVisible(pub bool);
+
+#[derive(Component)]
+pub struct InventoryPanel;
+
+/// Spawn the inventory panel entity (hidden by default).
+pub fn spawn_inventory_panel(mut commands: Commands) {
+    commands.spawn((
+        InventoryPanel,
+        Text::new(""),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.7, 0.9, 0.7)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(120.0),
+            left: Val::Px(8.0),
+            ..default()
+        },
+        Visibility::Hidden,
+    ));
+}
+
+/// Toggle inventory panel on the assigned key.
+pub fn inventory_panel_toggle(
+    keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<crate::settings::Settings>,
+    mut visible: ResMut<InventoryPanelVisible>,
+) {
+    if keys.just_pressed(settings.key(crate::settings::InputAction::OpenInventory)) {
+        visible.0 = !visible.0;
+    }
+}
+
+/// Render the inventory panel when visible.
+pub fn render_inventory_panel(
+    visible: Res<InventoryPanelVisible>,
+    inventory: Res<PlayerInventory>,
+    mut query: Query<(&mut Text, &mut Visibility), With<InventoryPanel>>,
+) {
+    if let Ok((mut text, mut vis)) = query.single_mut() {
+        if visible.0 {
+            *vis = Visibility::Visible;
+            let mut lines = vec!["── INVENTORY ──".to_string()];
+            lines.push(format!("  Credits: {}", inventory.credits));
+            lines.push(format!(
+                "  Cargo: {}/{} units",
+                inventory.cargo_units(),
+                inventory.capacity
+            ));
+            for (good, qty) in &inventory.cargo {
+                lines.push(format!("  {}: {}", good.0, qty));
+            }
+            **text = lines.join("\n");
+        } else {
+            *vis = Visibility::Hidden;
+        }
+    }
+}
+
 /// Startup: restore inventory + location from a prior local save, if any.
 /// Also restores the universe state and fast-forwards the ticks that elapsed
 /// while the game was closed (capped inside `catch_up`). Wired in `main.rs`
@@ -401,7 +464,7 @@ mod tests {
             pronouns: "they/them".into(),
             species: "Human".into(),
             look: reachlock_core::generator::sprite::CharacterLookConfig {
-                species: "Human".into(),
+                species: reachlock_core::soul::types::Species::Human,
                 hair_style: Some(3),
                 ..Default::default()
             },

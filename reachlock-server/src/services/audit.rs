@@ -4,6 +4,8 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
+const MAX_AUDIT_ENTRIES: usize = 10_000;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
     pub timestamp: String,
@@ -41,6 +43,10 @@ impl AuditLog for MemoryAuditLog {
     fn record(&self, entry: AuditEntry) {
         let mut entries = self.entries.lock().unwrap();
         entries.push(entry);
+        if entries.len() > MAX_AUDIT_ENTRIES {
+            let excess = entries.len() - MAX_AUDIT_ENTRIES;
+            entries.drain(0..excess);
+        }
     }
 
     fn recent(&self, limit: usize) -> Vec<AuditEntry> {

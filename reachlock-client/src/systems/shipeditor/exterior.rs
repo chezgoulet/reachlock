@@ -20,6 +20,7 @@ use crate::systems::inventory::{save_player, PlayerInventory};
 use crate::systems::ship::PlayerShip;
 use crate::systems::ticker::UniverseTicker;
 
+use super::preview::{draw_hull_preview, hull_to_preview};
 use super::{frame_for, ShipConfig, FRAME_IDS};
 
 // ---------------------------------------------------------------------------
@@ -228,6 +229,7 @@ pub fn editor_system(
     keys: Res<ButtonInput<KeyCode>>,
     settings: Res<Settings>,
     panel: Res<ActivePanel>,
+    focus_stack: Res<crate::focus_stack::FocusStack>,
     mut state: ResMut<ShipEditorState>,
     mut shipcfg: ResMut<ShipConfig>,
     mut inv: ResMut<PlayerInventory>,
@@ -244,6 +246,9 @@ pub fn editor_system(
             state.draft = None;
             state.status.clear();
         }
+        return;
+    }
+    if focus_stack.top_captures_input() {
         return;
     }
 
@@ -529,6 +534,27 @@ pub fn editor_preview(
 
     for (_, mut transform) in &mut preview {
         transform.rotation = rotation;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hull wireframe preview (S101)
+// ---------------------------------------------------------------------------
+
+#[allow(clippy::too_many_arguments)]
+pub fn draw_hull_preview_system(
+    panel: Res<ActivePanel>,
+    state: Res<ShipEditorState>,
+    content: Res<ContentIndex>,
+    mut gizmos: Gizmos,
+) {
+    if *panel != ActivePanel::ShipExterior {
+        return;
+    }
+    if let Some(ref draft) = state.draft {
+        let frame = frame_for(&content, &draft.hull_id);
+        let preview = hull_to_preview(&frame, draft.seed);
+        draw_hull_preview(&mut gizmos, &preview);
     }
 }
 

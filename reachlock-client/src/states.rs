@@ -136,6 +136,17 @@ impl Default for CurrentLocation {
     }
 }
 
+/// Panel groups for mutual exclusion — opening a panel in a group
+/// auto-closes all other panels in that group.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PanelGroup {
+    InfoPanel,
+    Narrative,
+    Trade,
+    Workshop,
+    None,
+}
+
 /// The scene currently spawned into the world. Used to make pause a no-op
 /// round-trip: re-entering a mode we never despawned must not rebuild it.
 #[derive(Resource, Default, Clone, Debug)]

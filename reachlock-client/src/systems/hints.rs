@@ -30,7 +30,7 @@ fn default_hints() -> HashMap<String, HintDef> {
         HintDef {
             hint_id: "fuel_gauge".into(),
             title: "Fuel Gauge".into(),
-            body: "Current fuel level. When fuel drops below 15%, Boris will warn you. At 0%, the ship drifts.".into(),
+            body: "Current fuel level. When fuel drops below 15%, your ship's systems will warn you. At 0%, the ship drifts.".into(),
         },
     );
     m.insert(

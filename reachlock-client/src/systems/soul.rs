@@ -110,19 +110,14 @@ pub fn init_souls(content: Res<ContentIndex>, mut registry: ResMut<SoulRegistry>
         info!("souls: loaded {} authored soul(s)", registry.files.len());
     }
 
-    // Load soul mutations from the storylines directory (raw Vec<SoulMutation> RON).
-    let mutation_path = std::path::Path::new("mods/reachlock/storylines/loup_garou_souls.ron");
-    if mutation_path.exists() {
-        match std::fs::read_to_string(mutation_path) {
-            Ok(text) => match ron::from_str::<Vec<reachlock_core::soul::SoulMutation>>(&text) {
-                Ok(mutations) => {
-                    registry.mutations = mutations;
-                    info!("souls: loaded {} mutation arc(s)", registry.mutations.len());
-                }
-                Err(e) => warn!("souls: failed to parse mutations: {e}"),
-            },
-            Err(e) => warn!("souls: failed to read mutations: {e}"),
+    // Load soul mutations from the content index.
+    for file in &content.files {
+        if let reachlock_core::content::ContentPayload::SoulMutations(mutations) = &file.payload {
+            registry.mutations.extend(mutations.clone());
         }
+    }
+    if !registry.mutations.is_empty() {
+        info!("souls: loaded {} mutation arc(s)", registry.mutations.len());
     }
 }
 

@@ -24,6 +24,7 @@ use reachlock_core::content::{ContentPayload, NpcSpawn};
 use reachlock_core::generator::sprite::CharacterLookConfig;
 use reachlock_core::generator::station::generate_station;
 use reachlock_core::generator::{Door, GeneratedLayout, Room, RoomKind};
+use reachlock_core::soul::types::Species;
 use reachlock_core::util::color::generate_palette;
 use reachlock_core::util::rng::SeededRng;
 
@@ -877,6 +878,7 @@ fn spawn_props(
 /// WASD walking with wall collision. Each axis resolves independently so the
 /// avatar slides along walls; crossing between rooms only works through door
 /// apertures (`walkable`).
+#[allow(clippy::too_many_arguments)]
 pub fn walk_avatar(
     keys: Res<ButtonInput<KeyCode>>,
     settings: Res<Settings>,
@@ -884,8 +886,12 @@ pub fn walk_avatar(
     interior: Res<CurrentInterior>,
     dialogue: Res<crate::systems::dialogue::DialogueSession>,
     plan: Res<crate::systems::cryojump::JumpPlan>,
+    focus_stack: Res<crate::focus_stack::FocusStack>,
     mut avatar: Query<&mut Transform, With<PlayerAvatar>>,
 ) {
+    if focus_stack.top_captures_input() {
+        return;
+    }
     // S16: while typing a free-input line, WASD spells words, not steps.
     // S09e: a sealed cryo pod holds its sleeper until revival.
     if dialogue.typing() || plan.player_in_pod {
@@ -1474,7 +1480,7 @@ pub fn cockpit_seat_spawn() -> Option<(usize, Vec2)> {
 fn builtin_crew_config(id: &str) -> Option<CharacterLookConfig> {
     use reachlock_core::generator::sprite::CharacterLookConfig;
     let cfg = || CharacterLookConfig {
-        species: String::new(),
+        species: Species::Human,
         hair_style: None,
         hair_color: None,
         skin_color: None,
@@ -1487,7 +1493,7 @@ fn builtin_crew_config(id: &str) -> Option<CharacterLookConfig> {
     };
     Some(match id {
         "keene" => CharacterLookConfig {
-            species: "Human".into(),
+            species: Species::Human,
             hair_style: Some(5), // Bun
             hair_color: Some([26, 20, 20]),
             skin_color: Some([107, 71, 51]),
@@ -1498,7 +1504,7 @@ fn builtin_crew_config(id: &str) -> Option<CharacterLookConfig> {
             ..cfg()
         },
         "bardo" => CharacterLookConfig {
-            species: "Human".into(),
+            species: Species::Human,
             hair_style: Some(4), // Locs
             hair_color: Some([31, 26, 23]),
             skin_color: Some([140, 97, 66]),
@@ -1509,7 +1515,7 @@ fn builtin_crew_config(id: &str) -> Option<CharacterLookConfig> {
             ..cfg()
         },
         "prudence" => CharacterLookConfig {
-            species: "Android".into(),
+            species: Species::Android,
             hair_style: Some(6), // Crest
             hair_color: Some([217, 77, 153]),
             skin_color: Some([204, 209, 224]),
@@ -1519,7 +1525,7 @@ fn builtin_crew_config(id: &str) -> Option<CharacterLookConfig> {
             ..cfg()
         },
         "risc" => CharacterLookConfig {
-            species: "Android".into(),
+            species: Species::Android,
             hair_style: Some(0), // Bald
             hair_color: Some([242, 166, 51]),
             skin_color: Some([115, 122, 133]),
@@ -1558,7 +1564,7 @@ fn soul_body_kind(souls: &SoulRegistry, id: &str) -> pixel::BodyKind {
         return pixel::body_kind_from_species(s.species);
     }
     if let Some(cfg) = builtin_crew_config(id) {
-        return pixel::body_kind_from_str(&cfg.species);
+        return pixel::body_kind_from_species(cfg.species);
     }
     pixel::BodyKind::Human
 }

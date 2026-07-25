@@ -36,14 +36,14 @@ pub struct DayBucket {
 }
 
 pub struct MemoryCostStore {
-    records: Mutex<Vec<LlmCallRecord>>,
+    records: Mutex<VecDeque<LlmCallRecord>>,
     max_records: usize,
 }
 
 impl MemoryCostStore {
     pub fn new() -> Self {
         MemoryCostStore {
-            records: Mutex::new(Vec::new()),
+            records: Mutex::new(VecDeque::new()),
             max_records: 10_000,
         }
     }
@@ -59,9 +59,9 @@ impl CostStore for MemoryCostStore {
     fn record(&self, record: LlmCallRecord) {
         let mut records = self.records.lock().unwrap();
         if records.len() >= self.max_records {
-            records.remove(0);
+            records.pop_front();
         }
-        records.push(record);
+        records.push_back(record);
     }
     fn player_total(&self, player_id: &str, _since: &str) -> u64 {
         self.records

@@ -36,6 +36,9 @@ pub enum ContentPayloadVariant {
     HullFrame,
     RoomTemplates,
     Origin,
+    CrewPackage,
+    SoulMutations,
+    Storyline,
 }
 
 impl ContentPayloadVariant {
@@ -58,6 +61,9 @@ impl ContentPayloadVariant {
             AssetType::HullFrame => Some(ContentPayloadVariant::HullFrame),
             AssetType::RoomTemplates => Some(ContentPayloadVariant::RoomTemplates),
             AssetType::Origin => Some(ContentPayloadVariant::Origin),
+            AssetType::CrewPackage => Some(ContentPayloadVariant::CrewPackage),
+            AssetType::SoulMutations => Some(ContentPayloadVariant::SoulMutations),
+            AssetType::Storyline => Some(ContentPayloadVariant::Storyline),
         }
     }
 
@@ -81,6 +87,9 @@ impl ContentPayloadVariant {
             ContentPayloadVariant::HullFrame,
             ContentPayloadVariant::RoomTemplates,
             ContentPayloadVariant::Origin,
+            ContentPayloadVariant::CrewPackage,
+            ContentPayloadVariant::SoulMutations,
+            ContentPayloadVariant::Storyline,
         ]
     }
 }
@@ -166,6 +175,9 @@ fn register_all_consumers(d: &mut ContentDispatcher) {
     d.register(PlanetCulture, consume_planet_cultures);
     d.register(Recipe, consume_recipes);
     d.register(Origin, consume_origins);
+    d.register(CrewPackage, consume_crew_packages);
+    d.register(SoulMutations, consume_soul_mutations);
+    d.register(Storyline, consume_storylines);
 }
 
 // ---------------------------------------------------------------------------
@@ -367,6 +379,23 @@ fn consume_recipes(files: &[ContentFile]) -> Vec<(String, String)> {
     if !recipes.is_empty() {
         crate::systems::dispatch::stash::set_recipes(recipes);
     }
+    Vec::new()
+}
+
+fn consume_crew_packages(_files: &[ContentFile]) -> Vec<(String, String)> {
+    // Crew packages are loaded by crew::CrewRoster::load_from_content
+    // which reads from the content index directly.
+    Vec::new()
+}
+
+fn consume_soul_mutations(_files: &[ContentFile]) -> Vec<(String, String)> {
+    // Soul mutations are loaded by soul::init_souls which reads
+    // from the content index directly.
+    Vec::new()
+}
+
+fn consume_storylines(_files: &[ContentFile]) -> Vec<(String, String)> {
+    // Storylines are loaded through the faction loader.
     Vec::new()
 }
 

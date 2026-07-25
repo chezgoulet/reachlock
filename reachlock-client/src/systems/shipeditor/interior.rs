@@ -175,6 +175,7 @@ pub fn interior_editor_system(
     keys: Res<ButtonInput<KeyCode>>,
     settings: Res<Settings>,
     panel: Res<ActivePanel>,
+    focus_stack: Res<crate::focus_stack::FocusStack>,
     mut state: ResMut<InteriorEditorState>,
     mut interior_cfg: ResMut<InteriorConfig>,
     shipcfg: Res<ShipConfig>,
@@ -191,6 +192,9 @@ pub fn interior_editor_system(
             state.draft = None;
             state.status.clear();
         }
+        return;
+    }
+    if focus_stack.top_captures_input() {
         return;
     }
 

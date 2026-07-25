@@ -61,6 +61,18 @@ pub struct MicDevices {
     pub current_index: usize,
 }
 
+/// HUD-facing voice state: whether the local player is transmitting and which
+/// remote players are currently speaking.
+#[derive(Resource, Default)]
+pub struct VoiceHudState {
+    pub transmitting: bool,
+    pub current_speakers: Vec<String>,
+}
+
+/// Marker component for the HUD voice-status badge entity.
+#[derive(Component)]
+pub struct VoiceBadge;
+
 /// Request for NPC dialogue synthesis.
 pub struct SynthesisRequest {
     pub text: String,

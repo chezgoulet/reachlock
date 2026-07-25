@@ -19,6 +19,7 @@ REACHLOCK is a procedurally-generated spacefaring MMO being rebuilt from scratch
 | `reachlock-client/` | Bevy game client — bridge layer, ECS systems, plugins |
 | `reachlock-server/` | WebSocket server — Tokio + Axum, seed service, LLM proxy |
 | `reachlock-cli/` | CLI tools — `gen`, `determinism`, `content` |
+| `reachlock-editor/` | Content editor — RON round-trip, schema validation, multi-entry saving |
 
 ## Development Workflow
 
@@ -58,7 +59,7 @@ REACHLOCK is a procedurally-generated spacefaring MMO being rebuilt from scratch
 ```bash
 cargo build                    # debug
 cargo test                     # all tests
-cargo clippy -- -D warnings    # CI gate
+cargo clippy --workspace --all-targets -- -D warnings    # CI gate
 cargo run -p reachlock-client  # fly the red polygon
 make check                     # fmt + clippy + test + purity
 git config core.hooksPath .githooks   # opt-in: run `make check` on every commit

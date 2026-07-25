@@ -67,7 +67,9 @@ pub fn dilemma_input_system(
     mut outcome: ResMut<DilemmaOutcomeText>,
     mut selected: ResMut<DilemmaChoiceSelected>,
     mut panel: ResMut<ActivePanel>,
+    focus_stack: Res<crate::focus_stack::FocusStack>,
 ) {
+    if focus_stack.top_captures_input() { return; }
     let Some(ref dilemma) = active.0 else { return };
     if outcome.0.is_some() {
         if keys.just_pressed(KeyCode::Space)

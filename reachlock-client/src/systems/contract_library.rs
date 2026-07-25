@@ -161,6 +161,7 @@ pub fn library_system(
     keys: Res<ButtonInput<KeyCode>>,
     settings: Res<Settings>,
     panel: Res<ActivePanel>,
+    focus_stack: Res<crate::focus_stack::FocusStack>,
     mut state: ResMut<ContractLibraryState>,
     mut workshop: ResMut<ContractWorkshopState>,
     mut outbox: ResMut<NetOutbox>,
@@ -173,6 +174,9 @@ pub fn library_system(
         state.searching = false;
         state.share_lookup = false;
         state.publish_mode = false;
+        return;
+    }
+    if focus_stack.top_captures_input() {
         return;
     }
 

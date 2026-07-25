@@ -466,7 +466,7 @@ fn u8x3_to_color(rgb: [u8; 3]) -> Color {
 /// [`look_from_config_or_seed`] instead to derive unpinned fields from seed.
 impl From<CharacterLookConfig> for Look {
     fn from(config: CharacterLookConfig) -> Self {
-        let body = body_kind_from_str(&config.species);
+        let body = body_kind_from_species(config.species);
         let hair_style = hair_from_index(config.hair_style.unwrap_or(1));
 
         match body {
@@ -531,33 +531,23 @@ impl From<CharacterLookConfig> for Look {
 }
 
 /// Canonical seed offset per species for deriving unpinned look fields.
-///
-/// Formula: `entity_id.wrapping_add(species_offset)`. This must match the
-/// server-side derivation so rendered looks are consistent across targets.
-const SPECIES_SEED_OFFSETS: [(&str, u64); 5] = [
-    ("Human", 0),
-    ("Android", 1),
-    ("Robot", 2),
-    ("Voidborn", 3),
-    ("Xenotype", 4),
-];
-
-fn species_seed_offset(species: &str) -> u64 {
-    for (s, off) in &SPECIES_SEED_OFFSETS {
-        if species.eq_ignore_ascii_case(s) {
-            return *off;
-        }
+fn species_seed_offset(species: Species) -> u64 {
+    match species {
+        Species::Human => 0,
+        Species::Android => 1,
+        Species::Robot => 2,
+        Species::Voidborn => 3,
+        Species::Xenotype => 4,
     }
-    0
 }
 
 /// Build a [`Look`] from a [`CharacterLookConfig`], deriving any `None`
 /// fields from `entity_seed`. Use this for procedural NPCs whose look is
 /// not pinned in a soul file.
 pub fn look_from_config_or_seed(config: CharacterLookConfig, entity_seed: u64) -> Look {
-    let body = body_kind_from_str(&config.species);
+    let body = body_kind_from_species(config.species);
     let hair_style = hair_from_index(config.hair_style.unwrap_or_else(|| {
-        let seed = entity_seed.wrapping_add(species_seed_offset(&config.species));
+        let seed = entity_seed.wrapping_add(species_seed_offset(config.species));
         let mut n = Noise(seed);
         n.below(7) as u8
     }));
@@ -569,7 +559,7 @@ pub fn look_from_config_or_seed(config: CharacterLookConfig, entity_seed: u64) -
 
     match body {
         BodyKind::Robot => {
-            let base = entity_seed.wrapping_add(species_seed_offset("Robot"));
+            let base = entity_seed.wrapping_add(species_seed_offset(Species::Robot));
             let hull = config.chassis_color.unwrap_or(seed_color(base));
             let visor = config
                 .visor_color
@@ -588,7 +578,7 @@ pub fn look_from_config_or_seed(config: CharacterLookConfig, entity_seed: u64) -
             }
         }
         _ => {
-            let base = entity_seed.wrapping_add(species_seed_offset(&config.species));
+            let base = entity_seed.wrapping_add(species_seed_offset(config.species));
             let skin = config.skin_color.unwrap_or(seed_color(base));
             let hair = config
                 .hair_color
@@ -1573,9 +1563,12 @@ mod tests {
 
     use reachlock_core::generator::sprite::CharacterLookConfig;
 
-    fn pinned_config(species: &str, hair_idx: u8) -> CharacterLookConfig {
+    fn pinned_config(
+        species: reachlock_core::soul::types::Species,
+        hair_idx: u8,
+    ) -> CharacterLookConfig {
         CharacterLookConfig {
-            species: species.to_string(),
+            species,
             hair_style: Some(hair_idx),
             hair_color: Some([180, 120, 60]),
             skin_color: Some([220, 180, 140]),
@@ -1591,11 +1584,20 @@ mod tests {
     #[test]
     fn look_from_config_maps_species_to_body_kind() {
         for (species, expected) in [
-            ("Human", BodyKind::Human),
-            ("Android", BodyKind::Android),
-            ("Robot", BodyKind::Robot),
-            ("Voidborn", BodyKind::Voidborn),
-            ("Xenotype", BodyKind::Xenotype),
+            (reachlock_core::soul::types::Species::Human, BodyKind::Human),
+            (
+                reachlock_core::soul::types::Species::Android,
+                BodyKind::Android,
+            ),
+            (reachlock_core::soul::types::Species::Robot, BodyKind::Robot),
+            (
+                reachlock_core::soul::types::Species::Voidborn,
+                BodyKind::Voidborn,
+            ),
+            (
+                reachlock_core::soul::types::Species::Xenotype,
+                BodyKind::Xenotype,
+            ),
         ] {
             let cfg = pinned_config(species, 1);
             let look = Look::from(cfg);
@@ -1615,7 +1617,7 @@ mod tests {
             (6, Hair::Crest),
         ];
         for (idx, expected) in cases {
-            let cfg = pinned_config("Human", idx);
+            let cfg = pinned_config(reachlock_core::soul::types::Species::Human, idx);
             let look = Look::from(cfg);
             assert_eq!(look.hair_style, expected, "hair index {idx}");
         }
@@ -1623,7 +1625,7 @@ mod tests {
 
     #[test]
     fn look_from_config_preserves_colors() {
-        let cfg = pinned_config("Human", 3);
+        let cfg = pinned_config(reachlock_core::soul::types::Species::Human, 3);
         let look = Look::from(cfg);
         assert_eq!(look.hair_style, Hair::Long);
         // Check that pixel buffers render with pinned colors (not seed-derived).
@@ -1633,7 +1635,7 @@ mod tests {
 
     #[test]
     fn look_from_config_robot_maps_chassis_to_body() {
-        let cfg = pinned_config("Robot", 0);
+        let cfg = pinned_config(reachlock_core::soul::types::Species::Robot, 0);
         let look = Look::from(cfg);
         assert_eq!(look.body, BodyKind::Robot);
         assert_eq!(look.hair_style, Hair::Bald);
@@ -1644,8 +1646,8 @@ mod tests {
     #[test]
     fn look_from_config_unrecognised_species_falls_back_to_human() {
         let cfg = CharacterLookConfig {
-            species: "Alien".to_string(),
-            ..pinned_config("Human", 0)
+            species: reachlock_core::soul::types::Species::Human,
+            ..pinned_config(reachlock_core::soul::types::Species::Human, 0)
         };
         let look = Look::from(cfg);
         assert_eq!(look.body, BodyKind::Human);
@@ -1654,7 +1656,7 @@ mod tests {
     #[test]
     fn look_from_seed_derives_none_fields() {
         // All-None config should produce a valid look via seed derivation.
-        let cfg = CharacterLookConfig::seed_derived("Human");
+        let cfg = CharacterLookConfig::seed_derived(Species::Human);
         let look = look_from_config_or_seed(cfg, 12345);
         assert_eq!(look.body, BodyKind::Human);
         // All fields must be populated (colors won't be default, they'll be seed-derived).

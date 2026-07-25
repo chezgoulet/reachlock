@@ -3,6 +3,7 @@
 pub mod button;
 pub mod dropdown;
 pub mod list;
+pub mod panel;
 pub mod scroll_area;
 pub mod slider;
 pub mod text_input;

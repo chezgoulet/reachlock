@@ -1,4 +1,4 @@
-//! S26 graceful degradation: startup probing, runtime reconnection.
+//! S26: graceful degradation — wired when Postgres health checks are added.
 
 use std::sync::Arc;
 use std::time::Duration;

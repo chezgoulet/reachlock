@@ -272,8 +272,10 @@ pub fn crew_conference_hotkey(
     keys: Res<ButtonInput<KeyCode>>,
     settings: Res<Settings>,
     roster: Res<CrewRoster>,
+    focus_stack: Res<crate::focus_stack::FocusStack>,
     mut conf: ResMut<CrewConference>,
 ) {
+    if focus_stack.top_captures_input() { return; }
     if conf.session.is_some() {
         return;
     }

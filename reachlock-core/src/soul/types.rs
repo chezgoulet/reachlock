@@ -20,14 +20,27 @@ use crate::generator::sprite::CharacterLookConfig;
 ///   lore and special events. Not bound to any planetary ecosystem.
 /// - Xenotype: creatures bound to and part of a planet's ecosystem.
 ///   The galaxy's planetary life.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Species {
+    #[default]
     Human,
     Android,
     Robot,
     Voidborn,
     Xenotype,
+}
+
+impl std::fmt::Display for Species {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Species::Human => write!(f, "Human"),
+            Species::Android => write!(f, "Android"),
+            Species::Robot => write!(f, "Robot"),
+            Species::Voidborn => write!(f, "Voidborn"),
+            Species::Xenotype => write!(f, "Xenotype"),
+        }
+    }
 }
 
 /// How a soul talks. Consumed by S16's context assembly; inert data here.
