@@ -80,13 +80,12 @@ pub struct CompiledSchema {
 impl CompiledSchema {
     /// Validate a JSON value, returning human-readable error strings.
     pub fn validate(&self, value: &serde_json::Value) -> Vec<String> {
-        let mut errors = Vec::new();
-        if let Err(validation_errors) = self.validator.validate(value) {
-            for err in validation_errors {
-                errors.push(format!("{}: {}", err.instance_path, err));
-            }
-        }
-        errors
+        // `iter_errors`, not `validate`: 0.47's `validate` stops at the first
+        // problem, and an author wants every field named at once.
+        self.validator
+            .iter_errors(value)
+            .map(|err| format!("{}: {err}", err.instance_path()))
+            .collect()
     }
 
     /// Compact, structural-only schema text for inlining into an LLM prompt

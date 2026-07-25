@@ -42,13 +42,10 @@ pub fn validate_content(content_type: &ContentType, value: &serde_json::Value) -
         Ok(v) => v,
         Err(e) => return vec![format!("schema compilation failed: {e}")],
     };
-    let mut errors = Vec::new();
-    if let Err(validation_errors) = validator.validate(value) {
-        for err in validation_errors {
-            errors.push(format!("{}: {err}", err.instance_path));
-        }
-    }
-    errors
+    validator
+        .iter_errors(value)
+        .map(|err| format!("{}: {err}", err.instance_path()))
+        .collect()
 }
 
 #[cfg(test)]

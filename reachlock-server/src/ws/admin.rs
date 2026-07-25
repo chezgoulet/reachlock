@@ -413,29 +413,42 @@ fn render_dashboard_html(state: &AppState) -> String {
     )
 }
 
+/// The dashboard authenticates by header only.
+///
+/// It used to accept `?key=<admin key>` "for browser convenience". A secret in
+/// a query string leaks into server access logs, proxy logs, browser history,
+/// and the `Referer` header of every outbound link on the page — so a single
+/// dashboard visit could scatter the key across several systems that were
+/// never meant to hold it. Browser access is still possible; it just needs a
+/// header (an extension, `curl`, or an authenticating reverse proxy).
 async fn admin_dashboard(
     headers: axum::http::HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    // Accept key from query param (for browser) or header (for curl).
-    let key_from_query = params.get("key").cloned();
-    let auth_header = headers
+    if params.contains_key("key") {
+        tracing::warn!(
+            "admin dashboard called with a ?key= query parameter — refused. \
+             Query strings are logged; send `Authorization: Admin <key>`. \
+             Treat the key used here as compromised and rotate it."
+        );
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            serde_json::json!({
+                "error": "admin key must be sent in the Authorization header, \
+                          not a query parameter",
+                "hint": "Authorization: Admin <key>"
+            })
+            .to_string(),
+        );
+    }
+
+    let authorized = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-
-    let authorized = match (key_from_query, auth_header) {
-        (Some(k), _) => check_admin_key(&k),
-        (_, Some(h)) => {
-            if let Some(token) = h.strip_prefix("Admin ") {
-                check_admin_key(token)
-            } else {
-                false
-            }
-        }
-        (None, None) => false,
-    };
+        .and_then(|v| v.strip_prefix("Admin "))
+        .is_some_and(check_admin_key);
 
     if !authorized {
         return (
@@ -543,4 +556,34 @@ async fn admin_get_log_level(headers: axum::http::HeaderMap) -> impl IntoRespons
             || serde_json::json!({"root": "unknown", "note": "log level reload not available"}),
         );
     (StatusCode::OK, Json(current))
+}
+
+#[cfg(test)]
+mod admin_key_transport_tests {
+    /// The dashboard must not accept the admin key in the query string.
+    ///
+    /// Query strings land in server access logs, proxy logs, browser history,
+    /// and the `Referer` header of outbound links — so one dashboard visit
+    /// could scatter the key across systems that were never meant to hold it.
+    /// This asserts the source stays header-only; the handler returns 401 with
+    /// a pointer to the header for any request carrying `?key=`.
+    #[test]
+    fn dashboard_does_not_read_the_key_from_a_query_parameter() {
+        let src = include_str!("admin.rs");
+        // Find the handler body and confirm it never pulls "key" from params.
+        let start = src
+            .find("async fn admin_dashboard(")
+            .expect("admin_dashboard exists");
+        let body = &src[start..];
+        let end = body.find("\nasync fn ").unwrap_or(body.len());
+        let body = &body[..end];
+        assert!(
+            !body.contains(r#"params.get("key").cloned()"#),
+            "admin_dashboard reads the admin key from a query parameter again"
+        );
+        assert!(
+            body.contains("Authorization"),
+            "admin_dashboard should authenticate from the Authorization header"
+        );
+    }
 }

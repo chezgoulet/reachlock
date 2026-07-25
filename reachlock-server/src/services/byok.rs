@@ -34,6 +34,8 @@ pub enum ByokError {
     NotConfigured,
     /// Stored blob failed to decrypt (key rotation, corruption).
     DecryptFailed,
+    /// The submitted endpoint URL is not one the server may be made to call.
+    InvalidUrl(String),
     NoKeyRegistered,
 }
 
@@ -134,8 +136,97 @@ impl Default for ByokService {
     }
 }
 
+/// Reject a BYOK endpoint the server must not be made to call.
+///
+/// The registered `base_url` becomes a URL the *server* fetches on the
+/// player's behalf, so an unvalidated value is a server-side request forgery
+/// primitive: a player could point it at `http://169.254.169.254/` (cloud
+/// instance metadata), at `http://localhost:40711/admin/...`, or at any host
+/// inside the deployment's private network, and read the response back
+/// through the LLM proxy.
+///
+/// Policy: HTTPS only, no credentials in the URL, and the host must not be a
+/// loopback, link-local, or private address. `REACHLOCK_BYOK_ALLOWED_HOSTS`
+/// (comma-separated) narrows it further to an explicit allowlist, which is
+/// what a real deployment should set.
+pub fn validate_byok_url(raw: &str) -> Result<(), ByokError> {
+    let url = url::Url::parse(raw).map_err(|_| ByokError::InvalidUrl("not a URL".into()))?;
+
+    if url.scheme() != "https" {
+        return Err(ByokError::InvalidUrl(
+            "endpoint must use https (plaintext would also expose the API key)".into(),
+        ));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(ByokError::InvalidUrl(
+            "credentials must not be embedded in the endpoint URL".into(),
+        ));
+    }
+    let Some(host) = url.host_str() else {
+        return Err(ByokError::InvalidUrl("endpoint has no host".into()));
+    };
+
+    // Explicit allowlist wins when configured.
+    if let Ok(list) = std::env::var("REACHLOCK_BYOK_ALLOWED_HOSTS") {
+        let allowed: Vec<&str> = list
+            .split(',')
+            .map(|h| h.trim())
+            .filter(|h| !h.is_empty())
+            .collect();
+        if !allowed.is_empty() {
+            return if allowed.iter().any(|h| h.eq_ignore_ascii_case(host)) {
+                Ok(())
+            } else {
+                Err(ByokError::InvalidUrl(format!(
+                    "host {host} is not in REACHLOCK_BYOK_ALLOWED_HOSTS"
+                )))
+            };
+        }
+    }
+
+    // No allowlist: block the addresses that make SSRF worth attempting.
+    let lowered = host.to_ascii_lowercase();
+    if lowered == "localhost" || lowered.ends_with(".localhost") || lowered.ends_with(".internal") {
+        return Err(ByokError::InvalidUrl(
+            "endpoint must not resolve to the server itself".into(),
+        ));
+    }
+    // `host_str()` renders an IPv6 literal with brackets (`[::1]`), which does
+    // not parse as an IpAddr — so trim them before checking, or ::1 walks
+    // straight through the loopback guard.
+    let host_ip = lowered.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = host_ip.parse::<std::net::IpAddr>() {
+        let blocked = match ip {
+            std::net::IpAddr::V4(v4) => {
+                v4.is_loopback()
+                    || v4.is_private()
+                    || v4.is_link_local()
+                    || v4.is_broadcast()
+                    || v4.is_unspecified()
+                    || v4.octets()[0] == 0
+                    // 100.64.0.0/10 carrier-grade NAT
+                    || (v4.octets()[0] == 100 && (64..=127).contains(&v4.octets()[1]))
+            }
+            std::net::IpAddr::V6(v6) => {
+                v6.is_loopback()
+                    || v6.is_unspecified()
+                    // unique-local fc00::/7 and link-local fe80::/10
+                    || (v6.segments()[0] & 0xfe00) == 0xfc00
+                    || (v6.segments()[0] & 0xffc0) == 0xfe80
+            }
+        };
+        if blocked {
+            return Err(ByokError::InvalidUrl(format!(
+                "endpoint address {ip} is loopback, private, or link-local"
+            )));
+        }
+    }
+    Ok(())
+}
+
 impl ByokService {
     pub fn register(&self, player_id: &str, reg: &ByokRegistration) -> Result<(), ByokError> {
+        validate_byok_url(&reg.base_url)?;
         let crypto = self.crypto.as_ref().ok_or(ByokError::NotConfigured)?;
         let blob = crypto.encrypt(&reg.api_key);
         self.store.put(player_id, &reg.base_url, &reg.model, blob);
@@ -412,5 +503,68 @@ mod tests {
         let last = blob.len() - 1;
         blob[last] ^= 0xFF;
         assert_eq!(crypto.decrypt(&blob), Err(ByokError::DecryptFailed));
+    }
+}
+
+#[cfg(test)]
+mod ssrf_tests {
+    use super::*;
+
+    /// The registered endpoint becomes a URL the *server* fetches. Anything
+    /// pointing back inside the deployment is an SSRF primitive.
+    #[test]
+    fn rejects_addresses_that_reach_the_deployment() {
+        for bad in [
+            "https://127.0.0.1/v1",
+            "https://localhost/v1",
+            "https://[::1]/v1",
+            "https://10.0.0.5/v1",
+            "https://192.168.1.10/v1",
+            "https://172.16.0.1/v1",
+            // Cloud instance metadata — the classic SSRF target.
+            "https://169.254.169.254/latest/meta-data/",
+            "https://100.64.0.1/v1",
+            "https://metadata.internal/v1",
+        ] {
+            assert!(
+                validate_byok_url(bad).is_err(),
+                "{bad} should have been refused"
+            );
+        }
+    }
+
+    #[test]
+    fn requires_https_and_no_embedded_credentials() {
+        // Plaintext would also put the player's API key on the wire.
+        assert!(validate_byok_url("http://api.example.com/v1").is_err());
+        assert!(validate_byok_url("file:///etc/passwd").is_err());
+        assert!(validate_byok_url("https://user:pw@api.example.com/v1").is_err());
+        assert!(validate_byok_url("not a url").is_err());
+    }
+
+    #[test]
+    fn accepts_an_ordinary_public_endpoint() {
+        assert!(validate_byok_url("https://api.openai.com/v1").is_ok());
+        assert!(validate_byok_url("https://llm.example.co.uk/v1/chat").is_ok());
+    }
+
+    /// Registration must refuse before anything is stored — a rejected URL
+    /// that still landed in the store would be called on the next request.
+    #[test]
+    fn register_refuses_a_private_endpoint() {
+        let svc = ByokService {
+            crypto: ByokCrypto::from_hex(&"ab".repeat(32)),
+            store: Box::new(MemoryByokStore::default()),
+        };
+        let reg = ByokRegistration {
+            base_url: "https://169.254.169.254/v1".into(),
+            model: "m".into(),
+            api_key: "sk-test".into(),
+        };
+        assert!(svc.register("p1", &reg).is_err());
+        assert!(
+            svc.credentials("p1").is_err(),
+            "nothing may be stored for a refused endpoint"
+        );
     }
 }

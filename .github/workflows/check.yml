@@ -14,7 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Honour rust-toolchain.toml (1.96.0). @stable drifts, so CI could run a
+      # different rustfmt/clippy than every developer — green locally, red in CI
+      # or, worse, the reverse.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
       - uses: Swatinem/rust-cache@v2
 
       - name: System deps (Bevy on Linux)

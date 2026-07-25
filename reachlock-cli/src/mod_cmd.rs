@@ -109,7 +109,26 @@ fn cmd_install(file: &str) -> Result<(), String> {
     .map_err(|e| format!("invalid .reachmod: {e}"))?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| format!("zip error: {e}"))?;
-        let out_path = dest.join(entry.name());
+        // Zip-slip guard. `dest.join(entry.name())` trusts the archive: an
+        // entry named `../../../.bashrc` escapes the mod directory and writes
+        // anywhere the user can. `enclosed_name()` returns None for any path
+        // that is absolute or contains `..`, which is exactly the check.
+        let Some(rel) = entry.enclosed_name() else {
+            return Err(format!(
+                "refusing to install: archive entry {:?} escapes the mod \
+                 directory (absolute path or `..`)",
+                entry.name()
+            ));
+        };
+        let out_path = dest.join(&rel);
+        // Belt and braces: the joined path must still be inside `dest` after
+        // normalisation, in case a future zip crate loosens enclosed_name.
+        if !out_path.starts_with(&dest) {
+            return Err(format!(
+                "refusing to install: {} resolves outside the mod directory",
+                out_path.display()
+            ));
+        }
         if entry.name().ends_with('/') {
             std::fs::create_dir_all(&out_path)
                 .map_err(|e| format!("failed to create dir {out_path:?}: {e}"))?;
@@ -235,4 +254,47 @@ fn add_dir_to_zip(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod zip_slip_tests {
+    use super::*;
+    use std::io::Write;
+
+    /// Build a `.reachmod` whose payload entry has the given name.
+    fn package_with_entry(path: &Path, entry_name: &str) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let opts = zip::write::FileOptions::<()>::default();
+        zip.start_file("mod.manifest.ron", opts).unwrap();
+        zip.write_all(
+            br#"(id: "evil", name: "Evil", version: (1, 0, 0), author: "x", description: "x")"#,
+        )
+        .unwrap();
+        zip.start_file(entry_name, opts).unwrap();
+        zip.write_all(b"pwned").unwrap();
+        zip.finish().unwrap();
+    }
+
+    /// A `.reachmod` is untrusted input. `dest.join(entry.name())` honours
+    /// `..`, so an archive could write outside the mod directory — over a
+    /// shell profile, an SSH key, anything the user can write.
+    #[test]
+    fn install_refuses_entries_that_escape_the_mod_directory() {
+        let tmp = std::env::temp_dir().join("reachlock_zipslip_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let pkg = tmp.join("evil.reachmod");
+
+        for evil in ["../../escaped.txt", "../../../etc/evil.conf"] {
+            package_with_entry(&pkg, evil);
+            let err =
+                cmd_install(pkg.to_str().unwrap()).expect_err(&format!("{evil} must be refused"));
+            assert!(
+                err.contains("escapes the mod directory") || err.contains("resolves outside"),
+                "unexpected error for {evil}: {err}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

@@ -307,6 +307,25 @@ pub fn verify_stripe_webhook(
         return Err("invalid_stripe_signature");
     }
 
+    // Freshness. The timestamp is part of the signed payload, so it cannot be
+    // tampered with — but nothing checked how old it was, which means a
+    // captured webhook stayed valid forever and could be replayed to re-grant
+    // an entitlement indefinitely. Stripe's own recommended tolerance is five
+    // minutes.
+    const TOLERANCE_SECS: i64 = 300;
+    let sent_at: i64 = timestamp
+        .parse()
+        .map_err(|_| "bad_stripe_signature_timestamp")?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    // Reject both stale replays and timestamps implausibly far in the future
+    // (clock skew the other way is still a signal something is wrong).
+    if (now - sent_at).abs() > TOLERANCE_SECS {
+        return Err("stripe_webhook_timestamp_outside_tolerance");
+    }
+
     // Parse the event ID from the payload
     let event: StripeWebhook =
         serde_json::from_slice(payload).map_err(|_| "unparseable_webhook")?;
@@ -375,4 +394,66 @@ pub async fn create_portal_session(customer_id: &str) -> Result<String, &'static
         .as_str()
         .map(|s| s.to_owned())
         .ok_or("stripe_no_url")
+}
+
+#[cfg(test)]
+mod webhook_replay_tests {
+    use super::*;
+
+    const SECRET: &str = "whsec_test";
+
+    fn signed(payload: &str, ts: i64) -> String {
+        let mut mac = Hmac::<Sha256>::new_from_slice(SECRET.as_bytes()).unwrap();
+        mac.update(format!("{ts}.{payload}").as_bytes());
+        format!("t={ts},v1={}", hex::encode(mac.finalize().into_bytes()))
+    }
+
+    fn now() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64
+    }
+
+    #[test]
+    fn accepts_a_fresh_correctly_signed_webhook() {
+        let payload = r#"{"id":"evt_1","type":"checkout.session.completed","data":{"object":{"id":"sub_1","customer":"cus_1"}}}"#;
+        let sig = signed(payload, now());
+        assert_eq!(
+            verify_stripe_webhook(payload.as_bytes(), &sig, SECRET),
+            Ok("evt_1".to_string())
+        );
+    }
+
+    /// The timestamp is inside the signed payload, so it cannot be forged —
+    /// but nothing checked its age, which left a captured webhook valid
+    /// forever and replayable to re-grant an entitlement.
+    #[test]
+    fn rejects_a_stale_but_validly_signed_webhook() {
+        let payload = r#"{"id":"evt_1","type":"checkout.session.completed","data":{"object":{"id":"sub_1","customer":"cus_1"}}}"#;
+        let stale = now() - 3600;
+        let sig = signed(payload, stale);
+        assert_eq!(
+            verify_stripe_webhook(payload.as_bytes(), &sig, SECRET),
+            Err("stripe_webhook_timestamp_outside_tolerance")
+        );
+    }
+
+    /// A timestamp far in the future is equally suspicious.
+    #[test]
+    fn rejects_a_future_timestamp() {
+        let payload = r#"{"id":"evt_1","type":"checkout.session.completed","data":{"object":{"id":"sub_1","customer":"cus_1"}}}"#;
+        let sig = signed(payload, now() + 3600);
+        assert!(verify_stripe_webhook(payload.as_bytes(), &sig, SECRET).is_err());
+    }
+
+    #[test]
+    fn still_rejects_a_bad_signature() {
+        let payload = r#"{"id":"evt_1","type":"checkout.session.completed","data":{"object":{"id":"sub_1","customer":"cus_1"}}}"#;
+        let sig = format!("t={},v1={}", now(), "0".repeat(64));
+        assert_eq!(
+            verify_stripe_webhook(payload.as_bytes(), &sig, SECRET),
+            Err("invalid_stripe_signature")
+        );
+    }
 }
