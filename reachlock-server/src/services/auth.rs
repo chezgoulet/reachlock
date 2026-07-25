@@ -2431,6 +2431,19 @@ pub mod pg {
     }
 
     impl SessionStore for PgSessionStore {
+        /// S73 added this to the trait; the Postgres impl was never updated,
+        /// which broke the `postgres` feature build. Nothing compiled that
+        /// feature in CI, so it went unnoticed.
+        fn active_sessions(&self) -> usize {
+            let pool = self.pool.clone();
+            self.runtime.block_on(async move {
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM sessions")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or(0) as usize
+            })
+        }
+
         fn issue(&self, info: SessionInfo) -> String {
             let pool = self.pool.clone();
             let token = uuid::Uuid::new_v4().to_string();

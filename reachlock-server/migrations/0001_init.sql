@@ -3,6 +3,16 @@
 -- valid Postgres DDL — constraints can't contain expressions. A generated
 -- column (object_key) carries the coalesced value and the UNIQUE constraint
 -- sits on that. Same semantics, legal SQL.
+--
+-- Two fixes were needed before this migration would run at all (it had never
+-- been executed against a live Postgres):
+--   * seeds.object_key is TEXT, not VARCHAR(64) — coercing a COALESCE result
+--     into a length-constrained varchar is not an immutable expression.
+--   * content_overrides dropped its generated column entirely: casting an
+--     enum to text is only STABLE (labels can be renamed with ALTER TYPE
+--     ... RENAME VALUE), so it can never appear in a generated column.
+--     Postgres 15+ has UNIQUE NULLS NOT DISTINCT, which expresses
+--     "treat NULL as a value for uniqueness" directly.
 
 -- Universe tiers: architectural hook only. No billing, no subscriptions.
 CREATE TYPE universe_tier AS ENUM ('classic', 'fair_play', 'spectrum', 'byok');
@@ -32,7 +42,11 @@ CREATE TABLE seeds (
     universe        universe_tier NOT NULL,
     system_id       VARCHAR(64) NOT NULL,
     object_id       VARCHAR(64),        -- NULL = whole system
-    object_key      VARCHAR(64) GENERATED ALWAYS AS (COALESCE(object_id, '')) STORED,
+    -- TEXT, not VARCHAR(64): coercing a COALESCE result into a
+    -- length-constrained varchar is not an immutable expression, and Postgres
+    -- rejects the whole CREATE TABLE with 42P17. The column is only ever a
+    -- uniqueness key, so the unbounded type costs nothing.
+    object_key      TEXT GENERATED ALWAYS AS (COALESCE(object_id, '')) STORED,
     seed            BIGINT NOT NULL CHECK (seed >= 0 AND seed < 9007199254740992), -- 2^53
     discovered      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     modified        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -74,21 +88,21 @@ CREATE TABLE byok_keys (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Authored content overrides (spec §10). Same generated-column fix for the
--- nullable universe in the uniqueness rule.
+-- Authored content overrides (spec §10). NULL universe means "all universes",
+-- and NULLS NOT DISTINCT makes that a real uniqueness key without a generated
+-- column.
 CREATE TABLE content_overrides (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     system_id     VARCHAR(64) NOT NULL,
     object_id     VARCHAR(64),
     universe      universe_tier,           -- NULL = all universes
-    universe_key  VARCHAR(16) GENERATED ALWAYS AS (COALESCE(universe::text, 'all')) STORED,
     asset_type    VARCHAR(32) NOT NULL,
     seed          BIGINT NOT NULL,
     priority      SMALLINT NOT NULL DEFAULT 50,   -- 0 procedural, 50 curated, 75 event, 100 authoritative
     expires_at    TIMESTAMPTZ,              -- NULL = permanent
     content       JSONB NOT NULL,
     available_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(system_id, object_id, asset_type, universe_key)
+    UNIQUE NULLS NOT DISTINCT (system_id, object_id, asset_type, universe)
 );
 CREATE INDEX idx_overrides_system ON content_overrides(system_id, universe);
 

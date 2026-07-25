@@ -1,15 +1,85 @@
-version: "3.9"
+# ReachLock development stack.
+#
+#   make db          bring it up and WAIT until every service is healthy
+#   make db-test     run the live-Postgres test battery against reachlock_test
+#   make db-psql     psql shell on the dev database
+#   make db-reset    destroy the volumes and rebuild from migrations
+#   make db-down     stop (data survives)
+#
+# Everything here is local-dev only: the credentials are fixed and weak on
+# purpose, nothing is exposed beyond localhost, and no service is configured
+# for production use.
+#
+# Host ports are overridable so a system Postgres/Redis on the default port
+# doesn't collide — e.g. `PGPORT=5433 make db`.
+
+name: reachlock
+
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: reachlock
       POSTGRES_PASSWORD: reachlock
       POSTGRES_DB: reachlock
+      # Deterministic collation. Postgres sorts text by locale, and the seed
+      # ledger's uniqueness/ordering behaviour should not depend on the host's
+      # LANG when the determinism gate is the point of the project.
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${PGPORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Runs once, on an empty data directory: creates the separate test
+      # database so `make db-test` never touches dev data.
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # `-d reachlock` matters: without it pg_isready reports ready during the
+      # init-script phase, and migrations then race the test-db creation.
+      test: ["CMD-SHELL", "pg_isready -U reachlock -d reachlock"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+  # S50: sessions, rate limiting, and presence. Optional — the server falls
+  # back to in-memory when REACHLOCK_REDIS_URL is unset — but the rate limiter
+  # is only meaningfully testable across restarts with this running.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:${REDISPORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 2s
+    restart: unless-stopped
+
+  # Catches every outbound email and shows it in a web UI at
+  # http://localhost:8025 — which is how you actually exercise the flows the
+  # auth work touches: email verification, password reset, and the 2FA
+  # enrollment QR. The file backend (REACHLOCK_EMAIL_DIR) writes to disk but
+  # gives you nothing clickable.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:${MAILPORT:-8025}:8025"   # web UI
+      - "127.0.0.1:${SMTPPORT:-1025}:1025"   # SMTP
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 1025 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+      start_period: 3s
+    restart: unless-stopped
 
 volumes:
   pgdata:

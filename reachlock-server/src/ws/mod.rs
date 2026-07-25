@@ -500,11 +500,16 @@ async fn health_handler(
     #[cfg(feature = "postgres")]
     if let Some(ref pool) = state.pg_pool {
         let pool_status = {
+            // sqlx made these private; they are accessors now. Also report the
+            // pool's LIVE size rather than its configured minimum — the old
+            // code labelled `min_connections` as "connections_active", which
+            // is a config value, not a measurement.
             let opts = pool.options();
             serde_json::json!({
-                "connections_active": opts.min_connections,
-                "connections_idle": 0,
-                "connections_max": opts.max_connections,
+                "connections_active": pool.size(),
+                "connections_idle": pool.num_idle(),
+                "connections_min": opts.get_min_connections(),
+                "connections_max": opts.get_max_connections(),
             })
         };
         body["db"] = pool_status;

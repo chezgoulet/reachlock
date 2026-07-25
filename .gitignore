@@ -54,6 +54,8 @@ save/
 # Secrets and keys — never commit
 .env
 .env.*
+# ...except the committed sample, which carries only dev-only values.
+!.env.example
 *.pem
 *.key
 *.crt
