@@ -182,14 +182,11 @@ fn extract_refs_from_content_file(file: &ContentFile, ct: &ContentType) -> Vec<R
 
     match &file.payload {
         ContentPayload::Soul(soul) => {
-            if !soul.identity.faction_affiliation.is_empty() {
-                refs.push(Reference {
-                    source_id: source_id.clone(),
-                    source_type,
-                    field_path: "identity.faction_affiliation".into(),
-                    target_id: soul.identity.faction_affiliation.clone(),
-                });
-            }
+            // `faction_affiliation` is deliberately NOT a reference. It is
+            // prose, not an id — authored values include "Sorrow Station
+            // (independent, ISC-adjacent)" and "The crew of the Loup-Garou".
+            // Treating it as an id reported every soul in the tree as having
+            // a broken reference. See reachlock-core::content::refs.
             for contract_id in &soul.contracts {
                 refs.push(Reference {
                     source_id: source_id.clone(),
@@ -254,15 +251,9 @@ fn extract_refs_from_soul(
     source_id: &str,
     source_type: ContentType,
 ) -> Vec<Reference> {
+    // See the note in `extract_refs_from_content_file`: faction_affiliation is
+    // prose, not an id, and is not a reference.
     let mut refs = Vec::new();
-    if !soul.identity.faction_affiliation.is_empty() {
-        refs.push(Reference {
-            source_id: source_id.to_string(),
-            source_type,
-            field_path: "identity.faction_affiliation".into(),
-            target_id: soul.identity.faction_affiliation.clone(),
-        });
-    }
     for contract_id in &soul.contracts {
         refs.push(Reference {
             source_id: source_id.to_string(),

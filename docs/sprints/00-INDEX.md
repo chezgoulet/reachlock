@@ -217,6 +217,23 @@ that compares against a hand-written list — a hardcoded list can only
 re-confirm what someone already remembered to type.
 
 **Gotcha ledger (hard-won, don't relearn):**
+- RON is not JSON about aggregates. A fixed-size array `[u8; 3]` serializes as
+  a **tuple** — `Some((176, 148, 92))`, not `Some([176, 148, 92])` — and a
+  newtype struct like `VariationMask(u16)` needs its parens:
+  `allowed_variations: (65535)`. Both fail at parse time with a message that
+  names the struct rather than the line's real problem.
+- Authored content must be wrapped in a `ContentFile` envelope or the dispatch
+  layer never sees it. `themes/calm_exploration.ron` sat as a bare
+  `Theme(...)` and the one authored theme never reached the audio engine.
+  `reachlock content check` reports these as UNPARSEABLE: a file in a content
+  directory that parses as no known payload is skipped by every loader, which
+  is worse than one that errors.
+- JSON schemas drift behind the Rust types and silently reject valid content.
+  `soul.schema.json` had no `look` property for the whole of S76+;
+  `career_path.schema.json` demanded a string `faction_id` when the type is
+  `Option<String>`. Changing a content type means changing its schema.
+- Career `conflicting_paths` are symmetric and validated at load — `a -> b`
+  without `b -> a` is a load failure, not a warning.
 - bevy 0.18: mesh types import from `bevy::mesh::`, not `bevy::render::mesh::`.
   `Timer::finished` is now `is_finished`. `RapierPhysicsPlugin::<()>` (unit
   generic, not `NoUserData`).

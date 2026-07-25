@@ -39,6 +39,7 @@ The v1 Godot prototype is archived on the `archive-v1` branch. Both `main` and `
 5. **Every LLM call has a visible deliberation state.** No silent inference.
 6. **Offline is first-class.** Every feature must work with no server. Online adds; it never replaces.
 7. **Freeze contracts first.** Each brief lists types/schemas to define and test before building the slice. If two sprints share a type, the earlier wave owns it.
+8. **A system nobody can reach is not done.** A feature with no path from the player to it, and content nothing references, both count as unfinished. `make check-content` fails the build on a content tree that does not resolve.
 
 ## Gotcha Ledger (from the index — don't re-learn these)
 
@@ -54,6 +55,9 @@ The v1 Godot prototype is archived on the `archive-v1` branch. Both `main` and `
 - Toolchain is pinned via `rust-toolchain.toml` (channel `1.96.0`, `rustfmt`+`clippy`). Bumping the channel is a separate commit that must NOT be bundled with unrelated changes, because the new rustfmt may reformat the whole tree — land the fmt pass as its own commit first, then the feature work.
 - Branch discipline: each sprint/slice gets its own branch off `testing` (see the index's playbook). Don't pile unrelated slices onto one branch; keep PRs focused so `make check` stays green per-change.
 - Multi-entry editors (soul/station/enemy/…) save each dirty entry to its own `entry.path` via `Editor::save_all`. Never make a single-entry `save(path)` collapse all loaded entries onto the tab path — that silently loses authored content in the other entries.
+- RON is not JSON about aggregates. A fixed-size array `[u8; 3]` serializes as a **tuple** — `Some((176, 148, 92))`, not `Some([176, 148, 92])` — and a newtype struct like `VariationMask(u16)` needs its parens: `allowed_variations: (65535)`. Both fail at parse time with a message that names the struct, not the line's real problem.
+- Authored content must be wrapped in a `ContentFile` envelope or the dispatch layer never sees it. `mods/reachlock/themes/calm_exploration.ron` sat as a bare `Theme(...)` and the one authored theme silently never reached the audio engine. `content check` reports these as UNPARSEABLE — a file in a content directory that parses as no known payload is skipped by every loader, which is worse than a file that errors.
+- Career `conflicting_paths` are symmetric and validated at load. Adding `a -> b` without `b -> a` is a load-time failure, not a warning.
 
 ## Build & Test
 
@@ -62,7 +66,8 @@ cargo build                    # debug
 cargo test                     # all tests
 cargo clippy -- -D warnings    # CI gate
 cargo run -p reachlock-client  # fly the red polygon
-make check                     # fmt + clippy + test + purity
+make check                     # fmt + clippy + test + purity + content
+reachlock content check mods/reachlock   # whole-tree reference integrity
 git config core.hooksPath .githooks   # opt-in: run `make check` on every commit
 ```
 
