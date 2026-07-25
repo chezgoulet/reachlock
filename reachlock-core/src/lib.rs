@@ -23,6 +23,7 @@ pub mod identity;
 pub mod item;
 pub mod mod_manifest;
 pub mod network;
+pub mod paths;
 pub mod seed;
 pub mod sim;
 pub mod soul;
