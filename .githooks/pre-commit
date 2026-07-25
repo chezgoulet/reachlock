@@ -1,8 +1,9 @@
 #!/bin/sh
 #
 # Pre-commit hook: run the full v2 gate (fmt, clippy -D warnings, all
-# tests, WASM build) — the iron rule is "make check before every commit;
-# never push red", so the hook makes the rule mechanical.
+# tests, engine purity, server feature builds) — the iron rule is "make
+# check before every commit; never push red", so the hook makes the rule
+# mechanical.
 #
 # Opt in with:
 #   git config core.hooksPath .githooks
