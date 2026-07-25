@@ -1,5 +1,14 @@
 # ReachLock — Character Creation & Open-World Identity
 
+> **Historical record — 2026-07-24.** This is a point-in-time review, kept as
+> written. Findings and plans here may since have been fixed, superseded, or
+> reversed (web distribution was cut; `main` became v2; the engine was
+> decoupled from the Loup-Garou). For current state see `README.md`,
+> `AGENTS.md`, and `docs/CONTENT-READINESS.md`. Do not treat the plans below
+> as an open backlog without checking them against the code first.
+
+
+
 **Date:** 2026-07-24 · **Companion to:** `docs/UX-AUDIT-AND-PLAN.md`
 **Premise:** the Loup-Garou and its crew were a development stand-in. ReachLock
 is an open world where players create a character and play as they choose.

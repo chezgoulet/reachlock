@@ -552,7 +552,9 @@ pub fn enter_interior(
         mode,
         start,
         "",
-        soul_look_or_fallback(&souls, "tib"),
+        // The player's own character. Falls back to a seeded look when no
+        // character has been created yet, never to a canonical crew member.
+        soul_look_or_fallback(&souls, souls.player_soul_id.as_deref().unwrap_or("")),
         &shadow_tex,
         (PlayerAvatar,),
     );

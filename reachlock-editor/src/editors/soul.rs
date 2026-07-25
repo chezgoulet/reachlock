@@ -1025,10 +1025,14 @@ impl Editor for SoulEditor {
         soul.emotional_state.intensity = 256 + rng.next_below(768) as i64;
         soul.relationship_graph = (0..1 + rng.next_below(2))
             .map(|i| Relationship {
+                // A generated soul relates to the player and, beyond that, to
+                // an unnamed acquaintance the author fills in. It used to name
+                // a canonical crew member, so every generated soul in every
+                // mod arrived already knowing him.
                 target_id: if i == 0 {
                     "player".into()
                 } else {
-                    "boris".into()
+                    String::new()
                 },
                 trust: rng.next_below(1024) as i64 - 256,
                 familiarity: rng.next_below(512) as i64,

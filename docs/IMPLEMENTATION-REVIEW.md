@@ -1,5 +1,14 @@
 # ReachLock — Implementation Review vs MASTER-PLAN
 
+> **Historical record — 2026-07-25.** This is a point-in-time review, kept as
+> written. Findings and plans here may since have been fixed, superseded, or
+> reversed (web distribution was cut; `main` became v2; the engine was
+> decoupled from the Loup-Garou). For current state see `README.md`,
+> `AGENTS.md`, and `docs/CONTENT-READINESS.md`. Do not treat the plans below
+> as an open backlog without checking them against the code first.
+
+
+
 **Date:** 2026-07-25 · **Reviewed:** `264904a` + uncommitted tree (~7,900 insertions / 2,257 deletions, 125 files)
 **Method:** re-ran the exact detection commands from the original audit against the new code, plus gate inspection.
 

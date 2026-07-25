@@ -6,6 +6,14 @@ stations, damage, and the FTL-cryo loop. Every ship class from a one-person
 fighter to a capital ship works the same way at a different scale — more or
 fewer systems, more or fewer complications.
 
+**Where the Loup-Garou sits.** It is used throughout as the worked example
+because it is the best-documented hull, not because it is the player's ship.
+In v2 the player's ship comes from their origin: `ShipTemplate` files under
+`mods/reachlock/hulls/`, resolved at character creation. Sections below that
+describe the Loup-Garou's two decks, ladder placement, or crew stations are
+describing *that template*, not an engine rule — a single-deck starter hull is
+equally valid and the engine makes no assumption either way.
+
 The feel target: **FTL crossed with Sea of Thieves / Among Us.** A ship is a
 place your crew runs around inside, operating physical stations, while the
 consequences render in real time in the Star Fox flight view outside.

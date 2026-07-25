@@ -1,8 +1,8 @@
 //! Client soul integration (S13). Authored souls arrive through the content
 //! pipeline (`ContentPayload::Soul`); live state is a plain map keyed by
 //! soul id that rides in the save. Crew roster members link to souls by
-//! their stable ids (`tove`, `prudence`, `risc`, `keene`, `bardo`,
-//! `boris`; the player is `tib`).
+//! their stable ids. The player's own soul id is `player_soul_id`; crew ids
+//! come from whichever crew package the character's origin granted.
 //!
 //! S13 delivers events, not consequences: mood shifts and soul breaks land
 //! in the ship's log; S15/S16 give them teeth and words.
@@ -27,6 +27,13 @@ pub struct SoulRegistry {
     /// The authored mutation arcs (embedded content), scanned after every
     /// applied event — S16B closes the S13 gap where these never ran.
     pub mutations: Vec<reachlock_core::soul::SoulMutation>,
+    /// Soul id of the player's own character, set when a character is created
+    /// or a save is loaded. `None` before then.
+    ///
+    /// The avatar used to render from the soul id `"tib"` — one canonical
+    /// crew member — so every player looked like the prototype's captain no
+    /// matter what they built at creation.
+    pub player_soul_id: Option<String>,
 }
 
 impl Default for SoulRegistry {
@@ -35,6 +42,7 @@ impl Default for SoulRegistry {
             files: BTreeMap::new(),
             states: BTreeMap::new(),
             mutations: reachlock_core::soul::load_soul_mutations(),
+            player_soul_id: None,
         }
     }
 }

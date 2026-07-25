@@ -7,6 +7,16 @@ Version 1.5 (v1.4 + Addendum; the addendum is canonical revision and takes prece
 This document is game canon. Art direction, character design, dialogue, faction
 behavior, and content authoring should all be checked against it.
 
+**How canon relates to the engine.** ReachLock v2 is a character-creation
+game: the player builds a character, picks an origin, and gets a ship and crew
+from that. Everything in this compendium — the Loup-Garou, its crew, the
+Compact, Sorrow Station — is *content* the engine loads, never something the
+engine assumes. The Loup-Garou is one ship template and one origin among
+several; its crew is one crew package. `make check-purity` fails the build if
+engine code names a specific ship or crew member, so this separation is
+mechanical rather than a convention. Author freely here: nothing in this file
+constrains what a player or a modder can build.
+
 ---
 
 ## I. The Shape of the Universe

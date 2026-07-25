@@ -330,6 +330,18 @@ pub fn load_save(
             for (id, state) in file.souls {
                 souls.states.insert(id, state);
             }
+            // Register the player's own soul so the avatar renders as the
+            // character that was created, and record its id — the avatar used
+            // to be drawn from a hardcoded canonical crew member's soul.
+            if let Some(character) = &file.character {
+                let soul = character.soul.clone();
+                souls
+                    .states
+                    .entry(soul.id.clone())
+                    .or_insert_with(|| reachlock_core::soul::SoulState::from_file(&soul));
+                souls.player_soul_id = Some(soul.id.clone());
+                souls.files.insert(soul.id.clone(), soul);
+            }
             // S17: restore the applied exterior config; handling re-derives
             // from the config + frame (never stored — it's derived data).
             if let Some(config) = file.hull_config {

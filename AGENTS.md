@@ -4,7 +4,9 @@
 
 ## What This Is
 
-REACHLOCK is a procedurally-generated spacefaring MMO being rebuilt from scratch in Rust + Bevy + Postgres + Redis. The v1 Godot prototype is archived on the `archive-v1` branch — this branch (`testing`) is pure v2.
+REACHLOCK is a procedurally-generated spacefaring MMO in Rust + Bevy + Postgres + Redis. It is a **character-creation game**: the player builds a character, picks an origin, and gets a ship and crew from it. The Loup-Garou and its crew are one authored origin among several — never an engine assumption. `make check-purity` fails if engine code names a specific ship or crew member.
+
+The v1 Godot prototype is archived on the `archive-v1` branch. Both `main` and `testing` are pure v2; `main` became v2 in the 2026-07-25 cutover.
 
 **Your job:** Execute sprint briefs from `docs/sprints/`. Each brief is self-contained with outcome, deliverables, acceptance gates, frozen types, non-goals, and gotchas. Read the brief, cut a branch, ship the deliverable, open a PR.
 

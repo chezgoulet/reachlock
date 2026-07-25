@@ -21,13 +21,13 @@ This revision incorporates Data's nine adversarial findings and Christopher's tw
 |---|---|---|
 | 1 | Seed conflict race condition | Atomic first-write-wins with UNIQUE constraint on `(universe, system_id)`. Client retries on conflict. Visual state shown during conflict resolution (`SYSTEM_RENDERED: ship appears, player sees it`) |
 | 2 | Bridge layer thickness understated | Bounded explicitly — conversion layer must be thin relative to the generator output it wraps. Architecture review if any single conversion module grows too large for its concern |
-| 3 | Cross-platform determinism fragile | Fixed-point math for ALL gameplay-critical values. No "where needed" loophole. Test harness that compares generator output across x86, ARM, WASM in CI |
+| 3 | Cross-platform determinism fragile | Fixed-point math for ALL gameplay-critical values. No "where needed" loophole. Test harness that compares generator output across x86_64, aarch64, and i686 in CI. *(Was WASM as the third target; web distribution was cut 2026-07-25 and i686 replaced it — still a 32-bit canary, which is the point.)* |
 | 4 | Server-side contract validation | Client signs contract evaluations with a hash chain. Server verifies signatures for online play. Offline mode uses unsigned local-only evaluations |
 | 5 | LLM proxy latency unmodeled | Visual deliberation state added to all LLM calls. "Your crew is considering..." animation. Architecture unchanged; UX contract changed |
 | 6 | Universe tick blocks WebSocket handler | Tick loop communicates via async channels. Message routing runs on a separate Tokio task. Tick skips if it takes longer than its interval |
 | 7 | Content pipeline gap | **Removed** — follows subscription model |
 | 8 | Classic content delay | **Removed** — follows subscription model |
-| 9 | WASM build risk | Elevated to spike deliverable #1, not #7. First thing validated: `cargo build --target wasm32-unknown-unknown` with full Bevy plugin stack |
+| 9 | ~~WASM build risk~~ | **Obsolete.** Web distribution was cut 2026-07-25 — ReachLock ships as a native desktop game. The WASM targets, size budget, and bundle pipeline were removed. Core purity is now enforced directly by a dependency-tree check (`make check-purity`) rather than inferred from a wasm32 build |
 
 ---
 
@@ -71,28 +71,34 @@ ReachLock is a procedurally-generated spacefaring MMO where:
 
 | Layer | Technology | Rationale |
 |---|---|---|
-| Language | Rust | Performance, safety, WASM compilation, type system for procedural gen |
-| Client Framework | Bevy 0.19 | ECS engine with 2D rendering, audio, UI, input, scene system, WASM target |
+| Language | Rust | Performance, safety, type system for procedural gen |
+| Client Framework | Bevy 0.18.1 | ECS engine with rendering, audio, UI, input, scene system. *(0.18, not 0.19: rapier3d 0.34 pins it. Bump when rapier 0.35 ships.)* |
 | Server Runtime | Tokio + Axum | Async Rust standard, WebSocket support, HTTP routing |
 | Database | Postgres + JSONB | Seed ledger, player accounts, content overrides. LISTEN/NOTIFY for real-time |
 | Cache / PubSub | Redis | Session tokens, live player positions, rate-limit counters |
-| WASM Target | `wasm32-unknown-unknown` | Bevy compiles natively, wasm-bindgen for web build |
-| Desktop Wrapper | Tauri (optional) | Native distribution via Steam/App Store via the same WASM core |
+| Distribution | Native desktop | Linux binary via CI release. No browser build — web distribution was cut 2026-07-25 |
 
 ### Why Not Alternatives
 
 | Rejected Option | Reason |
 |---|---|
-| TypeScript | Iteration speed is excellent, but Rust's type system, performance ceiling, and WASM story win for a long-term project where we're building everything custom anyway |
+| TypeScript | Iteration speed is excellent, but Rust's type system and performance ceiling win for a long-term project where we're building everything custom anyway |
 | Macroquad | Excellent simplicity, but we'd rebuild audio, UI, scene management, and camera systems that Bevy provides out of the box. Bevy's ceremony is a one-time wrapper cost |
 | Unity / Unreal | Asset pipeline fights runtime generation at every turn. 200MB+ runtime is wasteful for a procedural-gen game |
-| Godot | We already have 1,787 files of Godot experience. The procedural gen layer must fight Godot's scene-based resource pipeline the same way it fights Bevy, but with a smaller WASM ecosystem |
+| Godot | We already have 1,787 files of Godot experience (v1). The procedural gen layer must fight Godot's scene-based resource pipeline the same way it fights Bevy, without Rust's type system for the generators |
 
-### WASM Build Risk (Acknowledged)
+### ~~WASM Build Risk~~ (resolved by dropping web)
 
-Bevy plugin combinations — specifically `bevy_rapier2d` + `bevy_prototype_lyon` + `bevy_audio` — have known compatibility gaps on `wasm32-unknown-unknown`. This is the highest-risk item in the entire stack and the **first thing validated in the spike**, not the last. If the full plugin stack fails to compile to WASM, the fallback is: build with a reduced plugin set for WASM (no rapier2d on web), full physics in desktop builds only. The core game loop (generator → renderer → contract engine) has no physics dependency and works identically on both targets.
+Bevy plugin compatibility on `wasm32-unknown-unknown` was the stack's
+highest-risk item. It is moot: web distribution was cut on 2026-07-25 and
+ReachLock ships as a native desktop game. The client was never actually
+buildable for wasm32 anyway — `webrtc`, `opus`, `cpal`, and native `tokio`
+were unconditional dependencies with no `cfg(target_arch)` guards anywhere.
 
----
+What the wasm build was *really* protecting — that `reachlock-core` stays free
+of rendering and IO dependencies — is now checked directly by
+`make check-purity` against core's dependency tree.
+
 
 ## 3. Workspace Architecture
 
@@ -297,7 +303,7 @@ pub enum AssetSource {
 - All generators are **pure functions** — no randomness, no external state, no time dependence
 - All randomness is derived from the seed through a fixed seeded PRNG (`rand::rngs::StdRng` seeded with the 64-bit seed)
 - **Fixed-point math for ALL gameplay-critical values.** No "where needed" loophole. Coordinates, distances, speeds, damage values, and any value that affects gameplay output are represented as fixed-point integers. Floating-point is permitted only for visual-only values (color gradients, non-gameplay animation parameters)
-- A **determinism test harness** in `reachlock-cli` runs every generator on `x86_64`, `aarch64`, and `wasm32` and compares output bit-for-bit. CI enforces this before any generator change merges
+- A **determinism test harness** in `reachlock-cli` runs every generator on `x86_64`, `aarch64`, and `i686` and compares output bit-for-bit. CI enforces this before any generator change merges. The third target is 32-bit on purpose: two 64-bit targets would agree on a pointer-width bug
 - **Known divergence sources accounted for:** LLVM optimization level, FMA instruction fusion, vectorization width, NaN/inf handling — all eliminated by the fixed-point mandate. Remaining floating-point operations for visual-only paths must be wrapped in `#[cfg_attr(test, ...)]` gates that the test harness can skip
 
 ### Bridge Layer Thickness (Bounded)
@@ -1072,16 +1078,15 @@ CREATE TABLE content_deployments (
 ## 12. Spike Scope (Week 1, Revised)
 
 ### Goal
-Validate the highest-risk items first: WASM compilation, generator determinism, seed protocol, and the authored content pipeline end-to-end.
+Validate the highest-risk items first: generator determinism, seed protocol, and the authored content pipeline end-to-end. *(WASM compilation was originally P0 here; web distribution was cut 2026-07-25.)*
 
 ### Deliverables (Priority Order)
 
 | Priority | Deliverable | Risk Addressed | Verification |
 |---|---|---|---|
-| **P0** | WASM Build: `cargo build --target wasm32-unknown-unknown` with full Bevy plugin stack | #9 — Plugin compatibility on WASM | CI passes. If rapier2d fails, switch to reduced-plugin WASM config |
-| **P0** | Determinism test harness: same generator output on x86, ARM, WASM | #3 — Cross-platform determinism | CLI test compares output bit-for-bit across targets |
+| **P0** | Determinism test harness: same generator output on x86_64, aarch64, i686 | #3 — Cross-platform determinism | CLI test compares output bit-for-bit across targets |
 | **P1** | Cargo workspace with `reachlock-core`, `reachlock-client`, `reachlock-server` | Foundation | `cargo build` succeeds |
-| **P1** | Seed protocol: generator takes seed + hull class + faction, renders ship via Bevy + Lyon | Core | Ship appears on screen, matches between native and WASM |
+| **P1** | Seed protocol: generator takes seed + hull class + faction, renders ship via Bevy + Lyon | Core | Ship appears on screen, identical across the determinism targets |
 | **P1** | Seed ledger: Postgres table + `POST /seed/discover` with atomic first-write-wins | #1 — Race condition fix | Two concurrent INSERTs: second one gets existing row, not error |
 | **P1** | One override: hand-crafted ship replaces generated one by ID | Override pattern | Hand-crafted asset renders instead of generated |
 | **P1** | Content validation CLI: `content validate` passes for a hand-authored `.ron` file | Authored pipeline | CLI exits 0, reports schema and integrity checks passed |
@@ -1091,7 +1096,7 @@ Validate the highest-risk items first: WASM compilation, generator determinism, 
 
 ### Risk-Based Reordering Rationale
 
-The original spec listed WASM build as deliverable #7. That was wrong. If WASM fails, the entire web distribution story collapses. It must be the first thing validated. Similarly, determinism is not a "nice to have" — if the generators produce different output on different platforms, the seed-as-universal-key guarantee is broken from day one. The test harness must exist before any generator is committed.
+*(Historical: the original spec listed WASM build as deliverable #7, then elevated it to #1. Web distribution was cut on 2026-07-25 and the concern is retired.)* Determinism is not a "nice to have" — if the generators produce different output on different platforms, the seed-as-universal-key guarantee is broken from day one. The test harness must exist before any generator is committed.
 
 The authored content pipeline is P1, not P2, because Christopher explicitly wants authored content as a first-class system from the start. The CLI validation tool proves the pipeline works without needing a server.
 
@@ -1101,7 +1106,6 @@ The authored content pipeline is P1, not P2, because Christopher explicitly want
 - No universe tick
 - No multi-universe tier system (single universe for spike)
 - No auth beyond session tokens
-- No physics in WASM build (rapier2d excluded if it blocks compilation)
 - No audio
 - No UI beyond bare minimum
 - No content authoring GUI tools (hand-written `.ron` files are the authoring format for the spike)
@@ -1112,9 +1116,9 @@ The authored content pipeline is P1, not P2, because Christopher explicitly want
 
 | Principle | Rule |
 |---|---|
-| **Core is pure** | `reachlock-core` has zero rendering, zero I/O dependencies. Testable in isolation. Compiles to WASM independently |
+| **Core is pure** | `reachlock-core` has zero rendering, zero I/O dependencies. Testable in isolation. Enforced by `make check-purity`, which fails if core's dependency tree pulls in a rendering, async-runtime, or HTTP crate |
 | **Bridge is bounded** | The wrapper layer is thin by design — conversion logic only, no game logic. Architecture review if any module's complexity rivals the generator it wraps |
-| **Seed determinism is absolute** | Fixed-point for all gameplay-critical values. Test harness compares output bit-for-bit across x86, ARM, WASM in CI |
+| **Seed determinism is absolute** | Fixed-point for all gameplay-critical values. Test harness compares output bit-for-bit across x86_64, aarch64, and i686 in CI |
 | **LLM is a mechanic, not a feature** | Every LLM call has a visual deliberation state. No silent LLM calls. The player always knows the crew is thinking |
 | **Offline is first-class** | The game must be fully playable without a server connection. Online features add, never replace |
 | **Contracts are data, signed for trust** | Contracts are serializable, shareable, and versioned. Online mode signs every evaluation. Offline mode skips signing |
@@ -2253,13 +2257,12 @@ Every piece of ReachLock content the team authors goes through the same APIs and
 
 ### Phase 0 — Architecture Spike
 
-**Outcome:** A WASM build renders a procedurally-generated ship from a seed. A different seed produces a different ship. An authored override renders instead of a generated one. The server records the canonical seed with atomic first-write-wins.
+**Outcome:** The client renders a procedurally-generated ship from a seed. A different seed produces a different ship. An authored override renders instead of a generated one. The server records the canonical seed with atomic first-write-wins.
 
 | Item | Depends On |
 |---|---|
 | Cargo workspace, `reachlock-core` crate structure | Nothing |
-| WASM build validation — full Bevy plugin stack on `wasm32` | Cargo workspace |
-| Determinism test harness — same generator output across x86, ARM, WASM | Core |
+| Determinism test harness — same generator output across x86_64, aarch64, i686 | Core |
 | Seed protocol — one generator produces a ship sprite via Bevy + Lyon | Core, Bevy client |
 | Seed ledger — Postgres table with atomic first-write-wins | Server |
 | Content validation CLI — validate a hand-authored `.ron` file | CLI |
@@ -2326,6 +2329,5 @@ Every piece of ReachLock content the team authors goes through the same APIs and
 - [ ] LLM model integration — local inference, cloud provider routing
 - [ ] Mod SDK finalization — documentation, example mod, asset pipeline
 - [ ] Platform distribution preparation
-- [ ] WASM distribution — the game is a URL
 - [ ] Native builds — desktop, mobile
 - [ ] Beta testing

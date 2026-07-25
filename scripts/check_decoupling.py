@@ -43,9 +43,51 @@ CRATES = [
 # The canonical ship, and the canonical crew as *string literals* — a bare
 # word like `boris` in an identifier is fine; `"Boris"` as a value is not.
 SHIP = re.compile(r"loup.?garou", re.IGNORECASE)
-CREW = re.compile(r'"(Tib|Tove|Boris|Prudence|Risc|Keene|Bardo)"')
+CREW = re.compile(
+    r'"(Tib|Tove|Boris|Prudence|Risc|Keene|Bardo)"', re.IGNORECASE
+)
+
+# Known, deliberate exceptions. Each must say why, and each is a debt, not a
+# design: an entry here means content is missing, not that the engine is
+# allowed to name people.
+EXEMPT = {
+    # Four of the seven canonical crew have no authored soul file, so their
+    # appearance still lives in code. Cosmetic and opt-in by soul id — it
+    # cannot override a player's choice the way the ship and speaker coupling
+    # did — but it goes away the moment those souls are authored with a
+    # `look:` block, as tib/tove/boris already have.
+    ("reachlock-client/src/systems/interior.rs", "builtin_crew_config"),
+    # Synthetic inputs to the determinism manifest: these strings are hashed,
+    # never shown, and never reach gameplay. Renaming them would move golden
+    # checksums for no behavioural gain, so they stay — but the gate names
+    # them here rather than quietly ignoring the file.
+    ("reachlock-core/src/determinism.rs", "manifest"),
+}
 
 COMMENT = re.compile(r"^\s*(//|/\*|\*)")
+
+
+def exempt_fn_ranges(path: Path, text: str):
+    """Line ranges of exempted functions in this file."""
+    rel = str(path)
+    names = [fn for (p, fn) in EXEMPT if rel.endswith(p)]
+    ranges = []
+    if not names:
+        return ranges
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        for fn in names:
+            if re.search(rf"\bfn {re.escape(fn)}\b", line):
+                depth, j = 0, i
+                started = False
+                while j < len(lines):
+                    depth += lines[j].count("{") - lines[j].count("}")
+                    started = started or "{" in lines[j]
+                    if started and depth <= 0:
+                        break
+                    j += 1
+                ranges.append((i + 1, j + 1))
+    return ranges
 
 
 def production_lines(path: Path):
@@ -54,10 +96,13 @@ def production_lines(path: Path):
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return
+    skip = exempt_fn_ranges(path, text)
     for n, line in enumerate(text.splitlines(), start=1):
         if line.lstrip().startswith("#[cfg(test)]"):
             return
         if COMMENT.match(line):
+            continue
+        if any(lo <= n <= hi for lo, hi in skip):
             continue
         yield n, line
 

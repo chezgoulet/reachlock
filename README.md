@@ -16,7 +16,7 @@ A procedurally-generated spacefaring MMO. The universe is generated from seeds, 
 | `reachlock-client/` | Bevy client: menu → a flyable generated system (hull, station, planet, ambient music — all from seeds through the bridge layer), contract engine at the helm, deliberation overlay when rules run out |
 | `reachlock-server/` | Axum WebSocket ledger on `127.0.0.1:40711`: first-write-wins seed discovery, signed-evaluation verification, tier-gated LLM proxy (stub responder), non-blocking universe tick. In-memory stores by default; Postgres behind the `postgres` feature (`migrations/0001_init.sql`) |
 | `reachlock-cli/` | `reachlock` binary: `gen hull\|station\|planet\|music\|ui-panel` with SVG/PPM/WAV preview exports; `determinism emit\|check` |
-| `archive/v1/` | **ReachLock v1, archived.** Godot 4 client, Go server, Pan soul engine, all sprint docs and demo ledgers. Kept for inspiration. Not maintained, not built by CI |
+| `archive-v1` (branch) | **ReachLock v1, archived.** Godot 4 client, Go server, Pan soul engine, sprint docs and demo ledgers. Lives on its own branch — not in this tree, not maintained, not built by CI |
 
 The pre-archive tree is also tagged as `v1` — `git checkout v1` restores the original v1 layout.
 
@@ -47,7 +47,7 @@ pipeline were removed with it.
 
 The ideas, not the code:
 
-- **The crew of the Loup-Garou** — Tib, Tove, Bardo, Doc Keene, Prudence, Risc, and Boris
+- **The crew of the Loup-Garou** — Tib, Tove, Bardo, Doc Keene, Prudence, Risc, and Boris. In v2 they are *content*, not the game: one crew package and one origin among several. The engine never names them (`make check-purity` enforces it); you create your own character, ship, and crew
 - **Contract-first automation** — player-authored rules with LLM fallback (v1's soul/contract system, redesigned in spec §6)
 - **Fail states are valid outcomes** — emergent stories over scripted safety
 - **The universe moves without you** — v1's universe tick, redesigned in spec §8

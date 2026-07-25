@@ -875,7 +875,7 @@ cargo build -p reachlock-editor       # must compile with zero errors
 
 After each phase:
 ```bash
-make check                             # fmt + clippy + tests + WASM build
+make check                             # fmt + clippy + tests + purity + features
 ```
 
 Manual verification (after each editor, launch and test):
