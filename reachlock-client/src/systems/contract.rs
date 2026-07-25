@@ -7,6 +7,8 @@
 //! `systems::network`, which drives this module's `resolve_response` /
 //! `resolve_timeout` from `llm.response` / `llm.failed` / `llm.deliberating`.
 
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 use reachlock_core::contract::{
     engine::{evaluate, EvalContext, Outcome},
@@ -70,7 +72,11 @@ pub struct Deliberation {
 
 #[derive(Resource)]
 pub struct ContractRuntime {
-    pub contract: Contract,
+    /// All installed contracts, keyed by id. Always contains at least the
+    /// auto-helm default.
+    pub contracts: HashMap<String, Contract>,
+    /// The currently active contract id.
+    pub active_id: String,
     pub eval_timer: Timer,
     /// Last action kind, to log only on change instead of every second.
     last_action: Option<String>,
@@ -88,8 +94,13 @@ pub struct ContractRuntime {
 
 impl Default for ContractRuntime {
     fn default() -> Self {
+        let auto = auto_helm();
+        let id = auto.id.clone();
+        let mut contracts = HashMap::new();
+        contracts.insert(id.clone(), auto);
         ContractRuntime {
-            contract: auto_helm(),
+            contracts,
+            active_id: id,
             eval_timer: Timer::from_seconds(1.0, TimerMode::Repeating),
             last_action: None,
             chain: SignatureChain::default(),
@@ -109,9 +120,46 @@ impl ContractRuntime {
     /// the wire message ready for `NetOutbox`.
     fn sign_eval(&mut self, action: &Action) -> ClientMessage {
         let tick = self.next_tick();
-        let eval = self.chain.sign_next(&self.contract.id, tick, action);
+        let id = self.active_id.clone();
+        let eval = self.chain.sign_next(&id, tick, action);
         ClientMessage::EvalSubmit { eval }
     }
+
+    /// Install a contract: add or replace by id. Makes it the active contract.
+    pub fn install(&mut self, contract: Contract) {
+        let id = contract.id.clone();
+        self.contracts.insert(id.clone(), contract);
+        self.active_id = id;
+    }
+
+    /// Switch to a different loaded contract by id. No-op if unknown.
+    #[expect(dead_code)]
+    pub fn activate(&mut self, id: &str) {
+        if self.contracts.contains_key(id) {
+            self.active_id = id.to_string();
+        }
+    }
+
+    /// List all installed contract ids.
+    #[expect(dead_code)]
+    pub fn list(&self) -> impl Iterator<Item = &str> {
+        self.contracts.keys().map(|s| s.as_str())
+    }
+
+    /// Rolling count of recent uncovered evaluations.
+    pub fn recent_uncovered(&self) -> u8 {
+        self.recent_uncovered
+    }
+}
+
+/// Called by the content dispatcher to stash authored contracts. They are
+/// picked up by `install_authored_contracts` in a startup system after
+/// `load_content_index` completes.
+pub fn push_authored_contracts(contracts: Vec<Contract>) {
+    let existing = crate::systems::dispatch::stash::take_contracts();
+    let mut all = existing;
+    all.extend(contracts);
+    crate::systems::dispatch::stash::set_contracts(all);
 }
 
 /// The starter contract: Boris keeps the helm. Covers low fuel and normal
@@ -184,7 +232,11 @@ pub fn evaluate_contracts(
         Deliberate { timeout_ms: u32, fallback: Action },
         Silence,
     }
-    let decision = match evaluate(&runtime.contract, &ctx) {
+    let active_contract = match runtime.contracts.get(&runtime.active_id).cloned() {
+        Some(c) => c,
+        None => return,
+    };
+    let decision = match evaluate(&active_contract, &ctx) {
         Outcome::Rule { action, .. } => Decision::Act(action.clone()),
         Outcome::Deliberate { llm } => Decision::Deliberate {
             timeout_ms: llm.timeout_ms,
@@ -222,14 +274,12 @@ pub fn evaluate_contracts(
             runtime.recent_uncovered = (runtime.recent_uncovered + 1).min(8);
             if mode.is_online() && matches!(*conn, ConnectionState::Connected) {
                 let tick = runtime.next_tick();
-                let call_id = format!("{}-{tick}", runtime.contract.id);
+                let call_id = format!("{}-{tick}", active_contract.id);
                 log.log("Boris: my rules don't cover this. Radioing it in…");
-                // S16B wire revision: the contract's own LLM budget rides
-                // the call; the server clamps by its cap.
-                let llm = runtime.contract.llm_authority.as_ref();
+                let llm = active_contract.llm_authority.as_ref();
                 outbox.push(ClientMessage::LlmCall {
                     call_id: call_id.clone(),
-                    contract_id: runtime.contract.id.clone(),
+                    contract_id: active_contract.id.clone(),
                     context: serde_json::json!({ "unknown_signal": 1 }),
                     system_prompt: llm.map(|c| c.system_prompt.clone()),
                     timeout_ms: llm.map(|c| c.timeout_ms),
@@ -329,14 +379,15 @@ pub fn resolve_response(
     deliberation.just_completed = Some(active.crew_member.clone());
     systems.unknown_signal = false;
 
+    let active_contract = runtime.contracts.get(&runtime.active_id);
     // The contract's own verb set: a wrong call is always a plausible one.
-    let mut action_set: Vec<String> = runtime
-        .contract
-        .rules
-        .iter()
-        .map(|r| r.action.kind.clone())
-        .collect();
+    let mut action_set: Vec<String> = active_contract
+        .map(|c| c.rules.iter().map(|r| r.action.kind.clone()).collect())
+        .unwrap_or_default();
     action_set.dedup();
+    let contract_id = active_contract
+        .map(|c| c.id.as_str())
+        .unwrap_or("auto-helm");
 
     let weights = agency::weights(
         &agency::BASELINE,
@@ -352,7 +403,7 @@ pub fn resolve_response(
     );
     let (resolved, trace) = agency::deliberate(
         &agency::DeliberationParams {
-            contract_id: &runtime.contract.id,
+            contract_id,
             tick: runtime.next_tick,
             chain_position: 0,
             context_summary: &active.context_summary,
@@ -415,9 +466,14 @@ pub fn resolve_failed(
         "bad_response" => agency::ProviderVerdict::Collapsed,
         _ => agency::ProviderVerdict::TimedOut,
     };
+    let contract_id = runtime
+        .contracts
+        .get(&runtime.active_id)
+        .map(|c| c.id.as_str())
+        .unwrap_or("auto-helm");
     let (resolved, trace) = agency::deliberate(
         &agency::DeliberationParams {
-            contract_id: &runtime.contract.id,
+            contract_id,
             tick: runtime.next_tick,
             chain_position: 0,
             context_summary: &active.context_summary,

@@ -1,7 +1,9 @@
 //! Shared editor widgets (handoff §11): the Condition tree used by the
-//! Contract, Storyline, and Soul editors, plus the Action row editor.
+//! Contract, Storyline, and Soul editors, plus the Action row editor,
+//! and the character appearance editor (S76).
 
 use reachlock_core::contract::types::{Action, Comparison, Condition};
+use reachlock_core::generator::sprite::{CharacterLookConfig, HAIR_STYLE_COUNT};
 
 pub const COMPARISONS: [Comparison; 6] = [
     Comparison::Lt,
@@ -181,5 +183,176 @@ pub fn action_ui(ui: &mut egui::Ui, action: &mut Action, id: egui::Id) -> bool {
         }
     });
     let _ = id;
+    changed
+}
+
+// ── S76: Character appearance editor ──
+
+const SPECIES_NAMES: [&str; 5] = ["Human", "Android", "Robot", "Voidborn", "Xenotype"];
+
+pub(crate) const HAIR_STYLES: [&str; HAIR_STYLE_COUNT as usize] =
+    ["Bald", "Short", "Buzz", "Long", "Locs", "Bun", "Crest"];
+
+/// A reusable widget for editing a `CharacterLookConfig`. Used by the editor
+/// previewer and by the in-game character creator (S78).
+///
+/// Takes a `&mut CharacterLookConfig` and `&mut u64` (seed for "Reroll").
+/// Returns `true` if any value changed.
+pub fn character_appearance_editor(
+    ui: &mut egui::Ui,
+    config: &mut CharacterLookConfig,
+    seed: &mut u64,
+) -> bool {
+    let mut changed = false;
+    let is_robot = config.species == "Robot";
+
+    ui.heading("Character Look");
+    ui.separator();
+
+    // Species dropdown
+    let species_idx = SPECIES_NAMES
+        .iter()
+        .position(|s| *s == config.species)
+        .unwrap_or(0);
+    let mut sel = species_idx;
+    egui::ComboBox::from_label("Species")
+        .selected_text(SPECIES_NAMES[sel])
+        .show_ui(ui, |ui| {
+            for (i, name) in SPECIES_NAMES.iter().enumerate() {
+                if ui.selectable_value(&mut sel, i, *name).changed() {
+                    config.species = name.to_string();
+                    changed = true;
+                }
+            }
+        });
+
+    ui.separator();
+
+    // Hair style selector
+    {
+        let idx = config.hair_style.unwrap_or(0) as usize % HAIR_STYLES.len();
+        ui.horizontal(|ui| {
+            ui.label("Hair:");
+            if ui.button("◀").clicked() {
+                let cur = config.hair_style.unwrap_or(0) as i32;
+                let next = if cur <= 0 {
+                    HAIR_STYLE_COUNT as i32 - 1
+                } else {
+                    cur - 1
+                };
+                config.hair_style = Some(next as u8);
+                changed = true;
+            }
+            ui.label(HAIR_STYLES[idx]);
+            if ui.button("▶").clicked() {
+                let cur = config.hair_style.unwrap_or(0) as u32;
+                let next = (cur + 1) % HAIR_STYLE_COUNT as u32;
+                config.hair_style = Some(next as u8);
+                changed = true;
+            }
+        });
+    }
+
+    if is_robot {
+        ui.small("Robot: chassis + visor replace hair/skin tones.");
+        ui.separator();
+        changed |= color_control(ui, "Chassis", &mut config.chassis_color);
+        changed |= color_control(ui, "Visor", &mut config.visor_color);
+    } else {
+        changed |= color_control(ui, "Hair Color", &mut config.hair_color);
+        changed |= color_control(ui, "Skin Color", &mut config.skin_color);
+    }
+
+    ui.separator();
+    changed |= color_control(ui, "Shirt", &mut config.shirt_color);
+    changed |= color_control(ui, "Pants", &mut config.pants_color);
+
+    ui.separator();
+    {
+        let enabled = config.jacket_enabled.unwrap_or(false);
+        let mut new_enabled = enabled;
+        if ui.checkbox(&mut new_enabled, "Jacket").changed() {
+            config.jacket_enabled = Some(new_enabled);
+            changed = true;
+        }
+        if new_enabled {
+            changed |= color_control(ui, "Jacket Color", &mut config.jacket_color);
+        }
+    }
+
+    ui.separator();
+    ui.horizontal(|ui| {
+        ui.label("Seed:");
+        if ui
+            .add(egui::DragValue::new(seed).range(0..=((1u64 << 53) - 1)))
+            .changed()
+        {
+            changed = true;
+        }
+    });
+    if ui.button("Reroll").clicked() {
+        *seed = seed.wrapping_add(1);
+        config.hair_style = None;
+        config.hair_color = None;
+        config.skin_color = None;
+        config.shirt_color = None;
+        config.pants_color = None;
+        config.jacket_enabled = None;
+        config.jacket_color = None;
+        config.chassis_color = None;
+        config.visor_color = None;
+        changed = true;
+    }
+
+    changed
+}
+
+fn color_control(ui: &mut egui::Ui, label: &str, color: &mut Option<[u8; 3]>) -> bool {
+    let mut changed = false;
+    let mut auto = color.is_none();
+    ui.horizontal(|ui| {
+        ui.label(label);
+        if ui.checkbox(&mut auto, "(auto)").changed() {
+            if auto {
+                *color = None;
+            } else {
+                *color = Some([128, 128, 128]);
+            }
+            changed = true;
+        }
+        if !auto {
+            let mut c = color.unwrap_or([128, 128, 128]);
+            let mut srgba = [c[0], c[1], c[2], 255];
+            if ui
+                .color_edit_button_srgba_unmultiplied(&mut srgba)
+                .changed()
+            {
+                *color = Some([srgba[0], srgba[1], srgba[2]]);
+                changed = true;
+            }
+            ui.add(
+                egui::DragValue::new(&mut c[0])
+                    .range(0..=255)
+                    .prefix("R")
+                    .speed(1),
+            );
+            ui.add(
+                egui::DragValue::new(&mut c[1])
+                    .range(0..=255)
+                    .prefix("G")
+                    .speed(1),
+            );
+            ui.add(
+                egui::DragValue::new(&mut c[2])
+                    .range(0..=255)
+                    .prefix("B")
+                    .speed(1),
+            );
+            if c != color.unwrap_or([128, 128, 128]) {
+                *color = Some(c);
+                changed = true;
+            }
+        }
+    });
     changed
 }

@@ -578,9 +578,7 @@ impl EditorApp {
                         Err(_) => false,
                     }
                 }
-                Err(_) => {
-                    false
-                }
+                Err(_) => false,
             };
             if saved_ok {
                 saved += 1;
@@ -727,64 +725,18 @@ impl EditorApp {
                 ui.menu_button("File", |ui| {
                     ui.menu_button("New", |ui| {
                         let mut pick: Option<ContentType> = None;
-                        ui.menu_button("Systems", |ui| {
-                            for ct in [ContentType::ChartedSystem, ContentType::GateNetwork] {
-                                if ui.button(ct.name()).clicked() {
-                                    pick = Some(ct);
-                                    ui.close_menu();
+                        // Driven by app::NEW_MENU_GROUPS so a new ContentType
+                        // cannot ship without a way to create one.
+                        for (group, types) in app::NEW_MENU_GROUPS {
+                            ui.menu_button(*group, |ui| {
+                                for ct in *types {
+                                    if ui.button(ct.name()).clicked() {
+                                        pick = Some(*ct);
+                                        ui.close_menu();
+                                    }
                                 }
-                            }
-                        });
-                        ui.menu_button("Ships", |ui| {
-                            for ct in [
-                                ContentType::HullFrame,
-                                ContentType::HullMesh,
-                                ContentType::Station,
-                                ContentType::RoomTemplates,
-                            ] {
-                                if ui.button(ct.name()).clicked() {
-                                    pick = Some(ct);
-                                    ui.close_menu();
-                                }
-                            }
-                        });
-                        ui.menu_button("Characters", |ui| {
-                            for ct in [ContentType::Soul, ContentType::EnemyArchetype] {
-                                if ui.button(ct.name()).clicked() {
-                                    pick = Some(ct);
-                                    ui.close_menu();
-                                }
-                            }
-                        });
-                        ui.menu_button("World", |ui| {
-                            for ct in [
-                                ContentType::Faction,
-                                ContentType::Storyline,
-                                ContentType::Location,
-                                ContentType::Contract,
-                            ] {
-                                if ui.button(ct.name()).clicked() {
-                                    pick = Some(ct);
-                                    ui.close_menu();
-                                }
-                            }
-                        });
-                        ui.menu_button("Economy", |ui| {
-                            for ct in [ContentType::EconomyGoods, ContentType::Item] {
-                                if ui.button(ct.name()).clicked() {
-                                    pick = Some(ct);
-                                    ui.close_menu();
-                                }
-                            }
-                        });
-                        ui.menu_button("Preview", |ui| {
-                            for ct in [ContentType::ItemBrowser, ContentType::SpriteViewer] {
-                                if ui.button(ct.name()).clicked() {
-                                    pick = Some(ct);
-                                    ui.close_menu();
-                                }
-                            }
-                        });
+                            });
+                        }
                         if let Some(ct) = pick {
                             self.open_new_editor(&format!("New {}", ct.name()), ct);
                             ui.close_menu();
@@ -1152,6 +1104,20 @@ impl eframe::App for EditorApp {
                 });
             });
 
+        let mut open_recent = None;
+        egui::SidePanel::right("preview_panel")
+            .resizable(true)
+            .default_width(250.0)
+            .show(ctx, |ui| {
+                let active = self
+                    .active_tab
+                    .and_then(|i| self.open_editors.get(i))
+                    .map(|o| (o.name.as_str(), o.editor.as_ref()));
+                open_recent = self
+                    .preview
+                    .show(ui, active, &self.preferences.prefs.recent_files);
+            });
+
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.open_editors.is_empty() {
                 ui.vertical_centered(|ui| {
@@ -1166,7 +1132,7 @@ impl eframe::App for EditorApp {
                 egui::TopBottomPanel::top("editor_tabs")
                     .resizable(false)
                     .show_separator_line(false)
-                    .show(ctx, |ui| {
+                    .show_inside(ui, |ui| {
                         let mut close_request: Option<usize> = None;
                         ui.horizontal(|ui| {
                             for (i, open) in self.open_editors.iter().enumerate() {
@@ -1207,25 +1173,12 @@ impl eframe::App for EditorApp {
 
                 if let Some(idx) = self.active_tab {
                     if let Some(open) = self.open_editors.get_mut(idx) {
-                        open.editor.ui(ctx);
+                        open.editor.ui(ui);
                     }
                 }
             }
         });
 
-        let mut open_recent = None;
-        egui::SidePanel::right("preview_panel")
-            .resizable(true)
-            .default_width(250.0)
-            .show(ctx, |ui| {
-                let active = self
-                    .active_tab
-                    .and_then(|i| self.open_editors.get(i))
-                    .map(|o| (o.name.as_str(), o.editor.as_ref()));
-                open_recent = self
-                    .preview
-                    .show(ui, active, &self.preferences.prefs.recent_files);
-            });
         if let Some(path) = open_recent {
             match browser::detect_content_type(&path) {
                 Some(ct) => {

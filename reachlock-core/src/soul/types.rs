@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::contract::types::Condition;
+use crate::generator::sprite::CharacterLookConfig;
 
 /// What kind of body carries this soul. Mirrors the client's `BodyKind`
 /// (zero-g movement). Five canonical species:
@@ -122,6 +123,10 @@ pub struct SoulFile {
     /// ipsum — the soul deflects in its own voice. Picked deterministically.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deflections: Vec<String>,
+    /// S76: authored look config — pins the character's appearance. `None`
+    /// means "derive look from seed at runtime" (procedural NPC behaviour).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<CharacterLookConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -321,6 +326,7 @@ mod tests {
             secrets: vec![],
             dialogue: None,
             deflections: vec![],
+            look: None,
         }
     }
 

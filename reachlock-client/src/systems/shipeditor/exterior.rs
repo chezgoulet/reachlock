@@ -316,6 +316,7 @@ pub fn editor_system(
                 &souls.states,
                 shipcfg.config.as_ref(),
                 interior_cfg.layout.as_ref(),
+                None,
             );
             state.status = format!("applied — {cost} cr");
         }

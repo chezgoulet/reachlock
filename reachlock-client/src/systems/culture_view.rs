@@ -27,7 +27,7 @@ pub fn culture_panel_toggle(
     settings: Res<Settings>,
     mut visible: ResMut<CulturePanelVisible>,
 ) {
-    if keys.just_pressed(settings.key(InputAction::OpenCrewRoster)) {
+    if keys.just_pressed(settings.key(InputAction::OpenCulturePanel)) {
         visible.0 = !visible.0;
     }
 }
@@ -76,10 +76,7 @@ pub fn render_culture_panel(
                             custom.custom_type, custom.description, custom.trigger
                         ));
                     }
-                    lines.push(format!(
-                        "  Social structure: {:?}",
-                        c.social_structure
-                    ));
+                    lines.push(format!("  Social structure: {:?}", c.social_structure));
                     lines.push(format!(
                         "  Attitude toward outsiders: {:?}",
                         c.attitude_toward_outsiders
@@ -88,12 +85,12 @@ pub fn render_culture_panel(
                         "  Architectural style: {}",
                         c.architecture.style_name
                     ));
-                    lines.push(format!(
-                        "  Clothing: {}",
-                        c.clothing.style_name
-                    ));
-                    let values: Vec<String> =
-                        c.dominant_values.iter().map(|v| format!("{:?}", v)).collect();
+                    lines.push(format!("  Clothing: {}", c.clothing.style_name));
+                    let values: Vec<String> = c
+                        .dominant_values
+                        .iter()
+                        .map(|v| format!("{:?}", v))
+                        .collect();
                     lines.push(format!("  Values: {}", values.join(", ")));
                     lines.push(format!("  Quirk: {}", c.cultural_quirk));
                 }

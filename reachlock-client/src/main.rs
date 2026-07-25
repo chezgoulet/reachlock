@@ -4,13 +4,19 @@
 //! three-mode state machine (spec §14) — SpaceFlight / Landed / OnBoard —
 //! lives in `GameMode`, a sub-state of `AppState::InGame`.
 
+#![allow(dead_code)]
+
 mod bridge;
+mod egui_bridge;
+mod focus_ring;
+mod focus_stack;
 mod net;
 mod pixel;
 mod save_backend;
 mod settings;
 mod states;
 mod systems;
+mod widget_kit;
 
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
@@ -19,10 +25,14 @@ use bevy_rapier3d::prelude::*;
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
-    combat, comms, content_index, contract, contract_crafting, contract_library, crew, crisis,
-    career, cryojump, culture_view, deliberation_renderer, dialogue, discovery, docking, factions, galaxy_map, hud, interaction, interior, inventory, jump,
-    landed_combat, market, menu, mission_board, mode, music, network, onboard, pause, presence, resource_gathering, reticle, sensors,
-    settings_ui, setup, sfx, ship, shipeditor, signature_collector, soul, story_submission, ticker, voice,
+    career, character_creation, combat, comms, content_index, contract, contract_crafting,
+    contract_library, crew, crisis, cryojump, culture_view, deliberation_renderer, dialogue,
+    dilemma, discovery, dispatch, docking, ecosystem_events, encounter_executor, factions,
+    galaxy_map, help, hints, hud, interaction, interior, inventory, jump, landed_combat,
+    log_capture, log_ui, market, menu, mission_board, mode, music, network, onboard, onboarding,
+    pause, presence, resource_gathering, reticle, sensors, settings_ui, setup, sfx, ship,
+    shipeditor, signature_collector, soul, story_submission, storyline_driver, ticker,
+    trope_dispatcher, voice,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -63,7 +73,7 @@ fn space_live(mode: Option<Res<State<GameMode>>>, registry: Res<SceneRegistry>) 
 }
 
 fn main() {
-    // S24: platform-appropriate save backend (filesystem native, localStorage WASM).
+    // Filesystem-backed save storage (native only).
     save_backend::init_save_backend();
 
     App::new()
@@ -100,10 +110,11 @@ fn main() {
         .init_resource::<sfx::SfxQueue>()
         // S29: microphone device enumeration (populated at runtime).
         .init_resource::<voice::MicDevices>()
-        // S06/S21: mode machine resources. The player starts in Aethon,
-        // the Compact's seat — the gate network's default origin.
+        // S06/S21: mode machine resources. The player starts at the default
+        // origin (Aethon). The S78 character creator will override this
+        // with the selected origin package's starting location.
         .insert_resource(CurrentLocation {
-            system_seed: 16843009,
+            system_seed: reachlock_core::crew::StartingLocation::default().system_seed,
             system_id: reachlock_core::seed::types::SystemId("aethon".into()),
             system_biome: reachlock_core::seed::types::Biome::Core,
             system_fidelity: reachlock_core::generator::system::Fidelity::Full,
@@ -142,20 +153,29 @@ fn main() {
         // S12: the one universe — economy + factions + news, advanced by the
         // ticker. Built before Startup so load_save can restore into it.
         .init_resource::<ticker::UniverseTicker>()
-        .init_resource::<factions::ReputationPanelVisible>()
-        .init_resource::<culture_view::CulturePanelVisible>()
+        .init_resource::<focus_stack::FocusStack>()
+        .init_resource::<focus_ring::FocusRing>()
+        .init_resource::<widget_kit::tooltip::TooltipTimer>()
+        // C13 fix: the six *Visible booleans are replaced by ActivePanel + FocusStack.
         .init_resource::<culture_view::CultureResource>()
-        .init_resource::<discovery::DiscoveryPanelVisible>()
+        .init_resource::<dispatch::OriginRegistry>()
+        .init_resource::<dispatch::EcosystemOverrideRegistry>()
+        .init_resource::<dispatch::CultureOverrideRegistry>()
+        .init_resource::<ecosystem_events::EcosystemEventTriggerLog>()
         .init_resource::<discovery::EcosystemResource>()
-        .init_resource::<career::CareerPanelVisible>()
+        .init_resource::<discovery::DiscoveryLog>()
+        .init_resource::<discovery::DiscoveryTab>()
+        .init_resource::<discovery::NotificationQueue>()
         .init_resource::<career::CareerResource>()
         .init_resource::<career::PiracyResource>()
         // S09: live jump/transit bookkeeping + sensors.
         .init_resource::<jump::TransitState>()
         .init_resource::<jump::FtlRoute>()
         .init_resource::<jump::MissionBoardResource>()
-        .init_resource::<mission_board::MissionBoardVisible>()
         .init_resource::<sensors::MapOverlayState>()
+        // S85: galaxy map attribution tracking.
+        .init_resource::<galaxy_map::KnownSystems>()
+        .init_resource::<galaxy_map::GalaxyMapSelection>()
         // S09b: cross-mode command bus — OnBoard consoles (gunner/scanner/
         // miner/power) write it, the flight systems read it (spec §22).
         .init_resource::<ship::ShipCommand>()
@@ -168,6 +188,10 @@ fn main() {
         .init_resource::<onboard::ActiveStationView>()
         // S13: authored souls + live soul state (filled by init_souls,
         // restored over by load_save).
+        .init_resource::<log_capture::LogCapture>()
+        .init_resource::<log_ui::LogViewerVisible>()
+        .init_resource::<log_ui::LogEntries>()
+        .init_resource::<log_ui::LogSelection>()
         .init_resource::<soul::SoulRegistry>()
         // S16: the one live conversation (soul-backed dialogue panel).
         .init_resource::<dialogue::DialogueSession>()
@@ -190,9 +214,11 @@ fn main() {
         .init_resource::<resource_gathering::GatheringProgress>()
         // S61: signature collector — pending signatures for contract approval.
         .init_resource::<signature_collector::SignatureCollector>()
-        .init_resource::<signature_collector::SignatureCollectorVisible>()
         // S61: deliberation renderer — visible overlay state for crew deliberations.
-        .init_resource::<deliberation_renderer::DeliberationRenderState>()
+        .init_resource::<deliberation_renderer::DeliberationPanel>()
+        .init_resource::<hints::HintRegistry>()
+        .init_resource::<help::HelpMode>()
+        .init_resource::<onboarding::OnboardingState>()
         // S34: story submission — pending prompt + submitted stories.
         .init_resource::<story_submission::StorySubmissionState>()
         // S19: space combat — seeded encounters, subsystem targeting, the
@@ -207,17 +233,48 @@ fn main() {
         // tick gate.
         .init_resource::<landed_combat::LandedCombatState>()
         .init_resource::<landed_combat::LandedTick>()
-        // S08: start with the canonical crew (stable ids for S13 souls).
-        .insert_resource(crew::CrewRoster::default_crew())
+        // S82: narrative systems — dilemma, encounter, storyline, trope.
+        .init_resource::<dilemma::DilemmaCooldown>()
+        .init_resource::<dilemma::ActiveDilemma>()
+        .init_resource::<dilemma::DilemmaOutcomeText>()
+        .init_resource::<dilemma::DilemmaChoiceSelected>()
+        .init_resource::<encounter_executor::EncounterRegistry>()
+        .init_resource::<encounter_executor::ActiveEncounter>()
+        .init_resource::<encounter_executor::EncounterCooldowns>()
+        .init_resource::<storyline_driver::StorylineState>()
+        .init_resource::<storyline_driver::StorylineNotifications>()
+        .init_resource::<storyline_driver::StorylineLogVisible>()
+        .init_resource::<trope_dispatcher::TropeRegistry>()
+        .init_resource::<trope_dispatcher::TropeCooldown>()
+        .init_resource::<trope_dispatcher::ActiveTropePopup>()
+        // S08: crew roster initialised from content (S77), replaced by
+        // save restore after souls are loaded.
+        .init_resource::<crew::CrewRoster>()
+        // S78: continue-game flag. The menu sets this before transitioning to
+        // InGame; the continue_game system reads and clears it.
+        .insert_resource(menu::SaveExists(false))
         .add_systems(
             Startup,
             (
-                // Chained: souls come from the content index, and the save
-                // restores live soul/universe state over the fresh defaults.
+                // S70: initialise FocusStack with the World layer.
+                |mut stack: ResMut<focus_stack::FocusStack>| {
+                    if stack.depth() == 0 {
+                        stack.push(focus_stack::FocusLayer::World);
+                    }
+                },
+                // Chained: souls come from the content index, the content
+                // dispatcher routes payloads to consumers. Save is no longer
+                // loaded here — Continue path loads it; New Game creates fresh.
+                // S82: trope/encounter registries are populated from the
+                // stash after dispatch_content writes to it.
                 (
                     content_index::load_content_index,
+                    dispatch::dispatch_content,
+                    dispatch::flush_content_registries,
+                    trope_dispatcher::init_trope_registry,
+                    encounter_executor::init_encounter_registry,
                     soul::init_souls,
-                    inventory::load_save,
+                    crew::init_crew_roster,
                 )
                     .chain(),
                 menu::spawn_menu,
@@ -235,7 +292,34 @@ fn main() {
         )
         .add_systems(
             Update,
-            menu::menu_input.run_if(in_state(AppState::MainMenu)),
+            (
+                menu::menu_input,
+                focus_ring::collect_focusables,
+                focus_ring::advance_focus,
+                focus_ring::highlight_focused,
+                widget_kit::button::update_button_style,
+                widget_kit::tooltip::tooltip_system,
+            )
+                .run_if(in_state(AppState::MainMenu)),
+        )
+        // S78: Character Creation state — spawn UI on enter, despawn on exit,
+        // handle input and step rendering while active.
+        .add_systems(
+            OnEnter(AppState::CharacterCreation),
+            character_creation::spawn_creation_ui,
+        )
+        .add_systems(
+            OnExit(AppState::CharacterCreation),
+            character_creation::despawn_creation_ui,
+        )
+        .add_systems(
+            Update,
+            (
+                character_creation::character_creation_input,
+                character_creation::render_current_step,
+                character_creation::update_step_text,
+            )
+                .run_if(in_state(AppState::CharacterCreation)),
         )
         // S31: keep the help-text cache in sync with keybind changes.
         .add_systems(Update, hud::refresh_help_cache)
@@ -249,26 +333,41 @@ fn main() {
             ),
         )
         // HUD spawns once when the game starts; it adapts per mode in
-        // `update_hud`.
+        // `update_hud`. load_save runs on every InGame entry — on Continue
+        // it finds the existing save; on CharacterCreation→Confirm the save
+        // was just written by confirm(); on fresh install with no save it
+        // leaves defaults. The Continue menu button is disabled when no
+        // save exists (checked at menu spawn).
         .add_systems(
             OnEnter(AppState::InGame),
             (
+                inventory::load_save,
                 hud::spawn_hud,
                 reticle::spawn_reticle,
                 onboard::spawn_onboard_panels,
                 comms::spawn_comm_hud,
                 combat::spawn_combat_hud,
                 discovery::spawn_discovery_panel,
-                deliberation_renderer::spawn_deliberation_ui,
+                deliberation_renderer::spawn_deliberation_panel,
+                hints::init_hint_registry,
                 network::connect_on_enter_playing,
                 voice::start_voice_thread,
                 factions::spawn_reputation_panel,
                 factions::spawn_faction_banner,
                 culture_view::spawn_culture_panel,
                 career::spawn_career_panel,
+                log_ui::spawn_captains_log_panel,
             ),
         )
-        .add_systems(OnExit(AppState::InGame), mode::teardown_on_leave_game)
+        .add_systems(
+            OnExit(AppState::InGame),
+            (
+                log_capture::flush_log_capture,
+                onboarding::despawn_onboarding,
+                mode::teardown_on_leave_game,
+            )
+                .chain(),
+        )
         // S09b: activate the 3D chase-cam in SpaceFlight, the 2D camera
         // everywhere else. Runs every InGame frame so mode switches (and the
         // Docking/Undocking/Hyperspace beats) always land on the right view.
@@ -282,7 +381,28 @@ fn main() {
         // Docking/Undocking beats showing the live space scene and lets
         // Pause round-trip without rebuilding anything (the enter systems
         // early-out when `SceneRegistry` already holds the target mode).
-        .add_systems(OnEnter(GameMode::SpaceFlight), setup::enter_spaceflight)
+        // S72: deliberation panel lifecycle — spawn when deliberation starts,
+        // despawn when it ends. Wiring lives at the InGame level since
+        // deliberation can happen in any mode.
+        .add_systems(
+            OnEnter(AppState::InGame),
+            deliberation_renderer::despawn_deliberation_panel,
+        )
+        .add_systems(
+            Update,
+            (
+                onboarding::spawn_onboarding_overlay.run_if(in_state(AppState::InGame)),
+                help::despawn_help_labels.run_if(in_state(AppState::InGame)),
+            ),
+        )
+        .add_systems(
+            OnEnter(GameMode::SpaceFlight),
+            (
+                setup::enter_spaceflight,
+                ecosystem_events::check_ecosystem_events,
+            )
+                .chain(),
+        )
         // --- Landed scene ---
         .add_systems(
             OnEnter(GameMode::Landed),
@@ -336,7 +456,9 @@ fn main() {
                 jump::self_jump,
                 galaxy_map::galaxy_map_toggle,
                 galaxy_map::galaxy_map_click,
+                galaxy_map::galaxy_map_select_system,
                 galaxy_map::galaxy_map_cancel_ftl,
+                galaxy_map::galaxy_map_attribution_text,
                 galaxy_map::render_galaxy_map,
                 landed_combat::tumble_derelicts,
                 landed_combat::pulse_beacons,
@@ -362,6 +484,7 @@ fn main() {
                 ship::scanner_pulse,
                 ship::request_scan_from_key,
                 ship::engine_glow,
+                log_capture::capture_combat_damage,
                 systems::starfield::dust_parallax,
             )
                 .run_if(space_live),
@@ -553,12 +676,41 @@ fn main() {
                 factions::reputation_panel_toggle.run_if(in_state(AppState::InGame)),
                 culture_view::culture_panel_toggle.run_if(in_state(AppState::InGame)),
                 discovery::discovery_panel_toggle.run_if(in_state(AppState::InGame)),
+                discovery::discovery_panel_tab.run_if(in_state(AppState::InGame)),
                 career::career_panel_toggle.run_if(in_state(AppState::InGame)),
+                log_ui::captains_log_toggle.run_if(in_state(AppState::InGame)),
                 mission_board::mission_board_toggle.run_if(in_state(AppState::InGame)),
                 signature_collector::toggle_signature_panel.run_if(in_state(AppState::InGame)),
                 signature_collector::collect_signature.run_if(in_state(AppState::InGame)),
-                deliberation_renderer::render_deliberation.run_if(in_state(AppState::InGame)),
-                deliberation_renderer::cleanup_completed_deliberations.run_if(in_state(AppState::InGame)),
+            ),
+        )
+        .add_systems(
+            Update,
+            (
+                deliberation_renderer::advance_deliberation_stage
+                    .run_if(in_state(AppState::InGame)),
+                deliberation_renderer::update_verdict_from_resolution
+                    .run_if(in_state(AppState::InGame)),
+                deliberation_renderer::render_deliberation_panel.run_if(in_state(AppState::InGame)),
+                deliberation_renderer::handle_interjection_input.run_if(in_state(AppState::InGame)),
+                help::toggle_help_mode.run_if(in_state(AppState::InGame)),
+                help::spawn_help_labels.run_if(in_state(AppState::InGame)),
+                onboarding::check_first_run.run_if(in_state(AppState::InGame)),
+                onboarding::advance_onboarding.run_if(in_state(AppState::InGame)),
+                onboarding::render_onboarding.run_if(in_state(AppState::InGame)),
+            ),
+        )
+        .add_systems(
+            Update,
+            (
+                // S70: widget kit systems run in all game states.
+                widget_kit::button::update_button_style.run_if(in_state(AppState::InGame)),
+                focus_ring::collect_focusables.run_if(in_state(AppState::InGame)),
+                focus_ring::advance_focus.run_if(in_state(AppState::InGame)),
+                focus_ring::highlight_focused.run_if(in_state(AppState::InGame)),
+                widget_kit::tooltip::tooltip_system.run_if(in_state(AppState::InGame)),
+                // S70: egui context lifecycle.
+                egui_bridge::sync_egui_context.run_if(in_state(AppState::InGame)),
             ),
         )
         .add_systems(
@@ -572,6 +724,10 @@ fn main() {
         .add_systems(
             Update,
             cryojump::pod_stasis.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            log_capture::capture_crew_relationship_changes.run_if(in_state(AppState::InGame)),
         )
         .add_systems(Update, comms::tick_comms.run_if(in_state(AppState::InGame)))
         .add_systems(
@@ -609,20 +765,95 @@ fn main() {
             )
                 .run_if(in_state(AppState::InGame)),
         )
+        // S82: narrative systems — dilemma triggers, encounter executors,
+        // storyline driver, trope dispatcher. Run in all InGame modes.
+        // Split into groups to stay under Bevy's tuple-size limit.
+        .add_systems(
+            Update,
+            (
+                dilemma::dilemma_trigger_system,
+                dilemma::dilemma_input_system,
+                log_capture::capture_dilemma_resolution,
+            )
+                .run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            (
+                encounter_executor::encounter_trigger_system,
+                encounter_executor::encounter_choice_system,
+            )
+                .run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            (storyline_driver::storyline_driver_system,).run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            (
+                trope_dispatcher::trope_dispatcher_system,
+                trope_dispatcher::trope_input_system,
+            )
+                .run_if(in_state(AppState::InGame)),
+        )
         .add_systems(
             Update,
             (
                 music::sync_music_params,
                 docking::transition_beat,
                 inventory::autosave_system,
-                pause::toggle_pause,
-                hud::update_hud_status,
-                hud::update_hud_panels,
+            )
+                .run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            pause::toggle_pause.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            (
+                hud::update_hud_status.run_if(in_state(AppState::InGame)),
+                discovery::process_notifications.run_if(in_state(AppState::InGame)),
+            ),
+        )
+        .add_systems(
+            Update,
+            hud::update_hud_panels.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            hud::render_dilemma_panel.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            hud::render_encounter_panel.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            hud::render_trope_panel.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            (
                 factions::render_reputation_panel,
                 factions::render_faction_banner,
                 culture_view::render_culture_panel,
+            )
+                .run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            (
                 discovery::render_discovery_panel,
                 career::render_career_panel,
+                log_ui::render_captains_log,
+            )
+                .run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            Update,
+            (
                 mission_board::render_mission_board,
                 resource_gathering::render_gathering_progress,
                 signature_collector::render_signature_panel,

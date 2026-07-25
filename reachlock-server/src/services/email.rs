@@ -6,9 +6,7 @@ use std::sync::Mutex;
 
 use lettre::message::header::ContentType;
 use lettre::transport::smtp::authentication::Credentials;
-use lettre::{
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
-};
+use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
 pub trait EmailBackend: Send + Sync {
     fn send(&self, to: &str, subject: &str, html_body: &str) -> Result<(), String>;
@@ -45,7 +43,11 @@ impl EmailBackend for FileEmailBackend {
     fn send(&self, to: &str, subject: &str, html_body: &str) -> Result<(), String> {
         let mut c = self.counter.lock().unwrap();
         *c += 1;
-        let path = self.dir.join(format!("{:04}_{}.eml", c, chrono::Utc::now().format("%H%M%S")));
+        let path = self.dir.join(format!(
+            "{:04}_{}.eml",
+            c,
+            chrono::Utc::now().format("%H%M%S")
+        ));
         let eml = format!(
             "To: {}\nSubject: {}\nContent-Type: text/html; charset=utf-8\n\n{}",
             to, subject, html_body
@@ -96,8 +98,7 @@ impl SmtpEmailBackend {
         // Port 25/1025: no TLS (local dev with Mailpit).
         let mailer = if port == 25 || port == 1025 {
             // No TLS for local dev
-            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host)
-                .port(port)
+            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host).port(port)
         } else {
             // Use relay() which auto-negotiates STARTTLS
             AsyncSmtpTransport::<Tokio1Executor>::relay(host)
@@ -120,8 +121,14 @@ impl SmtpEmailBackend {
 impl EmailBackend for SmtpEmailBackend {
     fn send(&self, to: &str, subject: &str, html_body: &str) -> Result<(), String> {
         let email = Message::builder()
-            .from(self.from.parse().map_err(|e: lettre::address::AddressError| format!("from addr: {e}"))?)
-            .to(to.parse().map_err(|e: lettre::address::AddressError| format!("to addr: {e}"))?)
+            .from(
+                self.from
+                    .parse()
+                    .map_err(|e: lettre::address::AddressError| format!("from addr: {e}"))?,
+            )
+            .to(to
+                .parse()
+                .map_err(|e: lettre::address::AddressError| format!("to addr: {e}"))?)
             .subject(subject)
             .header(ContentType::TEXT_HTML)
             .body(html_body.to_string())

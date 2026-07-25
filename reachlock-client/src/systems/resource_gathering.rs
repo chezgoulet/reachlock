@@ -124,7 +124,10 @@ pub fn tick_gathering(
             ResourceType::Water => GoodId("water_ice".into()),
         };
         *inventory.cargo.entry(good_id).or_insert(0) += node.yield_amount;
-        info!("gathered {} units of {:?}", node.yield_amount, progress.resource_type);
+        info!(
+            "gathered {} units of {:?}",
+            node.yield_amount, progress.resource_type
+        );
     }
     progress.active = false;
 }

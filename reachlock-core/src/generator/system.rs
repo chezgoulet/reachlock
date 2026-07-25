@@ -620,7 +620,7 @@ mod tests {
     }
 
     /// Golden vector: if this changes, generator output changed on SOME
-    /// target — the determinism harness compares it across x86/ARM/wasm.
+    /// target — the determinism harness compares it across x86_64/ARM/i686.
     #[test]
     fn golden_system_seed_42() {
         let sys = generate_system(42, Biome::Frontier, Fidelity::Full);

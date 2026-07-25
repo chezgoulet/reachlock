@@ -146,8 +146,8 @@ impl Editor for RoomTemplatesEditor {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn ui(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("room_templates_toolbar").show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::TopBottomPanel::top("room_templates_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Generate from Seed").clicked() {
                     self.generate_from_seed(self.file.seed);
@@ -185,7 +185,7 @@ impl Editor for RoomTemplatesEditor {
         egui::SidePanel::left("room_templates_list")
             .resizable(true)
             .default_width(200.0)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("🔍");
                     ui.text_edit_singleline(&mut self.search);
@@ -210,7 +210,7 @@ impl Editor for RoomTemplatesEditor {
             });
 
         let validation = self.validate();
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let selected = self.selected;
             let ContentPayload::RoomTemplates(templates) = &mut self.file.payload else {
                 ui.colored_label(egui::Color32::RED, "payload is not a template set");

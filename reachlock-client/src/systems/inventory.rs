@@ -11,12 +11,14 @@ use serde::{Deserialize, Serialize};
 
 use reachlock_core::economy::GoodId;
 use reachlock_core::generator::station::StationKind;
+use reachlock_core::identity::PlayerCharacter;
 use reachlock_core::sim::UniverseState;
 
 use reachlock_core::item::types::{ItemStats, MeleeWeapon};
 
 use crate::settings::Settings;
 use crate::states::CurrentLocation;
+use crate::systems::discovery::DiscoveryLog;
 use crate::systems::ticker::UniverseTicker;
 
 /// The player's wallet + hold. `capacity` is cargo slots (not weight); S10
@@ -83,7 +85,7 @@ pub struct SaveFile {
     #[serde(default)]
     pub universe: Option<UniverseState>,
     /// Wall-clock stamp of the save, for universe catch-up on load. `None`
-    /// on platforms without a wall clock (wasm) — catch-up just skips.
+    /// on platforms without a wall clock — catch-up just skips.
     #[serde(default)]
     pub saved_at_epoch_secs: Option<u64>,
     /// S13: live soul states (moods, memories, relationships, unlocked
@@ -99,6 +101,17 @@ pub struct SaveFile {
     /// as-is; On-Board realizes it on boarding.
     #[serde(default)]
     pub interior_layout: Option<reachlock_core::editor::interior::ShipInteriorLayout>,
+    /// S75: the player character identity. `None` = character not yet created
+    /// (pre-S75 save or fresh start) — the game presents the character-creation
+    /// flow as a first-time setup path.
+    #[serde(default)]
+    pub character: Option<PlayerCharacter>,
+    /// S85: player's discovery log (systems charted).
+    #[serde(default)]
+    pub discovery_log: DiscoveryLog,
+    /// S80: the crew roster (persisted for save/reload).
+    #[serde(default)]
+    pub crew_roster: Option<crate::systems::crew::CrewRoster>,
 }
 
 /// Seconds since the Unix epoch.
@@ -118,6 +131,33 @@ pub fn save_player(
     souls: &BTreeMap<String, reachlock_core::soul::SoulState>,
     hull_config: Option<&reachlock_core::editor::exterior::HullConfiguration>,
     interior_layout: Option<&reachlock_core::editor::interior::ShipInteriorLayout>,
+    character: Option<&PlayerCharacter>,
+) {
+    save_player_with_log(
+        inv,
+        loc,
+        universe,
+        souls,
+        hull_config,
+        interior_layout,
+        character,
+        &DiscoveryLog::default(),
+        None,
+    );
+}
+
+/// Full save including discovery log.
+#[allow(clippy::too_many_arguments)]
+pub fn save_player_with_log(
+    inv: &PlayerInventory,
+    loc: &CurrentLocation,
+    universe: Option<&UniverseState>,
+    souls: &BTreeMap<String, reachlock_core::soul::SoulState>,
+    hull_config: Option<&reachlock_core::editor::exterior::HullConfiguration>,
+    interior_layout: Option<&reachlock_core::editor::interior::ShipInteriorLayout>,
+    character: Option<&PlayerCharacter>,
+    discovery_log: &DiscoveryLog,
+    crew_roster: Option<&crate::systems::crew::CrewRoster>,
 ) {
     let gc = loc.galaxy_coord.map(|c| [c.x, c.y, c.z]);
     fn biome_str(b: reachlock_core::seed::types::Biome) -> &'static str {
@@ -157,6 +197,9 @@ pub fn save_player(
         souls: souls.clone(),
         hull_config: hull_config.cloned(),
         interior_layout: interior_layout.cloned(),
+        character: character.cloned(),
+        discovery_log: discovery_log.clone(),
+        crew_roster: crew_roster.cloned(),
     };
     match ron::to_string(&file) {
         Ok(text) => crate::save_backend::write_save(&text),
@@ -229,18 +272,23 @@ pub fn autosave_system(
     souls: Res<crate::systems::soul::SoulRegistry>,
     shipcfg: Res<crate::systems::shipeditor::ShipConfig>,
     interior_cfg: Res<crate::systems::shipeditor::InteriorConfig>,
+    discovery_log: Res<DiscoveryLog>,
+    roster: Option<Res<crate::systems::crew::CrewRoster>>,
 ) {
     let interval = settings.gameplay.auto_save_interval_secs as f32;
     timer.0 += time.delta_secs();
     if timer.0 >= interval {
         timer.0 = 0.0;
-        save_player(
+        save_player_with_log(
             &inv,
             &loc,
             ticker.as_ref().map(|t| &t.state),
             &souls.states,
             shipcfg.config.as_ref(),
             interior_cfg.layout.as_ref(),
+            None,
+            &discovery_log,
+            roster.as_deref(),
         );
     }
 }
@@ -250,6 +298,7 @@ pub fn autosave_system(
 /// while the game was closed (capped inside `catch_up`). Wired in `main.rs`
 /// `Startup`; offline-safe (a missing/corrupt save is a fresh start, never a
 /// crash). `UniverseTicker` is an `init_resource` so it already exists here.
+#[allow(clippy::too_many_arguments)]
 pub fn load_save(
     mut inv: ResMut<PlayerInventory>,
     mut loc: ResMut<CurrentLocation>,
@@ -257,6 +306,8 @@ pub fn load_save(
     mut souls: ResMut<crate::systems::soul::SoulRegistry>,
     mut shipcfg: ResMut<crate::systems::shipeditor::ShipConfig>,
     mut interior_cfg: ResMut<crate::systems::shipeditor::InteriorConfig>,
+    mut discovery_log: ResMut<DiscoveryLog>,
+    mut roster: ResMut<crate::systems::crew::CrewRoster>,
     content: Res<crate::systems::content_index::ContentIndex>,
 ) {
     if let Some((i, l)) = load_player() {
@@ -289,6 +340,100 @@ pub fn load_save(
             if let Some(layout) = file.interior_layout {
                 interior_cfg.layout = Some(layout);
             }
+            // S85: restore discovery log.
+            *discovery_log = file.discovery_log;
+            // S80: restore crew roster from save.
+            if let Some(saved_roster) = file.crew_roster {
+                *roster = saved_roster;
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn save_file_default_character_is_none() {
+        let sf = SaveFile::default();
+        assert!(sf.character.is_none());
+    }
+
+    #[test]
+    fn save_file_round_trips_with_character() {
+        let soul = reachlock_core::soul::SoulFile {
+            id: "player_soul".into(),
+            name: "Rook".into(),
+            species: reachlock_core::soul::types::Species::Human,
+            portrait_id: String::new(),
+            identity: reachlock_core::soul::types::Identity {
+                origin: String::new(),
+                faction_affiliation: String::new(),
+                role: "Captain".into(),
+                public_bio: String::new(),
+            },
+            personality: reachlock_core::soul::types::Personality {
+                traits: vec![],
+                values: vec![],
+                speaking_style: reachlock_core::soul::types::SpeakingStyle::Terse,
+                quirks: vec![],
+            },
+            emotional_state: reachlock_core::soul::types::EmotionalState {
+                dominant_mood: reachlock_core::soul::types::Mood::Stable,
+                intensity: 512,
+                triggers: vec![],
+            },
+            memory_tree: vec![],
+            relationship_graph: vec![],
+            goals: vec![],
+            breaking_points: vec![],
+            contracts: vec![],
+            backstory: String::new(),
+            secrets: vec![],
+            dialogue: None,
+            deflections: vec![],
+            look: None,
+        };
+        let pc = PlayerCharacter {
+            id: reachlock_core::identity::EntityId(42),
+            name: "Rook".into(),
+            pronouns: "they/them".into(),
+            species: "Human".into(),
+            look: reachlock_core::generator::sprite::CharacterLookConfig {
+                species: "Human".into(),
+                hair_style: Some(3),
+                ..Default::default()
+            },
+            origin_id: "orphaned_colony".into(),
+            background_id: "spacer".into(),
+            soul,
+        };
+        let sf = SaveFile {
+            character: Some(pc.clone()),
+            ..Default::default()
+        };
+        let text = ron::to_string(&sf).unwrap();
+        let back: SaveFile = ron::from_str(&text).unwrap();
+        assert_eq!(back.character, Some(pc));
+    }
+
+    #[test]
+    fn pre_s75_save_deserializes_with_character_none() {
+        // Simulates a save from before S75 (no `character` field).
+        let old_save = r#"
+            SaveFile(
+                inventory: (credits: 0, capacity: 100, cargo: {}, equipped_weapon: None),
+                location: None,
+                universe: None,
+                saved_at_epoch_secs: None,
+                souls: {},
+                hull_config: None,
+                interior_layout: None,
+            )
+        "#;
+        let sf: SaveFile = ron::from_str(old_save).unwrap();
+        assert!(sf.character.is_none());
+        assert_eq!(sf.inventory.credits, 0);
     }
 }

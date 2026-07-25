@@ -15,8 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
       - name: System deps (Bevy on Linux)
@@ -28,31 +26,16 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
+      # --all-targets so test and bench code is linted too. Without it a test
+      # file can stop compiling while CI still reports green.
       - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test (all)
         run: cargo test --workspace
 
-      - name: WASM dev build (spike gate)
-        run: cargo build -p reachlock-client --target wasm32-unknown-unknown
-
-      # S24: size budget gate — print compressed wasm size from the dev build.
-      # The release build is not run on every PR (too expensive); the dev build
-      # size is a proxy. The budget is set high enough that only egregious bloat
-      # triggers it.
-      - name: WASM size check
-        run: |
-          WASM="target/wasm32-unknown-unknown/debug/reachlock-client.wasm"
-          BUDGET_FILE="SIZE_BUDGET"
-          if [ -f "$WASM" ]; then
-            SIZE=$(wc -c < "$WASM")
-            echo "wasm (debug): $SIZE bytes"
-            if [ -f "$BUDGET_FILE" ]; then
-              BUDGET=$(cat "$BUDGET_FILE")
-              if [ "$SIZE" -gt "$BUDGET" ]; then
-                echo "WASM size $SIZE exceeds budget $BUDGET"
-                exit 1
-              fi
-            fi
-          fi
+      # Iron rule #1. Replaces the old "client compiles to wasm32" gate, which
+      # was really a proxy for "core has no rendering/IO deps" and went away
+      # with web distribution.
+      - name: Engine purity
+        run: make check-purity

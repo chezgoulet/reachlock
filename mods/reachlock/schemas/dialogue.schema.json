@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Dialogue Tree",
+  "description": "A branching dialogue tree for NPC conversations",
+  "type": "object",
+  "required": ["id", "nodes"],
+  "properties": {
+    "id": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "speaker", "text"],
+        "properties": {
+          "id": { "type": "string" },
+          "speaker": { "type": "string" },
+          "text": { "type": "string" },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["text", "next_node"],
+              "properties": {
+                "text": { "type": "string" },
+                "next_node": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

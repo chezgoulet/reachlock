@@ -20,8 +20,7 @@ pub struct RedisPool {
 
 impl RedisPool {
     pub async fn new(url: &str) -> Result<Self, String> {
-        let client =
-            redis::Client::open(url).map_err(|e| format!("redis open: {e}"))?;
+        let client = redis::Client::open(url).map_err(|e| format!("redis open: {e}"))?;
         let mgr = client
             .get_connection_manager()
             .await
@@ -79,7 +78,10 @@ impl RedisSessionStore {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(24)
             * 3600;
-        RedisSessionStore { pool, ttl_secs: ttl }
+        RedisSessionStore {
+            pool,
+            ttl_secs: ttl,
+        }
     }
 }
 
@@ -146,6 +148,13 @@ impl SessionStore for RedisSessionStore {
         });
     }
 
+    fn active_sessions(&self) -> usize {
+        self.pool.block_on(move |mut mgr| async move {
+            let count: Option<u64> = redis::cmd("DBSIZE").query_async(&mut mgr).await.ok();
+            count.unwrap_or(0) as usize
+        })
+    }
+
     fn revoke_all_for_player(&self, player_id: &str) {
         let pid = player_id.to_string();
         self.pool.block_on(move |mut mgr| async move {
@@ -168,10 +177,7 @@ impl SessionStore for RedisSessionStore {
                         .await
                         .ok();
                     if pid_check.as_deref() == Some(&pid) {
-                        let _ = redis::cmd("DEL")
-                            .arg(key)
-                            .query_async::<()>(&mut mgr)
-                            .await;
+                        let _ = redis::cmd("DEL").arg(key).query_async::<()>(&mut mgr).await;
                     }
                 }
                 cursor = next_cursor;

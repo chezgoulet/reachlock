@@ -2,7 +2,6 @@
 
 use bevy::prelude::*;
 
-
 use crate::settings::{InputAction, Settings};
 use crate::systems::jump::MissionBoardResource;
 
@@ -30,7 +29,10 @@ pub fn spawn_mission_board(mut commands: Commands) {
     commands.spawn((
         MissionBoard,
         Text::new(""),
-        TextFont { font_size: 14.0, ..default() },
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
         TextColor(Color::srgb(0.8, 0.9, 0.7)),
         Node {
             position_type: PositionType::Absolute,
@@ -59,7 +61,12 @@ pub fn render_mission_board(
                 for (i, m) in ms.iter().enumerate() {
                     lines.push(format!("  {}. {} ({:?})", i + 1, m.title, m.mission_type));
                     if let Some(ref chain) = m.chain {
-                        lines.push(format!("     Chain: {} ({}/{})", chain.chain_title, chain.position + 1, chain.total_missions));
+                        lines.push(format!(
+                            "     Chain: {} ({}/{})",
+                            chain.chain_title,
+                            chain.position + 1,
+                            chain.total_missions
+                        ));
                     }
                     lines.push(format!("     Rewards: {}cr", m.rewards.credits));
                 }

@@ -48,7 +48,7 @@ impl GalaxyCoord {
 }
 
 /// FROZEN PROTOCOL. Generates a deterministic seed for any uncharted galactic
-/// coordinate. Must never change — golden-tested across x86/aarch64/wasm32.
+/// coordinate. Must never change — golden-tested across x86_64/aarch64/i686.
 /// Joins `derive_seed` from `seed/resolver.rs` as the second frozen derivation.
 ///
 /// Algorithm: FNV-1a over the 24-byte packed representation `(x, y, z, universe_tag)`

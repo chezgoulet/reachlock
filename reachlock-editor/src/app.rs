@@ -59,9 +59,79 @@ pub enum ContentType {
     Dungeon,
     Event,
     Recipe,
+    // S79 — Origin starting packages.
+    Origin,
 }
 
+/// The `File > New` menu, as data. The menu bar renders this and
+/// `new_menu_covers_every_type` asserts it covers every `ContentType`, so a
+/// new content type cannot ship without an entry point the way `Origin` and
+/// the ten Wave-9 types did.
+pub const NEW_MENU_GROUPS: &[(&str, &[ContentType])] = &[
+    (
+        "Systems",
+        &[ContentType::ChartedSystem, ContentType::GateNetwork],
+    ),
+    (
+        "Ships",
+        &[
+            ContentType::HullFrame,
+            ContentType::HullMesh,
+            ContentType::Station,
+            ContentType::RoomTemplates,
+        ],
+    ),
+    (
+        "Characters",
+        &[
+            ContentType::Soul,
+            ContentType::EnemyArchetype,
+            ContentType::Career,
+            ContentType::Origin,
+        ],
+    ),
+    (
+        "World",
+        &[
+            ContentType::Faction,
+            ContentType::Location,
+            ContentType::Ecosystem,
+            ContentType::PlanetCulture,
+            ContentType::Dungeon,
+        ],
+    ),
+    (
+        "Narrative",
+        &[
+            ContentType::Storyline,
+            ContentType::Dialogue,
+            ContentType::Event,
+            ContentType::Trope,
+            ContentType::ScriptedEncounter,
+            ContentType::Contract,
+        ],
+    ),
+    (
+        "Economy",
+        &[
+            ContentType::EconomyGoods,
+            ContentType::Item,
+            ContentType::Recipe,
+        ],
+    ),
+    ("Audio", &[ContentType::Theme]),
+    (
+        "Preview",
+        &[ContentType::ItemBrowser, ContentType::SpriteViewer],
+    ),
+];
+
 impl ContentType {
+    /// Previewers hold no file and are excluded from the content browser tree.
+    pub fn is_previewer(&self) -> bool {
+        matches!(self, ContentType::ItemBrowser | ContentType::SpriteViewer)
+    }
+
     pub fn all() -> &'static [ContentType] {
         &[
             ContentType::HullFrame,
@@ -90,6 +160,7 @@ impl ContentType {
             ContentType::Dungeon,
             ContentType::Event,
             ContentType::Recipe,
+            ContentType::Origin,
         ]
     }
 
@@ -121,6 +192,7 @@ impl ContentType {
             ContentType::Dungeon => "Dungeon Layout",
             ContentType::Event => "Scripted Event",
             ContentType::Recipe => "Crafting Recipe",
+            ContentType::Origin => "Origin",
         }
     }
 
@@ -155,6 +227,7 @@ impl ContentType {
             ContentType::Dungeon => "dungeons",
             ContentType::Event => "events",
             ContentType::Recipe => "recipes",
+            ContentType::Origin => "origins",
         }
     }
 
@@ -188,6 +261,7 @@ impl ContentType {
             "dungeons" => Some(ContentType::Dungeon),
             "events" => Some(ContentType::Event),
             "recipes" => Some(ContentType::Recipe),
+            "origins" => Some(ContentType::Origin),
             _ => None,
         }
     }
@@ -222,7 +296,14 @@ pub trait Editor {
     }
 
     fn validate(&self) -> Vec<String>;
-    fn ui(&mut self, ctx: &egui::Context);
+    /// Draw the editor into the region the shell hands it.
+    ///
+    /// Takes a `Ui`, not a `Context`: when this took `&egui::Context` every
+    /// editor opened its own `CentralPanel`, while the shell had already
+    /// opened one to call it — two panels with the same id every frame. Panels
+    /// nest via `show_inside(ui, …)`, so the shell owns layout and an editor
+    /// cannot fight it.
+    fn ui(&mut self, ui: &mut egui::Ui);
     fn generate_from_seed(&mut self, seed: u64);
 
     /// Populate editor fields from AI-generated JSON (handoff §Phase 2.5).
@@ -301,10 +382,7 @@ impl EditorRegistry {
 
 pub fn build_default_registry() -> EditorRegistry {
     let mut r = EditorRegistry::new();
-    r.register(
-        ContentType::Career,
-        crate::editors::career::create_editor,
-    );
+    r.register(ContentType::Career, crate::editors::career::create_editor);
     r.register(
         ContentType::Ecosystem,
         crate::editors::ecosystem::create_editor,
@@ -313,14 +391,8 @@ pub fn build_default_registry() -> EditorRegistry {
         ContentType::PlanetCulture,
         crate::editors::planet_culture::create_editor,
     );
-    r.register(
-        ContentType::Theme,
-        crate::editors::theme::create_editor,
-    );
-    r.register(
-        ContentType::Trope,
-        crate::editors::trope::create_editor,
-    );
+    r.register(ContentType::Theme, crate::editors::theme::create_editor);
+    r.register(ContentType::Trope, crate::editors::trope::create_editor);
     r.register(
         ContentType::ScriptedEncounter,
         crate::editors::scripted_encounter::create_editor,
@@ -381,18 +453,10 @@ pub fn build_default_registry() -> EditorRegistry {
         ContentType::Dialogue,
         crate::editors::dialogue::create_editor,
     );
-    r.register(
-        ContentType::Dungeon,
-        crate::editors::dungeon::create_editor,
-    );
-    r.register(
-        ContentType::Event,
-        crate::editors::event::create_editor,
-    );
-    r.register(
-        ContentType::Recipe,
-        crate::editors::recipe::create_editor,
-    );
+    r.register(ContentType::Dungeon, crate::editors::dungeon::create_editor);
+    r.register(ContentType::Event, crate::editors::event::create_editor);
+    r.register(ContentType::Recipe, crate::editors::recipe::create_editor);
+    r.register(ContentType::Origin, crate::editors::origin::create_editor);
     r
 }
 

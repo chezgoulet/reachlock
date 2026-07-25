@@ -252,7 +252,13 @@ pub fn verify_offline_token(token: &EntitlementToken) -> Result<TierEntitlement,
     }
     let expected = sign_entitlement(&token.player_id, &token.tier, &token.expires)
         .map_err(|e| e.to_string())?;
-    if token.signature.as_bytes().ct_eq(expected.as_bytes()).unwrap_u8() != 1 {
+    if token
+        .signature
+        .as_bytes()
+        .ct_eq(expected.as_bytes())
+        .unwrap_u8()
+        != 1
+    {
         return Err("invalid_signature".into());
     }
     Ok(TierEntitlement::Granted {

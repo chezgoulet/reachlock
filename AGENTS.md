@@ -14,7 +14,7 @@ REACHLOCK is a procedurally-generated spacefaring MMO being rebuilt from scratch
 |---|---|
 | `docs/REACHLOCK-V2-SPEC.md` | Full design spec, 24 sections. Read only the sections your brief cites |
 | `docs/sprints/00-INDEX.md` | Sprint index — dependency waves, playbook, gotcha ledger. **Read this before any sprint** |
-| `docs/sprints/S*.md` | Sprint briefs S01–S24 |
+| `docs/sprints/S*.md` | Sprint briefs S01–S86 |
 | `reachlock-core/` | Shared library — zero rendering deps, pure functions, integer math |
 | `reachlock-client/` | Bevy game client — bridge layer, ECS systems, plugins |
 | `reachlock-server/` | WebSocket server — Tokio + Axum, seed service, LLM proxy |
@@ -24,13 +24,13 @@ REACHLOCK is a procedurally-generated spacefaring MMO being rebuilt from scratch
 
 1. **Branch:** `sprint-v2/sXX-short-name` cut from `testing`
 2. **Work:** Implement the sprint brief's deliverable checklist
-3. **Verify:** `make check` — fmt, clippy -D warnings, all tests, WASM build
+3. **Verify:** `make check` — fmt, clippy -D warnings, all tests, engine purity
 4. **PR:** Open against `testing`, link the sprint brief, log anything you couldn't do
 5. **CI must be green:** Cross-platform determinism gates are non-negotiable
 
 ## Iron Rules (from the sprint index)
 
-1. **Core is pure.** `reachlock-core` gets zero rendering/IO deps. Generators are pure functions. If you need a new dependency in core, it must compile to wasm32 and be justified in the PR.
+1. **Core is pure.** `reachlock-core` gets zero rendering/IO deps. Generators are pure functions. A new dependency in core must be justified in the PR; `make check-purity` fails the build if core's dependency tree pulls in a rendering, async-runtime, or HTTP crate.
 2. **No floats in gameplay values.** Fixed-point (`util::rng::Fixed`, 1/1024) or plain integers for anything that affects game state. Floats are for the bridge/render layer only.
 3. **New generator or generator change ⇒ extend `core/src/determinism.rs`** and recapture goldens deliberately. If the manifest changes, say so in the commit message — a silent golden change is a bug.
 4. **Wire shapes are pinned.** Network tags (`network/messages.rs`), contract JSON, and content schemas have tests that lock their serialized form. Changing one is a protocol revision: update the test AND note it.
@@ -57,11 +57,10 @@ REACHLOCK is a procedurally-generated spacefaring MMO being rebuilt from scratch
 
 ```bash
 cargo build                    # debug
-cargo build --target wasm32-unknown-unknown  # WASM (must compile)
 cargo test                     # all tests
 cargo clippy -- -D warnings    # CI gate
 cargo run -p reachlock-client  # fly the red polygon
-make check                     # fmt + clippy + test + WASM
+make check                     # fmt + clippy + test + purity
 git config core.hooksPath .githooks   # opt-in: run `make check` on every commit
 ```
 

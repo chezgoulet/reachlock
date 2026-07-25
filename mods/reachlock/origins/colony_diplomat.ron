@@ -1,0 +1,40 @@
+ContentFile(
+    id: "colony_diplomat",
+    display_name: "Colony Diplomat",
+    asset_type: origin,
+    seed: 30000001,
+    universe: "all",
+    priority: authoritative,
+    payload: origin((
+        id: "colony_diplomat",
+        name: "Colony Diplomat",
+        description: "Fringe colony attaché with connections across the sector. You served as a diplomatic liaison between your colony and the major factions. Your shuttle is unarmed but fast, and your network of contacts is your greatest asset. You know how to talk your way into — and out of — almost anything.",
+        icon: "handshake",
+        starting_career: "diplomat",
+        starting_rank: 1,
+        faction_deltas: [
+            (faction_id: "compact", delta: 15),
+            (faction_id: "free_traders", delta: 10),
+            (faction_id: "reach_pirates", delta: -5),
+        ],
+        starting_credits: 6000,
+        ship_template: Some("diplomatic_shuttle"),
+        ship_seed: None,
+        starting_gear: [
+            (item_id: "diplomatic_credentials", count: 1),
+            (item_id: "encrypted_comms_unit", count: 1),
+        ],
+        starting_crew: [
+            Authored(soul_id: "ambassador_ken", role: "bodyguard"),
+        ],
+        known_systems: [
+            30000001,
+            30000002,
+        ],
+        start_system: 30000001,
+        start_location: "Concord Station",
+        opening_log_entries: [
+            (title: "New Posting", body: "Your diplomatic credentials are in order and your shuttle is fueled. The sector council has requested your presence at Concord Station — something about 'border tensions' and 'urgent mediation'. Another day in the life of a diplomat.", tick_offset: 0),
+        ],
+    )),
+)

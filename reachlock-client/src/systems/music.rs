@@ -68,7 +68,7 @@ impl Default for MusicEngine {
 }
 
 // -----------------------------------------------------------------------
-// StreamingEngine — different on native vs WASM
+// StreamingEngine
 // -----------------------------------------------------------------------
 mod engine {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -100,8 +100,7 @@ mod engine {
             let mut sequencer = Sequencer::new(0, 2, ReplayMode::None);
 
             let drone = pink() >> mul(0.05f32) >> pan(0.0);
-            sequencer
-                .push_relative(0.0, f64::INFINITY, Fade::Smooth, 1.0, 1.0, Box::new(drone));
+            sequencer.push_relative(0.0, f64::INFINITY, Fade::Smooth, 1.0, 1.0, Box::new(drone));
 
             let gain_s2 = gain_s.clone();
 
@@ -177,11 +176,7 @@ mod engine {
     }
 
     /// Schedule all NoteEvents into the Sequencer.
-    pub fn schedule_intent(
-        seq: &mut Sequencer,
-        intent: &MusicIntent,
-        _engine: &MusicEngine,
-    ) {
+    pub fn schedule_intent(seq: &mut Sequencer, intent: &MusicIntent, _engine: &MusicEngine) {
         let bpm = intent.bpm as f64;
         let tick_sec = 60.0 / bpm / 24.0;
         let total_dur = intent
@@ -239,8 +234,7 @@ mod engine {
     }
 
     fn degree_freq(degree: u8, octave: u8, root_hz: u32) -> f64 {
-        let semitones = (degree as i32 + octave as i32 * 12 - 12)
-            .clamp(0, 108) as u32;
+        let semitones = (degree as i32 + octave as i32 * 12 - 12).clamp(0, 108) as u32;
         let ratio = 2.0f64.powf(semitones as f64 / 12.0);
         root_hz as f64 * ratio
     }
@@ -270,7 +264,8 @@ pub fn sync_music_params(
     let is_docked = location.is_docked;
     let in_derelict = location.hostile_location_id.is_some();
 
-    let target_mood = music_mood_for_context(combat_active, hull_damage_pct, in_derelict, is_docked);
+    let target_mood =
+        music_mood_for_context(combat_active, hull_damage_pct, in_derelict, is_docked);
     let intensity = music_intensity(combat_active, hull_damage_pct, target_mood);
     let intensity_f = intensity.0 as f32 / Fixed::SCALE as f32;
     let music_gain = settings.audio.master_volume * settings.audio.music_volume;

@@ -226,6 +226,11 @@ pub fn type_context(ct: &ContentType) -> &'static str {
              skill requirement with category and minimum level; workbench type; and duration \
              in ticks."
         }
+        ContentType::Origin => {
+            "A starting package for a new character: career path and rank, faction standing \
+             deltas, starting credits, ship template and seed, gear, crew assignments, known \
+             systems, start location, and opening log entries."
+        }
         ContentType::ItemBrowser | ContentType::SpriteViewer => {
             "A live preview with nothing persisted."
         }

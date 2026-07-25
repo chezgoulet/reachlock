@@ -6,10 +6,11 @@
 //! neither adds gameplay logic of its own.
 
 pub mod agency;
-pub mod combat;
 pub mod career;
+pub mod combat;
 pub mod content;
 pub mod contract;
+pub mod crew;
 pub mod crisis;
 pub mod determinism;
 pub mod dialogue;
@@ -18,12 +19,14 @@ pub mod editor;
 pub mod faction;
 pub mod galaxy;
 pub mod generator;
+pub mod identity;
 pub mod item;
 pub mod mod_manifest;
 pub mod network;
 pub mod seed;
 pub mod sim;
 pub mod soul;
+pub mod tutorial;
 pub mod universe;
 pub mod util;
 

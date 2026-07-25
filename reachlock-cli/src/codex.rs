@@ -204,7 +204,6 @@ fn generate_agent_index() -> Result<String, String> {
     lines.push("cargo test -p reachlock-core        # core only".into());
     lines.push("cargo test -p reachlock-client      # client only".into());
     lines.push("make check                           # full gate".into());
-    lines.push("make web                             # WASM release build".into());
     lines.push("```".into());
 
     Ok(lines.join("\n"))

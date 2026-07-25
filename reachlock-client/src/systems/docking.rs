@@ -143,7 +143,7 @@ pub fn leave_helm(
     mut next: ResMut<NextState<GameMode>>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
 ) {
-    if !keys.just_pressed(settings.key(InputAction::OpenCrewRoster))
+    if !keys.just_pressed(settings.key(InputAction::LeaveHelm))
         || location.is_docked
         || systems.dead
     {

@@ -202,10 +202,10 @@ impl Editor for GateNetworkEditor {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn ui(&mut self, ctx: &egui::Context) {
+    fn ui(&mut self, ui: &mut egui::Ui) {
         let system_ids = self.system_ids();
 
-        egui::TopBottomPanel::top("gate_toolbar").show(ctx, |ui| {
+        egui::TopBottomPanel::top("gate_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 // Add System: charted ids not yet on the canvas, or free text.
                 egui::ComboBox::from_id_salt("gate_add_system")
@@ -293,7 +293,7 @@ impl Editor for GateNetworkEditor {
         egui::SidePanel::left("gate_list")
             .resizable(true)
             .default_width(250.0)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.heading("Gates");
                 ui.separator();
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -351,7 +351,8 @@ impl Editor for GateNetworkEditor {
 
         // Delete key removes the selected gate — but not while a text field
         // (e.g. the "or type id" box) has keyboard focus.
-        if !ctx.wants_keyboard_input() && ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
+        if !ui.ctx().wants_keyboard_input() && ui.ctx().input(|i| i.key_pressed(egui::Key::Delete))
+        {
             if let Some(i) = self.selected_gate.take() {
                 if i < self.network.gates.len() {
                     self.network.gates.remove(i);
@@ -360,7 +361,7 @@ impl Editor for GateNetworkEditor {
             }
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
                 let (canvas_rect, canvas_response) =
                     ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());

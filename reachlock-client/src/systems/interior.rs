@@ -21,6 +21,7 @@
 use bevy::prelude::*;
 
 use reachlock_core::content::{ContentPayload, NpcSpawn};
+use reachlock_core::generator::sprite::CharacterLookConfig;
 use reachlock_core::generator::station::generate_station;
 use reachlock_core::generator::{Door, GeneratedLayout, Room, RoomKind};
 use reachlock_core::util::color::generate_palette;
@@ -34,6 +35,7 @@ use crate::systems::content_index::ContentIndex;
 use crate::systems::crew::{CrewFigure, CrewNav, CrewRoster};
 use crate::systems::interaction::{InteractKind, Interactable, InteractionPrompt, Npc};
 use crate::systems::mode::PlayerAvatar;
+use crate::systems::soul::SoulRegistry;
 
 /// Seed for the player's hull interior. Must match the player-ship generation
 /// seed in `systems/setup.rs` so the On-Board scene is the ship you fly.
@@ -291,6 +293,7 @@ pub fn enter_interior(
     location: Res<CurrentLocation>,
     content: Res<ContentIndex>,
     roster: Res<CrewRoster>,
+    souls: Res<SoulRegistry>,
     interior_cfg: Res<crate::systems::shipeditor::InteriorConfig>,
     mut registry: ResMut<SceneRegistry>,
     mut interior: ResMut<CurrentInterior>,
@@ -341,9 +344,9 @@ pub fn enter_interior(
             }) {
                 Some(built) => built,
                 None => {
-                    // The authored Loup-Garou two-deck plan (docs/SHIPS.md
-                    // §6). `ActiveDeck` picks the deck; the ladder toggles it.
-                    let ship = reachlock_core::generator::ship::loup_garou_interior();
+                    // Load the active ship interior from the template catalog.
+                    // Falls back to the Loup-Garou template if no save interior exists.
+                    let ship = crate::systems::crew::load_loup_garou_interior();
                     let d = deck.index.min(ship.decks.len() - 1);
                     let deck_def = &ship.decks[d];
                     zero_g = deck_def.zero_g;
@@ -501,6 +504,7 @@ pub fn enter_interior(
         &layout,
         &npcs,
         &roster,
+        &souls,
         scene_seed,
         &shadow_tex,
     );
@@ -548,7 +552,7 @@ pub fn enter_interior(
         mode,
         start,
         "",
-        pixel::crew_look("tib"),
+        soul_look_or_fallback(&souls, "tib"),
         &shadow_tex,
         (PlayerAvatar,),
     );
@@ -568,6 +572,7 @@ pub fn sync_crew_deck_presence(
     deck: Res<ActiveDeck>,
     interior: Res<CurrentInterior>,
     roster: Res<CrewRoster>,
+    souls: Res<SoulRegistry>,
     figures: Query<(Entity, &CrewFigure)>,
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
@@ -599,7 +604,7 @@ pub fn sync_crew_deck_presence(
             GameMode::OnBoard,
             ladder + Vec2::new(0.0, -20.0),
             &m.name,
-            pixel::crew_look(&m.id),
+            soul_look_or_fallback(&souls, &m.id),
             &shadow,
             (
                 CrewFigure(m.id.clone()),
@@ -1101,6 +1106,7 @@ fn spawn_actors(
     layout: &GeneratedLayout,
     npcs: &[(usize, String, Vec<String>)],
     roster: &CrewRoster,
+    souls: &SoulRegistry,
     scene_seed: u64,
     shadow: &Handle<Image>,
 ) {
@@ -1197,7 +1203,7 @@ fn spawn_actors(
 
     // On-Board: crew at their stations + the ship's consoles.
     if mode == GameMode::OnBoard {
-        spawn_crew(commands, images, layout, roster, shadow);
+        spawn_crew(commands, images, layout, roster, souls, shadow);
         spawn_consoles(commands, images, layout);
     }
 }
@@ -1265,6 +1271,7 @@ fn spawn_crew(
     images: &mut Assets<Image>,
     layout: &GeneratedLayout,
     roster: &CrewRoster,
+    souls: &SoulRegistry,
     shadow: &Handle<Image>,
 ) {
     for m in &roster.members {
@@ -1274,8 +1281,8 @@ fn spawn_crew(
         let Some(center) = room_center(layout, m.current_room) else {
             continue;
         };
-        // Canonical lore looks (Tove's coveralls, the androids, BOR-IS).
-        let look = pixel::crew_look(&m.id);
+        // Look from authored soul file, or seeded fallback.
+        let look = soul_look_or_fallback(souls, &m.id);
         spawn_figure(
             commands,
             images,
@@ -1434,7 +1441,7 @@ pub(crate) fn room_center(layout: &GeneratedLayout, kind: RoomKind) -> Option<Ve
 /// Which deck holds the cryo chamber, and where a revived sleeper stands
 /// when the pods open (the jump-cryo wake beat, SHIPS.md §3 step 4).
 pub fn cryo_wake_spawn() -> Option<(usize, Vec2)> {
-    let ship = reachlock_core::generator::ship::loup_garou_interior();
+    let ship = crate::systems::crew::load_loup_garou_interior();
     for (deck_index, deck) in ship.decks.iter().enumerate() {
         let layout = scale_layout(&deck.layout, LAYOUT_SCALE);
         if let Some(center) = room_center(&layout, RoomKind::Cryo) {
@@ -1444,12 +1451,12 @@ pub fn cryo_wake_spawn() -> Option<(usize, Vec2)> {
     None
 }
 
-/// Which deck of the Loup-Garou holds the cockpit, and where the avatar
-/// stands when they get up from the pilot seat (S09d "leave the helm" — the
-/// reverse of the pilot-seat `TakeHelm` interaction). Mirrors the seat
-/// placement in `spawn_props` (`RoomKind::Cockpit`), one tile astern of it.
+/// Which deck holds the cockpit, and where the avatar stands when they get
+/// up from the pilot seat (S09d "leave the helm" — the reverse of the
+/// pilot-seat `TakeHelm` interaction). Mirrors the seat placement in
+/// `spawn_props` (`RoomKind::Cockpit`), one tile astern of it.
 pub fn cockpit_seat_spawn() -> Option<(usize, Vec2)> {
-    let ship = reachlock_core::generator::ship::loup_garou_interior();
+    let ship = crate::systems::crew::load_loup_garou_interior();
     for (deck_index, deck) in ship.decks.iter().enumerate() {
         let layout = scale_layout(&deck.layout, LAYOUT_SCALE);
         if let Some(room) = layout.rooms.iter().find(|r| r.kind == RoomKind::Cockpit) {
@@ -1459,6 +1466,101 @@ pub fn cockpit_seat_spawn() -> Option<(usize, Vec2)> {
         }
     }
     None
+}
+
+/// Built-in look configs for canonical crew members who don't yet have
+/// authored soul files. Preserves the visual identity from the old
+/// `crew_look()` until S77 ships their full soul files.
+fn builtin_crew_config(id: &str) -> Option<CharacterLookConfig> {
+    use reachlock_core::generator::sprite::CharacterLookConfig;
+    let cfg = || CharacterLookConfig {
+        species: String::new(),
+        hair_style: None,
+        hair_color: None,
+        skin_color: None,
+        shirt_color: None,
+        pants_color: None,
+        jacket_enabled: None,
+        jacket_color: None,
+        chassis_color: None,
+        visor_color: None,
+    };
+    Some(match id {
+        "keene" => CharacterLookConfig {
+            species: "Human".into(),
+            hair_style: Some(5), // Bun
+            hair_color: Some([26, 20, 20]),
+            skin_color: Some([107, 71, 51]),
+            shirt_color: Some([51, 140, 133]),
+            pants_color: Some([41, 77, 77]),
+            jacket_enabled: Some(true),
+            jacket_color: Some([224, 224, 230]),
+            ..cfg()
+        },
+        "bardo" => CharacterLookConfig {
+            species: "Human".into(),
+            hair_style: Some(4), // Locs
+            hair_color: Some([31, 26, 23]),
+            skin_color: Some([140, 97, 66]),
+            shirt_color: Some([204, 153, 51]),
+            pants_color: Some([89, 64, 77]),
+            jacket_enabled: Some(true),
+            jacket_color: Some([122, 46, 51]),
+            ..cfg()
+        },
+        "prudence" => CharacterLookConfig {
+            species: "Android".into(),
+            hair_style: Some(6), // Crest
+            hair_color: Some([217, 77, 153]),
+            skin_color: Some([204, 209, 224]),
+            shirt_color: Some([46, 61, 107]),
+            pants_color: Some([31, 41, 77]),
+            jacket_enabled: Some(false),
+            ..cfg()
+        },
+        "risc" => CharacterLookConfig {
+            species: "Android".into(),
+            hair_style: Some(0), // Bald
+            hair_color: Some([242, 166, 51]),
+            skin_color: Some([115, 122, 133]),
+            shirt_color: Some([77, 84, 61]),
+            pants_color: Some([51, 56, 46]),
+            jacket_enabled: Some(false),
+            ..cfg()
+        },
+        _ => return None,
+    })
+}
+
+/// Look up a crew member's appearance from the soul registry. Falls back to
+/// built-in config for canonical crew, then to a seeded civilian look.
+fn soul_look_or_fallback(souls: &SoulRegistry, id: &str) -> Look {
+    // 1. Soul registry (authored soul file with look).
+    if let Some(look) = souls
+        .files
+        .get(id)
+        .and_then(|s| s.look.clone().map(Look::from))
+    {
+        return look;
+    }
+    // 2. Built-in crew config (preserves visual identity for crew without
+    //    soul files yet — S77 will make these redundant).
+    if let Some(cfg) = builtin_crew_config(id) {
+        return Look::from(cfg);
+    }
+    // 3. Seeded civilian fallback.
+    Look::seeded(id.bytes().fold(42u64, |a, b| a.wrapping_mul(31) + b as u64))
+}
+
+/// Look up a crew member's body kind from the soul registry.
+fn soul_body_kind(souls: &SoulRegistry, id: &str) -> pixel::BodyKind {
+    if let Some(s) = souls.files.get(id) {
+        return pixel::body_kind_from_species(s.species);
+    }
+    if let Some(cfg) = builtin_crew_config(id) {
+        return pixel::body_kind_from_str(&cfg.species);
+    }
+    pixel::BodyKind::Human
 }
 
 #[cfg(test)]
@@ -1471,7 +1573,7 @@ mod tests {
     #[test]
     fn cockpit_seat_spawn_is_walkable_cockpit_floor() {
         let (deck_index, pos) = cockpit_seat_spawn().expect("the Loup-Garou has a cockpit");
-        let ship = reachlock_core::generator::ship::loup_garou_interior();
+        let ship = crate::systems::crew::load_loup_garou_interior();
         let deck = &ship.decks[deck_index];
         assert!(deck.zero_g, "the cockpit is Upstairs (docs/SHIPS.md §6)");
         let layout = scale_layout(&deck.layout, LAYOUT_SCALE);

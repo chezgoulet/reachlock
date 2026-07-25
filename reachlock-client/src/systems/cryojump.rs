@@ -16,7 +16,7 @@ use reachlock_core::contract::engine::EvalContext;
 use reachlock_core::generator::transit::transit_destination;
 use reachlock_core::soul::SoulEvent;
 
-use crate::pixel::{self, BodyKind};
+use crate::pixel::BodyKind;
 use crate::states::GameMode;
 use crate::systems::contract::ShipLog;
 use crate::systems::crew::CrewRoster;
@@ -47,6 +47,14 @@ pub struct JumpPlan {
 }
 
 /// Program + arm the jump from the nav console (called from the Nav panel
+fn body_kind_from_soul(souls: &SoulRegistry, id: &str) -> crate::pixel::BodyKind {
+    souls
+        .files
+        .get(id)
+        .map(|s| crate::pixel::body_kind_from_species(s.species))
+        .unwrap_or(crate::pixel::BodyKind::Human)
+}
+
 /// arm in `onboard.rs` on `J`). Orders every human crew member to the cryo
 /// chamber and lets the dispatch hand the crossing to Prudence — who, being
 /// an android, gets to consider it (S15).
@@ -55,6 +63,7 @@ pub fn arm_jump(
     transit: &TransitState,
     system_seed: u64,
     roster: &mut CrewRoster,
+    souls: &SoulRegistry,
     log: &mut ShipLog,
     feed: &mut crate::systems::comms::CommFeed,
 ) {
@@ -69,7 +78,7 @@ pub fn arm_jump(
     plan.player_in_pod = false;
     // Every biological body gets the same order: pods, now.
     for member in roster.members.iter_mut() {
-        let body = pixel::crew_look(&member.id).body;
+        let body = body_kind_from_soul(souls, &member.id);
         // Humans and xenotypes are biological and need cryo; androids, robots,
         // and voidborn are not biological life that the crossing harms.
         if body == BodyKind::Human || body == BodyKind::Xenotype {
@@ -144,8 +153,8 @@ pub fn jump_clock(
     // Human and xenotype crew outside the cryo chamber cross awake — ruined,
     // not erased. Androids, robots, and voidborn are unaffected.
     for member in &roster.members {
-        let body = pixel::crew_look(&member.id).body;
-        if (body == BodyKind::Human || body == BodyKind::Xenotype)
+        let body = body_kind_from_soul(&souls, &member.id);
+        if (body == crate::pixel::BodyKind::Human || body == crate::pixel::BodyKind::Xenotype)
             && member.current_room != reachlock_core::generator::RoomKind::Cryo
         {
             log.log(format!(

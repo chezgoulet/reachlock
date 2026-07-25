@@ -37,7 +37,7 @@ opt-level = 1
 debug = false
 
 # S24: release build profile for distribution (web + native).
-# opt-level = "z" favors size over speed for smaller WASM downloads.
+# opt-level = "z" favors size over speed for smaller distributables.
 # rapier physics is excluded from "z" because it has historically produced
 # pathological compile times with size optimization (S24 brief gotcha).
 [profile.release]

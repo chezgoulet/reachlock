@@ -15,6 +15,7 @@ use bevy_rapier3d::prelude::Velocity;
 use reachlock_core::generator::system::{generate_starfield, Fidelity};
 use reachlock_core::util::rng::SeededRng;
 
+use crate::settings::Settings;
 use crate::systems::ship::PlayerShip;
 
 /// Radius of the star shell (world units) — far enough to read as "infinitely
@@ -123,6 +124,7 @@ pub fn spawn_dust(
 /// parallax is the ship's own motion, which is exactly the point.
 #[allow(clippy::type_complexity)]
 pub fn dust_parallax(
+    settings: Res<Settings>,
     ship: Query<(&Transform, &Velocity), With<PlayerShip>>,
     mut motes: Query<&mut Transform, (With<DustMote>, Without<PlayerShip>)>,
 ) {
@@ -130,7 +132,13 @@ pub fn dust_parallax(
         return;
     };
     let speed = velocity.linear.length();
-    let stretch = (speed * STREAK_SCALE).clamp(1.0, 14.0);
+    // S71: reduce_motion halves parallax scrolling speed.
+    let motion_mult = if settings.accessibility.reduce_motion {
+        0.5
+    } else {
+        1.0
+    };
+    let stretch = (speed * STREAK_SCALE * motion_mult).clamp(1.0, 14.0);
     let streak_rot = if stretch > 1.0 {
         Quat::from_rotation_arc(Vec3::Z, velocity.linear.normalize_or(Vec3::Z))
     } else {

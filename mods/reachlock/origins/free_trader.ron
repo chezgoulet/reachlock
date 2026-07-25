@@ -1,0 +1,36 @@
+ContentFile(
+    id: "free_trader",
+    display_name: "Free Trader",
+    asset_type: origin,
+    seed: 27000001,
+    universe: "all",
+    priority: authoritative,
+    payload: origin((
+        id: "free_trader",
+        name: "Free Trader",
+        description: "Independent merchant with a small cargo hauler and a modest savings account. You've worked the trade lanes long enough to know which ports are safe and which ones will bleed you dry. No faction ties — just you, your ship, and the next deal.",
+        icon: "credits",
+        starting_career: "merchant",
+        starting_rank: 1,
+        faction_deltas: [],
+        starting_credits: 8000,
+        ship_template: Some("cargo_hauler"),
+        ship_seed: None,
+        starting_gear: [
+            (item_id: "trade_scanner", count: 1),
+            (item_id: "cargo_pod", count: 5),
+        ],
+        starting_crew: [
+            Authored(soul_id: "zara_trade", role: "co-pilot"),
+        ],
+        known_systems: [
+            27000001,
+            27000002,
+        ],
+        start_system: 27000001,
+        start_location: "Free Port Zeta",
+        opening_log_entries: [
+            (title: "New Route", body: "The cargo bays are full and the nav computer has a promising route plotted. Time to make some credits.", tick_offset: 0),
+        ],
+    )),
+)

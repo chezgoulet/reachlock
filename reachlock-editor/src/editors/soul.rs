@@ -177,6 +177,7 @@ fn blank_soul() -> SoulFile {
         secrets: vec![],
         dialogue: None,
         deflections: vec![],
+        look: None,
     }
 }
 
@@ -206,7 +207,11 @@ impl SoulEditor {
             entries.push(Entry {
                 soul: blank_soul(),
                 path: None,
-                dirty: true,
+                // Not dirty: this is a placeholder so the editor has something
+                // to show, not authored content. Marking it dirty made
+                // the first Ctrl+S write a file the author never created,
+                // while `has_unsaved_changes()` still reported clean.
+                dirty: false,
             });
         }
         SoulEditor {
@@ -458,8 +463,8 @@ impl Editor for SoulEditor {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn ui(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("soul_toolbar").show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::TopBottomPanel::top("soul_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Generate from Seed").clicked() {
                     let seed = self.selected as u64 + 42;
@@ -491,7 +496,7 @@ impl Editor for SoulEditor {
         egui::SidePanel::left("soul_list")
             .resizable(true)
             .default_width(200.0)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("🔍");
                     ui.text_edit_singleline(&mut self.search);
@@ -517,7 +522,7 @@ impl Editor for SoulEditor {
             });
 
         let validation = self.validate();
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let Some(entry) = self.entries.get_mut(self.selected) else {
                 ui.label("No soul selected.");
                 return;
@@ -1121,7 +1126,10 @@ impl Editor for SoulEditor {
             wrote += 1;
         }
         if wrote == 0 {
-            return Err("no dirty entries to save".into());
+            // Nothing dirty is not an error: this editor handled the save
+            // request and correctly wrote nothing. Returning Err here made
+            // Ctrl+S on a clean tab report "Save error: no dirty entries".
+            return Ok(true);
         }
         Ok(true)
     }
@@ -1192,8 +1200,25 @@ mod tests {
         crate::app::set_content_root(Some(root.clone()));
 
         let mut editor = SoulEditor::new();
-        // new() seeds one blank, unsaved entry.
+        // new() seeds one blank, unsaved entry — deliberately NOT dirty, so a
+        // brand-new editor writes nothing until the author edits something.
         assert!(editor.entries[editor.selected].path.is_none());
+        assert!(
+            !editor.entries[editor.selected].dirty,
+            "the placeholder entry must not start dirty"
+        );
+        editor.save_all().expect("clean save_all is a no-op");
+        assert!(
+            !root.join("souls").exists()
+                || std::fs::read_dir(root.join("souls"))
+                    .map(|d| d.count())
+                    .unwrap_or(0)
+                    == 0,
+            "a clean editor must not have written anything"
+        );
+
+        // Now the author edits it: that is what makes it savable.
+        editor.touch();
         editor.save_all().expect("save_all");
 
         let saved = &editor.entries[editor.selected];

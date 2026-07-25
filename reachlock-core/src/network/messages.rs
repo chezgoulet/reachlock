@@ -10,8 +10,34 @@ use serde_json::Value;
 use crate::contract::signature::SignedEvaluation;
 use crate::contract::types::Contract;
 
+use crate::generator::sprite::CharacterLookConfig;
 use crate::seed::types::{Seed, SystemId};
 use crate::universe::tier::UniverseTier;
+
+/// Presence announcement — broadcast by servers to all peers when a player
+/// enters or leaves a system. Previously only carried player_id + ship state.
+/// Now carries the player's visible identity for remote rendering.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PresenceMessage {
+    pub player_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub species: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<CharacterLookConfig>,
+}
+
+impl PresenceMessage {
+    pub fn new_from_character(character: &crate::identity::PlayerCharacter) -> Self {
+        Self {
+            player_id: character.id.0.to_string(),
+            name: Some(character.name.clone()),
+            species: Some(character.species.clone()),
+            look: Some(character.look.clone()),
+        }
+    }
+}
 
 /// S23/S29: bump when adding/removing message variants so mismatched clients get
 /// a clear error instead of serde noise.
@@ -108,6 +134,27 @@ pub enum ClientMessage {
         event_type: String,
         outcome_type: String,
     },
+    /// S86: paginated library sync with search/filter.
+    #[serde(rename = "library.sync")]
+    LibrarySync {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        role_filter: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sort: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        search: Option<String>,
+        #[serde(default)]
+        page: u32,
+        #[serde(default = "default_page_size")]
+        page_size: u32,
+    },
+    /// S86: lookup a contract by share code.
+    #[serde(rename = "library.share_lookup")]
+    LibraryShareLookup { share_code: String },
+}
+
+fn default_page_size() -> u32 {
+    50
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -123,6 +170,10 @@ pub enum ServerMessage {
         seed: Seed,
         diffs: Value,
         you_discovered: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        discoverer_name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        discovered_at: Option<i64>,
     },
     #[serde(rename = "eval.verified")]
     EvalVerified { eval_id: String, accepted: bool },
@@ -143,13 +194,27 @@ pub enum ServerMessage {
         player_id: String,
         system_id: SystemId,
         universe: UniverseTier,
+        /// S75: identity fields — None if the player hasn't created a character yet.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        species: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        look: Option<CharacterLookConfig>,
     },
-    /// S23: a new player has joined this system — spawn their ship.
+    /// S75: a new player has joined this system — spawn their ship.
     #[serde(rename = "player.joined")]
     PlayerJoined {
         player_id: String,
         system_id: SystemId,
         universe: UniverseTier,
+        /// S75: identity fields — None if the player hasn't created a character yet.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        species: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        look: Option<CharacterLookConfig>,
     },
     /// S23: a player has left the current system (disconnected or jumped).
     #[serde(rename = "player.left")]
@@ -169,10 +234,7 @@ pub enum ServerMessage {
     },
     /// S57: a player disconnected.
     #[serde(rename = "player.disconnected")]
-    PlayerDisconnected {
-        player_id: String,
-        reason: String,
-    },
+    PlayerDisconnected { player_id: String, reason: String },
     /// S23: a chat message from another player in the same system.
     #[serde(rename = "chat.message")]
     ChatMessage { from_player: String, text: String },
@@ -209,6 +271,28 @@ pub enum ServerMessage {
     /// S34: story submission acknowledgment.
     #[serde(rename = "library.story_ack")]
     LibraryStoryAck { success: bool, story_id: u64 },
+    /// S86: paginated library sync response.
+    #[serde(rename = "library.sync_response")]
+    LibrarySyncResponse {
+        entries: Vec<crate::contract::metadata::ContractLibraryEntry>,
+        total: u32,
+        page: u32,
+    },
+    /// S86: library publish response with share code.
+    #[serde(rename = "library.publish_response")]
+    LibraryPublishResponse {
+        ok: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        share_code: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// S86: share code lookup response.
+    #[serde(rename = "library.share_response")]
+    LibraryShareResponse {
+        #[serde(default)]
+        entry: Option<crate::contract::metadata::ContractLibraryEntry>,
+    },
     /// S28: system notice (subscription grace period, server messages).
     #[serde(rename = "system.notice")]
     SystemNotice { message: String },
@@ -263,6 +347,8 @@ mod tests {
             seed: Seed::new(7),
             diffs: serde_json::json!({}),
             you_discovered: true,
+            discoverer_name: None,
+            discovered_at: None,
         };
         let s = serde_json::to_string(&server).unwrap();
         assert_eq!(serde_json::from_str::<ServerMessage>(&s).unwrap(), server);
@@ -323,11 +409,56 @@ mod tests {
             player_id: "bob".into(),
             system_id: SystemId("aethon".into()),
             universe: UniverseTier::Classic,
+            name: None,
+            species: None,
+            look: None,
         };
         let json: serde_json::Value =
             serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
         assert_eq!(json["type"], "player.joined");
         assert_eq!(json["player_id"], "bob");
+        assert!(json.get("name").is_none());
+    }
+
+    #[test]
+    fn player_entered_with_identity() {
+        let msg = ServerMessage::PlayerEntered {
+            player_id: "rook".into(),
+            system_id: SystemId("aethon".into()),
+            universe: UniverseTier::Classic,
+            name: Some("Rook".into()),
+            species: Some("Human".into()),
+            look: None,
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["name"], "Rook");
+        assert_eq!(json["species"], "Human");
+    }
+
+    #[test]
+    fn presence_message_round_trips() {
+        let msg = PresenceMessage {
+            player_id: "rook".into(),
+            name: Some("Rook".into()),
+            species: Some("Human".into()),
+            look: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: PresenceMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, back);
+    }
+
+    #[test]
+    fn presence_message_backward_compat_no_identity() {
+        let msg = PresenceMessage {
+            player_id: "rook".into(),
+            name: None,
+            species: None,
+            look: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(!json.contains("name"));
     }
 
     #[test]
@@ -484,5 +615,87 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn library_sync_wire_tag() {
+        let msg = ClientMessage::LibrarySync {
+            role_filter: Some("engineer".into()),
+            sort: Some("newest".into()),
+            search: Some("combat".into()),
+            page: 0,
+            page_size: 20,
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "library.sync");
+        assert_eq!(json["role_filter"], "engineer");
+        assert_eq!(json["search"], "combat");
+    }
 
+    #[test]
+    fn library_sync_response_round_trips() {
+        let msg = ServerMessage::LibrarySyncResponse {
+            entries: Vec::new(),
+            total: 0,
+            page: 0,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert_eq!(serde_json::from_str::<ServerMessage>(&json).unwrap(), msg);
+    }
+
+    #[test]
+    fn library_publish_response_wire_tag() {
+        let msg = ServerMessage::LibraryPublishResponse {
+            ok: true,
+            share_code: Some("A3X9K2M1".into()),
+            error: None,
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "library.publish_response");
+        assert_eq!(json["share_code"], "A3X9K2M1");
+    }
+
+    #[test]
+    fn library_share_lookup_round_trips() {
+        let msg = ClientMessage::LibraryShareLookup {
+            share_code: "B4Y0L3N2".into(),
+        };
+        let s = serde_json::to_string(&msg).unwrap();
+        assert_eq!(serde_json::from_str::<ClientMessage>(&s).unwrap(), msg);
+    }
+
+    #[test]
+    fn library_share_response_wire_tag() {
+        let msg = ServerMessage::LibraryShareResponse { entry: None };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "library.share_response");
+    }
+
+    #[test]
+    fn seed_canonical_with_discoverer() {
+        let msg = ServerMessage::SeedCanonical {
+            system_id: SystemId("test".into()),
+            seed: Seed::new(42),
+            diffs: serde_json::json!({}),
+            you_discovered: true,
+            discoverer_name: Some("boris".into()),
+            discovered_at: Some(1700000000),
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["discoverer_name"], "boris");
+        assert_eq!(json["discovered_at"], 1700000000);
+        // Round-trip: old-style without discoverer fields still parses.
+        let old = r#"{"type":"seed.canonical","system_id":"test","seed":42,"diffs":{},"you_discovered":false}"#;
+        let parsed: ServerMessage = serde_json::from_str(old).unwrap();
+        match parsed {
+            ServerMessage::SeedCanonical {
+                discoverer_name: None,
+                discovered_at: None,
+                ..
+            } => {} // OK
+            _ => panic!("expected None discoverer fields"),
+        }
+    }
 }

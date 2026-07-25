@@ -4,7 +4,7 @@
 //! gameplay rolls, not generators (S09 gotcha ledger).
 //!
 //! Iron rule: every `rng.next_below` call below produces the same results on
-//! x86_64, aarch64, and wasm32. Each function has a determinism test that
+//! x86_64, aarch64, and i686 (32-bit). Each function has a determinism test that
 //! asserts stable output for fixed `(seed, n)` input.
 
 use crate::util::rng::SeededRng;

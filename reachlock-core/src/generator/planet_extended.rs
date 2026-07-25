@@ -276,11 +276,13 @@ pub fn generate_planet_extended(
     let magnetic = rng.next_below(101) as u8;
 
     let habitability_index = (water.saturating_sub(20) / 3)
-        .saturating_add(if matches!(atmosphere, AtmosphereType::Standard | AtmosphereType::Thin) {
-            40
-        } else {
-            0
-        })
+        .saturating_add(
+            if matches!(atmosphere, AtmosphereType::Standard | AtmosphereType::Thin) {
+                40
+            } else {
+                0
+            },
+        )
         .min(100);
     let requires_suit = !matches!(atmosphere, AtmosphereType::Standard);
     let mut hazards = Vec::new();
@@ -298,7 +300,10 @@ pub fn generate_planet_extended(
         requires_suit,
         requires_dome: matches!(
             atmosphere,
-            AtmosphereType::None | AtmosphereType::Trace | AtmosphereType::Toxic | AtmosphereType::Corrosive
+            AtmosphereType::None
+                | AtmosphereType::Trace
+                | AtmosphereType::Toxic
+                | AtmosphereType::Corrosive
         ),
         terraformable: habitability_index > 20 && habitability_index < 90,
         habitability_index,
@@ -306,7 +311,10 @@ pub fn generate_planet_extended(
     };
 
     let climate = PlanetClimate {
-        temperature_range: (-20 + rng.next_below(20) as i32, 20 + rng.next_below(60) as i32),
+        temperature_range: (
+            -20 + rng.next_below(20) as i32,
+            20 + rng.next_below(60) as i32,
+        ),
         seasons: match rng.next_below(5) {
             0 => SeasonIntensity::None,
             1 => SeasonIntensity::Mild,
@@ -342,7 +350,11 @@ pub fn generate_planet_extended(
     let resources = PlanetResources {
         mineral_richness: rng.next_below(101) as u8,
         mineral_types,
-        organic_richness: if water > 40 { rng.next_below(80) as u8 } else { 0 },
+        organic_richness: if water > 40 {
+            rng.next_below(80) as u8
+        } else {
+            0
+        },
         energy_potential: rng.next_below(101) as u8,
         rare_element_presence: rng.next_below(50) as u8,
         resource_map: ResourceMap { deposits },
@@ -488,8 +500,6 @@ mod tests {
     fn starport_scales_with_population() {
         let p = generate_planet_extended(11, Biome::Frontier, 100, &sys(), &fmap());
         let cap = &p.settlements[0];
-        assert!(
-            cap.starport_size >= (cap.population.ilog10() as u8).saturating_sub(2).max(1) - 1
-        );
+        assert!(cap.starport_size >= (cap.population.ilog10() as u8).saturating_sub(2).max(1) - 1);
     }
 }

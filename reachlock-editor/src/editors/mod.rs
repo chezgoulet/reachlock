@@ -1,15 +1,16 @@
 pub mod career;
 pub mod character_sprite;
-pub mod dialogue;
-pub mod dungeon;
-pub mod ecosystem;
 pub mod charted_system;
 pub mod contract;
+pub mod dialogue;
+pub mod dungeon;
 pub mod economy;
+pub mod ecosystem;
 pub mod enemy;
 pub mod event;
 pub mod faction;
 pub mod gate_network;
+pub mod origin;
 pub mod planet_culture;
 // `hull` was a reference implementation for `HullConfiguration` editing,
 // superseded in the registry by `hull_frame`. Removed from mod.rs (not the
@@ -32,22 +33,10 @@ pub mod trope;
 pub mod widgets;
 
 pub fn register_all(registry: &mut super::app::EditorRegistry) {
-    registry.register(
-        super::app::ContentType::Career,
-        career::create_editor,
-    );
-    registry.register(
-        super::app::ContentType::Ecosystem,
-        ecosystem::create_editor,
-    );
-    registry.register(
-        super::app::ContentType::Theme,
-        theme::create_editor,
-    );
-    registry.register(
-        super::app::ContentType::Trope,
-        trope::create_editor,
-    );
+    registry.register(super::app::ContentType::Career, career::create_editor);
+    registry.register(super::app::ContentType::Ecosystem, ecosystem::create_editor);
+    registry.register(super::app::ContentType::Theme, theme::create_editor);
+    registry.register(super::app::ContentType::Trope, trope::create_editor);
     registry.register(
         super::app::ContentType::PlanetCulture,
         planet_culture::create_editor,
@@ -92,20 +81,9 @@ pub fn register_all(registry: &mut super::app::EditorRegistry) {
         super::app::ContentType::SpriteViewer,
         character_sprite::create_editor,
     );
-    registry.register(
-        super::app::ContentType::Dungeon,
-        dungeon::create_editor,
-    );
-    registry.register(
-        super::app::ContentType::Event,
-        event::create_editor,
-    );
-    registry.register(
-        super::app::ContentType::Dialogue,
-        dialogue::create_editor,
-    );
-    registry.register(
-        super::app::ContentType::Recipe,
-        recipe::create_editor,
-    );
+    registry.register(super::app::ContentType::Dungeon, dungeon::create_editor);
+    registry.register(super::app::ContentType::Event, event::create_editor);
+    registry.register(super::app::ContentType::Dialogue, dialogue::create_editor);
+    registry.register(super::app::ContentType::Recipe, recipe::create_editor);
+    registry.register(super::app::ContentType::Origin, origin::create_editor);
 }

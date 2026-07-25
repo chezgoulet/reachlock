@@ -410,7 +410,7 @@ pub fn onboard_ship_consoles(
                 // player re-raising it while the fire holds the reactor).
                 let budget = {
                     let layouts: Vec<reachlock_core::generator::GeneratedLayout> =
-                        reachlock_core::generator::ship::loup_garou_interior()
+                        crate::systems::crew::load_loup_garou_interior()
                             .decks
                             .into_iter()
                             .map(|d| d.layout)
@@ -619,6 +619,7 @@ pub fn onboard_panels(
                         &transit,
                         location.system_seed,
                         &mut roster,
+                        &souls,
                         &mut log,
                         &mut feed,
                     );

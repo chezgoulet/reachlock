@@ -96,7 +96,7 @@ pub fn market_system(
     let buy_quote = ticker.state.economy.stations[&loc.station_id].buy_price(&good, tariff_num);
     let sell_quote = ticker.state.economy.stations[&loc.station_id].sell_price(&good, tariff_num);
 
-    if keys.just_pressed(settings.key(InputAction::OpenCrewRoster)) {
+    if keys.just_pressed(settings.key(InputAction::OpenMarketPanel)) {
         let held = inv.cargo.get(&good).copied().unwrap_or(0);
         if inv.can_hold(state.qty) && can_buy(inv.credits, buy_quote, state.qty) {
             let (credits, _held) = apply_buy(inv.credits, held, buy_quote, state.qty);
@@ -112,6 +112,7 @@ pub fn market_system(
                 &souls.states,
                 shipcfg.config.as_ref(),
                 interior_cfg.layout.as_ref(),
+                None,
             );
         }
     }
@@ -135,6 +136,7 @@ pub fn market_system(
                 &souls.states,
                 shipcfg.config.as_ref(),
                 interior_cfg.layout.as_ref(),
+                None,
             );
         }
     }

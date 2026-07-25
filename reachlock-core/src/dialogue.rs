@@ -400,6 +400,7 @@ mod tests {
             }],
             dialogue: None,
             deflections: vec!["The sweep is incomplete. Excuse me.".into()],
+            look: None,
         };
         let state = crate::soul::SoulState::from_file(&file);
         (file, state)

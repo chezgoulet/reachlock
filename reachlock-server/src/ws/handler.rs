@@ -21,7 +21,9 @@ pub async fn upgrade(
         let session = match Session::authenticate(
             query.as_deref().unwrap_or(""),
             &*state.sessions,
-            state.auth_required.load(std::sync::atomic::Ordering::Relaxed),
+            state
+                .auth_required
+                .load(std::sync::atomic::Ordering::Relaxed),
         ) {
             Ok(s) => s,
             Err(reason) => {
@@ -88,7 +90,11 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
     let heartbeat_timeout = Duration::from_secs(30);
 
     // S54: register this session's sender for targeted delivery (voice signaling).
-    state.player_senders.write().await.insert(session.player_id.clone(), out_tx.clone());
+    state
+        .player_senders
+        .write()
+        .await
+        .insert(session.player_id.clone(), out_tx.clone());
 
     // Read loop.
     loop {
@@ -140,7 +146,11 @@ async fn handle(socket: WebSocket, state: Arc<AppState>, session: Session) {
     });
 
     // S54: unregister sender for targeted delivery.
-    state.player_senders.write().await.remove(&session.player_id);
+    state
+        .player_senders
+        .write()
+        .await
+        .remove(&session.player_id);
 
     // S23/S29: clean up presence and voice on disconnect.
     if let Some(sys_id) = &current_system {
@@ -237,16 +247,23 @@ async fn route(
                         player_id: session.player_id.clone(),
                         system_id: system_id.clone(),
                         universe,
+                        name: None,
+                        species: None,
+                        look: None,
                     },
                 )
                 .await;
 
-            let result = state.seeds.discover(universe, &system_id, seed);
+            let result = state
+                .seeds
+                .discover(universe, &system_id, seed, Some(&session.player_id));
             Some(ServerMessage::SeedCanonical {
                 system_id,
                 seed: result.canonical_seed,
                 diffs: result.diffs,
                 you_discovered: result.you_discovered,
+                discoverer_name: result.discoverer_name,
+                discovered_at: result.discovered_at,
             })
         }
         ClientMessage::SeedModify {
@@ -441,13 +458,25 @@ async fn route(
                 contract_ron,
             };
             let player = session.player_id.clone();
-            tokio::spawn(async move {
-                state.library.publish(&player, entry);
-            });
-            Some(ServerMessage::LibraryPublished {
-                success: true,
-                message: "contract published".into(),
+            let result = tokio::task::spawn_blocking(move || {
+                state.library.publish_rate_limited(&player, entry)
             })
+            .await
+            .unwrap_or(Err(
+                crate::services::library::PublishError::DailyLimitExceeded,
+            ));
+            match result {
+                Ok(share_code) => Some(ServerMessage::LibraryPublishResponse {
+                    ok: true,
+                    share_code: Some(share_code),
+                    error: None,
+                }),
+                Err(e) => Some(ServerMessage::LibraryPublishResponse {
+                    ok: false,
+                    share_code: None,
+                    error: Some(format!("{e:?}")),
+                }),
+            }
         }
         ClientMessage::LibrarySubmitStory {
             story,
@@ -474,6 +503,49 @@ async fn route(
                 success: story_id > 0,
                 story_id,
             })
+        }
+        ClientMessage::LibrarySync {
+            role_filter,
+            sort,
+            search,
+            page,
+            page_size,
+        } => {
+            let state = Arc::clone(state);
+            let rf = role_filter.clone();
+            let sf = sort.clone();
+            let q = search.clone();
+            let entries = tokio::task::spawn_blocking(move || {
+                let mut entries = if let Some(ref query) = q {
+                    state.library.search(query)
+                } else {
+                    state.library.list(rf.as_deref(), sf.as_deref())
+                };
+                // Apply pagination.
+                let page_size = page_size.clamp(1, 100).max(1) as usize;
+                let total = entries.len() as u32;
+                let offset = (page as usize).saturating_mul(page_size);
+                if offset < entries.len() {
+                    entries.drain(..offset.min(entries.len()));
+                }
+                entries.truncate(page_size);
+                (entries, total)
+            })
+            .await
+            .unwrap_or_default();
+            Some(ServerMessage::LibrarySyncResponse {
+                entries: entries.0,
+                total: entries.1,
+                page,
+            })
+        }
+        ClientMessage::LibraryShareLookup { share_code } => {
+            let state = Arc::clone(state);
+            let code = share_code.clone();
+            let entry = tokio::task::spawn_blocking(move || state.library.lookup_share_code(&code))
+                .await
+                .unwrap_or(None);
+            Some(ServerMessage::LibraryShareResponse { entry })
         }
         // S57: handled before route(), unreachable here.
         ClientMessage::Ping => None,

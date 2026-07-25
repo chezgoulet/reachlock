@@ -21,10 +21,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 futures = "0.3"
-# S10 content distribution: parse authored `.ron` files for wasm clients.
+# S10 content distribution: parse authored `.ron` files for clients.
 ron = "0.12"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 # S14: real LLM providers. rustls (not openssl) keeps builds portable.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # S14: BYOK keys encrypted at rest (real crypto, not base64).
@@ -61,6 +61,7 @@ image = "0.25"
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager", "aio"], optional = true }
 # S63: constant-time comparison primitives.
 subtle = "2"
+tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
 
 [dev-dependencies]
 tokio-tungstenite = "0.26"

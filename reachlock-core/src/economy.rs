@@ -1,4 +1,4 @@
-//! REACHLOCK mode 1 economy (spec §14). Pure, IO-free, wasm-safe.
+//! REACHLOCK mode 1 economy (spec §14). Pure and IO-free.
 //!
 //! Two layers:
 //!   1. Authored catalogue — [`Good`] + [`GoodsCatalog`], the static
@@ -683,9 +683,17 @@ pub struct TradeBonus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TradeBonusCondition {
-    RouteBetween { faction_a: String, faction_b: String },
-    DuringEvent { event_type: String },
-    WithCareerRank { path_type: String, min_rank: u8 },
+    RouteBetween {
+        faction_a: String,
+        faction_b: String,
+    },
+    DuringEvent {
+        event_type: String,
+    },
+    WithCareerRank {
+        path_type: String,
+        min_rank: u8,
+    },
     UnderBlockade,
     Smuggled,
 }
@@ -760,12 +768,7 @@ pub fn compute_production(
 
 /// Compute a price given supply, demand, tariffs, and events.
 /// Pure & deterministic.
-pub fn compute_price(
-    base_price: u64,
-    supply: u64,
-    demand: u64,
-    tariff_numer: i64,
-) -> u64 {
+pub fn compute_price(base_price: u64, supply: u64, demand: u64, tariff_numer: i64) -> u64 {
     let sf = supply.max(1);
     let df = demand.max(1);
     if df > sf {
@@ -779,13 +782,38 @@ pub fn compute_price(
     }
 }
 
-/// Authored goods catalogue, embedded so the client and server ship identical
-/// reference data without a filesystem dependency (also wasm-safe).
-const GOODS_CATALOG_RON: &str = include_str!("../../mods/reachlock/economy/goods.ron");
+/// Core-owned *fallback* goods catalogue. Embedded so an offline
+/// client has a working economy with zero IO.
+///
+/// This is not the authored content: `mods/reachlock/economy/goods.ron` is,
+/// and it wins whenever the content pipeline has loaded it. Core embeds its
+/// own copy under `src/data/` rather than reaching into `mods/` so the crate
+/// stays self-contained (iron rule #1, enforced by `make check-purity`).
+/// `default_goods_matches_authored_content` keeps the two from drifting.
+const GOODS_CATALOG_RON: &str = include_str!("data/default_goods.ron");
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Core embeds its own fallback copy of the goods catalogue so it never
+    /// reaches into `mods/`. That copy must not drift from the authored file
+    /// the content pipeline actually ships. Skipped when `mods/` is absent
+    /// (packaged crate), so this never breaks a published build.
+    #[test]
+    fn default_goods_matches_authored_content() {
+        let authored = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../mods/reachlock/economy/goods.ron");
+        let Ok(text) = std::fs::read_to_string(&authored) else {
+            return;
+        };
+        assert_eq!(
+            text.trim_end(),
+            GOODS_CATALOG_RON.trim_end(),
+            "reachlock-core/src/data/default_goods.ron has drifted from \
+             mods/reachlock/economy/goods.ron — copy the authored file over it"
+        );
+    }
 
     #[test]
     fn tariff_identity() {

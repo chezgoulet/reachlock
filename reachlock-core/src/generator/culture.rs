@@ -120,10 +120,17 @@ pub enum OutsiderAttitude {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FactionAllegiance {
-    Loyal { faction_id: FactionId, intensity: u8 },
-    NominallyAligned { faction_id: FactionId },
+    Loyal {
+        faction_id: FactionId,
+        intensity: u8,
+    },
+    NominallyAligned {
+        faction_id: FactionId,
+    },
     Independent,
-    Contested { factions: Vec<FactionId> },
+    Contested {
+        factions: Vec<FactionId>,
+    },
     Lawless,
 }
 
@@ -148,7 +155,12 @@ pub enum CulturalValue {
     Family,
 }
 
-const BASE_LANGUAGES: &[&str] = &["Compact Standard", "ISC Trade", "Frontier Pidgin", "Old Core"];
+const BASE_LANGUAGES: &[&str] = &[
+    "Compact Standard",
+    "ISC Trade",
+    "Frontier Pidgin",
+    "Old Core",
+];
 const ACCENTS: &[&str] = &["flat", "clipped", "drawling", "singsong", "guttural"];
 const QUIRKS: &[&str] = &[
     "counts time in harvests",
@@ -157,7 +169,13 @@ const QUIRKS: &[&str] = &[
     "plants a tree at every birth",
     "wears the color of their home district",
 ];
-const SHAPES: &[&str] = &["sprawling", "vertically stacked", "domed", "terraced", "sunken"];
+const SHAPES: &[&str] = &[
+    "sprawling",
+    "vertically stacked",
+    "domed",
+    "terraced",
+    "sunken",
+];
 
 /// Generate a coherent culture. `founding_faction` is the dominant faction;
 /// `faction_map` supplies the full influence picture (for contested/loyal
@@ -262,16 +280,17 @@ pub fn generate_culture(
             vec!["open skies".into()]
         },
     };
-    let clothing_practicality = if hazards.is_empty() { 20 } else { 60 + hazards.len() as u8 * 10 };
+    let clothing_practicality = if hazards.is_empty() {
+        20
+    } else {
+        60 + hazards.len() as u8 * 10
+    };
     let clothing = ClothingStyle {
         style_name: format!("{}-weave", dominant_shape),
         primary_material: "synthetic fiber".into(),
         dominant_colors: palette,
         practicality_level: clothing_practicality.min(100),
-        adapted_to: hazards
-            .iter()
-            .map(|h| format!("{:?}", h))
-            .collect(),
+        adapted_to: hazards.iter().map(|h| format!("{:?}", h)).collect(),
     };
 
     // --- Attitude & allegiance (coherence pass) --------------------------
@@ -410,7 +429,10 @@ mod tests {
             &fm,
             10,
         );
-        assert!(matches!(c.faction_allegiance, FactionAllegiance::Independent));
+        assert!(matches!(
+            c.faction_allegiance,
+            FactionAllegiance::Independent
+        ));
     }
 
     #[test]
@@ -426,6 +448,9 @@ mod tests {
             10,
         );
         assert!(!c.clothing.adapted_to.is_empty());
-        assert!(c.customs.iter().any(|x| x.custom_type == CustomType::Conflict));
+        assert!(c
+            .customs
+            .iter()
+            .any(|x| x.custom_type == CustomType::Conflict));
     }
 }

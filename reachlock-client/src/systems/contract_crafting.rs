@@ -16,7 +16,7 @@ use reachlock_core::contract::types::{
 use reachlock_core::contract::validate_contract;
 
 use crate::settings::{InputAction, Settings};
-use crate::systems::crew::{CrewMember, CrewRole, CrewRoster};
+use crate::systems::crew::{CrewMember, CrewRoster};
 use crate::systems::interaction::ActivePanel;
 use crate::systems::soul::SoulRegistry;
 
@@ -316,6 +316,8 @@ pub fn workshop_system(
     mut state: ResMut<ContractWorkshopState>,
     roster: Res<CrewRoster>,
     souls: Res<SoulRegistry>,
+    mut runtime: ResMut<crate::systems::contract::ContractRuntime>,
+    mut log: ResMut<crate::systems::contract::ShipLog>,
 ) {
     if *panel != ActivePanel::ContractWorkshop {
         if state.draft.is_some() {
@@ -332,12 +334,17 @@ pub fn workshop_system(
         let member = roster.members.first().cloned().unwrap_or(CrewMember {
             id: "custom".into(),
             name: "Custom".into(),
-            role: CrewRole::Engineer,
+            role: crate::systems::crew::CrewRole::new("engineer", "Engineer", ""),
             duty_room: reachlock_core::generator::RoomKind::Reactor,
             current_room: reachlock_core::generator::RoomKind::Reactor,
             deck: 0,
             order: None,
             offscreen_eta: 0.0,
+            soul: None,
+            salary: 0,
+            unpaid_ticks: 0,
+            health: crate::systems::crew::CrewHealth::Healthy,
+            active_breaking_points: Vec::new(),
         });
         state.draft = Some(new_contract(&member));
         state.tab = WorkshopTab::Rules;
@@ -347,6 +354,38 @@ pub fn workshop_system(
         state.status.clear();
         state.sim_results.clear();
         state.importing = false;
+    }
+
+    // ---- Install the draft into the live runtime (D9) ----
+    //
+    // Until this existed, the workshop, the library importer, the content
+    // editor, and the CLI validator all fed a contract that could never run:
+    // ContractRuntime shipped one hardcoded auto_helm() and nothing replaced
+    // it. This is the link that makes "you write the rules your ship runs on"
+    // literally true.
+    if keys.just_pressed(settings.key(InputAction::InstallContract)) {
+        match state.draft.clone() {
+            Some(draft) => {
+                // Crafting warnings are advisory by design (S34) — surface
+                // them, never block on them. An "uninteresting" contract is
+                // still the player's call.
+                let warnings = reachlock_core::contract::validation::validate_contract(&draft);
+                let id = draft.id.clone();
+                let rules = draft.rules.len();
+                runtime.install(draft);
+                state.dirty = false;
+                state.status = if warnings.is_empty() {
+                    format!("installed \"{id}\" ({rules} rule(s)) — now live")
+                } else {
+                    format!(
+                        "installed \"{id}\" ({rules} rule(s)) — {} advisory warning(s)",
+                        warnings.len()
+                    )
+                };
+                log.log(format!("contract installed: {id}"));
+            }
+            None => state.status = "nothing to install".into(),
+        }
     }
 
     // ---- Tab switching (no borrow on draft needed) ----
@@ -560,8 +599,8 @@ fn handle_persona_tab(
                 })
                 .unwrap_or_default();
             let persona = format!(
-                "You are {}. Role: {:?}. Traits: {}.",
-                member.name, member.role, traits
+                "You are {}. Role: {}. Traits: {}.",
+                member.name, member.role.name, traits
             );
             if let Some(llm) = &mut draft.llm_authority {
                 llm.system_prompt = persona.clone();
@@ -608,13 +647,18 @@ pub fn workshop_panel_text(
     state: &ContractWorkshopState,
     roster: &CrewRoster,
     souls: &SoulRegistry,
+    settings: &Settings,
 ) -> String {
     let Some(draft) = &state.draft else {
         return String::new();
     };
 
     let mut lines = vec![
-        "── CONTRACT WORKSHOP ──  Tab · W/S row · A/D change · Enter act · Esc validate".into(),
+        format!(
+            "── CONTRACT WORKSHOP ──  Tab · W/S row · A/D change · Enter act · \
+             Esc validate · {} INSTALL",
+            settings.key_display(InputAction::InstallContract)
+        ),
         {
             let tabs: Vec<String> = TABS
                 .iter()
@@ -753,7 +797,7 @@ pub fn workshop_panel_text(
                     cursor(i),
                     i,
                     member.name,
-                    format!("{:?}", member.role),
+                    &member.role.name,
                     soul_traits,
                 ));
             }
@@ -883,12 +927,13 @@ pub fn render_workshop_panel(
     state: Res<ContractWorkshopState>,
     roster: Res<CrewRoster>,
     souls: Res<SoulRegistry>,
+    settings: Res<Settings>,
     mut texts: Query<&mut Text, With<ContractWorkshopPanel>>,
 ) {
     if let Ok(mut text) = texts.single_mut() {
         match &*panel {
             ActivePanel::ContractWorkshop => {
-                **text = workshop_panel_text(&state, &roster, &souls);
+                **text = workshop_panel_text(&state, &roster, &souls, &settings);
             }
             _ => {
                 **text = String::new();

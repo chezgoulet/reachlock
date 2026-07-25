@@ -69,7 +69,7 @@ impl SettingsTab {
             SettingsTab::Video => 6,
             SettingsTab::Controls => 4 + InputAction::all().len(),
             SettingsTab::Gameplay => 5,
-            SettingsTab::Accessibility => 7,
+            SettingsTab::Accessibility => 8,
             SettingsTab::Network => 3,
         }
     }
@@ -455,6 +455,10 @@ fn handle_row(
                 d.accessibility.hold_for_interact ^=
                     kc == KeyCode::KeyA || kc == KeyCode::KeyD || kc == KeyCode::Enter
             }
+            7 => {
+                d.accessibility.reduce_motion ^=
+                    kc == KeyCode::KeyA || kc == KeyCode::KeyD || kc == KeyCode::Enter
+            }
             _ => {}
         },
         SettingsTab::Network => match row {
@@ -683,6 +687,7 @@ fn render(state: &SettingsUiState, text: &mut Text) {
             fmt_toggle("Subtitles", d.accessibility.subtitles),
             fmt_slider("Subtitle size", d.accessibility.subtitle_size),
             fmt_toggle("Hold to interact", d.accessibility.hold_for_interact),
+            fmt_toggle("Reduce motion", d.accessibility.reduce_motion),
         ],
         SettingsTab::Network => vec![
             format!("Server URL: {}", d.network.server_url),

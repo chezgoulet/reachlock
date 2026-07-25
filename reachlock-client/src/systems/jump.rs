@@ -270,18 +270,23 @@ pub fn hyperspace_tick(
 
     // S40: generate a trope encounter during transit.
     if frac >= 0.3 && !state.anomaly_fired {
-        use reachlock_core::generator::trope::{instantiate_trope, TropeType, LocationType};
+        use reachlock_core::generator::trope::{instantiate_trope, LocationType, TropeType};
         use std::collections::BTreeMap;
         let gs = BTreeMap::new();
         let template = reachlock_core::generator::trope::TropeTemplate {
             id: "transit_trope".into(),
             trope_type: TropeType::WeirdSpacePhenomenon,
             title_template: "Anomalous Reading".into(),
-            narrative_template: "Sensors detect a {phenomenon} on the edge of the transit lane.".into(),
+            narrative_template: "Sensors detect a {phenomenon} on the edge of the transit lane."
+                .into(),
             slots: vec![reachlock_core::generator::trope::TropeSlot {
                 slot_name: "phenomenon".into(),
                 slot_kind: reachlock_core::generator::trope::SlotKind::Text {
-                    options: vec!["gravitational shear".into(), "quantum echo".into(), "temporal distortion".into()],
+                    options: vec![
+                        "gravitational shear".into(),
+                        "quantum echo".into(),
+                        "temporal distortion".into(),
+                    ],
                 },
                 constraints: vec![],
             }],

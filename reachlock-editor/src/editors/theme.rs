@@ -11,21 +11,12 @@ pub struct ThemeEditor {
 }
 
 impl ThemeEditor {
-    fn load_or_new() -> Self {
-        let dir = crate::app::content_root().join(ContentType::Theme.directory());
-        let files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
-            .ok()
-            .into_iter()
-            .flatten()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().is_some_and(|x| x == "ron"))
-            .map(|e| e.path())
-            .collect();
-        if let Some(path) = files.first() {
-            if let Ok(theme) = crate::io::read_ron::<Theme>(path) {
-                return ThemeEditor { path: Some(path.clone()), theme, has_changes: false };
-            }
-        }
+    /// A genuinely new document.
+    ///
+    /// This used to adopt the first `.ron` in the content directory, so
+    /// `File > New` silently bound to an existing file and the first save
+    /// overwrote it.
+    fn new() -> Self {
         ThemeEditor {
             path: None,
             theme: Theme {
@@ -41,9 +32,15 @@ impl ThemeEditor {
 }
 
 impl Editor for ThemeEditor {
-    fn title(&self) -> &str { &self.theme.id }
-    fn content_type(&self) -> ContentType { ContentType::Theme }
-    fn has_unsaved_changes(&self) -> bool { self.has_changes }
+    fn title(&self) -> &str {
+        &self.theme.id
+    }
+    fn content_type(&self) -> ContentType {
+        ContentType::Theme
+    }
+    fn has_unsaved_changes(&self) -> bool {
+        self.has_changes
+    }
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
         let theme: Theme = crate::io::read_ron(path).map_err(|e| format!("reading theme: {e}"))?;
         self.theme = theme;
@@ -55,39 +52,98 @@ impl Editor for ThemeEditor {
         crate::io::write_ron(path, &self.theme).map_err(|e| format!("saving theme: {e}"))
     }
     fn save_all(&mut self) -> Result<bool, String> {
-        let path = self.path.clone().unwrap_or_else(|| {
-            crate::app::content_root().join(ContentType::Theme.directory()).join("generated_theme.ron")
-        });
+        // Only write when dirty, and never invent a filename: the old
+        // fallback name meant two new documents overwrote each other.
+        // Returning Ok(false) with no path lets the shell run Save As.
+        if !self.has_changes {
+            return Ok(self.path.is_some());
+        }
+        let Some(path) = self.path.clone() else {
+            return Ok(false);
+        };
         self.save(&path)?;
-        self.path = Some(path);
         self.has_changes = false;
         Ok(true)
     }
     fn generate_from_seed(&mut self, seed: u64) {
-        let intent = reachlock_core::generator::generate_music_intent(seed, reachlock_core::generator::music::Mood::Calm, 8);
-        self.theme.notes = intent.notes.iter().map(|n| reachlock_core::generator::music::NoteEvent {
-            degree: n.degree, octave: n.octave, velocity: n.velocity,
-            start_tick: n.start_tick, duration_ticks: n.duration_ticks,
-        }).collect();
+        let intent = reachlock_core::generator::generate_music_intent(
+            seed,
+            reachlock_core::generator::music::Mood::Calm,
+            8,
+        );
+        self.theme.notes = intent
+            .notes
+            .iter()
+            .map(|n| reachlock_core::generator::music::NoteEvent {
+                degree: n.degree,
+                octave: n.octave,
+                velocity: n.velocity,
+                start_tick: n.start_tick,
+                duration_ticks: n.duration_ticks,
+            })
+            .collect();
         self.theme.id = format!("theme_{:#x}", seed);
         self.has_changes = true;
     }
     fn validate(&self) -> Vec<String> {
         let mut errors = vec![];
-        if self.theme.id.is_empty() { errors.push("id is empty".into()); }
+        if self.theme.id.is_empty() {
+            errors.push("id is empty".into());
+        }
         errors
     }
-    fn ui(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.label(format!("ID: {}", self.theme.id));
             ui.label(format!("Scale: {:?}", self.theme.scale));
             ui.label(format!("Notes: {}", self.theme.notes.len()));
-            ui.label(format!("BPM range: {}–{}", self.theme.bpm_range.0, self.theme.bpm_range.1));
+            ui.label(format!(
+                "BPM range: {}–{}",
+                self.theme.bpm_range.0, self.theme.bpm_range.1
+            ));
         });
     }
-    fn mark_saved(&mut self) { self.has_changes = false; }
+    fn touch(&mut self) {
+        self.has_changes = true;
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        ron::ser::to_string(&self.theme).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron_text: &str) -> Result<(), String> {
+        self.theme = ron::from_str(ron_text).map_err(|e| e.to_string())?;
+        self.has_changes = true;
+        Ok(())
+    }
+
+    /// Reroll only renames the id, which would break every cross-reference
+    /// pointing at it. Opt out rather than corrupt the content graph.
+    fn accept_seed_reroll(&self) -> bool {
+        false
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.strong(self.content_type().name());
+        let issues = self.validate();
+        if issues.is_empty() {
+            ui.colored_label(egui::Color32::from_rgb(0x4C, 0xAF, 0x50), "✔ clean");
+        } else {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xE5, 0x73, 0x73),
+                format!("✘ {} issue(s)", issues.len()),
+            );
+            for issue in issues.iter().take(5) {
+                ui.weak(issue);
+            }
+        }
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {
-    Box::new(ThemeEditor::load_or_new())
+    Box::new(ThemeEditor::new())
 }

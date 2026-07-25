@@ -87,6 +87,18 @@
             ),
         ],
         dialogue: None,
+        look: Some((
+            species: "Robot",
+            hair_style: Some(0),
+            hair_color: None,
+            skin_color: None,
+            shirt_color: Some((140, 143, 148)),
+            pants_color: Some((71, 77, 84)),
+            jacket_enabled: Some(false),
+            jacket_color: None,
+            chassis_color: Some((140, 143, 148)),
+            visor_color: Some((242, 158, 46)),
+        )),
         deflections: [
             "My pre-wipe logs are sealed by Compact protocol. I cannot discuss them.",
             "That query falls outside my operational parameters.",

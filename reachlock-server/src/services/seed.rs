@@ -12,6 +12,14 @@ use reachlock_core::seed::types::{Seed, SystemId};
 use reachlock_core::universe::UniverseTier;
 use serde_json::Value;
 
+#[derive(Debug, Clone, PartialEq)]
+struct SeedEntry {
+    seed: Seed,
+    diffs: Value,
+    discoverer_name: Option<String>,
+    discovered_at: Option<i64>,
+}
+
 /// Result of a discovery attempt. Whatever the store answers IS canonical —
 /// the client re-renders from it (spec §4 discovery flow).
 #[derive(Debug, Clone, PartialEq)]
@@ -20,13 +28,23 @@ pub struct Discovery {
     pub diffs: Value,
     /// True when the caller's tentative seed won the race.
     pub you_discovered: bool,
+    /// The player name that first discovered this system.
+    pub discoverer_name: Option<String>,
+    /// Unix timestamp of the first discovery.
+    pub discovered_at: Option<i64>,
 }
 
 pub trait SeedStore: Send + Sync {
     /// First-write-wins: if (universe, system) has no seed, the tentative
     /// seed becomes canonical and `you_discovered` is true. Otherwise the
     /// existing canonical entry is returned untouched.
-    fn discover(&self, universe: UniverseTier, system: &SystemId, tentative: Seed) -> Discovery;
+    fn discover(
+        &self,
+        universe: UniverseTier,
+        system: &SystemId,
+        tentative: Seed,
+        discoverer: Option<&str>,
+    ) -> Discovery;
 
     /// Merge diffs into an existing entry. Returns false if the system has
     /// never been discovered (nothing to modify).
@@ -37,25 +55,47 @@ pub trait SeedStore: Send + Sync {
 pub struct MemorySeedStore {
     // BTreeMap for deterministic iteration; the mutex is the atomicity
     // arbiter, playing the role of the Postgres UNIQUE constraint.
-    entries: Mutex<BTreeMap<(UniverseTier, String), (Seed, Value)>>,
+    entries: Mutex<BTreeMap<(UniverseTier, String), SeedEntry>>,
 }
 
 impl SeedStore for MemorySeedStore {
-    fn discover(&self, universe: UniverseTier, system: &SystemId, tentative: Seed) -> Discovery {
+    fn discover(
+        &self,
+        universe: UniverseTier,
+        system: &SystemId,
+        tentative: Seed,
+        discoverer: Option<&str>,
+    ) -> Discovery {
         let mut entries = self.entries.lock().expect("seed store poisoned");
         let key = (universe, system.0.clone());
         match entries.get(&key) {
-            Some((seed, diffs)) => Discovery {
-                canonical_seed: *seed,
-                diffs: diffs.clone(),
+            Some(entry) => Discovery {
+                canonical_seed: entry.seed,
+                diffs: entry.diffs.clone(),
                 you_discovered: false,
+                discoverer_name: entry.discoverer_name.clone(),
+                discovered_at: entry.discovered_at,
             },
             None => {
-                entries.insert(key, (tentative, Value::Object(Default::default())));
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs() as i64);
+                entries.insert(
+                    key,
+                    SeedEntry {
+                        seed: tentative,
+                        diffs: Value::Object(Default::default()),
+                        discoverer_name: discoverer.map(String::from),
+                        discovered_at: now,
+                    },
+                );
                 Discovery {
                     canonical_seed: tentative,
                     diffs: Value::Object(Default::default()),
                     you_discovered: true,
+                    discoverer_name: discoverer.map(String::from),
+                    discovered_at: now,
                 }
             }
         }
@@ -65,8 +105,8 @@ impl SeedStore for MemorySeedStore {
         let mut entries = self.entries.lock().expect("seed store poisoned");
         let key = (universe, system.0.clone());
         match entries.get_mut(&key) {
-            Some((_, existing)) => {
-                merge_diffs(existing, diffs);
+            Some(entry) => {
+                merge_diffs(&mut entry.diffs, diffs);
                 true
             }
             None => false,
@@ -116,23 +156,29 @@ pub mod pg {
             universe: UniverseTier,
             system: &SystemId,
             tentative: Seed,
+            discoverer: Option<&str>,
         ) -> Discovery {
             let pool = self.pool.clone();
             let system = system.0.clone();
             let tier = universe.as_str();
             let seed_value = tentative.value() as i64;
+            let discoverer_id = discoverer.map(String::from);
             self.runtime.block_on(async move {
-                // First-write-wins: the INSERT either lands (we discovered)
-                // or hits the unique index and returns nothing.
+                // First-write-wins: INSERT with discoverer_id on first write.
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs() as i64);
                 let inserted: Option<(i64,)> = sqlx::query_as(
                     "INSERT INTO seeds (discoverer_id, universe, system_id, seed)
-                     VALUES (gen_random_uuid(), $1::universe_tier, $2, $3)
+                     VALUES ($4, $1::universe_tier, $2, $3)
                      ON CONFLICT (universe, system_id, object_key) DO NOTHING
                      RETURNING seed",
                 )
                 .bind(tier)
                 .bind(&system)
                 .bind(seed_value)
+                .bind(&discoverer_id)
                 .fetch_optional(&pool)
                 .await
                 .expect("seed insert failed");
@@ -142,10 +188,17 @@ pub mod pg {
                         canonical_seed: Seed::new(seed as u64),
                         diffs: Value::Object(Default::default()),
                         you_discovered: true,
+                        discoverer_name: discoverer_id,
+                        discovered_at: now,
                     };
                 }
-                let (seed, diffs): (i64, Value) = sqlx::query_as(
-                    "SELECT seed, diffs FROM seeds
+                let (seed, diffs, existing_discoverer, existing_at): (
+                    i64,
+                    Value,
+                    Option<String>,
+                    Option<i64>,
+                ) = sqlx::query_as(
+                    "SELECT seed, diffs, discoverer_id, discovered_at FROM seeds
                      WHERE universe = $1::universe_tier AND system_id = $2
                        AND object_key = ''",
                 )
@@ -158,6 +211,8 @@ pub mod pg {
                     canonical_seed: Seed::new(seed as u64),
                     diffs,
                     you_discovered: false,
+                    discoverer_name: existing_discoverer,
+                    discovered_at: existing_at,
                 }
             })
         }
@@ -196,8 +251,18 @@ pub fn store_contract_tests(store: &dyn SeedStore) {
     let system = |name: &str| SystemId(name.into());
 
     // 1. First writer wins; the loser converges on the winner's seed.
-    let a = store.discover(UniverseTier::Classic, &system("fww-s1"), Seed::new(111));
-    let b = store.discover(UniverseTier::Classic, &system("fww-s1"), Seed::new(222));
+    let a = store.discover(
+        UniverseTier::Classic,
+        &system("fww-s1"),
+        Seed::new(111),
+        Some("alice"),
+    );
+    let b = store.discover(
+        UniverseTier::Classic,
+        &system("fww-s1"),
+        Seed::new(222),
+        Some("bob"),
+    );
     assert!(a.you_discovered, "first discoverer wins");
     assert!(!b.you_discovered, "second discoverer loses");
     assert_eq!(
@@ -205,10 +270,25 @@ pub fn store_contract_tests(store: &dyn SeedStore) {
         Seed::new(111),
         "loser gets the winner's seed"
     );
+    assert_eq!(
+        b.discoverer_name.as_deref(),
+        Some("alice"),
+        "loser sees the winner's name"
+    );
 
     // 2. Same system id in a different universe is a separate ledger.
-    store.discover(UniverseTier::Classic, &system("iso-s1"), Seed::new(111));
-    let other = store.discover(UniverseTier::Spectrum, &system("iso-s1"), Seed::new(222));
+    store.discover(
+        UniverseTier::Classic,
+        &system("iso-s1"),
+        Seed::new(111),
+        None,
+    );
+    let other = store.discover(
+        UniverseTier::Spectrum,
+        &system("iso-s1"),
+        Seed::new(222),
+        None,
+    );
     assert!(
         other.you_discovered,
         "same system, different universe = separate ledger"
@@ -226,6 +306,7 @@ pub fn store_contract_tests(store: &dyn SeedStore) {
                             UniverseTier::FairPlay,
                             &system("race-contested"),
                             Seed::new(1000 + i),
+                            None,
                         )
                         .you_discovered as usize
                 })
@@ -244,13 +325,13 @@ pub fn store_contract_tests(store: &dyn SeedStore) {
         ),
         "cannot modify an undiscovered system"
     );
-    store.discover(UniverseTier::Classic, &system("mod-s1"), Seed::new(1));
+    store.discover(UniverseTier::Classic, &system("mod-s1"), Seed::new(1), None);
     assert!(store.modify(
         UniverseTier::Classic,
         &system("mod-s1"),
         serde_json::json!({"station": "destroyed"})
     ));
-    let d = store.discover(UniverseTier::Classic, &system("mod-s1"), Seed::new(9));
+    let d = store.discover(UniverseTier::Classic, &system("mod-s1"), Seed::new(9), None);
     assert_eq!(
         d.diffs["station"], "destroyed",
         "diffs merged and persisted"

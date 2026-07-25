@@ -88,7 +88,10 @@ impl EcologicalRole {
     }
 
     fn is_producer(self) -> bool {
-        matches!(self, EcologicalRole::PrimaryProducer | EcologicalRole::Decomposer)
+        matches!(
+            self,
+            EcologicalRole::PrimaryProducer | EcologicalRole::Decomposer
+        )
     }
 }
 
@@ -181,8 +184,13 @@ pub struct SpeciesVisual {
 pub enum Edibility {
     Toxic,
     Inedible,
-    Edible { nutrition_value: u32 },
-    Delicacy { nutrition_value: u32, market_value: u32 },
+    Edible {
+        nutrition_value: u32,
+    },
+    Delicacy {
+        nutrition_value: u32,
+        market_value: u32,
+    },
 }
 
 // --------------------------------------------------------------------------
@@ -201,8 +209,8 @@ const NOUNS: &[&str] = &[
 ];
 
 const SYLLABLES: &[&str] = &[
-    "xa", "trin", "vore", "lyx", "qel", "mos", "an", "thu", "gre", "spi", "no", "vax", "ul",
-    "cor", "phen", "zy", "dra", "kel", "oph", "myr",
+    "xa", "trin", "vore", "lyx", "qel", "mos", "an", "thu", "gre", "spi", "no", "vax", "ul", "cor",
+    "phen", "zy", "dra", "kel", "oph", "myr",
 ];
 
 pub(crate) fn pick<'a>(rng: &mut SeededRng, list: &'a [&'a str]) -> &'a str {
@@ -222,11 +230,7 @@ pub(crate) fn scientific_name(rng: &mut SeededRng, genus_base: u64) -> (String, 
         pick(&mut grng, SYLLABLES),
         pick(&mut grng, SYLLABLES)
     );
-    let species = format!(
-        "{}{}",
-        pick(rng, SYLLABLES),
-        pick(rng, SYLLABLES)
-    );
+    let species = format!("{}{}", pick(rng, SYLLABLES), pick(rng, SYLLABLES));
     (genus.clone(), species)
 }
 
@@ -300,12 +304,12 @@ pub(crate) fn spawn_species(
             phylum: format!("{}a", pick(&mut rng, SYLLABLES)),
             class: format!("{}ia", pick(&mut rng, SYLLABLES)),
             order: format!("{}iformes", pick(&mut rng, SYLLABLES)),
-                family: format!("{}idae", genus),
-                genus: genus.clone(),
-                species: sp.clone(),
-            },
-            common_name: common,
-            scientific_name: format!("{} {}", genus, sp),
+            family: format!("{}idae", genus),
+            genus: genus.clone(),
+            species: sp.clone(),
+        },
+        common_name: common,
+        scientific_name: format!("{} {}", genus, sp),
         ecological_role: role,
         size_class,
         habitat: biome.as_str().to_string(),
@@ -518,7 +522,10 @@ fn build_food_web(
     FoodWeb { edges }
 }
 
-fn pick_keystone(species: &[Species], roles: &std::collections::HashMap<String, EcologicalRole>) -> Vec<String> {
+fn pick_keystone(
+    species: &[Species],
+    roles: &std::collections::HashMap<String, EcologicalRole>,
+) -> Vec<String> {
     // Keystone = a high-trophic carnivore with many prey in the web.
     let mut best: Option<&Species> = None;
     let mut best_deg = 0u32;
@@ -540,20 +547,13 @@ fn pick_keystone(species: &[Species], roles: &std::collections::HashMap<String, 
 
 /// Generate a full ecosystem for a planet. Pure & deterministic: identical
 /// `(planet_seed, biomes, params)` always yields an identical `Ecosystem`.
-pub fn generate_ecosystem(
-    planet_seed: u64,
-    biomes: Vec<Biome>,
-    params: PlanetParams,
-) -> Ecosystem {
+pub fn generate_ecosystem(planet_seed: u64, biomes: Vec<Biome>, params: PlanetParams) -> Ecosystem {
     let mut eco_biomes = Vec::with_capacity(biomes.len());
     for (i, &biome) in biomes.iter().enumerate() {
         eco_biomes.push(generate_biome(planet_seed, biome, i as u8, params));
     }
     let global = eco_biomes.iter().map(|b| b.species.len() as u32).sum();
-    let endemic = eco_biomes
-        .iter()
-        .filter(|b| b.species.len() <= 4)
-        .count() as u32;
+    let endemic = eco_biomes.iter().filter(|b| b.species.len() <= 4).count() as u32;
     let complexity = classify_complexity(global, &eco_biomes);
     Ecosystem {
         planet_seed,
@@ -631,11 +631,7 @@ mod tests {
                 b.food_web.edges.iter().map(|(p, _, _)| p).collect();
             for s in &b.species {
                 if !s.ecological_role.is_producer() {
-                    assert!(
-                        predators.contains(&s.id),
-                        "species {} has no prey",
-                        s.id
-                    );
+                    assert!(predators.contains(&s.id), "species {} has no prey", s.id);
                 }
             }
         }
@@ -647,7 +643,11 @@ mod tests {
         for b in &eco.biomes {
             let mut seen = std::collections::HashSet::new();
             for s in &b.species {
-                assert!(seen.insert(s.common_name.clone()), "dup name {}", s.common_name);
+                assert!(
+                    seen.insert(s.common_name.clone()),
+                    "dup name {}",
+                    s.common_name
+                );
             }
         }
     }

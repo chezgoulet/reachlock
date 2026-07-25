@@ -102,7 +102,11 @@ impl ChartedSystemEditor {
             entries.push(Entry {
                 system: blank_system(),
                 path: None,
-                dirty: true,
+                // Not dirty: this is a placeholder so the editor has something
+                // to show, not authored content. Marking it dirty made
+                // the first Ctrl+S write a file the author never created,
+                // while `has_unsaved_changes()` still reported clean.
+                dirty: false,
             });
         }
         ChartedSystemEditor {
@@ -184,8 +188,8 @@ impl Editor for ChartedSystemEditor {
         errors
     }
 
-    fn ui(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("charted_system_toolbar").show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::TopBottomPanel::top("charted_system_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Generate from Seed").clicked() {
                     let seed = self
@@ -221,7 +225,7 @@ impl Editor for ChartedSystemEditor {
         egui::SidePanel::left("charted_system_list")
             .resizable(true)
             .default_width(200.0)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("🔍");
                     ui.text_edit_singleline(&mut self.search);
@@ -280,7 +284,7 @@ impl Editor for ChartedSystemEditor {
             });
 
         let validation = self.validate();
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let Some(entry) = self.entries.get_mut(self.selected) else {
                 ui.label("No system selected.");
                 return;
@@ -458,7 +462,10 @@ impl Editor for ChartedSystemEditor {
             wrote += 1;
         }
         if wrote == 0 {
-            return Err("no dirty entries to save".into());
+            // Nothing dirty is not an error: this editor handled the save
+            // request and correctly wrote nothing. Returning Err here made
+            // Ctrl+S on a clean tab report "Save error: no dirty entries".
+            return Ok(true);
         }
         Ok(true)
     }

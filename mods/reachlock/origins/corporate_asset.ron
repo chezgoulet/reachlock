@@ -1,0 +1,41 @@
+ContentFile(
+    id: "corporate_asset",
+    display_name: "Corporate Asset",
+    asset_type: origin,
+    seed: 34000001,
+    universe: "all",
+    priority: authoritative,
+    payload: origin((
+        id: "corporate_asset",
+        name: "Corporate Asset",
+        description: "Field agent for a megacorporation. You have a corporate corvette, high credit reserves, and access to restricted markets. But corporate life comes with strings — multiple factions view your employer with suspicion, and your standing with independent groups suffers. Your corporate credentials open doors, but they also paint a target on your back.",
+        icon: "briefcase",
+        starting_career: "executive",
+        starting_rank: 1,
+        faction_deltas: [
+            (faction_id: "megacorp", delta: 40),
+            (faction_id: "compact", delta: -15),
+            (faction_id: "free_traders", delta: -10),
+        ],
+        starting_credits: 20000,
+        ship_template: Some("corvette_mk2"),
+        ship_seed: Some(34000001),
+        starting_gear: [
+            (item_id: "corporate_datapad", count: 1),
+            (item_id: "executive_sidearm", count: 1),
+            (item_id: "credit_chip", count: 1),
+        ],
+        starting_crew: [
+            Authored(soul_id: "liao_corporate", role: "corporate_liaison"),
+        ],
+        known_systems: [
+            34000001,
+            34000002,
+        ],
+        start_system: 34000001,
+        start_location: "Corporate Hub Zeta-7",
+        opening_log_entries: [
+            (title: "Field Assignment", body: "The corp has a special assignment for you. A rival faction is moving into disputed territory, and you're the one they trust to handle it. Your corvette is ready, the accounts are loaded, and the target is marked. Don't fail — the corp doesn't forgive failure.", tick_offset: 0),
+        ],
+    )),
+)

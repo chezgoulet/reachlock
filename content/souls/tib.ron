@@ -98,6 +98,18 @@
             ),
         ],
         dialogue: None,
+        look: Some((
+            species: "Robot",
+            hair_style: Some(1),
+            hair_color: None,
+            skin_color: None,
+            shirt_color: Some((115, 112, 107)),
+            pants_color: Some((64, 56, 46)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((107, 71, 41)),
+            chassis_color: Some((209, 158, 115)),
+            visor_color: Some((41, 31, 26)),
+        )),
         deflections: [
             "I don't — don't — remember much about the salvage yard! It was dark! Dark!",
             "Boris says I shouldn't talk about the old days. Old days.",

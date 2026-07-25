@@ -289,8 +289,64 @@ pub fn bank_angle(rotation: Quat) -> f32 {
 /// to the nose so the ship goes where it points. Fuel burns while thrusting.
 /// Engine power (set at the power console) scales thrust and turn rate.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
+/// Half-angle of the aim-assist cone. A hostile outside this cone is never
+/// snapped to — assist tightens existing aim, it does not aim for you.
+const AIM_ASSIST_COS: f32 = 0.985; // ~10°
+/// How far the shot is bent toward the target (0 = none, 1 = perfect snap).
+const AIM_ASSIST_STRENGTH: f32 = 0.5;
+
+/// Bend `forward` toward the nearest hostile inside the assist cone.
+/// Returns `forward` unchanged when assist is off or nothing qualifies, so
+/// the setting is a true no-op when disabled.
+pub fn aim_assisted_forward(forward: Vec3, origin: Vec3, enabled: bool, targets: &[Vec3]) -> Vec3 {
+    if !enabled {
+        return forward;
+    }
+    let mut best: Option<(f32, Vec3)> = None;
+    for target in targets {
+        let to = *target - origin;
+        let Some(dir) = to.try_normalize() else {
+            continue;
+        };
+        let cos = dir.dot(forward);
+        if cos < AIM_ASSIST_COS {
+            continue;
+        }
+        // Nearest qualifying target wins, not the most centred one — the
+        // thing about to hit you is the thing you meant to shoot.
+        let d = to.length_squared();
+        if best.is_none_or(|(bd, _)| d < bd) {
+            best = Some((d, dir));
+        }
+    }
+    match best {
+        Some((_, dir)) => forward
+            .lerp(dir, AIM_ASSIST_STRENGTH)
+            .try_normalize()
+            .unwrap_or(forward),
+        None => forward,
+    }
+}
+
+/// Rescale a raw stick axis so the deadzone is dead and the live range still
+/// reaches full deflection: `|v| <= dz` → 0, then remap `dz..1` onto `0..1`.
+/// A plain cutoff would make the stick jump to `dz` the moment it engages.
+pub fn apply_deadzone(v: f32, deadzone: f32) -> f32 {
+    let dz = deadzone.clamp(0.0, 0.95);
+    let mag = v.abs();
+    if mag <= dz {
+        return 0.0;
+    }
+    let scaled = (mag - dz) / (1.0 - dz);
+    scaled.min(1.0) * v.signum()
+}
+
+// Bevy systems legitimately take many resources; the repo-wide pattern is to
+// allow this on the system fn rather than bundle params into a struct.
+#[allow(clippy::too_many_arguments)]
 pub fn control(
     keys: Res<ButtonInput<KeyCode>>,
+    pads: Query<&Gamepad>,
     time: Res<Time>,
     settings: Res<Settings>,
     mut systems: ResMut<ShipSystems>,
@@ -335,6 +391,19 @@ pub fn control(
     let engine_mult = (0.5 + 0.25 * command.power_engines as f32)
         * fires.effectiveness(reachlock_core::generator::RoomKind::Reactor);
 
+    // S71: sensitivity + invert_y applied to input axes
+    let sense = settings.controls.mouse_sensitivity;
+    let invert = if settings.controls.invert_y {
+        -1.0
+    } else {
+        1.0
+    };
+    let _rm = if settings.accessibility.reduce_motion {
+        0.25
+    } else {
+        1.0
+    };
+
     let has_fuel = systems.fuel.0 > 0;
     // S31: forward thrust is bound to `Brake` (default Space) so the flight
     // stick honors rebindable keys; the retro/decelerate assist keeps the raw
@@ -356,14 +425,14 @@ pub fn control(
     force.torque = Vec3::ZERO;
 
     // --- raw input axes ---
-    let mut raw_pitch = 0.0;
-    let mut raw_yaw = 0.0;
-    let mut raw_roll = 0.0;
+    let mut raw_pitch = 0.0f32;
+    let mut raw_yaw = 0.0f32;
+    let mut raw_roll = 0.0f32;
     if keys.pressed(settings.key(InputAction::ThrustForward)) {
-        raw_pitch -= 1.0;
+        raw_pitch -= invert;
     }
     if keys.pressed(settings.key(InputAction::ThrustBackward)) {
-        raw_pitch += 1.0;
+        raw_pitch += invert;
     }
     if keys.pressed(settings.key(InputAction::StrafeLeft)) {
         raw_yaw += 1.0;
@@ -376,6 +445,30 @@ pub fn control(
     }
     if keys.pressed(settings.key(InputAction::RollRight)) {
         raw_roll -= 1.0;
+    }
+
+    // --- gamepad sticks (S71) ---
+    //
+    // `controls.controller_deadzone` was a settings field with no consumer:
+    // editable, persisted, and read by nothing. Sticks blend with the keyboard
+    // axes (whichever deflects further wins) so a controller and a keyboard can
+    // be used interchangeably without one zeroing the other.
+    for pad in &pads {
+        let dz = settings.controls.controller_deadzone;
+        let left = pad.left_stick();
+        let right = pad.right_stick();
+        let pitch = apply_deadzone(left.y, dz) * invert;
+        let yaw = -apply_deadzone(left.x, dz);
+        let roll = -apply_deadzone(right.x, dz);
+        if pitch.abs() > raw_pitch.abs() {
+            raw_pitch = pitch;
+        }
+        if yaw.abs() > raw_yaw.abs() {
+            raw_yaw = yaw;
+        }
+        if roll.abs() > raw_roll.abs() {
+            raw_roll = roll;
+        }
     }
 
     // Double-tap Q/E: barrel roll. One full 360° spin; steering stays live.
@@ -407,7 +500,7 @@ pub fn control(
     feel.roll = approach(feel.roll, raw_roll, rate(raw_roll), dt);
 
     // --- rotation (direct angular velocity about local axes) ---
-    let turn = HullHandling::f32(h.turn_rate).clamp(0.0, 4.0) * TURN_SCALE * engine_mult;
+    let turn = HullHandling::f32(h.turn_rate).clamp(0.0, 4.0) * TURN_SCALE * engine_mult * sense;
     let roll_rate = if feel.barrel != 0.0 {
         // Barrel roll owns the roll axis: constant spin until the full turn
         // is spent.
@@ -558,9 +651,15 @@ pub fn camera_follow(
 
     // Hit shake: decaying screen-space jitter fed by `collisions`. Scaled by
     // the accessibility screen-shake preference (0 = off, 1 = full).
-    if feel.shake > 0.001 {
+    // S71: reduce_motion forces shake to zero.
+    let shake_scale = if settings.accessibility.reduce_motion {
+        0.0
+    } else {
+        settings.accessibility.screen_shake
+    };
+    if feel.shake > 0.001 && shake_scale > 0.0 {
         let e = time.elapsed_secs();
-        let amp = feel.shake * settings.accessibility.screen_shake;
+        let amp = feel.shake * shake_scale;
         let jitter = camera.rotation * (Vec3::new((e * 47.0).sin(), (e * 53.0).cos(), 0.0) * amp);
         camera.translation += jitter;
         feel.shake *= (-7.0 * dt).exp();
@@ -862,6 +961,7 @@ pub fn fire_weapons(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     ship: Query<(&Transform, &Collider), With<PlayerShip>>,
+    enemies: Query<&Transform, With<crate::systems::combat::EnemyShip>>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
 ) {
     systems.gun_cooldown = (systems.gun_cooldown - time.delta_secs()).max(0.0);
@@ -895,7 +995,17 @@ pub fn fire_weapons(
         return;
     }
     systems.gun_cooldown = 0.6 / (command.power_weapons as f32) / weapons_eff;
-    let forward = ship.forward().as_vec3();
+    // S71: `gameplay.aim_assist` — when a hostile sits inside a narrow cone
+    // ahead, bend the shot onto it. The settings registry claimed this was
+    // consumed by combat systems that never read it; this is the real
+    // consumer. Off = raw nose vector, exactly as before.
+    let hostiles: Vec<Vec3> = enemies.iter().map(|t| t.translation).collect();
+    let forward = aim_assisted_forward(
+        ship.forward().as_vec3(),
+        ship.translation,
+        settings.gameplay.aim_assist,
+        &hostiles,
+    );
     // Muzzle sits past the ship's own collider — a corvette hull runs ~50
     // units of radius, and a bolt born inside it collides with (and damages)
     // the ship that fired it.
@@ -1128,6 +1238,53 @@ pub fn scanner_pulse(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn deadzone_is_dead_and_rescales_to_full_range() {
+        // Inside the zone: silent. A drifting stick must not fly the ship.
+        assert_eq!(apply_deadzone(0.0, 0.2), 0.0);
+        assert_eq!(apply_deadzone(0.15, 0.2), 0.0);
+        assert_eq!(apply_deadzone(-0.2, 0.2), 0.0);
+        // Just outside: near zero, not a jump to 0.2 (the naive cutoff bug).
+        assert!(apply_deadzone(0.21, 0.2).abs() < 0.02);
+        // Full deflection still reaches 1.0 in both directions.
+        assert!((apply_deadzone(1.0, 0.2) - 1.0).abs() < 1e-6);
+        assert!((apply_deadzone(-1.0, 0.2) + 1.0).abs() < 1e-6);
+        // Zero deadzone is a pass-through.
+        assert!((apply_deadzone(0.5, 0.0) - 0.5).abs() < 1e-6);
+        // A nonsense deadzone cannot divide by zero.
+        assert!(apply_deadzone(1.0, 1.5).is_finite());
+    }
+
+    #[test]
+    fn aim_assist_is_a_true_no_op_when_disabled() {
+        let fwd = Vec3::Z;
+        let target = vec![Vec3::new(0.05, 0.0, 10.0)];
+        assert_eq!(aim_assisted_forward(fwd, Vec3::ZERO, false, &target), fwd);
+    }
+
+    #[test]
+    fn aim_assist_bends_toward_a_target_inside_the_cone_only() {
+        let fwd = Vec3::Z;
+        // Inside the cone: the shot bends toward it but does not snap fully.
+        let near = vec![Vec3::new(0.5, 0.0, 10.0)];
+        let bent = aim_assisted_forward(fwd, Vec3::ZERO, true, &near);
+        assert!(bent.x > 0.0, "should bend toward the target");
+        assert!(bent.x < near[0].normalize().x, "should not snap fully");
+        assert!((bent.length() - 1.0).abs() < 1e-5, "stays normalized");
+
+        // Well outside the cone: untouched.
+        let wide = vec![Vec3::new(10.0, 0.0, 1.0)];
+        assert_eq!(aim_assisted_forward(fwd, Vec3::ZERO, true, &wide), fwd);
+
+        // Behind the ship: never targeted.
+        let behind = vec![Vec3::new(0.0, 0.0, -10.0)];
+        assert_eq!(aim_assisted_forward(fwd, Vec3::ZERO, true, &behind), fwd);
+
+        // No targets at all is safe.
+        assert_eq!(aim_assisted_forward(fwd, Vec3::ZERO, true, &[]), fwd);
+    }
     use super::{apply_hull_damage, approach, bank_angle, wrap_angle, BANK_GAIN, MAX_BANK};
     use bevy::math::{Quat, Vec3};
 

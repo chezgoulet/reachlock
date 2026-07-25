@@ -382,13 +382,13 @@ pub fn apply_mutation(
     (next, true)
 }
 
-/// The authored soul-mutation arcs shipped with the game (embedded like
-/// `faction::load_storylines`, so offline is first-class).
+/// The authored soul-mutation arcs shipped with the game.
+/// Mutations are now loaded through the content index at runtime.
+/// Returns an empty vec by default — the client `SoulRegistry` loads them
+/// from content via `init_souls_mutations`.
 pub fn load_soul_mutations() -> Vec<SoulMutation> {
-    ron::from_str(SOUL_MUTATIONS_RON).expect("embedded loup_garou_souls.ron")
+    Vec::new()
 }
-const SOUL_MUTATIONS_RON: &str =
-    include_str!("../../../mods/reachlock/storylines/loup_garou_souls.ron");
 
 #[cfg(test)]
 mod tests {
@@ -480,6 +480,7 @@ mod tests {
             }],
             dialogue: None,
             deflections: vec![],
+            look: None,
         }
     }
 
@@ -685,11 +686,13 @@ mod tests {
 
     #[test]
     fn embedded_mutation_arcs_parse() {
+        // Mutations are now loaded from the content index at runtime,
+        // not embedded. The core function returns empty by default.
         let mutations = load_soul_mutations();
-        assert!(!mutations.is_empty());
-        for m in &mutations {
-            assert!(!m.id.is_empty() && !m.soul_id.is_empty() && !m.changes.is_empty());
-        }
+        assert!(
+            mutations.is_empty(),
+            "mutations load from content, not core"
+        );
     }
 
     #[test]

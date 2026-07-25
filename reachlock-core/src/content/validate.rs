@@ -7,7 +7,7 @@
 //! JSON Schema validation (the RON→JSON projection against
 //! `content/schemas/*.schema.json`) deliberately does NOT live here: that
 //! needs a schema-validation dependency that has no business being
-//! wasm-safe core, so it lives in `reachlock-cli`. These checks are the
+//! IO-free core, so it lives in `reachlock-cli`. These checks are the
 //! part that's pure data-shape reasoning over structs core already owns.
 
 use super::envelope::{ContentFile, ContentPayload};
@@ -75,6 +75,10 @@ pub enum ValidationError {
     CareerProblem {
         problem: String,
     },
+    /// S79: an origin has a structural problem (empty id, log entry, etc.).
+    OriginProblem {
+        problem: String,
+    },
 }
 
 impl std::fmt::Display for ValidationError {
@@ -136,6 +140,9 @@ impl std::fmt::Display for ValidationError {
             }
             ValidationError::CareerProblem { problem } => {
                 write!(f, "career path: {problem}")
+            }
+            ValidationError::OriginProblem { problem } => {
+                write!(f, "origin: {problem}")
             }
         }
     }
@@ -259,6 +266,35 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
         ContentPayload::Dungeon(_) => {}
         ContentPayload::Event(_) => {}
         ContentPayload::Recipe(_) => {}
+        ContentPayload::Origin(origin) => {
+            if origin.id.is_empty() {
+                errors.push(ValidationError::OriginProblem {
+                    problem: "origin id is empty".into(),
+                });
+            }
+            if origin.name.is_empty() {
+                errors.push(ValidationError::OriginProblem {
+                    problem: "origin name is empty".into(),
+                });
+            }
+            if origin.start_location.is_empty() {
+                errors.push(ValidationError::OriginProblem {
+                    problem: "start_location is empty".into(),
+                });
+            }
+            for (i, entry) in origin.opening_log_entries.iter().enumerate() {
+                if entry.title.is_empty() {
+                    errors.push(ValidationError::OriginProblem {
+                        problem: format!("log entry {i}: title is empty"),
+                    });
+                }
+                if entry.body.is_empty() {
+                    errors.push(ValidationError::OriginProblem {
+                        problem: format!("log entry {i}: body is empty"),
+                    });
+                }
+            }
+        }
         ContentPayload::RoomTemplates(templates) => {
             let mut ids = std::collections::BTreeSet::new();
             let mut kinds = std::collections::BTreeSet::new();

@@ -24,6 +24,12 @@ archive/v1/docs/SPRINT-02-the-living-slice.md
 # Mods (built packages)
 *.reachmod
 
+# Stray content trees written by tests/tools run from inside a crate
+# directory. The content root is CWD-relative, so running the editor or its
+# tests from `reachlock-editor/` creates `reachlock-editor/mods/`. Authored
+# content lives at the repo root only.
+reachlock-*/mods/
+
 # Editor
 .vscode/
 .idea/

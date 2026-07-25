@@ -1,5 +1,6 @@
 //! Soul generator (S25): seed + species -> NPC personality data.
 
+use crate::generator::sprite::CharacterLookConfig;
 use crate::util::SeededRng;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -123,6 +124,62 @@ fn backstory_tables(species: &str) -> &'static [&'static str] {
 
 fn slider(rng: &mut SeededRng) -> i16 {
     (rng.next_below(1025)) as i16
+}
+
+/// Generate a soul with a pinned look config. The look field is set to
+/// `Some(config)` so the renderer uses it directly; procedural NPCs use
+/// `generate_soul` which leaves the look to seed-derivation at render time.
+pub fn generate_soul_with_look(
+    seed: u64,
+    species: &str,
+    look_config: CharacterLookConfig,
+) -> crate::soul::types::SoulFile {
+    let soul = generate_soul(seed, species);
+    let species_enum = match species {
+        "Human" => crate::soul::types::Species::Human,
+        "Android" => crate::soul::types::Species::Android,
+        "Robot" => crate::soul::types::Species::Robot,
+        "Voidborn" => crate::soul::types::Species::Voidborn,
+        "Xenotype" => crate::soul::types::Species::Xenotype,
+        _ => crate::soul::types::Species::Human,
+    };
+    crate::soul::types::SoulFile {
+        id: format!("{}_{seed}", soul.name.to_lowercase().replace(' ', "_")),
+        name: soul.name,
+        species: species_enum,
+        portrait_id: String::new(),
+        identity: crate::soul::types::Identity {
+            origin: "generated".into(),
+            faction_affiliation: "unaffiliated".into(),
+            role: "procedural".into(),
+            public_bio: soul.backstory,
+        },
+        personality: crate::soul::types::Personality {
+            traits: vec![],
+            values: vec![],
+            speaking_style: if soul.formality > 512 {
+                crate::soul::types::SpeakingStyle::Formal
+            } else {
+                crate::soul::types::SpeakingStyle::Terse
+            },
+            quirks: vec![],
+        },
+        emotional_state: crate::soul::types::EmotionalState {
+            dominant_mood: crate::soul::types::Mood::Stable,
+            intensity: 256,
+            triggers: vec![],
+        },
+        memory_tree: vec![],
+        relationship_graph: vec![],
+        goals: vec![],
+        breaking_points: vec![],
+        contracts: vec![],
+        backstory: String::new(),
+        secrets: vec![],
+        dialogue: None,
+        deflections: vec![],
+        look: Some(look_config),
+    }
 }
 
 pub fn generate_soul(seed: u64, species: &str) -> Soul {

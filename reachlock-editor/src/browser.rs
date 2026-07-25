@@ -26,7 +26,12 @@ pub enum BrowserAction {
 
 /// The file-backed content types, in browser display order. Previewers
 /// (ItemBrowser, SpriteViewer) persist nothing and are omitted from the tree.
-const FILE_TYPES: [ContentType; 14] = [
+///
+/// Every non-previewer `ContentType` must appear here — `browser_covers_every_
+/// file_backed_type` in this module enforces it. An editor missing from this
+/// list is unreachable: its directory is never scanned, so its files never show
+/// up in the tree, no matter how complete the editor itself is.
+pub(crate) const FILE_TYPES: [ContentType; 25] = [
     ContentType::ChartedSystem,
     ContentType::GateNetwork,
     ContentType::HullFrame,
@@ -41,6 +46,20 @@ const FILE_TYPES: [ContentType; 14] = [
     ContentType::EconomyGoods,
     ContentType::Item,
     ContentType::Contract,
+    ContentType::Origin,
+    // Wave 9 / S55 types. These were registered in the editor registry but
+    // absent from the browser and File > New, which made ten working editors
+    // reachable only through File > Open with a hand-typed path.
+    ContentType::Career,
+    ContentType::Ecosystem,
+    ContentType::PlanetCulture,
+    ContentType::Theme,
+    ContentType::Trope,
+    ContentType::ScriptedEncounter,
+    ContentType::Dialogue,
+    ContentType::Dungeon,
+    ContentType::Event,
+    ContentType::Recipe,
 ];
 
 /// Which editor owns a `.ron` file, judged by its parent directory (and for
@@ -381,5 +400,160 @@ mod tests {
             let _ = std::fs::remove_file(&path);
         }
         let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    // ---------------------------------------------------------------------
+    // Editor completeness gate.
+    //
+    // Ten registered editors shipped unreachable — absent from both the
+    // content browser and File > New — and stayed that way through a full
+    // remediation pass because nothing asserted the coverage. `Origin` then
+    // repeated it. These three tests are that assertion.
+    // ---------------------------------------------------------------------
+
+    /// Every file-backed `ContentType` must appear in the browser tree.
+    #[test]
+    fn browser_covers_every_file_backed_type() {
+        let missing: Vec<_> = ContentType::all()
+            .iter()
+            .filter(|ct| !ct.is_previewer() && !FILE_TYPES.contains(ct))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "these content types have an editor but no browser entry, so their \
+             files are unreachable: {missing:?}"
+        );
+    }
+
+    /// Every `ContentType` must be creatable from File > New.
+    #[test]
+    fn new_menu_covers_every_type() {
+        let listed: Vec<ContentType> = crate::app::NEW_MENU_GROUPS
+            .iter()
+            .flat_map(|(_, types)| types.iter().copied())
+            .collect();
+        let missing: Vec<_> = ContentType::all()
+            .iter()
+            .filter(|ct| !listed.contains(ct))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "these content types cannot be created from File > New: {missing:?}"
+        );
+    }
+
+    /// Every registered type must actually construct an editor, and the
+    /// browser must not list a type the registry cannot build.
+    #[test]
+    fn every_type_constructs_an_editor() {
+        let registry = crate::app::build_default_registry();
+        for ct in ContentType::all() {
+            assert!(
+                registry.create(*ct).is_some(),
+                "{ct:?} is listed in ContentType::all() but has no registered editor"
+            );
+        }
+    }
+
+    /// A freshly created editor must be clean, and saving it must write
+    /// nothing to disk.
+    ///
+    /// Eleven single-entry editors shipped with a constructor that scanned the
+    /// content directory and adopted the first `.ron` it found, so `File > New`
+    /// bound to an existing file and the first Ctrl+S overwrote authored
+    /// content. This checks the property that actually matters — *did any
+    /// bytes hit the disk* — rather than a return value, because multi-entry
+    /// editors legitimately load the whole directory and answer `Ok(true)`
+    /// while correctly writing nothing.
+    #[test]
+    fn a_new_editor_writes_nothing_to_disk() {
+        // `content_root` is process-wide, so serialise the tests that move it.
+        static ROOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ROOT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let tmp = std::env::temp_dir().join(format!("reachlock_new_editor_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("temp content root");
+        let previous = crate::app::content_root();
+        crate::app::set_content_root(Some(tmp.clone()));
+
+        let registry = crate::app::build_default_registry();
+        let mut dirty = Vec::new();
+        let mut wrote = Vec::new();
+        for ct in ContentType::all() {
+            let Some(mut editor) = registry.create(*ct) else {
+                continue;
+            };
+            if editor.has_unsaved_changes() {
+                dirty.push(*ct);
+            }
+            let _ = editor.save_all();
+            let created: Vec<_> = walkdir_files(&tmp);
+            if !created.is_empty() {
+                wrote.push((*ct, created));
+                // Clean up so the next editor is measured independently.
+                let _ = std::fs::remove_dir_all(&tmp);
+                let _ = std::fs::create_dir_all(&tmp);
+            }
+        }
+
+        crate::app::set_content_root(Some(previous));
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert!(dirty.is_empty(), "these editors start dirty: {dirty:?}");
+        assert!(
+            wrote.is_empty(),
+            "a brand-new editor wrote files before the author touched \
+             anything — File > New is bound to content: {wrote:?}"
+        );
+    }
+
+    /// Every `.ron` beneath `dir`, relative to it.
+    fn walkdir_files(dir: &std::path::Path) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else {
+                    out.push(p.strip_prefix(dir).unwrap_or(&p).display().to_string());
+                }
+            }
+        }
+        out
+    }
+
+    /// Editors whose `generate_from_seed` only renames the entry's id must
+    /// opt out of "Reroll All", or one click silently rewrites the ids that
+    /// every cross-reference in the content tree points at.
+    #[test]
+    fn id_renaming_editors_decline_seed_reroll() {
+        let registry = crate::app::build_default_registry();
+        for ct in [
+            ContentType::Career,
+            ContentType::Dialogue,
+            ContentType::Dungeon,
+            ContentType::Ecosystem,
+            ContentType::Event,
+            ContentType::PlanetCulture,
+            ContentType::Recipe,
+            ContentType::ScriptedEncounter,
+            ContentType::Theme,
+            ContentType::Trope,
+            ContentType::Origin,
+        ] {
+            let Some(editor) = registry.create(ct) else {
+                continue;
+            };
+            assert!(
+                !editor.accept_seed_reroll(),
+                "{ct:?} still accepts Reroll All but only renames its id"
+            );
+        }
     }
 }

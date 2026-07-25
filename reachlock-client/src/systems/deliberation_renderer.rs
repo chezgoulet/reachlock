@@ -1,94 +1,179 @@
 use bevy::prelude::*;
+use reachlock_core::contract::{
+    evaluate_all,
+    stage::{CostSnapshot, DeliberationStage, RuleSnapshot, StagePhase, VerdictSnapshot},
+    EvalContext, RuleResult,
+};
 
-use crate::systems::contract::DeliberationState;
+use crate::systems::contract::{ContractRuntime, DeliberationState, ShipLog};
+use crate::systems::ship::ShipSystems;
 
-#[derive(Clone, Debug)]
-pub enum DeliberationStatus {
-    Thinking,
-    Success,
-    Failure,
+#[derive(Resource)]
+pub struct DeliberationPanel {
+    pub stage: Option<DeliberationStage>,
+    pub phase_timer: Timer,
+    pub dismiss_timer: Option<Timer>,
+    pub awaiting_dismiss: bool,
+    pub interjection_active: bool,
+    pub pending_interjection_action: Option<String>,
 }
 
-#[derive(Clone, Debug)]
-pub struct DeliberationTrack {
-    pub crew_member_name: String,
-    pub context_summary: String,
-    pub status: DeliberationStatus,
-    pub started_at_ticks: u64,
-    pub finished_at: f32,
-}
-
-#[derive(Resource, Default)]
-pub struct DeliberationRenderState {
-    pub tracks: Vec<DeliberationTrack>,
-    /// Running total of ticks for animation timing.
-    pub tick_counter: u64,
+impl Default for DeliberationPanel {
+    fn default() -> Self {
+        DeliberationPanel {
+            stage: None,
+            phase_timer: Timer::from_seconds(1.5, TimerMode::Once),
+            dismiss_timer: None,
+            awaiting_dismiss: false,
+            interjection_active: false,
+            pending_interjection_action: None,
+        }
+    }
 }
 
 #[derive(Component)]
-pub struct DeliberationUi;
+pub struct DeliberationPanelUi;
 
-pub fn render_deliberation(
+#[derive(Component)]
+pub struct DeliberationPanelText;
+
+#[derive(Component)]
+pub struct UncoveredCounterUi;
+
+fn build_stage(
+    deliberation: &DeliberationState,
+    runtime: &ContractRuntime,
+    systems: &ShipSystems,
+) -> Option<DeliberationStage> {
+    let active = deliberation.active.as_ref()?;
+    let contract = runtime.contracts.get(&runtime.active_id)?;
+
+    let mut ctx = EvalContext::default();
+    ctx.set("fuel", systems.fuel.0)
+        .set("unknown_signal", systems.unknown_signal as i64);
+
+    let results = evaluate_all(contract, &ctx);
+    let matched: Vec<RuleSnapshot> = results
+        .iter()
+        .filter(|r| r.matched)
+        .map(snapshot_from_result)
+        .collect();
+    let unmatched: Vec<RuleSnapshot> = results
+        .iter()
+        .filter(|r| !r.matched)
+        .map(snapshot_from_result)
+        .collect();
+
+    Some(DeliberationStage {
+        phase: StagePhase::Examining,
+        crew_member: active.crew_member.clone(),
+        crew_portrait_id: format!("{}_default", active.crew_member.to_lowercase()),
+        crew_mood: "ANXIOUS".into(),
+        trust_with_player: 256,
+        context_summary: active.context_summary.clone(),
+        matched_rules: matched,
+        unmatched_rules: unmatched,
+        verdict: None,
+        cost: None,
+        recent_uncovered: runtime.recent_uncovered(),
+        remaining_secs: active.remaining.remaining().as_secs_f32(),
+        total_secs: active.remaining.duration().as_secs_f32(),
+    })
+}
+
+fn snapshot_from_result(r: &RuleResult) -> RuleSnapshot {
+    RuleSnapshot {
+        index: r.index,
+        label: r.label.clone(),
+        action: r.action.clone(),
+        condition_summary: r.condition_summary.clone(),
+        matched: r.matched,
+    }
+}
+
+fn phase_duration(phase: &StagePhase) -> f32 {
+    match phase {
+        StagePhase::Examining => 2.0,
+        StagePhase::Weighing => 3.0,
+        StagePhase::Deciding => 4.0,
+        StagePhase::Verdict => 3.0,
+        StagePhase::Complete => 5.0,
+    }
+}
+
+pub fn advance_deliberation_stage(
     time: Res<Time>,
+    mut panel: ResMut<DeliberationPanel>,
     deliberation: Res<DeliberationState>,
-    mut render: ResMut<DeliberationRenderState>,
-    mut query: Query<(&mut Text, &mut TextColor), With<DeliberationUi>>,
+    runtime: Res<ContractRuntime>,
+    systems: Res<ShipSystems>,
+    mut log: ResMut<ShipLog>,
 ) {
-    render.tick_counter = render.tick_counter.wrapping_add(1);
+    if panel.stage.is_none() {
+        if deliberation.active.is_some() {
+            panel.stage = build_stage(&deliberation, &runtime, &systems);
+        }
+        return;
+    }
 
-    if let Some(active) = &deliberation.active {
-        if active.overlay_visible {
-            let pulse = (time.elapsed_secs() * 3.0).sin() * 0.15 + 0.85;
-            let mut lines = Vec::new();
-            lines.push(format!("── {} is considering ──", active.crew_member));
-            lines.push(String::new());
-            lines.push(format!("  \"{}\"", active.context_summary));
-            lines.push(String::new());
-            lines.push("  ████████░░ thinking".into());
-            if let Ok((mut text, mut color)) = query.single_mut() {
-                **text = lines.join("\n");
-                color.0 = Color::srgb(pulse, 0.85 * pulse, 0.5 * pulse);
+    if panel.awaiting_dismiss {
+        if let Some(ref mut dt) = panel.dismiss_timer {
+            if dt.tick(time.delta()).is_finished() {
+                panel.stage = None;
+                panel.awaiting_dismiss = false;
+                panel.dismiss_timer = None;
             }
-            return;
+        }
+        return;
+    }
+
+    if panel.interjection_active {
+        return;
+    }
+
+    if panel.phase_timer.tick(time.delta()).is_finished() {
+        let current_phase = panel
+            .stage
+            .as_ref()
+            .map(|s| s.phase.clone())
+            .unwrap_or(StagePhase::Complete);
+        let next = match current_phase {
+            StagePhase::Examining => StagePhase::Weighing,
+            StagePhase::Weighing => StagePhase::Deciding,
+            StagePhase::Deciding => StagePhase::Verdict,
+            StagePhase::Verdict => StagePhase::Complete,
+            StagePhase::Complete => StagePhase::Complete,
+        };
+        panel.phase_timer = Timer::from_seconds(phase_duration(&next), TimerMode::Once);
+        if let Some(ref mut stage) = panel.stage {
+            stage.phase = next;
+        }
+
+        if panel
+            .stage
+            .as_ref()
+            .map(|s| s.phase == StagePhase::Complete)
+            .unwrap_or(false)
+        {
+            panel.awaiting_dismiss = true;
+            panel.dismiss_timer = Some(Timer::from_seconds(5.0, TimerMode::Once));
+            if let Some(crew) = &deliberation.just_completed {
+                log.log(format!("Deliberation with {crew} completed."));
+            }
         }
     }
 
-    if let Ok((mut text, _)) = query.single_mut() {
-        **text = String::new();
+    if let Some(ref active) = deliberation.active {
+        if let Some(ref mut stage) = panel.stage {
+            stage.remaining_secs = active.remaining.remaining().as_secs_f32();
+        }
     }
 }
 
-pub fn cleanup_completed_deliberations(
-    time: Res<Time>,
-    deliberation: Res<DeliberationState>,
-    mut render: ResMut<DeliberationRenderState>,
-) {
-    if let Some(ref name) = deliberation.just_completed {
-        let tick = render.tick_counter;
-        let already = render.tracks.iter().any(|t| t.crew_member_name == *name && matches!(t.status, DeliberationStatus::Success | DeliberationStatus::Failure));
-        if !already {
-            render.tracks.push(DeliberationTrack {
-                crew_member_name: name.clone(),
-                context_summary: String::new(),
-                status: DeliberationStatus::Success,
-                started_at_ticks: tick,
-                finished_at: time.elapsed_secs(),
-            });
-        }
-    }
-
-    render.tracks.retain(|t| {
-        if matches!(t.status, DeliberationStatus::Success | DeliberationStatus::Failure) {
-            time.elapsed_secs() - t.finished_at < 3.0
-        } else {
-            true
-        }
-    });
-}
-
-pub fn spawn_deliberation_ui(mut commands: Commands) {
+pub fn spawn_deliberation_panel(mut commands: Commands) {
     commands.spawn((
-        DeliberationUi,
+        DeliberationPanelUi,
+        DeliberationPanelText,
         Text::new(""),
         TextFont {
             font_size: 16.0,
@@ -98,9 +183,233 @@ pub fn spawn_deliberation_ui(mut commands: Commands) {
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(40.0),
-            left: Val::Percent(35.0),
-            max_width: Val::Px(400.0),
+            left: Val::Percent(25.0),
+            max_width: Val::Px(600.0),
             ..default()
         },
     ));
+}
+
+pub fn despawn_deliberation_panel(
+    mut commands: Commands,
+    query: Query<Entity, With<DeliberationPanelUi>>,
+) {
+    for entity in &query {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn panel_lines(panel: &DeliberationPanel) -> String {
+    let Some(stage) = &panel.stage else {
+        return String::new();
+    };
+
+    let mut lines = Vec::new();
+
+    match stage.phase {
+        StagePhase::Examining => {
+            lines.push(format!(
+                "── {} is examining the situation ──",
+                stage.crew_member
+            ));
+            lines.push(String::new());
+            lines.push(format!("  Mood: {}", stage.crew_mood));
+            lines.push(format!("  \"{}\"", stage.context_summary));
+        }
+        StagePhase::Weighing => {
+            lines.push(format!("── {} is weighing the rules ──", stage.crew_member));
+            lines.push(String::new());
+            if !stage.matched_rules.is_empty() {
+                lines.push("  RULES THAT MATCHED (green):".into());
+                for r in &stage.matched_rules {
+                    lines.push(format!("    ✓ {} — {}", r.label, r.condition_summary));
+                }
+            }
+            if !stage.unmatched_rules.is_empty() {
+                lines.push("  GAPS (red):".into());
+                for r in &stage.unmatched_rules {
+                    lines.push(format!("    ✗ {} — {}", r.label, r.condition_summary));
+                }
+            }
+            if stage.matched_rules.is_empty() && stage.unmatched_rules.is_empty() {
+                lines.push("  (no rules in contract)".into());
+            }
+        }
+        StagePhase::Deciding => {
+            lines.push(format!("── {} is deciding… ──", stage.crew_member));
+            lines.push(String::new());
+            lines.push("  ⏳ thinking".into());
+            let bar_width = 20;
+            let progress = if stage.total_secs > 0.0 {
+                ((stage.total_secs - stage.remaining_secs) / stage.total_secs * bar_width as f32)
+                    as usize
+            } else {
+                0
+            };
+            let bar = "█".repeat(progress.min(bar_width));
+            let empty = "░".repeat(bar_width.saturating_sub(progress));
+            lines.push(format!("  [{bar}{empty}]"));
+            lines.push(format!("  {:.1}s remaining", stage.remaining_secs.max(0.0)));
+        }
+        StagePhase::Verdict => {
+            lines.push(format!("── {} reached a verdict ──", stage.crew_member));
+            if let Some(ref v) = stage.verdict {
+                lines.push(format!("  Outcome: {}", v.outcome_label));
+                lines.push(format!("  Action: {}", v.action_taken));
+                lines.push(format!("  \"{}\"", v.reasoning));
+                if let Some(ref esc) = v.escalation {
+                    lines.push(format!("  ⚠ {esc}"));
+                }
+            }
+            if !panel.interjection_active {
+                lines.push(String::new());
+                lines.push("  [Tab] Interject — make the call yourself".into());
+            }
+        }
+        StagePhase::Complete => {
+            lines.push(format!("── {} deliberation complete ──", stage.crew_member));
+            if let Some(ref cost) = stage.cost {
+                for (who, delta) in &cost.relationship_deltas {
+                    let sign = if *delta > 0 { "+" } else { "" };
+                    lines.push(format!("  {who} ({sign}{delta} trust)"));
+                }
+                if let Some(dmg) = cost.hull_damage {
+                    lines.push(format!("  ⚠ Hull damage: {dmg}"));
+                }
+            }
+            if stage.recent_uncovered > 0 {
+                lines.push(format!(
+                    "  Your rules left {} gaps this cycle.",
+                    stage.recent_uncovered
+                ));
+            }
+            lines.push(String::new());
+            lines.push("  [Enter/Space] Dismiss".into());
+        }
+    }
+
+    if panel.interjection_active {
+        lines.push(String::new());
+        lines.push("── INTERJECT ──".into());
+        lines.push("  Choose an action to override with:".into());
+        lines.push("  [1] maintain_course  [2] all_stop  [3] fuel_warning".into());
+        lines.push("  [Esc] Cancel".into());
+    }
+
+    lines.join("\n")
+}
+
+pub fn render_deliberation_panel(
+    panel: Res<DeliberationPanel>,
+    mut query: Query<&mut Text, With<DeliberationPanelText>>,
+) {
+    if let Ok(mut text) = query.single_mut() {
+        **text = panel_lines(&panel);
+    }
+}
+
+pub fn handle_interjection_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut panel: ResMut<DeliberationPanel>,
+    mut deliberation: ResMut<DeliberationState>,
+    mut systems: ResMut<ShipSystems>,
+    mut log: ResMut<ShipLog>,
+) {
+    let stage_is_some = panel.stage.is_some();
+    if !stage_is_some {
+        return;
+    }
+
+    if panel.interjection_active {
+        if keys.just_pressed(KeyCode::Escape) {
+            panel.interjection_active = false;
+            panel.pending_interjection_action = None;
+            return;
+        }
+        if keys.just_pressed(KeyCode::Digit1) {
+            panel.pending_interjection_action = Some("maintain_course".into());
+        }
+        if keys.just_pressed(KeyCode::Digit2) {
+            panel.pending_interjection_action = Some("all_stop".into());
+        }
+        if keys.just_pressed(KeyCode::Digit3) {
+            panel.pending_interjection_action = Some("fuel_warning".into());
+        }
+        if let Some(action) = panel.pending_interjection_action.take() {
+            panel.interjection_active = false;
+            let crew = panel
+                .stage
+                .as_ref()
+                .map(|s| s.crew_member.clone())
+                .unwrap_or_default();
+            let _active = deliberation.active.take();
+            systems.unknown_signal = false;
+            log.log(format!(
+                "Captain overrode {crew}: ordered {action}. Trust may shift."
+            ));
+            let cost_snapshot = CostSnapshot {
+                relationship_deltas: vec![(crew.clone(), -40), ("Tove".into(), 20)],
+                hull_damage: None,
+                cargo_loss: None,
+            };
+            if let Some(ref mut stage) = panel.stage {
+                stage.verdict = Some(VerdictSnapshot {
+                    outcome_label: "player_override".into(),
+                    action_taken: action,
+                    reasoning: "Captain made the call.".into(),
+                    escalation: None,
+                });
+                stage.cost = Some(cost_snapshot);
+                stage.phase = StagePhase::Complete;
+            }
+            panel.awaiting_dismiss = true;
+            panel.dismiss_timer = Some(Timer::from_seconds(5.0, TimerMode::Once));
+        }
+        return;
+    }
+
+    let can_interject = panel
+        .stage
+        .as_ref()
+        .map(|s| s.phase == StagePhase::Verdict || s.phase == StagePhase::Deciding)
+        .unwrap_or(false);
+    if can_interject && keys.just_pressed(KeyCode::Tab) {
+        panel.interjection_active = true;
+        return;
+    }
+
+    if panel.awaiting_dismiss
+        && (keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Space))
+    {
+        panel.stage = None;
+        panel.awaiting_dismiss = false;
+        panel.dismiss_timer = None;
+    }
+}
+
+pub fn update_verdict_from_resolution(
+    mut panel: ResMut<DeliberationPanel>,
+    deliberation: Res<DeliberationState>,
+    runtime: Res<ContractRuntime>,
+) {
+    let Some(ref mut stage) = panel.stage else {
+        return;
+    };
+    if stage.verdict.is_some() {
+        return;
+    }
+    if deliberation.just_completed.is_some() && stage.phase == StagePhase::Deciding {
+        stage.verdict = Some(VerdictSnapshot {
+            outcome_label: "offline_fallback".into(),
+            action_taken: "maintain_course".into(),
+            reasoning: "No rule matched; Boris fell back to standard course.".into(),
+            escalation: None,
+        });
+        stage.cost = Some(CostSnapshot {
+            relationship_deltas: vec![(stage.crew_member.clone(), 10)],
+            hull_damage: None,
+            cargo_loss: None,
+        });
+        stage.recent_uncovered = runtime.recent_uncovered();
+    }
 }

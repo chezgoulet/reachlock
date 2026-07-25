@@ -27,6 +27,10 @@ pub fn admin_routes() -> Router<Arc<AppState>> {
         .route("/admin/tick/trigger", post(admin_tick_trigger))
         .route("/admin/content/purge", post(admin_content_purge))
         .route("/admin/audit", get(admin_audit_log))
+        // S73: admin dashboard and log level.
+        .route("/admin/dashboard", get(admin_dashboard))
+        .route("/admin/log-level", get(admin_get_log_level))
+        .route("/admin/log-level", post(admin_set_log_level))
 }
 
 /// The admin key, cached from the environment at first call. `None` means the
@@ -60,7 +64,12 @@ fn verify_admin(headers: &axum::http::HeaderMap) -> Result<&'static str, StatusC
         .ok_or(StatusCode::UNAUTHORIZED)?;
     let provided_hash = sha256::digest(header.as_bytes());
     let expected_hash = sha256::digest(expected.as_bytes());
-    if provided_hash.as_bytes().ct_eq(expected_hash.as_bytes()).unwrap_u8() != 1 {
+    if provided_hash
+        .as_bytes()
+        .ct_eq(expected_hash.as_bytes())
+        .unwrap_u8()
+        != 1
+    {
         return Err(StatusCode::UNAUTHORIZED);
     }
     Ok("authorized")
@@ -94,7 +103,10 @@ async fn admin_get_player(
                 "created_at": rec.created_at,
             })),
         ),
-        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "player not found"}))),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "player not found"})),
+        ),
     }
 }
 
@@ -107,7 +119,10 @@ async fn admin_list_players(
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
     let page: u32 = params.get("page").and_then(|s| s.parse().ok()).unwrap_or(1);
-    let per_page: u32 = params.get("per_page").and_then(|s| s.parse().ok()).unwrap_or(50);
+    let per_page: u32 = params
+        .get("per_page")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(50);
     let total = state.players.count();
     let players = state.players.list(page, per_page);
     (
@@ -188,10 +203,16 @@ async fn admin_set_role(
     }
     let role = body["role"].as_str().unwrap_or("player");
     if !["player", "moderator", "admin"].contains(&role) {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid role"})));
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid role"})),
+        );
     }
     state.players.set_role(&id, role);
-    (StatusCode::OK, Json(serde_json::json!({"role_updated": true})))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"role_updated": true})),
+    )
 }
 
 async fn admin_get_auth_config(
@@ -202,7 +223,10 @@ async fn admin_get_auth_config(
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
     let cfg = state.auth_config.read().unwrap();
-    (StatusCode::OK, Json(serde_json::to_value(&*cfg).unwrap_or_default()))
+    (
+        StatusCode::OK,
+        Json(serde_json::to_value(&*cfg).unwrap_or_default()),
+    )
 }
 
 async fn admin_set_auth_config(
@@ -279,4 +303,244 @@ async fn admin_audit_log(
         .unwrap_or(100);
     let entries = state.audit.recent(limit);
     (StatusCode::OK, Json(serde_json::json!(entries)))
+}
+
+// S73: Admin dashboard -------------------------------------------------------
+
+fn render_dashboard_html(state: &AppState) -> String {
+    let uptime = state.uptime_started.elapsed().as_secs();
+    let connected = state.connected_count();
+    let active_sessions = state.sessions.active_sessions();
+    let uptime_hms = format!(
+        "{:02}:{:02}:{:02}",
+        uptime / 3600,
+        (uptime % 3600) / 60,
+        uptime % 60
+    );
+
+    let health = state.health.aggregate();
+    let health_color = |s: &str| -> &str {
+        match s {
+            "ok" => "#40c040",
+            "degraded" => "#c0a000",
+            _ => "#c04040",
+        }
+    };
+    let health_rows: String = health
+        .checks
+        .iter()
+        .map(|c| {
+            let color = health_color(&format!("{:?}", c.status));
+            let status_text = match &c.status {
+                crate::services::health::HealthStatus::Ok => "ok".into(),
+                crate::services::health::HealthStatus::Degraded { reason } => {
+                    format!("degraded: {reason}")
+                }
+                crate::services::health::HealthStatus::Down { reason } => format!("down: {reason}"),
+            };
+            format!(
+                "<tr><td>{}</td><td style=\"color:{}\">{}</td></tr>",
+                c.name, color, status_text
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    let db_status = "memory (no pool info)";
+    let admin_key_configured = admin_key().is_some();
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta http-equiv="refresh" content="15">
+<title>ReachLock Admin</title>
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{ background: #0d1117; color: #c9d1d9; font-family: -apple-system,BlinkMacSystemFont,sans-serif; padding: 2rem; }}
+  h1 {{ color: #58a6ff; margin-bottom: 1.5rem; font-size: 1.5rem; }}
+  nav {{ margin-bottom: 2rem; }}
+  nav a {{ color: #58a6ff; text-decoration: none; margin-right: 1rem; font-size: 0.9rem; }}
+  nav a:hover {{ text-decoration: underline; }}
+  .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }}
+  .card {{ background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; }}
+  .card h3 {{ color: #8b949e; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }}
+  .card .value {{ font-size: 1.8rem; font-weight: 600; color: #f0f6fc; }}
+  table {{ width: 100%; border-collapse: collapse; margin-bottom: 2rem; }}
+  th, td {{ text-align: left; padding: 0.5rem; border-bottom: 1px solid #30363d; }}
+  th {{ color: #8b949e; font-size: 0.8rem; text-transform: uppercase; }}
+  .health-dot {{ display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.5rem; }}
+  section {{ margin-bottom: 2rem; }}
+  section h2 {{ color: #58a6ff; font-size: 1.1rem; margin-bottom: 0.75rem; }}
+</style>
+</head>
+<body>
+<h1>ReachLock Dashboard</h1>
+<nav>
+  <a href="/admin/dashboard">Dashboard</a>
+  <a href="/admin/players">Players</a>
+  <a href="/admin/universes">Universes</a>
+  <a href="/admin/audit">Audit Log</a>
+</nav>
+<div class="cards">
+  <div class="card"><h3>Connected Players</h3><div class="value">{connected}</div></div>
+  <div class="card"><h3>Active Sessions</h3><div class="value">{active_sessions}</div></div>
+  <div class="card"><h3>Uptime</h3><div class="value">{uptime_hms}</div></div>
+  <div class="card"><h3>Admin Key</h3><div class="value">{admin_status}</div></div>
+</div>
+<section>
+  <h2>Database</h2>
+  <p>{db_status}</p>
+</section>
+<section>
+  <h2>Health Checks</h2>
+  <table><thead><tr><th>Check</th><th>Status</th></tr></thead><tbody>{health_rows}</tbody></table>
+</section>
+<script>
+  setTimeout(function(){{ window.location.reload(); }}, 15000);
+</script>
+</body>
+</html>"#,
+        connected = connected,
+        active_sessions = active_sessions,
+        uptime_hms = uptime_hms,
+        admin_status = if admin_key_configured {
+            "configured"
+        } else {
+            "not set"
+        },
+        db_status = db_status,
+        health_rows = health_rows,
+    )
+}
+
+async fn admin_dashboard(
+    headers: axum::http::HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    // Accept key from query param (for browser) or header (for curl).
+    let key_from_query = params.get("key").cloned();
+    let auth_header = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let authorized = match (key_from_query, auth_header) {
+        (Some(k), _) => check_admin_key(&k),
+        (_, Some(h)) => {
+            if let Some(token) = h.strip_prefix("Admin ") {
+                check_admin_key(token)
+            } else {
+                false
+            }
+        }
+        (None, None) => false,
+    };
+
+    if !authorized {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            serde_json::json!({"error": "unauthorized"}).to_string(),
+        );
+    }
+
+    let html = render_dashboard_html(&state);
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    )
+}
+
+/// Check admin key (not timing-safe — acceptable for dashboard page).
+fn check_admin_key(provided: &str) -> bool {
+    let Some(expected) = admin_key() else {
+        return false;
+    };
+    let provided_hash = sha256::digest(provided.as_bytes());
+    let expected_hash = sha256::digest(expected.as_bytes());
+    provided_hash
+        .as_bytes()
+        .ct_eq(expected_hash.as_bytes())
+        .unwrap_u8()
+        == 1
+}
+
+// S73: Log level endpoints ---------------------------------------------------
+
+use std::sync::OnceLock;
+
+use tracing_subscriber::reload;
+use tracing_subscriber::EnvFilter;
+
+static RELOAD_HANDLE: OnceLock<reload::Handle<EnvFilter, tracing_subscriber::Registry>> =
+    OnceLock::new();
+
+/// Register the reload handle at startup. Called from main().
+pub fn init_reload_handle(handle: reload::Handle<EnvFilter, tracing_subscriber::Registry>) {
+    let _ = RELOAD_HANDLE.set(handle);
+}
+
+fn get_reload_handle() -> Option<&'static reload::Handle<EnvFilter, tracing_subscriber::Registry>> {
+    RELOAD_HANDLE.get()
+}
+
+#[derive(serde::Deserialize)]
+struct LogLevelBody {
+    target: Option<String>,
+    level: String,
+}
+
+fn valid_level(s: &str) -> bool {
+    matches!(s, "trace" | "debug" | "info" | "warn" | "error")
+}
+
+async fn admin_set_log_level(
+    headers: axum::http::HeaderMap,
+    Json(body): Json<LogLevelBody>,
+) -> impl IntoResponse {
+    if let Err(status) = verify_admin(&headers) {
+        return (status, Json(serde_json::json!({"error": "unauthorized"})));
+    }
+    if !valid_level(&body.level) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(
+                serde_json::json!({"error": "invalid level, use one of: trace, debug, info, warn, error"}),
+            ),
+        );
+    }
+    let Some(handle) = get_reload_handle() else {
+        return (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(
+                serde_json::json!({"error": "log level reload not available (no fmt subscriber)"}),
+            ),
+        );
+    };
+    let filter = match &body.target {
+        Some(target) => EnvFilter::new(format!("{target}={}", body.level)),
+        None => EnvFilter::new(body.level.clone()),
+    };
+    if handle.modify(|f| *f = filter).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "reload failed"})),
+        );
+    }
+    tracing::info!(target = ?body.target, level = %body.level, "log level changed");
+    (StatusCode::OK, Json(serde_json::json!({"updated": true})))
+}
+
+async fn admin_get_log_level(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    if let Err(status) = verify_admin(&headers) {
+        return (status, Json(serde_json::json!({"error": "unauthorized"})));
+    }
+    let current = get_reload_handle()
+        .map(|_| serde_json::json!({"root": "unknown", "overrides": []}))
+        .unwrap_or_else(
+            || serde_json::json!({"root": "unknown", "note": "log level reload not available"}),
+        );
+    (StatusCode::OK, Json(current))
 }

@@ -4,9 +4,7 @@
 
 use std::path::Path;
 
-use crate::faction::{
-    set_faction_catalog, set_storylines, Faction, FactionCatalog, Storyline,
-};
+use crate::faction::{set_faction_catalog, set_storylines, Faction, FactionCatalog, Storyline};
 
 /// Load all faction JSON profiles from a directory and set the runtime catalog.
 pub fn load_faction_profiles<P: AsRef<Path>>(dir: P) -> Result<(), String> {
@@ -18,8 +16,7 @@ pub fn load_faction_profiles<P: AsRef<Path>>(dir: P) -> Result<(), String> {
         if path.extension().and_then(|s| s.to_str()) != Some("json") {
             continue;
         }
-        let text =
-            std::fs::read_to_string(&path).map_err(|e| format!("read {path:?}: {e}"))?;
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("read {path:?}: {e}"))?;
         let faction: Faction =
             serde_json::from_str(&text).map_err(|e| format!("parse {path:?}: {e}"))?;
         factions.push(faction);
@@ -42,8 +39,7 @@ pub fn load_storyline_files<P: AsRef<Path>>(dir: P) -> Result<(), String> {
         if path.extension().and_then(|s| s.to_str()) != Some("ron") {
             continue;
         }
-        let text =
-            std::fs::read_to_string(&path).map_err(|e| format!("read {path:?}: {e}"))?;
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("read {path:?}: {e}"))?;
         let storyline: Storyline =
             ron::from_str(&text).map_err(|e| format!("parse {path:?}: {e}"))?;
         storylines.push(storyline);

@@ -28,11 +28,13 @@ use reachlock_core::generator::system::Fidelity;
 use reachlock_core::seed::types::Biome;
 
 /// Top-level app machine. `InGame` is the single state under which the
-/// `GameMode` sub-state exists (spec §14).
+/// `GameMode` sub-state exists (spec §14). `CharacterCreation` is entered
+/// from New Game (S78).
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AppState {
     #[default]
     MainMenu,
+    CharacterCreation,
     InGame,
 }
 

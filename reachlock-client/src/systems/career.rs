@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 
 use reachlock_core::career::piracy::PiracyState;
-use reachlock_core::career::PlayerCareer;
+use reachlock_core::career::{PlayerCareer, ProgressionCriterionType};
 
 use crate::settings::{InputAction, Settings};
 
@@ -30,7 +30,7 @@ pub fn career_panel_toggle(
     settings: Res<Settings>,
     mut visible: ResMut<CareerPanelVisible>,
 ) {
-    if keys.just_pressed(settings.key(InputAction::OpenCrewRoster)) {
+    if keys.just_pressed(settings.key(InputAction::OpenCareerPanel)) {
         visible.0 = !visible.0;
     }
 }
@@ -71,17 +71,35 @@ pub fn render_career_panel(
             match &career.0 {
                 None => lines.push("  No career data loaded.".into()),
                 Some(pc) => {
+                    // Systems discovered counter (S85).
+                    let sys_count: u64 = pc
+                        .active_paths
+                        .iter()
+                        .flat_map(|ap| {
+                            ap.progress
+                                .get(&ProgressionCriterionType::SystemsDiscovered)
+                        })
+                        .sum();
+                    if sys_count > 0 {
+                        lines.push(format!("  Systems Discovered: {sys_count}"));
+                    }
                     if pc.active_paths.is_empty() && pc.completed_paths.is_empty() {
                         lines.push("  No career paths joined yet.".into());
                     }
                     for ap in &pc.active_paths {
-                        lines.push(format!("  {} — rank {}  prestige {}", ap.path_id, ap.current_rank, pc.total_prestige));
+                        lines.push(format!(
+                            "  {} — rank {}  prestige {}",
+                            ap.path_id, ap.current_rank, pc.total_prestige
+                        ));
                         for (action, count) in &ap.progress {
                             lines.push(format!("    {:?}: {}", action, count));
                         }
                     }
                     for cp in &pc.completed_paths {
-                        lines.push(format!("  [done] {} — final rank {} ({:?})", cp.path_id, cp.final_rank, cp.reason));
+                        lines.push(format!(
+                            "  [done] {} — final rank {} ({:?})",
+                            cp.path_id, cp.final_rank, cp.reason
+                        ));
                     }
                 }
             }
@@ -92,15 +110,24 @@ pub fn render_career_panel(
             match &piracy.0 {
                 None => lines.push("  No piracy data loaded.".into()),
                 Some(ps) => {
-                    lines.push(format!("  Level: {:?} (value: {})", ps.notoriety.level, ps.notoriety.value));
+                    lines.push(format!(
+                        "  Level: {:?} (value: {})",
+                        ps.notoriety.level, ps.notoriety.value
+                    ));
                     if !ps.active_bounties.is_empty() {
                         lines.push(format!("  Bounties: {}", ps.active_bounties.len()));
                         for b in &ps.active_bounties {
-                            lines.push(format!("    {} {}cr ({})", b.issuer_faction, b.amount, b.crime));
+                            lines.push(format!(
+                                "    {} {}cr ({})",
+                                b.issuer_faction, b.amount, b.crime
+                            ));
                         }
                     }
                     if !ps.current_havens_known.is_empty() {
-                        lines.push(format!("  Pirate havens known: {}", ps.current_havens_known.len()));
+                        lines.push(format!(
+                            "  Pirate havens known: {}",
+                            ps.current_havens_known.len()
+                        ));
                     }
                 }
             }

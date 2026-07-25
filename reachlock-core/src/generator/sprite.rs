@@ -18,7 +18,7 @@ pub const HAIR_STYLE_COUNT: u8 = 7;
 /// All user-tweakable visual properties for a character. Every field is
 /// `None` by default, meaning "derive from the seed". The editor fills in
 /// the fields it wants to pin; anything left `None` stays procedural.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CharacterLookConfig {
     pub species: String,
     /// None = seed-derived. Some(i) picks style `i % HAIR_STYLE_COUNT`.

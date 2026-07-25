@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Origin Content File",
+  "description": "A character origin starting package (S79)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "display_name", "asset_type", "seed", "universe", "priority", "payload"],
+  "properties": {
+    "id": { "type": "string" },
+    "display_name": { "type": "string" },
+    "asset_type": { "type": "string", "enum": ["origin"] },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "universe": { "type": "string" },
+    "priority": { "type": "string", "enum": ["procedural", "curated", "event", "authoritative"] },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "starting_career", "starting_rank", "start_system", "start_location"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "starting_career": { "type": "string" },
+        "starting_rank": { "type": "integer", "minimum": 1 },
+        "faction_deltas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["faction_id", "delta"],
+            "properties": {
+              "faction_id": { "type": "string" },
+              "delta": { "type": "integer", "minimum": -100, "maximum": 100 }
+            }
+          }
+        },
+        "starting_credits": { "type": "integer", "minimum": 0 },
+        "ship_template": { "type": ["string", "null"] },
+        "ship_seed": { "type": ["integer", "null"], "minimum": 0, "maximum": 9007199254740991 },
+        "starting_gear": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item_id", "count"],
+            "properties": {
+              "item_id": { "type": "string" },
+              "count": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "starting_crew": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["role"],
+            "properties": {
+              "role": { "type": "string" }
+            }
+          }
+        },
+        "known_systems": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "start_system": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "start_location": { "type": "string" },
+        "opening_log_entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title", "body", "tick_offset"],
+            "properties": {
+              "title": { "type": "string" },
+              "body": { "type": "string" },
+              "tick_offset": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -5,8 +5,8 @@ sprints. Each sprint is one self-contained brief: outcome, deliverables,
 acceptance gates, frozen contracts, non-goals, gotchas. No time estimates,
 no line counts — milestones and outcomes only.
 
-**Already done (not in any sprint):** workspace + full plugin stack on WASM;
-cross-target determinism harness in CI (x86_64/aarch64/wasm32 bit-identical);
+**Already done (not in any sprint):** workspace + full plugin stack;
+cross-target determinism harness in CI (x86_64/aarch64/i686 bit-identical);
 seed protocol + 53-bit seeds; contract engine + signed evaluation chains;
 generators (hull/station/planet/music/ui/noise/palette); WS ledger server
 with first-write-wins discovery, verify service, tier-gated LLM proxy stub;
@@ -43,7 +43,6 @@ A sprint may start when its listed dependencies are merged.
 | 6 | S21 | Gate network & the procedural frontier | S04, S09 |
 | 6 | S22 | Modding framework | S01 |
 | 6 | S23 | MMO presence & coordination | S02, S03 |
-| 6 | S24 | Web distribution & release pipeline | — (any time) |
 | 7 | S25 | Content editor suite (standalone dev/modder GUI) | S01, S04, S05 |
 | 7 | S26 | Server operations — observability, admin API, graceful degradation | S03, S23 |
 | 7 | S27 | LLM cost & quota management | S14, S26 |
@@ -172,13 +171,13 @@ deliberation renderer. NPC voice synthesis is wired.
 read-only inspiration.
 
 **Gates.** Your sprint is done when `make check` passes locally (fmt, clippy
-`-D warnings`, all tests, WASM build) and CI is green — including the
+`-D warnings`, all tests, engine purity) and CI is green — including the
 cross-platform determinism gate. These are non-negotiable.
 
 **Iron rules (spec §13, enforced by CI and review):**
 1. **Core is pure.** `reachlock-core` gets zero rendering/IO deps. Generators
    are pure functions. If you need a new dependency in core, it must compile
-   to wasm32 and be justified in the PR.
+   be justified in the PR, and `make check-purity` must stay green.
 2. **No floats in gameplay values.** Fixed-point (`util::rng::Fixed`, 1/1024)
    or plain integers for anything that affects game state. Floats are for the
    bridge/render layer only.
@@ -194,6 +193,28 @@ cross-platform determinism gate. These are non-negotiable.
 7. **Freeze contracts first.** Each brief lists types/schemas to define and
    test before building the slice — the v1 "Phase A" pattern. If two sprints
    share a type, the earlier wave owns it.
+8. **A system nobody can reach is not done.** Every sprint's acceptance gates
+   must include a *player-reachable* (or author-reachable, for editor work)
+   path, named explicitly: which key, menu, or panel opens it. Five sprints
+   — S36 dilemmas, S37 captain's log, S39 ecosystem events, S41 scripted
+   encounters, S60 storylines — shipped complete, tested, golden-pinned core
+   systems with **zero** client references. Ten editors shipped registered but
+   absent from the content browser and `File > New`. A core module with tests
+   and no surface is inventory, not a feature.
+
+**Acceptance-gate template.** Every brief's gate section answers all four:
+
+| Question | Example |
+|---|---|
+| Does `make check` pass? | fmt, clippy `--all-targets`, tests, engine purity |
+| **How does a human reach it?** | "Dock → crew console → F2 installs the contract" |
+| What test fails if someone deletes the wiring? | `consumer_coverage_test` |
+| What did the manifest/wire shape change? | "determinism manifest v31 → v32: added …" |
+
+The third column is the one that matters. Prose in a brief does not survive;
+an enum-driven test does. Prefer a gate that iterates a `…::all()` over one
+that compares against a hand-written list — a hardcoded list can only
+re-confirm what someone already remembered to type.
 
 **Gotcha ledger (hard-won, don't relearn):**
 - bevy 0.18: mesh types import from `bevy::mesh::`, not `bevy::render::mesh::`.
@@ -209,8 +230,6 @@ cross-platform determinism gate. These are non-negotiable.
 - Seeds are ≤ 2^53 (JSON float survival). `Seed::new` masks; keep it that way.
 - Bevy query filters trip clippy `type_complexity`; `#[allow]` on the system
   fn is the accepted pattern.
-- S25 (editor suite) is native-only — exempt from `make check` WASM build.
-  `bevy_egui` + `wgpu` render targets don't compile to wasm32.
 - S31 (settings): `KeyCode` doesn't derive serde natively. Store keybinds as
   strings via Bevy's `KeyCode`→`&str` conversion; deserialize via lookup.
   Never hardcode another key literal — use `settings.key(InputAction::Foo)`.

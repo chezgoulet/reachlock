@@ -23,30 +23,25 @@ fn readable_path(pt: PathType) -> &'static str {
 }
 
 impl CareerEditor {
-    fn load_or_new() -> Self {
-        let dir = crate::app::content_root().join(ContentType::Career.directory());
-        let default_path = dir.join("compact_navy.ron");
-        match crate::io::read_ron::<CareerPath>(&default_path) {
-            Ok(career) => CareerEditor {
-                path: Some(default_path),
-                career,
-                has_changes: false,
+    /// A genuinely new document.
+    ///
+    /// This used to read a hardcoded `compact_navy.ron`, so `File > New`
+    /// bound to that file and the first save overwrote canonical content.
+    fn new() -> Self {
+        CareerEditor {
+            path: None,
+            career: CareerPath {
+                id: "new_career".into(),
+                path_type: PathType::Military,
+                name: "New Career".into(),
+                description: String::new(),
+                faction_id: None,
+                ranks: vec![],
+                progression_criteria: vec![],
+                perks: vec![],
+                conflicting_paths: vec![],
             },
-            Err(_) => CareerEditor {
-                path: None,
-                career: CareerPath {
-                    id: "new_career".into(),
-                    path_type: PathType::Military,
-                    name: "New Career".into(),
-                    description: String::new(),
-                    faction_id: None,
-                    ranks: vec![],
-                    progression_criteria: vec![],
-                    perks: vec![],
-                    conflicting_paths: vec![],
-                },
-                has_changes: false,
-            },
+            has_changes: false,
         }
     }
 }
@@ -73,13 +68,16 @@ impl Editor for CareerEditor {
         crate::io::write_ron(path, &self.career).map_err(|e| format!("saving career: {e}"))
     }
     fn save_all(&mut self) -> Result<bool, String> {
-        let path = self.path.clone().unwrap_or_else(|| {
-            crate::app::content_root()
-                .join(ContentType::Career.directory())
-                .join(format!("{}.ron", self.career.id))
-        });
+        // Only write when dirty, and never invent a filename: the old
+        // fallback name meant two new documents overwrote each other.
+        // Returning Ok(false) with no path lets the shell run Save As.
+        if !self.has_changes {
+            return Ok(self.path.is_some());
+        }
+        let Some(path) = self.path.clone() else {
+            return Ok(false);
+        };
         self.save(&path)?;
-        self.path = Some(path);
         self.has_changes = false;
         Ok(true)
     }
@@ -98,8 +96,8 @@ impl Editor for CareerEditor {
         }
         errors
     }
-    fn ui(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(format!("Type: {}", readable_path(self.career.path_type)));
             });
@@ -111,11 +109,47 @@ impl Editor for CareerEditor {
             ui.label(format!("Perks: {}", self.career.perks.len()));
         });
     }
+    fn touch(&mut self) {
+        self.has_changes = true;
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        ron::ser::to_string(&self.career).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron_text: &str) -> Result<(), String> {
+        self.career = ron::from_str(ron_text).map_err(|e| e.to_string())?;
+        self.has_changes = true;
+        Ok(())
+    }
+
+    /// Reroll only renames the id, which would break every cross-reference
+    /// pointing at it. Opt out rather than corrupt the content graph.
+    fn accept_seed_reroll(&self) -> bool {
+        false
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.strong(self.content_type().name());
+        let issues = self.validate();
+        if issues.is_empty() {
+            ui.colored_label(egui::Color32::from_rgb(0x4C, 0xAF, 0x50), "✔ clean");
+        } else {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xE5, 0x73, 0x73),
+                format!("✘ {} issue(s)", issues.len()),
+            );
+            for issue in issues.iter().take(5) {
+                ui.weak(issue);
+            }
+        }
+    }
+
     fn mark_saved(&mut self) {
         self.has_changes = false;
     }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {
-    Box::new(CareerEditor::load_or_new())
+    Box::new(CareerEditor::new())
 }

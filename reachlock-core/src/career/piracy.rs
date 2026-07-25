@@ -1,6 +1,6 @@
 //! Piracy system (S43): ship capture, contraband, notoriety, bounty system,
 //! and boarding mechanics. Pure functions over `PiracyState` — no I/O,
-//! deterministic, wasm-safe (iron rule #1).
+//! deterministic and IO-free (iron rule #1).
 
 use std::collections::HashMap;
 
@@ -200,8 +200,11 @@ mod tests {
         state.notoriety.value = 2500;
         state.notoriety.level = NotorietyLevel::Hunted;
         let state = record_crime(state, "piracy", "compact", 100, 200);
-        assert!(state.active_bounties.iter().any(|b| b.issuer_faction == "compact"));
-        assert!(state.active_bounties[0].dead_or_alive == false);
+        assert!(state
+            .active_bounties
+            .iter()
+            .any(|b| b.issuer_faction == "compact"));
+        assert!(!state.active_bounties[0].dead_or_alive);
     }
 
     #[test]

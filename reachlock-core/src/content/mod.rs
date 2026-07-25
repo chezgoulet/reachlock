@@ -21,6 +21,7 @@ pub mod dungeon;
 pub mod envelope;
 pub mod event;
 pub mod faction_loader;
+pub mod origin;
 pub mod priority;
 pub mod recipe;
 pub mod resolve;
@@ -31,6 +32,10 @@ pub use dialogue::{Dialogue, DialogueChoice, DialogueNode, NodeType};
 pub use dungeon::{Dungeon, DungeonPuzzle, DungeonRoom};
 pub use envelope::{AssetType, ContentFile, ContentPayload, NpcSpawn};
 pub use event::{Consequence, Event, EventStage, TriggerCondition};
+pub use origin::{
+    CareerPathId, CrewAssignment, FactionStandingDelta, ItemStack, LogEntryDraft, Origin, Rank,
+    ShipTemplateId,
+};
 pub use priority::Priority;
 pub use recipe::{Ingredient, OutputConfig, Recipe, SkillRequirement};
 pub use resolve::{resolve, Resolved, SeedParams};

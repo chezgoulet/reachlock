@@ -9,29 +9,24 @@ pub struct EventEditor {
 }
 
 impl EventEditor {
-    fn load_or_new() -> Self {
-        let dir = crate::app::content_root().join(ContentType::Event.directory());
-        let files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
-            .ok()
-            .into_iter()
-            .flatten()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().is_some_and(|x| x == "ron"))
-            .map(|e| e.path())
-            .collect();
-        if let Some(path) = files.first() {
-            if let Ok(e) = crate::io::read_ron::<Event>(path) {
-                return EventEditor { path: Some(path.clone()), event: e, has_changes: false };
-            }
-        }
+    /// A genuinely new document.
+    ///
+    /// This used to adopt the first `.ron` in the content directory, so
+    /// `File > New` silently bound to an existing file and the first save
+    /// overwrote it.
+    fn new() -> Self {
         EventEditor {
             path: None,
             event: Event {
                 id: "new_event".into(),
                 stages: vec![EventStage {
                     narrative_text: "Event begins.".into(),
-                    trigger_conditions: vec![TriggerCondition::FlagSet { flag: "intro".into() }],
-                    consequences: vec![Consequence::SetFlag { flag: "event_started".into() }],
+                    trigger_conditions: vec![TriggerCondition::FlagSet {
+                        flag: "intro".into(),
+                    }],
+                    consequences: vec![Consequence::SetFlag {
+                        flag: "event_started".into(),
+                    }],
                 }],
                 expires_after_ticks: None,
             },
@@ -41,9 +36,15 @@ impl EventEditor {
 }
 
 impl Editor for EventEditor {
-    fn title(&self) -> &str { &self.event.id }
-    fn content_type(&self) -> ContentType { ContentType::Event }
-    fn has_unsaved_changes(&self) -> bool { self.has_changes }
+    fn title(&self) -> &str {
+        &self.event.id
+    }
+    fn content_type(&self) -> ContentType {
+        ContentType::Event
+    }
+    fn has_unsaved_changes(&self) -> bool {
+        self.has_changes
+    }
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
         let e: Event = crate::io::read_ron(path).map_err(|e| format!("reading event: {e}"))?;
         self.event = e;
@@ -55,11 +56,16 @@ impl Editor for EventEditor {
         crate::io::write_ron(path, &self.event).map_err(|e| format!("saving event: {e}"))
     }
     fn save_all(&mut self) -> Result<bool, String> {
-        let path = self.path.clone().unwrap_or_else(|| {
-            crate::app::content_root().join(ContentType::Event.directory()).join("generated_event.ron")
-        });
+        // Only write when dirty, and never invent a filename: the old
+        // fallback name meant two new documents overwrote each other.
+        // Returning Ok(false) with no path lets the shell run Save As.
+        if !self.has_changes {
+            return Ok(self.path.is_some());
+        }
+        let Some(path) = self.path.clone() else {
+            return Ok(false);
+        };
         self.save(&path)?;
-        self.path = Some(path);
         self.has_changes = false;
         Ok(true)
     }
@@ -69,18 +75,58 @@ impl Editor for EventEditor {
     }
     fn validate(&self) -> Vec<String> {
         let mut errors = vec![];
-        if self.event.id.is_empty() { errors.push("id is empty".into()); }
+        if self.event.id.is_empty() {
+            errors.push("id is empty".into());
+        }
         errors
     }
-    fn ui(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.label(format!("Event: {}", self.event.id));
             ui.label(format!("Stages: {}", self.event.stages.len()));
         });
     }
-    fn mark_saved(&mut self) { self.has_changes = false; }
+    fn touch(&mut self) {
+        self.has_changes = true;
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        ron::ser::to_string(&self.event).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron_text: &str) -> Result<(), String> {
+        self.event = ron::from_str(ron_text).map_err(|e| e.to_string())?;
+        self.has_changes = true;
+        Ok(())
+    }
+
+    /// Reroll only renames the id, which would break every cross-reference
+    /// pointing at it. Opt out rather than corrupt the content graph.
+    fn accept_seed_reroll(&self) -> bool {
+        false
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.strong(self.content_type().name());
+        let issues = self.validate();
+        if issues.is_empty() {
+            ui.colored_label(egui::Color32::from_rgb(0x4C, 0xAF, 0x50), "✔ clean");
+        } else {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xE5, 0x73, 0x73),
+                format!("✘ {} issue(s)", issues.len()),
+            );
+            for issue in issues.iter().take(5) {
+                ui.weak(issue);
+            }
+        }
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {
-    Box::new(EventEditor::load_or_new())
+    Box::new(EventEditor::new())
 }

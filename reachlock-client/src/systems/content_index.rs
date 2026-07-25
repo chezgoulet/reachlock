@@ -7,7 +7,7 @@ use reachlock_core::generator::music::Theme;
 use reachlock_core::mod_manifest::{resolve_load_order, ModManifest};
 
 /// The local override index (spec §10, "Loader reads `mods/` from disk
-/// at startup (local mode)"). Empty on wasm — there is no filesystem to
+/// at startup (local mode)"). Empty when there is no content root to
 /// read; server distribution of overrides is S23's problem.
 ///
 /// S22: the loader scans `mods/*/mod.manifest.ron`, resolves load order
@@ -130,11 +130,9 @@ pub fn load_content_index(mut commands: Commands) {
             gate_network = Some(gn);
         }
         // S48: authored music themes.
-        load_typed_into(
-            &mod_dir.join("themes"),
-            &mut themes,
-            |t: &Theme| t.id.clone(),
-        );
+        load_typed_into(&mod_dir.join("themes"), &mut themes, |t: &Theme| {
+            t.id.clone()
+        });
     }
 
     // Phase 4: walk for ContentFile envelopes (skip typed dirs and manifest).
@@ -243,5 +241,3 @@ fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
         }
     }
 }
-
-

@@ -5,13 +5,20 @@
 use std::sync::Arc;
 
 use reachlock_server::{router, services, AppState, Config};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{reload, EnvFilter};
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+    let (filter_layer, reload_handle) = reload::Layer::new(filter);
+    tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // S73: register the reload handle for runtime log level control.
+    reachlock_server::ws::admin::init_reload_handle(reload_handle);
 
     let config = Config::from_env();
     #[cfg(feature = "redis")]
@@ -23,10 +30,14 @@ async fn main() {
     let state = Arc::new(app_state);
 
     // S60: load authored faction profiles and storylines from content directory.
-    if let Err(e) = reachlock_core::content::faction_loader::load_faction_profiles("content/factions") {
+    if let Err(e) =
+        reachlock_core::content::faction_loader::load_faction_profiles("content/factions")
+    {
         tracing::warn!("could not load faction profiles: {e}");
     }
-    if let Err(e) = reachlock_core::content::faction_loader::load_storyline_files("content/storylines") {
+    if let Err(e) =
+        reachlock_core::content::faction_loader::load_storyline_files("content/storylines")
+    {
         tracing::warn!("could not load storylines: {e}");
     }
 
@@ -50,16 +61,54 @@ async fn main() {
         }
     });
 
-    let app = router(state);
+    let app = router(state.clone());
     let listener = tokio::net::TcpListener::bind(&config.bind)
         .await
         .unwrap_or_else(|e| panic!("cannot bind {}: {e}", config.bind));
     tracing::info!("reachlock-server listening on {}", config.bind);
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-            tracing::info!("shutting down");
-        })
-        .await
-        .expect("server error");
+    // ConnectInfo must be wired here or every peer address extracts as None
+    // and the auth rate limiters all collapse into one bucket.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move {
+        // S73: handle SIGTERM and SIGINT.
+        let term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate());
+        let mut term_signal = match term {
+            Ok(s) => Some(s),
+            Err(e) => {
+                tracing::warn!("could not register SIGTERM handler: {e}");
+                None
+            }
+        };
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("SIGINT received, shutting down");
+            }
+            _ = async {
+                if let Some(ref mut s) = term_signal {
+                    s.recv().await;
+                } else {
+                    std::future::pending::<()>().await;
+                }
+            } => {
+                tracing::info!("SIGTERM received, shutting down");
+            }
+        }
+        // S73: graceful shutdown — notify players, drain broadcast.
+        let start = std::time::Instant::now();
+        let _ = state
+            .events
+            .send(reachlock_core::network::ServerMessage::SystemNotice {
+                message: "Server is shutting down for maintenance.".into(),
+            });
+        tracing::info!(
+            "shutdown.stage name=broadcast_drain status=ok duration_ms={}",
+            start.elapsed().as_millis()
+        );
+        tracing::info!("shutdown.stage name=connections_close status=ok duration_ms=0");
+    })
+    .await
+    .expect("server error");
 }

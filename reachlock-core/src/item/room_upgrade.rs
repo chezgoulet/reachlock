@@ -1,5 +1,5 @@
 //! Ship room upgrades (S45): widget items, upgrade slots, power budget,
-//! and room repurposing. Pure functions — deterministic, wasm-safe.
+//! and room repurposing. Pure functions — deterministic and IO-free.
 
 use serde::{Deserialize, Serialize};
 
@@ -210,7 +210,10 @@ mod tests {
     #[test]
     fn room_kind_mapping() {
         assert_eq!(RoomUpgradeKind::SurgerySuite.room_kind(), RoomKind::MedBay);
-        assert_eq!(RoomUpgradeKind::CargoExpansion.room_kind(), RoomKind::CargoHold);
+        assert_eq!(
+            RoomUpgradeKind::CargoExpansion.room_kind(),
+            RoomKind::CargoHold
+        );
         assert_eq!(RoomUpgradeKind::GalleyUnit.room_kind(), RoomKind::Galley);
         assert_eq!(RoomUpgradeKind::Workbench.room_kind(), RoomKind::Workshop);
     }

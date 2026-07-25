@@ -1,8 +1,8 @@
 //! Dual-target WebSocket transport (S02 deliverable). One API for native
-//! and wasm32 via `ewebsock` (no async runtime — wasm32 has no tokio, iron
+//! via `ewebsock` (no async runtime needed in the client, iron
 //! rule #5). Bevy systems only ever call [`WsTransport::poll`], which is
 //! non-blocking on both targets: native reads a channel fed by a background
-//! OS thread, wasm reads a channel fed by browser `WebSocket` callbacks.
+//! OS thread and the client reads a channel fed by its callbacks.
 
 use reachlock_core::network::{ClientMessage, ServerMessage};
 
@@ -27,7 +27,7 @@ pub struct WsTransport {
 impl WsTransport {
     /// Opens a connection. Returns immediately on both targets — the actual
     /// handshake happens on a background thread (native) or the browser's
-    /// event loop (wasm); watch for [`TransportEvent::Opened`] via
+    /// event loop; watch for [`TransportEvent::Opened`] via
     /// [`Self::poll`].
     pub fn connect(url: &str) -> Result<Self, String> {
         let (sender, receiver) = ewebsock::connect(url, ewebsock::Options::default())?;

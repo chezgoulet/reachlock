@@ -1,0 +1,39 @@
+ContentFile(
+    id: "lab_escapee",
+    display_name: "Lab Escapee",
+    asset_type: origin,
+    seed: 29000001,
+    universe: "all",
+    priority: authoritative,
+    payload: origin((
+        id: "lab_escapee",
+        name: "Lab Escapee",
+        description: "Research station survivor. You were a scientist on a remote Compact research station when something went very wrong. You escaped with partial gate-network data, a research vessel, and questions that need answering. Your scientific expertise is valuable — if you can stay alive long enough to use it.",
+        icon: "flask",
+        starting_career: "researcher",
+        starting_rank: 1,
+        faction_deltas: [
+            (faction_id: "compact", delta: -10),
+        ],
+        starting_credits: 1500,
+        ship_template: Some("science_vessel"),
+        ship_seed: None,
+        starting_gear: [
+            (item_id: "research_scanner", count: 1),
+            (item_id: "data_core", count: 3),
+            (item_id: "personal_sidearm", count: 1),
+        ],
+        starting_crew: [
+            Authored(soul_id: "dr_elara", role: "science_officer"),
+        ],
+        known_systems: [
+            29000001,
+            29000002,
+        ],
+        start_system: 29000001,
+        start_location: "Wayfarer's Rest Station",
+        opening_log_entries: [
+            (title: "Escape", body: "The station's automated distress signal is still broadcasting. You don't know if anyone survived. The data cores contain years of research — and something else. Something the Compact doesn't want anyone to find.", tick_offset: 0),
+        ],
+    )),
+)

@@ -70,10 +70,10 @@ pub struct FireRef {
     pub room: usize,
 }
 
-/// The Loup-Garou's deck layouts (unscaled grid — indices and doors are
-/// what the fire model needs).
+/// The current ship's deck layouts (unscaled grid — indices and doors are
+/// what the fire model needs). Falls back to the Loup-Garou template.
 fn deck_layouts() -> Vec<GeneratedLayout> {
-    reachlock_core::generator::ship::loup_garou_interior()
+    crate::systems::crew::load_loup_garou_interior()
         .decks
         .into_iter()
         .map(|d| d.layout)

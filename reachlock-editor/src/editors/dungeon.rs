@@ -9,28 +9,22 @@ pub struct DungeonEditor {
 }
 
 impl DungeonEditor {
-    fn load_or_new() -> Self {
-        let dir = crate::app::content_root().join(ContentType::Dungeon.directory());
-        let files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
-            .ok()
-            .into_iter()
-            .flatten()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().is_some_and(|x| x == "ron"))
-            .map(|e| e.path())
-            .collect();
-        if let Some(path) = files.first() {
-            if let Ok(d) = crate::io::read_ron::<Dungeon>(path) {
-                return DungeonEditor { path: Some(path.clone()), dungeon: d, has_changes: false };
-            }
-        }
+    /// A genuinely new document.
+    ///
+    /// This used to adopt the first `.ron` in the content directory, so
+    /// `File > New` silently bound to an existing file and the first save
+    /// overwrote it.
+    fn new() -> Self {
         DungeonEditor {
             path: None,
             dungeon: Dungeon {
                 id: "new_dungeon".into(),
                 rooms: vec![DungeonRoom {
                     id: "room_0".into(),
-                    x: 0, y: 0, width: 8, height: 6,
+                    x: 0,
+                    y: 0,
+                    width: 8,
+                    height: 6,
                     connectors: vec![],
                     tags: vec!["entrance".into()],
                 }],
@@ -44,9 +38,15 @@ impl DungeonEditor {
 }
 
 impl Editor for DungeonEditor {
-    fn title(&self) -> &str { &self.dungeon.id }
-    fn content_type(&self) -> ContentType { ContentType::Dungeon }
-    fn has_unsaved_changes(&self) -> bool { self.has_changes }
+    fn title(&self) -> &str {
+        &self.dungeon.id
+    }
+    fn content_type(&self) -> ContentType {
+        ContentType::Dungeon
+    }
+    fn has_unsaved_changes(&self) -> bool {
+        self.has_changes
+    }
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
         let d: Dungeon = crate::io::read_ron(path).map_err(|e| format!("reading dungeon: {e}"))?;
         self.dungeon = d;
@@ -58,11 +58,16 @@ impl Editor for DungeonEditor {
         crate::io::write_ron(path, &self.dungeon).map_err(|e| format!("saving dungeon: {e}"))
     }
     fn save_all(&mut self) -> Result<bool, String> {
-        let path = self.path.clone().unwrap_or_else(|| {
-            crate::app::content_root().join(ContentType::Dungeon.directory()).join("generated_dungeon.ron")
-        });
+        // Only write when dirty, and never invent a filename: the old
+        // fallback name meant two new documents overwrote each other.
+        // Returning Ok(false) with no path lets the shell run Save As.
+        if !self.has_changes {
+            return Ok(self.path.is_some());
+        }
+        let Some(path) = self.path.clone() else {
+            return Ok(false);
+        };
         self.save(&path)?;
-        self.path = Some(path);
         self.has_changes = false;
         Ok(true)
     }
@@ -72,20 +77,60 @@ impl Editor for DungeonEditor {
     }
     fn validate(&self) -> Vec<String> {
         let mut errors = vec![];
-        if self.dungeon.id.is_empty() { errors.push("id is empty".into()); }
+        if self.dungeon.id.is_empty() {
+            errors.push("id is empty".into());
+        }
         errors
     }
-    fn ui(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.label(format!("Dungeon: {}", self.dungeon.id));
             ui.label(format!("Rooms: {}", self.dungeon.rooms.len()));
             ui.label(format!("Puzzles: {}", self.dungeon.puzzles.len()));
             ui.label(format!("Enemy groups: {}", self.dungeon.enemies.len()));
         });
     }
-    fn mark_saved(&mut self) { self.has_changes = false; }
+    fn touch(&mut self) {
+        self.has_changes = true;
+    }
+
+    fn snapshot(&self) -> Option<String> {
+        ron::ser::to_string(&self.dungeon).ok()
+    }
+
+    fn restore_snapshot(&mut self, ron_text: &str) -> Result<(), String> {
+        self.dungeon = ron::from_str(ron_text).map_err(|e| e.to_string())?;
+        self.has_changes = true;
+        Ok(())
+    }
+
+    /// Reroll only renames the id, which would break every cross-reference
+    /// pointing at it. Opt out rather than corrupt the content graph.
+    fn accept_seed_reroll(&self) -> bool {
+        false
+    }
+
+    fn preview_ui(&self, ui: &mut egui::Ui) {
+        ui.strong(self.content_type().name());
+        let issues = self.validate();
+        if issues.is_empty() {
+            ui.colored_label(egui::Color32::from_rgb(0x4C, 0xAF, 0x50), "✔ clean");
+        } else {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xE5, 0x73, 0x73),
+                format!("✘ {} issue(s)", issues.len()),
+            );
+            for issue in issues.iter().take(5) {
+                ui.weak(issue);
+            }
+        }
+    }
+
+    fn mark_saved(&mut self) {
+        self.has_changes = false;
+    }
 }
 
 pub fn create_editor() -> Box<dyn Editor> {
-    Box::new(DungeonEditor::load_or_new())
+    Box::new(DungeonEditor::new())
 }

@@ -12,12 +12,18 @@ use crate::systems::setup::SYSTEM_SEED;
 use crate::systems::ship::SpaceCamera;
 
 /// Which main-menu option is highlighted. Tab / ↓ cycles; Enter activates.
+/// S78: split into New Game / Continue / Settings.
 #[derive(Resource, Default, PartialEq, Eq)]
 pub enum MenuSelection {
     #[default]
-    Launch,
+    NewGame,
+    Continue,
     Settings,
 }
+
+/// Whether a save file exists (checked at menu open).
+#[derive(Resource)]
+pub struct SaveExists(pub bool);
 
 #[derive(Component)]
 pub struct MenuUi;
@@ -48,9 +54,14 @@ pub fn spawn_menu(mut commands: Commands) {
         },
         IsDefaultUiCamera,
     ));
+
+    // Check if a save file exists for the Continue button.
+    let has_save = crate::save_backend::read_save().is_some();
+    commands.insert_resource(SaveExists(has_save));
+
     commands.spawn((
         MenuUi,
-        Text::new(menu_text(&MenuSelection::default())),
+        Text::new(menu_text(&MenuSelection::default(), has_save)),
         TextFont {
             font_size: 28.0,
             ..default()
@@ -65,8 +76,13 @@ pub fn spawn_menu(mut commands: Commands) {
     ));
 }
 
-fn menu_text(sel: &MenuSelection) -> String {
-    let launch = if *sel == MenuSelection::Launch {
+fn menu_text(sel: &MenuSelection, has_save: bool) -> String {
+    let new_game = if *sel == MenuSelection::NewGame {
+        "> "
+    } else {
+        "  "
+    };
+    let continue_str = if *sel == MenuSelection::Continue {
         "> "
     } else {
         "  "
@@ -76,9 +92,11 @@ fn menu_text(sel: &MenuSelection) -> String {
     } else {
         "  "
     };
+    let continue_disabled = if has_save { "" } else { " (no save)" };
     format!(
         "R E A C H L O C K\n\nsystem seed {SYSTEM_SEED:#x}\n\n\
-         {launch}Launch\n\
+         {new_game}New Game\n\
+         {continue_str}Continue{continue_disabled}\n\
          {settings}Settings\n\n\
          Tab/↓ select · Enter activate"
     )
@@ -94,6 +112,7 @@ pub fn menu_input(
     menu: Query<Entity, With<MenuUi>>,
     mut texts: Query<&mut Text, With<MenuUi>>,
     mut commands: Commands,
+    save_exists: Res<SaveExists>,
 ) {
     // S31: don't drive the menu while the settings panel is open (it owns the
     // keyboard); closing the panel returns focus here.
@@ -105,20 +124,33 @@ pub fn menu_input(
         || keys.just_pressed(KeyCode::ArrowUp);
     if cycle {
         *sel = match *sel {
-            MenuSelection::Launch => MenuSelection::Settings,
-            MenuSelection::Settings => MenuSelection::Launch,
+            MenuSelection::NewGame => MenuSelection::Continue,
+            MenuSelection::Continue => MenuSelection::Settings,
+            MenuSelection::Settings => MenuSelection::NewGame,
         };
         if let Ok(mut t) = texts.single_mut() {
-            **t = menu_text(&sel);
+            **t = menu_text(&sel, save_exists.0);
         }
     }
     if keys.just_pressed(settings.key(InputAction::EditorConfirm)) {
         match *sel {
-            MenuSelection::Launch => {
+            MenuSelection::NewGame => {
                 for entity in &menu {
                     commands.entity(entity).despawn();
                 }
-                next.set(AppState::InGame);
+                // Insert fresh CharacterCreationState and transition.
+                commands
+                    .init_resource::<crate::systems::character_creation::CharacterCreationState>();
+                next.set(AppState::CharacterCreation);
+            }
+            MenuSelection::Continue => {
+                if save_exists.0 {
+                    for entity in &menu {
+                        commands.entity(entity).despawn();
+                    }
+                    // load_save runs on OnEnter(InGame) — finds existing save.
+                    next.set(AppState::InGame);
+                }
             }
             MenuSelection::Settings => {
                 open_settings_from_menu(ui.as_mut(), &settings);

@@ -75,12 +75,45 @@ pub struct ContractLibraryEntry {
     pub contract_ron: String,
 }
 
+impl ContractMetadata {
+    /// Build metadata for a new (unsaved) contract.
+    pub fn new(
+        author: String,
+        crew_member_name: String,
+        crew_role: CrewRole,
+        description: String,
+    ) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        ContractMetadata {
+            author,
+            created: now,
+            updated: now,
+            crew_member_name,
+            crew_role,
+            description,
+            personality_tags: Vec::new(),
+            story_tags: Vec::new(),
+            usage_notes: String::new(),
+            shareable: false,
+        }
+    }
+
+    /// Mark metadata as updated (call before saving edits).
+    pub fn touch(&mut self) {
+        self.updated = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The serialized form of ContractMetadata is a wire-shape contract.
-    /// Changing a field name or adding a required field must update this test.
     #[test]
     fn wire_shape_is_stable() {
         let json = r##"{
@@ -123,8 +156,6 @@ mod tests {
         let mut meta = ContractMetadata::new("a".into(), "b".into(), CrewRole::Pilot, "c".into());
         let before = meta.updated;
         meta.touch();
-        // touch updates from system clock — just verify it doesn't crash
-        // and the value is reasonable (within 2 seconds of creation).
         assert!(meta.updated >= before);
         assert!(meta.updated - before <= 2);
     }
@@ -135,7 +166,6 @@ mod tests {
         let role: CrewRole = serde_json::from_str(json).unwrap();
         assert_eq!(role, CrewRole::Pilot);
         let back = serde_json::to_string(&role).unwrap();
-        // removed prefixes from json
         assert_eq!(back, r##""pilot""##);
     }
 
@@ -157,40 +187,5 @@ mod tests {
         assert_eq!(back.metadata.author, "author");
         assert_eq!(back.metadata.crew_role, CrewRole::Engineer);
         assert!(!back.contract_ron.is_empty());
-    }
-}
-
-impl ContractMetadata {
-    /// Build metadata for a new (unsaved) contract.
-    pub fn new(
-        author: String,
-        crew_member_name: String,
-        crew_role: CrewRole,
-        description: String,
-    ) -> Self {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        ContractMetadata {
-            author,
-            created: now,
-            updated: now,
-            crew_member_name,
-            crew_role,
-            description,
-            personality_tags: Vec::new(),
-            story_tags: Vec::new(),
-            usage_notes: String::new(),
-            shareable: false,
-        }
-    }
-
-    /// Mark metadata as updated (call before saving edits).
-    pub fn touch(&mut self) {
-        self.updated = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
     }
 }

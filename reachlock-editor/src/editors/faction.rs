@@ -207,8 +207,8 @@ impl Editor for FactionEditor {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn ui(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("faction_toolbar").show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::TopBottomPanel::top("faction_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Generate from Seed").clicked() {
                     let seed = self.selected as u64 + 42;
@@ -244,7 +244,7 @@ impl Editor for FactionEditor {
         egui::SidePanel::left("faction_list")
             .resizable(true)
             .default_width(200.0)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("🔍");
                     ui.text_edit_singleline(&mut self.search);
@@ -278,7 +278,7 @@ impl Editor for FactionEditor {
             .iter()
             .map(|f| f.id.0.clone())
             .collect();
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let Some(f) = self.catalog.factions.get_mut(self.selected) else {
                 ui.label("No faction selected.");
                 return;

@@ -160,8 +160,14 @@ impl VariationMask {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MusicSource {
-    Procedural { seed: u64, mood: Mood, theme: Option<Theme> },
-    HandCrafted { asset_path: String },
+    Procedural {
+        seed: u64,
+        mood: Mood,
+        theme: Option<Theme>,
+    },
+    HandCrafted {
+        asset_path: String,
+    },
 }
 
 fn scale_degrees(scale: Scale) -> &'static [u32] {
@@ -223,14 +229,16 @@ pub fn generate_music_intent(seed: u64, mood: Mood, duration_bars: u16) -> Music
     while tick < total_ticks {
         let deg_idx = rng.next_below(degrees.len() as u64) as usize;
         let degree = deg_idx as u8;
-        let octave = octave_range.0 + rng.next_below((octave_range.1 - octave_range.0) as u64) as u8;
+        let octave =
+            octave_range.0 + rng.next_below((octave_range.1 - octave_range.0) as u64) as u8;
         let velocity = 60 + rng.next_below(60) as u8;
         let dur = note_len_min + rng.next_below(note_len_min as u64 * 2) as u32;
 
         // Avoid consecutive identical degrees for variety.
         if let Some(last) = notes.last() {
             if last.degree == degree && last.octave == octave {
-                let next_deg = (deg_idx + 1 + rng.next_below(degrees.len() as u64 - 1) as usize) % degrees.len();
+                let next_deg = (deg_idx + 1 + rng.next_below(degrees.len() as u64 - 1) as usize)
+                    % degrees.len();
                 let _ = next_deg; // just advance rng
             }
         }
@@ -268,7 +276,9 @@ pub fn generate_themed_music(
     recap_every: u16,
 ) -> MusicIntent {
     let mut rng = SeededRng::new(seed);
-    let bpm = bpm_for_mood(mood).max(theme.bpm_range.0).min(theme.bpm_range.1);
+    let bpm = bpm_for_mood(mood)
+        .max(theme.bpm_range.0)
+        .min(theme.bpm_range.1);
     let root_hz = root_for_mood(mood);
     let ticks_per_bar = 96u32;
     let total_ticks = duration_bars as u32 * ticks_per_bar;
@@ -326,7 +336,8 @@ pub fn generate_themed_music(
 
             n.start_tick = tick;
             if mask.0 & VariationMask::RHYTHMIC_SHIFT != 0 {
-                n.duration_ticks = (n.duration_ticks as i32 + rng.next_below(12) as i32 - 6).max(4) as u32;
+                n.duration_ticks =
+                    (n.duration_ticks as i32 + rng.next_below(12) as i32 - 6).max(4) as u32;
             }
             if mask.0 & VariationMask::REPETITION != 0 && rng.next_below(100) < 20 {
                 notes.push(n);

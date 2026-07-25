@@ -1,11 +1,11 @@
 pub mod audit;
 pub mod auth;
-pub mod email;
 pub mod billing;
 pub mod byok;
 pub mod contracts;
 pub mod cost;
 pub mod degradation;
+pub mod email;
 pub mod eval;
 pub mod health;
 pub mod library;
@@ -17,6 +17,7 @@ pub mod quota;
 #[cfg(feature = "redis")]
 pub mod redis;
 pub mod seed;
+pub mod shutdown;
 pub mod tick;
 pub mod verify;
 pub mod voice;

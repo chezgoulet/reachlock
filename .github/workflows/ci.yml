@@ -38,19 +38,6 @@ jobs:
           name: manifest-x86_64
           path: manifest-x86_64.json
 
-  wasm:
-    name: WASM build (full plugin stack)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      # The spike gate, kept green forever: bevy + rapier2d + lyon + audio
-      # must compile for the web target (spec §2, WASM Build Risk).
-      - run: cargo build -p reachlock-client --target wasm32-unknown-unknown
-
   determinism-arm:
     name: Determinism manifest (aarch64)
     runs-on: ubuntu-24.04-arm
@@ -65,29 +52,35 @@ jobs:
           name: manifest-aarch64
           path: manifest-aarch64.json
 
-  determinism-wasi:
-    name: Determinism manifest (wasm32)
+  determinism-i686:
+    name: Determinism manifest (i686, 32-bit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasip1
+          targets: i686-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
-      - uses: bytecodealliance/actions/wasmtime/setup@v1
-      - name: Emit determinism manifest (wasm32, under wasmtime)
+      - name: 32-bit cross deps
         run: |
-          cargo build -p reachlock-cli --target wasm32-wasip1 --release
-          wasmtime run target/wasm32-wasip1/release/reachlock.wasm \
-            determinism emit > manifest-wasm32.json
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-multilib libc6-dev-i386
+      # A 32-bit target in the matrix is what catches pointer-width and usize
+      # assumptions; x86_64 and aarch64 are both 64-bit and would agree on a
+      # bug that only shows up at 32 bits.
+      - name: Emit determinism manifest (i686)
+        run: |
+          cargo run -p reachlock-cli --target i686-unknown-linux-gnu -- \
+            determinism emit > manifest-i686.json
       - uses: actions/upload-artifact@v4
         with:
-          name: manifest-wasm32
-          path: manifest-wasm32.json
+          name: manifest-i686
+          path: manifest-i686.json
 
   determinism-compare:
     name: Cross-platform determinism gate (spec §5)
-    needs: [test, determinism-arm, determinism-wasi]
+    needs: [test, determinism-arm, determinism-i686]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -96,10 +89,10 @@ jobs:
       - name: Manifests must be bit-identical across targets
         run: |
           set -e
-          for other in manifest-aarch64.json manifest-wasm32.json; do
+          for other in manifest-aarch64.json manifest-i686.json; do
             if ! diff -u manifest-x86_64.json "$other"; then
               echo "::error::determinism divergence between x86_64 and $other"
               exit 1
             fi
           done
-          echo "x86_64 == aarch64 == wasm32: bit-identical"
+          echo "x86_64 == aarch64 == i686: bit-identical"

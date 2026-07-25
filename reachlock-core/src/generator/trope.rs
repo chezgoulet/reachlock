@@ -104,13 +104,29 @@ pub struct TropeBranch {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TropeAction {
-    GiveItem { item_seed: crate::item::types::ItemSeed },
-    StartCombat { enemies: Vec<String>, difficulty: u8 },
-    TriggerDilemma { dilemma_type: DilemmaType },
-    TriggerEcosystemEvent { event: EcosystemEventType },
-    ModifyReputation { faction: String, delta: i64 },
-    UnlockMission { mission_template_id: String },
-    TextOnly { text: String },
+    GiveItem {
+        item_seed: crate::item::types::ItemSeed,
+    },
+    StartCombat {
+        enemies: Vec<String>,
+        difficulty: u8,
+    },
+    TriggerDilemma {
+        dilemma_type: DilemmaType,
+    },
+    TriggerEcosystemEvent {
+        event: EcosystemEventType,
+    },
+    ModifyReputation {
+        faction: String,
+        delta: i64,
+    },
+    UnlockMission {
+        mission_template_id: String,
+    },
+    TextOnly {
+        text: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -251,12 +267,18 @@ mod tests {
             id: "derelict_ship_01".into(),
             trope_type: TropeType::DerelictShip,
             title_template: "The {ship_name}".into(),
-            narrative_template: "You find the {ship_name}, a {condition} vessel adrift in {location}. {detail}".into(),
+            narrative_template:
+                "You find the {ship_name}, a {condition} vessel adrift in {location}. {detail}"
+                    .into(),
             slots: vec![
                 TropeSlot {
                     slot_name: "ship_name".into(),
                     slot_kind: SlotKind::Text {
-                        options: vec!["Grief of Ages".into(), "Last Candle".into(), "Iron Requiem".into()],
+                        options: vec![
+                            "Grief of Ages".into(),
+                            "Last Candle".into(),
+                            "Iron Requiem".into(),
+                        ],
                     },
                     constraints: vec![],
                 },
@@ -281,7 +303,9 @@ mod tests {
             branches: vec![TropeBranch {
                 label: "Board".into(),
                 condition: None,
-                action: TropeAction::TextOnly { text: "You dock with the derelict.".into() },
+                action: TropeAction::TextOnly {
+                    text: "You dock with the derelict.".into(),
+                },
                 consequences: vec![TropeConsequence {
                     kind: TropeConsequenceKind::CrewTrust,
                     target: "all".into(),
@@ -315,7 +339,11 @@ mod tests {
         gs.insert("planet_names".into(), vec!["Ara".into()]);
         let filled = fill_trope_slots(&template, 99, &gs);
         for slot in &template.slots {
-            assert!(filled.contains_key(&slot.slot_name), "missing slot {}", slot.slot_name);
+            assert!(
+                filled.contains_key(&slot.slot_name),
+                "missing slot {}",
+                slot.slot_name
+            );
         }
     }
 
@@ -326,8 +354,12 @@ mod tests {
         gs.insert("fate_descriptions".into(), vec!["empty".into()]);
         gs.insert("planet_names".into(), vec!["Rom".into()]);
         let instance = instantiate_trope(&template, 42, &gs, LocationType::AsteroidBelt);
-        assert!(instance.narrative.contains(&instance.filled_slots["ship_name"]));
-        assert!(instance.narrative.contains(&instance.filled_slots["condition"]));
+        assert!(instance
+            .narrative
+            .contains(&instance.filled_slots["ship_name"]));
+        assert!(instance
+            .narrative
+            .contains(&instance.filled_slots["condition"]));
     }
 
     #[test]

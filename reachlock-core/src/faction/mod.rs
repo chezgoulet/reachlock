@@ -1,5 +1,5 @@
 //! REACHLOCK faction engine (spec §21) + reputation (spec §21) + tariffs
-//! (spec §20). Pure, IO-free, wasm-safe — same offline/online-parity reasoning
+//! (spec §20). Pure and IO-free — same offline/online-parity reasoning
 //! as the S10 economy module.
 //!
 //! Three layers, mirroring `economy.rs`:
@@ -601,26 +601,27 @@ fn check_trigger_refs(
 /// content (only possible if the authored file diverges from the schema, which
 /// the CLI `ValidateFactions` command catches).
 pub fn load_faction_catalog() -> FactionCatalog {
-    OVERRIDE_FACTION_CATALOG.get().cloned().unwrap_or_else(|| {
-        ron::from_str(FACTION_CATALOG_RON).expect("embedded canon.ron")
-    })
+    OVERRIDE_FACTION_CATALOG
+        .get()
+        .cloned()
+        .unwrap_or_else(|| ron::from_str(FACTION_CATALOG_RON).expect("embedded canon.ron"))
 }
 
-const FACTION_CATALOG_RON: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../mods/reachlock/factions/canon.ron"
-));
+/// Core-owned *fallback* faction catalog — see the note on
+/// [`crate::economy`]'s goods catalogue. `mods/reachlock/factions/canon.ron`
+/// is the authored content and overrides this via [`set_faction_catalog`].
+const FACTION_CATALOG_RON: &str = include_str!("../data/default_factions.ron");
 
 /// Load the canon storylines from the embedded RON.
 pub fn load_storylines() -> Vec<Storyline> {
-    OVERRIDE_STORYLINES.get().cloned().unwrap_or_else(|| {
-        ron::from_str(STORYLINES_RON).expect("embedded storylines.ron")
-    })
+    OVERRIDE_STORYLINES
+        .get()
+        .cloned()
+        .unwrap_or_else(|| ron::from_str(STORYLINES_RON).expect("embedded storylines.ron"))
 }
-const STORYLINES_RON: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../mods/reachlock/storylines/compact_arc.ron"
-));
+/// Core-owned *fallback* storylines; `mods/reachlock/storylines/compact_arc.ron`
+/// is the authored content and overrides this via [`set_storylines`].
+const STORYLINES_RON: &str = include_str!("../data/default_storylines.ron");
 
 // ───────────────────────────── Tick (spec §21) ─────────────────────────
 
@@ -896,6 +897,35 @@ fn trigger_met(state: &FactionState, trig: &ChapterTrigger) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Core's embedded fallbacks must not drift from the authored content the
+    /// pipeline ships. Skipped when `mods/` is absent (packaged crate).
+    #[test]
+    fn default_faction_data_matches_authored_content() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        for (authored, embedded, label) in [
+            (
+                "mods/reachlock/factions/canon.ron",
+                FACTION_CATALOG_RON,
+                "default_factions.ron",
+            ),
+            (
+                "mods/reachlock/storylines/compact_arc.ron",
+                STORYLINES_RON,
+                "default_storylines.ron",
+            ),
+        ] {
+            let Ok(text) = std::fs::read_to_string(root.join(authored)) else {
+                continue;
+            };
+            assert_eq!(
+                text.trim_end(),
+                embedded.trim_end(),
+                "reachlock-core/src/data/{label} has drifted from {authored} \
+                 — copy the authored file over it"
+            );
+        }
+    }
 
     fn catalog() -> FactionCatalog {
         let mk = |id: &str,

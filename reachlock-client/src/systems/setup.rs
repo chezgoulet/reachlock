@@ -34,11 +34,11 @@ use reachlock_core::util::trig::{icos, isin};
 
 use crate::bridge;
 use crate::states::{CurrentLocation, GameMode, ModeScope, SceneRegistry};
-use crate::systems::content_index::ContentIndex;
-use crate::systems::docking::Dockable;
 use crate::systems::career::{CareerResource, PiracyResource};
+use crate::systems::content_index::ContentIndex;
 use crate::systems::culture_view::CultureResource;
 use crate::systems::discovery::EcosystemResource;
+use crate::systems::docking::Dockable;
 use crate::systems::sensors::{Contact, KnownContacts};
 use crate::systems::ship::{PlayerShip, ShipSystems};
 use crate::systems::starfield;
@@ -247,8 +247,8 @@ pub fn enter_spaceflight(
     commands.insert_resource(PiracyResource(Some(PiracyState::default())));
 
     // S46: generate missions for this system.
-    use reachlock_core::generator::mission::{generate_missions, MissionGenerationContext};
     use reachlock_core::career::piracy::NotorietyLevel;
+    use reachlock_core::generator::mission::{generate_missions, MissionGenerationContext};
     let ctx = MissionGenerationContext {
         seed,
         system_kind: biome.as_str().into(),
@@ -889,7 +889,11 @@ fn bounding_radius(mesh: &GeneratedMesh) -> f32 {
 /// Apply the persisted Video settings to the primary window. Called once at
 /// startup; runtime changes to video settings take effect on the next launch
 /// (Bevy's window is created before resources are available).
-pub fn apply_video_settings(mut windows: Query<&mut Window>, settings: Res<Settings>) {
+pub fn apply_video_settings(
+    mut windows: Query<&mut Window>,
+    mut ui_scale: ResMut<UiScale>,
+    settings: Res<Settings>,
+) {
     let Ok(mut window) = windows.single_mut() else {
         return;
     };
@@ -908,4 +912,5 @@ pub fn apply_video_settings(mut windows: Query<&mut Window>, settings: Res<Setti
         bevy::window::PresentMode::AutoNoVsync
     };
     window.resolution.set_scale_factor(v.render_scale);
+    ui_scale.0 = v.ui_scale;
 }

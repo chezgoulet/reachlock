@@ -27,6 +27,8 @@ crossbeam-channel = "0.5"
 bytes = "1"
 
 [features]
+default = ["editor"]
+editor = []
 debug-names = ["bevy/debug"]
 tts = []
 

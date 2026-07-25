@@ -6,14 +6,17 @@ export PATH := $(HOME)/.cargo/bin:$(PATH)
 test:
 	cargo test --workspace
 
-check: fmt clippy test
+check: fmt clippy test check-purity
 	@echo "all gates green"
 
 fmt:
 	cargo fmt --all --check
 
+# --all-targets so tests and benches are linted too. Without it a test file
+# can stop compiling and `make check` still reports green (that is exactly how
+# reachlock-server/tests/content_distribution.rs rotted).
 clippy:
-	cargo clippy --workspace -- -D warnings
+	cargo clippy --workspace --all-targets -- -D warnings
 
 # Launch the game (native).
 # FIXME(winit-0.30.13): WAYLAND_DISPLAY= forces X11/XWayland to avoid
@@ -46,34 +49,44 @@ db-test:
 	  REACHLOCK_TEST_DB="postgres://reachlock:reachlock@127.0.0.1/reachlock" \
 	  cargo test -p reachlock-server --features postgres --lib
 
-.PHONY: web web-serve wasm-bindgen-cli
-
 # Local determinism self-check (CI does the real cross-target compare).
 determinism:
 	cargo run -q -p reachlock-cli -- determinism emit > /tmp/reachlock-manifest.json
 	cargo run -q -p reachlock-cli -- determinism check /tmp/reachlock-manifest.json
 
-# S22 engine-purity guard: scan for known content ids in engine source.
-# Runs on the current diff if available, else on the full source.
+# S22 engine-purity guard (iron rule #1).
+#
+# Three checks:
+#  1. Content must not import engine code.
+#  2. Core must not reach OUTSIDE ITS OWN CRATE for data. Core embedding its
+#     own fallbacks under `reachlock-core/src/data/` is fine and is what keeps
+#     offline play working with zero IO; `include_str!("../../mods/...")` is
+#     not, because it compiles one mod's canonical content into the engine and
+#     no other mod can then replace it. Drift between core's fallback and the
+#     authored file is caught by tests, not by this gate.
+#  3. Core's dependency tree must stay free of rendering, async-runtime, and
+#     HTTP crates. This replaces the old "core must compile to wasm32" gate:
+#     that build was really a proxy for "core has no IO/rendering deps", and
+#     with web distribution dropped the proxy went away while the rule did
+#     not. Checking the dependency tree tests the rule directly instead of
+#     inferring it from a target that no longer ships.
 check-purity:
-	@# Generate a list of content ids from mods/reachlock/ content files.
-	@# Then check if any appear in core/src or client/src.
-	@echo "checking engine purity..."
-	@{ find mods/reachlock/souls mods/reachlock/stations mods/reachlock/hulls \
-		mods/reachlock/systems -name '*.ron' 2>/dev/null; \
-	   echo "mod.manifest.ron"; } | while read -r f; do \
-		id=$$(grep -oP '^\s*id:\s*"\K[^"]+' "$$f" 2>/dev/null); \
-		[ -n "$$id" ] && echo "$$id"; \
-	done | sort -u > /tmp/content_ids.txt
-	@# Check against core and client source.
-	@result=0; \
-	while read -r id; do \
-		if grep -rq "$$id" reachlock-core/src reachlock-client/src 2>/dev/null; then \
-			echo "WARN: content id '$$id' appears in engine source"; \
-			result=1; \
-		fi; \
-	done < /tmp/content_ids.txt; \
-	exit $$result
+	@echo "Checking content for engine imports..."
+	@! rg -n 'use bevy|use reachlock_client' mods/reachlock/ || \
+	  (echo "PURITY VIOLATION: content imports engine code"; false)
+	@echo "Checking core for cross-crate include_str!..."
+	@! rg -n --multiline 'include_str!\s*\((?s).{0,120}?(mods/|CARGO_MANIFEST_DIR)' \
+	  reachlock-core/src/ || \
+	  (echo "PURITY VIOLATION: core embeds content from outside its own crate"; false)
+	@echo "Checking core dependency tree for rendering/IO crates..."
+	@deps=$$(cargo tree -p reachlock-core --edges normal --prefix none 2>/dev/null \
+	  | awk '{print $$1}' | sort -u); \
+	for banned in bevy bevy_ecs wgpu winit tokio reqwest hyper axum sqlx redis rfd eframe egui; do \
+	  if echo "$$deps" | grep -qx "$$banned"; then \
+	    echo "PURITY VIOLATION: reachlock-core depends on '$$banned'"; exit 1; \
+	  fi; \
+	done; \
+	echo "purity OK"
 
 .PHONY: check-purity
 

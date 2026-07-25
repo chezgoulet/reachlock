@@ -25,7 +25,7 @@ pub fn reputation_panel_toggle(
     settings: Res<Settings>,
     mut visible: ResMut<ReputationPanelVisible>,
 ) {
-    if keys.just_pressed(settings.key(InputAction::OpenCrewRoster)) {
+    if keys.just_pressed(settings.key(InputAction::OpenFactionsPanel)) {
         visible.0 = !visible.0;
     }
 }

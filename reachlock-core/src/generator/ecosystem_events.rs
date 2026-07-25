@@ -6,9 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::generator::ecosystem::{
-    spawn_species, EcologicalRole, Ecosystem,
-};
+use crate::generator::ecosystem::{spawn_species, EcologicalRole, Ecosystem};
 use crate::item::types::Rarity;
 use crate::seed::types::Biome;
 use crate::util::SeededRng;
@@ -28,14 +26,33 @@ pub struct EcosystemEvent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EcosystemEventType {
-    Extinction { cause: String },
-    InvasiveSpecies { origin: String, introduced_by: String },
-    Mutation { cause: String, new_trait: String },
-    PopulationBoom { cause: String },
-    PopulationCrash { cause: String },
-    NewSpecies { parent_species: String, divergence_reason: String },
-    EcologicalCollapse { trigger: String },
-    Recovery { from: String },
+    Extinction {
+        cause: String,
+    },
+    InvasiveSpecies {
+        origin: String,
+        introduced_by: String,
+    },
+    Mutation {
+        cause: String,
+        new_trait: String,
+    },
+    PopulationBoom {
+        cause: String,
+    },
+    PopulationCrash {
+        cause: String,
+    },
+    NewSpecies {
+        parent_species: String,
+        divergence_reason: String,
+    },
+    EcologicalCollapse {
+        trigger: String,
+    },
+    Recovery {
+        from: String,
+    },
 }
 
 /// Apply an event to an ecosystem, returning the new (immutable) ecosystem.
@@ -54,9 +71,7 @@ pub fn apply_ecosystem_event(ecosystem: &Ecosystem, event: &EcosystemEvent) -> E
             EcosystemEventType::InvasiveSpecies { origin, .. } => {
                 inject(biome, event, EcologicalRole::Carnivore, origin);
             }
-            EcosystemEventType::NewSpecies {
-                parent_species, ..
-            } => {
+            EcosystemEventType::NewSpecies { parent_species, .. } => {
                 inject(biome, event, EcologicalRole::Herbivore, parent_species);
             }
             EcosystemEventType::Mutation { new_trait, .. } => {
@@ -75,14 +90,16 @@ pub fn apply_ecosystem_event(ecosystem: &Ecosystem, event: &EcosystemEvent) -> E
             EcosystemEventType::PopulationBoom { .. } => {
                 for s in &mut biome.species {
                     if event.affected_species.contains(&s.id) {
-                        s.research_value = s.research_value.saturating_add(event.magnitude as u32 * 5);
+                        s.research_value =
+                            s.research_value.saturating_add(event.magnitude as u32 * 5);
                     }
                 }
             }
             EcosystemEventType::PopulationCrash { .. } => {
                 for s in &mut biome.species {
                     if event.affected_species.contains(&s.id) {
-                        s.research_value = s.research_value.saturating_sub(event.magnitude as u32 * 3);
+                        s.research_value =
+                            s.research_value.saturating_sub(event.magnitude as u32 * 3);
                     }
                 }
             }
@@ -106,9 +123,12 @@ fn find(species: &[crate::generator::ecosystem::Species], id: &str) -> bool {
 
 /// Remove the named species, then cascade: any predator left with no prey is
 /// also removed. Bounded by the number of species — always terminates.
-fn remove_species(biome: &mut crate::generator::ecosystem::BiomeEcosystem, ids: &[String], _magnitude: u8) {
-    let mut to_remove: std::collections::HashSet<String> =
-        ids.iter().cloned().collect();
+fn remove_species(
+    biome: &mut crate::generator::ecosystem::BiomeEcosystem,
+    ids: &[String],
+    _magnitude: u8,
+) {
+    let mut to_remove: std::collections::HashSet<String> = ids.iter().cloned().collect();
     loop {
         let before = to_remove.len();
         // Find predators whose every prey is already removed.
@@ -213,11 +233,7 @@ mod tests {
         };
         let next = apply_ecosystem_event(&e, &evt);
         assert!(next.biomes[0].species.len() < before);
-        assert!(!next
-            .biomes[0]
-            .species
-            .iter()
-            .any(|s| s.id == target));
+        assert!(!next.biomes[0].species.iter().any(|s| s.id == target));
     }
 
     #[test]
@@ -267,7 +283,9 @@ mod tests {
     fn recovery_records_baseline() {
         let e = eco();
         let evt = EcosystemEvent {
-            event_type: EcosystemEventType::Recovery { from: "collapse".into() },
+            event_type: EcosystemEventType::Recovery {
+                from: "collapse".into(),
+            },
             affected_biomes: vec![Biome::Frontier],
             affected_species: vec![],
             magnitude: 0,

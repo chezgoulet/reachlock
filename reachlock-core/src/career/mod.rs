@@ -2,7 +2,7 @@
 //! shareable career tracks (military, trade, exploration, science, political,
 //! criminal, freelance). Progress is earned by in-fiction actions, not XP
 //! grinding. Pure functions over `PlayerCareer` state — no I/O, deterministic,
-//! wasm-safe (iron rule #1).
+//! IO-free (iron rule #1).
 //!
 //! NOTE on iron rule #2: the brief's freeze block used `f64` for
 //! `ProgressionCriterion::weight`, `CareerPerk::magnitude`, and the various
@@ -103,18 +103,44 @@ pub struct CareerPerk {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PerkType {
-    StationDiscount { faction_id: String, pct: Fixed },
-    RestrictedAreaAccess { area_id: String },
-    UniqueShipComponent { item_id: String },
-    ExclusiveContract { contract_id: String },
-    CrewRecruitUnlock { crew_id: String },
-    MissionBonus { mission_type: String, bonus_pct: Fixed },
-    ScannerBoost { pct: Fixed },
-    CombatBonus { damage_type: String, pct: Fixed },
-    TradeBonus { good_category: String, pct: Fixed },
-    DiplomaticImmunity { faction_id: String },
+    StationDiscount {
+        faction_id: String,
+        pct: Fixed,
+    },
+    RestrictedAreaAccess {
+        area_id: String,
+    },
+    UniqueShipComponent {
+        item_id: String,
+    },
+    ExclusiveContract {
+        contract_id: String,
+    },
+    CrewRecruitUnlock {
+        crew_id: String,
+    },
+    MissionBonus {
+        mission_type: String,
+        bonus_pct: Fixed,
+    },
+    ScannerBoost {
+        pct: Fixed,
+    },
+    CombatBonus {
+        damage_type: String,
+        pct: Fixed,
+    },
+    TradeBonus {
+        good_category: String,
+        pct: Fixed,
+    },
+    DiplomaticImmunity {
+        faction_id: String,
+    },
     /// Crimes forgiven in this faction (pirate havens) — S43 handshake.
-    BountyPass { faction_id: String },
+    BountyPass {
+        faction_id: String,
+    },
 }
 
 /// The player's whole career state across all tracks.
@@ -193,7 +219,11 @@ impl PlayerCareer {
 
 /// Record progress for an action type across every active path. Magnitude is
 /// additive; returns the new (immutable) state.
-pub fn record_progress(mut pc: PlayerCareer, action: ProgressionCriterionType, magnitude: u64) -> PlayerCareer {
+pub fn record_progress(
+    mut pc: PlayerCareer,
+    action: ProgressionCriterionType,
+    magnitude: u64,
+) -> PlayerCareer {
     for active in &mut pc.active_paths {
         *active.progress.entry(action).or_insert(0) += magnitude;
     }
@@ -206,7 +236,12 @@ pub fn check_rank_advancement(pc: &PlayerCareer, path: &CareerPath) -> Option<u8
     let next_rank = active.current_rank + 1;
     let rank_def = path.ranks.iter().find(|r| r.rank == next_rank)?;
     let met = rank_def.required_criteria.iter().all(|req| {
-        active.progress.get(&req.criterion_type).copied().unwrap_or(0) >= req.threshold
+        active
+            .progress
+            .get(&req.criterion_type)
+            .copied()
+            .unwrap_or(0)
+            >= req.threshold
     });
     if met {
         Some(next_rank)
@@ -403,7 +438,10 @@ mod tests {
         pirate.path_type = PathType::Criminal;
         pirate.conflicting_paths = vec!["compact_navy".into()];
         let pc = join_path(PlayerCareer::new("p1"), &path).unwrap();
-        assert_eq!(join_path(pc, &pirate), Err(JoinError::ConflictingPath("compact_navy".into())));
+        assert_eq!(
+            join_path(pc, &pirate),
+            Err(JoinError::ConflictingPath("compact_navy".into()))
+        );
     }
 
     #[test]
@@ -413,7 +451,9 @@ mod tests {
         let (pc, cons) = leave_path(pc, "compact_navy", CompletionReason::Resigned, 50);
         assert_eq!(pc.active_paths.len(), 0);
         assert_eq!(pc.completed_paths.len(), 1);
-        assert!(cons.iter().any(|c| matches!(c, CareerConsequence::PathCompleted(_))));
+        assert!(cons
+            .iter()
+            .any(|c| matches!(c, CareerConsequence::PathCompleted(_))));
     }
 
     #[test]

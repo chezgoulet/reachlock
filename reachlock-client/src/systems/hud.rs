@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 
 use crate::net::{ConnectionState, NetMode};
-use crate::settings::{HelpTextCache, Settings};
+use crate::settings::{HelpTextCache, InputAction, Settings};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::interaction::{ActivePanel, InteractionPrompt, Npc};
@@ -17,6 +17,30 @@ use crate::systems::pause::PauseOverlay;
 use crate::systems::ship::{FlightFeel, ShipSystems};
 use crate::systems::ticker::UniverseTicker;
 
+/// Threat severity hierarchy for the feedback HUD.
+#[derive(Clone, Debug)]
+pub struct Threat {
+    pub severity: ThreatSeverity,
+    pub label: String,
+    pub glyph: &'static str,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ThreatSeverity {
+    Normal,
+    Medium,
+    Top,
+}
+
+/// Resource for mode transition state.
+#[derive(Resource, Default)]
+pub struct TransitionState {
+    pub animating: bool,
+    pub elapsed: f32,
+    pub total: f32,
+    pub banner_text: String,
+}
+
 #[derive(Component)]
 pub struct FuelReadout;
 
@@ -25,6 +49,14 @@ pub struct LogReadout;
 
 #[derive(Component)]
 pub struct DeliberationOverlay;
+
+/// FPS counter overlay (shown when settings.video.show_fps is true).
+#[derive(Component)]
+pub struct FpsCounter;
+
+/// Latency display overlay (shown when settings.network.show_latency is true).
+#[derive(Component)]
+pub struct LatencyDisplay;
 
 /// S02: shown only in online mode when the socket isn't `Connected` — never
 /// shown offline, since offline is the normal default, not a degraded state.
@@ -43,6 +75,18 @@ pub struct DialoguePanel;
 /// Market panel (S07): buy/sell UI text rendered from `market_panel_text`.
 #[derive(Component)]
 pub struct MarketPanel;
+
+/// Dilemma panel (S82): generated dilemma with choices.
+#[derive(Component)]
+pub struct DilemmaPanel;
+
+/// Encounter panel (S82): scripted encounter narrative and choices.
+#[derive(Component)]
+pub struct EncounterPanel;
+
+/// Trope popup (S82): lightweight procedural narrative seasoning.
+#[derive(Component)]
+pub struct TropePanel;
 
 /// Key-binding help line. Swapped per mode by `update_hud_status` so the
 /// flight bindings and the interior bindings never show at the wrong time.
@@ -143,6 +187,36 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
         },
     ));
     commands.spawn((
+        FpsCounter,
+        Text::new(""),
+        TextFont {
+            font_size: 13.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.5, 0.6, 0.6)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(24.0),
+            right: Val::Px(8.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
+        LatencyDisplay,
+        Text::new(""),
+        TextFont {
+            font_size: 13.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.5, 0.6, 0.6)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(36.0),
+            right: Val::Px(8.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
         PauseOverlay,
         Text::new(""),
         TextFont {
@@ -217,6 +291,86 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             ..default()
         },
     ));
+    commands.spawn((
+        DilemmaPanel,
+        Text::new(""),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.9, 0.85, 0.7)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(100.0),
+            left: Val::Px(8.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
+        EncounterPanel,
+        Text::new(""),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.8, 0.9, 0.85)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(100.0),
+            left: Val::Px(8.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
+        TropePanel,
+        Text::new(""),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.85, 0.8, 0.95)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(100.0),
+            left: Val::Px(8.0),
+            ..default()
+        },
+    ));
+}
+
+/// Severity-sorted threats from ship state. Top 3, highest severity first.
+fn hud_threats(systems: &ShipSystems) -> Vec<Threat> {
+    let mut t = Vec::new();
+    if systems.dead {
+        t.push(Threat {
+            severity: ThreatSeverity::Top,
+            label: "BREACH".into(),
+            glyph: "⚠",
+        });
+    }
+    if systems.hull_hp.0 < 307 {
+        t.push(Threat {
+            severity: ThreatSeverity::Top,
+            label: "HULL STRESS".into(),
+            glyph: "▲",
+        });
+    } else if systems.hull_hp.0 < 512 {
+        t.push(Threat {
+            severity: ThreatSeverity::Medium,
+            label: "HULL DAMAGE".into(),
+            glyph: "▲",
+        });
+    }
+    if systems.fuel.0 < 154 {
+        t.push(Threat {
+            severity: ThreatSeverity::Medium,
+            label: "LOW FUEL".into(),
+            glyph: "•",
+        });
+    }
+    t.sort_by_key(|b| std::cmp::Reverse(b.severity));
+    t.truncate(3);
+    t
 }
 
 // Bevy's `SystemParamFunction` impl is capped at a fixed arity, so the HUD
@@ -234,8 +388,9 @@ pub fn update_hud_status(
     deliberation: Res<DeliberationState>,
     net_mode: Res<NetMode>,
     conn: Res<ConnectionState>,
-    cache: Res<HelpTextCache>,
     pause_sel: Res<crate::systems::pause::PauseSelection>,
+    transition: Res<TransitionState>,
+    settings: Res<Settings>,
     mut texts: ParamSet<(
         Query<&mut Text, With<FuelReadout>>,
         Query<&mut Text, With<LocationBanner>>,
@@ -247,22 +402,87 @@ pub fn update_hud_status(
         Query<&mut Text, With<PromptText>>,
     )>,
 ) {
+    // --- Hierarchical HUD status line (FuelReadout slot) ---
     if let Ok(mut text) = texts.p0().single_mut() {
         if *mode == GameMode::SpaceFlight {
             let pct = systems.fuel.0 * 100 / 1024;
             let hull = systems.hull_hp.0 * 100 / 1024;
-            let breach = if systems.dead { "  ⚠ BREACH" } else { "" };
             let spd = feel.speed.round() as i64;
-            **text = format!(
-                "SPD {spd}  FUEL {pct}%{}  HULL {hull}%{breach}",
+
+            // Top priority threats (red/orange)
+            let threats = hud_threats(&systems);
+            let top: Vec<&Threat> = threats
+                .iter()
+                .filter(|t| t.severity == ThreatSeverity::Top)
+                .collect();
+            let med: Vec<&Threat> = threats
+                .iter()
+                .filter(|t| t.severity == ThreatSeverity::Medium)
+                .collect();
+
+            let mut display = String::new();
+            // Top priority line — only the most critical alerts
+            if !top.is_empty() {
+                let alerts: Vec<String> = top
+                    .iter()
+                    .map(|t| format!("{} {}", t.glyph, t.label))
+                    .collect();
+                display.push_str(&format!("{}\n", alerts.join(" · ")));
+            }
+            // Medium priority line — yellow warnings
+            if !med.is_empty() {
+                let warns: Vec<String> = med
+                    .iter()
+                    .map(|t| format!("{} {}", t.glyph, t.label))
+                    .collect();
+                display.push_str(&format!("{}\n", warns.join(" · ")));
+            }
+            // Normal priority — always-on data
+            display.push_str(&format!(
+                "SPD {spd}  FUEL {pct}%{}  HULL {hull}%",
                 if systems.thrusting { " ▲" } else { "" }
-            );
+            ));
+
+            **text = display;
         } else {
             **text = "—".to_string();
         }
     }
+    // --- Mode transition + location banner (LocationBanner slot) ---
     if let Ok(mut text) = texts.p1().single_mut() {
+        let duration_mult = if settings.accessibility.reduce_motion {
+            0.0
+        } else {
+            1.0
+        };
         **text = match **mode {
+            GameMode::Docking => {
+                let loc = if location.display_name.is_empty() {
+                    &location.station_id
+                } else {
+                    &location.display_name
+                };
+                if transition.animating && duration_mult > 0.0 {
+                    "DOCKING…".into()
+                } else {
+                    format!("DOCKING WITH {}", loc.to_uppercase())
+                }
+            }
+            GameMode::Undocking => {
+                if transition.animating && duration_mult > 0.0 {
+                    "UNDOCKING…".into()
+                } else {
+                    "UNDOCKING — CLEAR SPACE".into()
+                }
+            }
+            GameMode::Hyperspace => {
+                let dest = &location.display_name;
+                if dest.is_empty() {
+                    "HYPERSPACE…".into()
+                } else {
+                    format!("JUMP TO {} — ETA 14m", dest.to_uppercase())
+                }
+            }
             GameMode::SpaceFlight => format!("SPACE · system {:#x}", location.system_seed),
             GameMode::Landed => {
                 if location.display_name.is_empty() {
@@ -279,9 +499,6 @@ pub fn update_hud_status(
                 };
                 format!("ON BOARD · your ship ({where_})")
             }
-            GameMode::Docking => "DOCKING…".to_string(),
-            GameMode::Undocking => "UNDOCKING…".to_string(),
-            GameMode::Hyperspace => "HYPERSPACE…".to_string(),
             GameMode::Paused => "PAUSED".to_string(),
         };
     }
@@ -289,13 +506,9 @@ pub fn update_hud_status(
         **text = log.entries.join("\n");
     }
     if let Ok(mut text) = texts.p3().single_mut() {
-        // S02: online deliberation stays invisible until `llm.deliberating`
-        // confirms the server is on it — see `Deliberation::overlay_visible`.
+        // Deliberation overlay — the panel replaces this; keep minimal fallback.
         **text = match &deliberation.active {
-            Some(d) if d.overlay_visible => format!(
-                "⟳ {} is considering the situation…\n  \"{}. My rules don't cover this.\"",
-                d.crew_member, d.context_summary
-            ),
+            Some(d) if d.overlay_visible => format!("⟳ {} is considering…", d.crew_member),
             _ => String::new(),
         };
     }
@@ -324,13 +537,10 @@ pub fn update_hud_status(
         };
     }
     if let Ok(mut text) = texts.p6().single_mut() {
-        let help = match **mode {
-            GameMode::SpaceFlight => cache.flight.as_str(),
-            GameMode::Landed | GameMode::OnBoard => cache.interior.as_str(),
-            _ => "", // transition beats/pause: no bindings to advertise
-        };
+        let help_text = settings.key_display(InputAction::OpenHelp);
+        let help = format!("Press {help_text} for help");
         if **text != help {
-            **text = help.to_string();
+            **text = help;
         }
     }
     if let Ok(mut text) = texts.p7().single_mut() {
@@ -413,6 +623,54 @@ pub fn update_hud_panels(
                 &content,
             ),
             _ => String::new(),
+        };
+    }
+}
+
+/// Renders the dilemma panel text when ActivePanel::Dilemma is active.
+pub fn render_dilemma_panel(
+    panel: Res<ActivePanel>,
+    active: Res<crate::systems::dilemma::ActiveDilemma>,
+    outcome: Res<crate::systems::dilemma::DilemmaOutcomeText>,
+    selected: Res<crate::systems::dilemma::DilemmaChoiceSelected>,
+    mut query: Query<&mut Text, With<DilemmaPanel>>,
+) {
+    if let Ok(mut text) = query.single_mut() {
+        **text = if *panel == ActivePanel::Dilemma {
+            crate::systems::dilemma::dilemma_panel_text(active, outcome, selected)
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+    }
+}
+
+/// Renders the encounter panel text when ActivePanel::Encounter is active.
+pub fn render_encounter_panel(
+    panel: Res<ActivePanel>,
+    active: Res<crate::systems::encounter_executor::ActiveEncounter>,
+    mut query: Query<&mut Text, With<EncounterPanel>>,
+) {
+    if let Ok(mut text) = query.single_mut() {
+        **text = if *panel == ActivePanel::Encounter {
+            crate::systems::encounter_executor::encounter_panel_text(active).unwrap_or_default()
+        } else {
+            String::new()
+        };
+    }
+}
+
+/// Renders the trope popup text when ActivePanel::TropePopup is active.
+pub fn render_trope_panel(
+    panel: Res<ActivePanel>,
+    popup: Res<crate::systems::trope_dispatcher::ActiveTropePopup>,
+    mut query: Query<&mut Text, With<TropePanel>>,
+) {
+    if let Ok(mut text) = query.single_mut() {
+        **text = if *panel == ActivePanel::TropePopup {
+            crate::systems::trope_dispatcher::trope_panel_text(popup).unwrap_or_default()
+        } else {
+            String::new()
         };
     }
 }

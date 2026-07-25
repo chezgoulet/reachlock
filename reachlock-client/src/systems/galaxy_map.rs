@@ -1,19 +1,39 @@
-//! Galaxy map (S21): an overlay screen showing charted systems and gate edges
+//! Galaxy map (S21, S85): an overlay screen showing charted systems and gate edges
 //! in the gate network. Toggled with G in the flight scene. Left-click on
 //! empty space to set an FTL route target, then press J to jump to deep space
-//! at those coordinates.
+//! at those coordinates. S85 adds discoverer attribution on charted systems.
 
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 use reachlock_core::galaxy::GalaxyCoord;
+use reachlock_core::seed::types::SystemId;
 
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::content_index::ContentIndex;
 use crate::systems::jump::FtlRoute;
 
+/// Known system info from server seed discovery (S85).
+#[derive(Debug, Clone)]
+pub struct KnownSystemInfo {
+    pub seed: u64,
+    pub discoverer_name: Option<String>,
+    pub discovered_at: Option<i64>,
+}
+
+/// Resource tracking all dynamically-discovered systems and their discoverers.
+#[derive(Resource, Default)]
+pub struct KnownSystems {
+    pub map: HashMap<SystemId, KnownSystemInfo>,
+}
+
 /// Marker for the galaxy map overlay entity.
 #[derive(Component)]
 pub struct GalaxyMapOverlay;
+
+/// Marker for the galaxy map attribution text child.
+#[derive(Component)]
+pub struct GalaxyMapAttributionText;
 
 /// Toggle the galaxy map overlay with G.
 pub fn galaxy_map_toggle(
@@ -31,16 +51,32 @@ pub fn galaxy_map_toggle(
     if let Ok(entity) = overlay.single() {
         commands.entity(entity).despawn();
     } else {
-        commands.spawn((
-            GalaxyMapOverlay,
-            Node {
-                position_type: PositionType::Absolute,
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                ..default()
-            },
-            Visibility::default(),
-        ));
+        commands
+            .spawn((
+                GalaxyMapOverlay,
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    ..default()
+                },
+                Visibility::default(),
+            ))
+            .with_child((
+                GalaxyMapAttributionText,
+                Text::new(""),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.7, 0.8, 0.9)),
+                Node {
+                    position_type: PositionType::Absolute,
+                    bottom: Val::Px(40.0),
+                    left: Val::Px(20.0),
+                    ..default()
+                },
+            ));
     }
 }
 
@@ -128,6 +164,39 @@ pub fn galaxy_map_click(
     }
 }
 
+/// Update the galaxy map attribution text for the selected system.
+pub fn galaxy_map_attribution_text(
+    overlay: Query<&Node, With<GalaxyMapOverlay>>,
+    content: Res<ContentIndex>,
+    selection: Res<GalaxyMapSelection>,
+    known: Option<Res<KnownSystems>>,
+    mut texts: Query<&mut Text, With<GalaxyMapAttributionText>>,
+) {
+    if overlay.single().is_err() {
+        return;
+    }
+    let Ok(mut text) = texts.single_mut() else {
+        return;
+    };
+    let Some(ref sel) = selection.selected_id else {
+        **text = String::new();
+        return;
+    };
+    let display_name = content
+        .charted_systems
+        .get(sel)
+        .map(|s| s.display_name.as_str())
+        .unwrap_or(sel);
+    let known_info = known
+        .as_ref()
+        .and_then(|k| k.map.get(&SystemId(sel.clone())));
+    let label = match known_info.and_then(|k| k.discoverer_name.as_deref()) {
+        Some(name) => format!("{display_name} — charted by {name}"),
+        None => format!("{display_name} — pre-charted"),
+    };
+    **text = label;
+}
+
 /// Cancel the FTL route with right-click or X key.
 pub fn galaxy_map_cancel_ftl(
     keys: Res<ButtonInput<KeyCode>>,
@@ -143,8 +212,53 @@ pub fn galaxy_map_cancel_ftl(
     }
 }
 
+/// Resource tracking which system is selected on the galaxy map (S85).
+#[derive(Resource, Default)]
+pub struct GalaxyMapSelection {
+    pub selected_id: Option<String>,
+    pub hovered_id: Option<String>,
+}
+
+/// Click on a charted system to select it and show attribution.
+pub fn galaxy_map_select_system(
+    buttons: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    content: Res<ContentIndex>,
+    overlay: Query<&Node, With<GalaxyMapOverlay>>,
+    mut selection: ResMut<GalaxyMapSelection>,
+) {
+    if overlay.single().is_err() {
+        selection.selected_id = None;
+        selection.hovered_id = None;
+        return;
+    }
+    let Ok(w) = windows.single() else { return };
+    let Some(proj) = MapProjection::compute(&content, w) else {
+        return;
+    };
+    let cursor = w.cursor_position().unwrap_or_default();
+
+    // Find nearest system within 12px.
+    let hovered = content
+        .charted_systems
+        .iter()
+        .filter(|(_, s)| proj.screen_dist(cursor, s.position) < 12.0)
+        .min_by(|(_, a), (_, b)| {
+            proj.screen_dist(cursor, a.position)
+                .partial_cmp(&proj.screen_dist(cursor, b.position))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(id, _)| id.clone());
+
+    selection.hovered_id = hovered.clone();
+    if buttons.just_pressed(MouseButton::Left) {
+        selection.selected_id = hovered;
+    }
+}
+
 /// Render the galaxy map: charted system nodes, gate edges, player position,
-/// and the FTL route target (if set).
+/// attribution labels, and the FTL route target (if set).
+#[allow(clippy::too_many_arguments)]
 pub fn render_galaxy_map(
     time: Res<Time>,
     content: Res<ContentIndex>,
@@ -153,6 +267,7 @@ pub fn render_galaxy_map(
     overlay: Query<&Node, With<GalaxyMapOverlay>>,
     windows: Query<&Window>,
     mut gizmos: Gizmos,
+    selection: Res<GalaxyMapSelection>,
 ) {
     if overlay.single().is_err() {
         return;
@@ -185,16 +300,30 @@ pub fn render_galaxy_map(
         gizmos.line_2d(from_pos, to_pos, color);
     }
 
-    // Draw charted system nodes.
+    // Draw charted system nodes with attribution.
     for system in content.charted_systems.values() {
         let pos = proj.to_screen(system.position.x, system.position.y);
         let is_current = location.system_id.0 == system.id;
+        let is_selected = selection.selected_id.as_deref() == Some(&system.id);
+        let is_hovered = selection.hovered_id.as_deref() == Some(&system.id);
+        let radius = if is_current {
+            8.0
+        } else if is_selected || is_hovered {
+            7.0
+        } else {
+            5.0
+        };
         let color = if is_current {
             Color::srgb(0.2, 0.8, 1.0)
+        } else if is_selected {
+            Color::srgb(0.4, 0.9, 0.4)
         } else {
             Color::srgb(0.6, 0.6, 0.8)
         };
-        gizmos.circle_2d(pos, if is_current { 8.0 } else { 5.0 }, color);
+        gizmos.circle_2d(pos, radius, color);
+
+        // Attribution text is rendered via the overlay text entity
+        // (galaxy_map_attribution_text system).
     }
 
     // Draw FTL route target marker (pulsing orange circle).

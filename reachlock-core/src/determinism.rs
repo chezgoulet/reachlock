@@ -1,7 +1,7 @@
 //! Cross-platform determinism manifest (spec §5, adversarial finding #3).
 //!
 //! `manifest()` runs every generator over a canonical seed set and hashes
-//! the outputs. CI builds this on x86_64, aarch64, and wasm32 and compares
+//! the outputs. CI builds this on x86_64, aarch64, and i686 and compares
 //! the manifests bit-for-bit — any divergence fails the merge.
 
 use serde::{Deserialize, Serialize};
@@ -649,6 +649,71 @@ pub fn manifest() -> Manifest {
         }
     }
 
+    // S75 — PlayerCharacter round-trip (RON and JSON). Pins the
+    // serialized form so any field change is caught by the determinism gate.
+    for &seed in &CANONICAL_SEEDS {
+        let soul = crate::generator::generate_soul(seed, "Human");
+        let sf_soul = crate::soul::SoulFile {
+            id: format!("player_soul_{seed}"),
+            name: soul.name.clone(),
+            species: crate::soul::types::Species::Human,
+            portrait_id: String::new(),
+            identity: crate::soul::types::Identity {
+                origin: String::new(),
+                faction_affiliation: String::new(),
+                role: "Captain".into(),
+                public_bio: String::new(),
+            },
+            personality: crate::soul::types::Personality {
+                traits: vec![],
+                values: vec![],
+                speaking_style: crate::soul::types::SpeakingStyle::Terse,
+                quirks: vec![],
+            },
+            emotional_state: crate::soul::types::EmotionalState {
+                dominant_mood: crate::soul::types::Mood::Stable,
+                intensity: 512,
+                triggers: vec![],
+            },
+            memory_tree: vec![],
+            relationship_graph: vec![],
+            goals: vec![],
+            breaking_points: vec![],
+            contracts: vec![],
+            backstory: soul.backstory,
+            secrets: vec![],
+            dialogue: None,
+            deflections: vec![],
+            look: None,
+        };
+        let pc = crate::identity::PlayerCharacter {
+            id: crate::identity::EntityId(seed),
+            name: soul.name,
+            pronouns: "they/them".into(),
+            species: "Human".into(),
+            look: crate::generator::sprite::CharacterLookConfig::seed_derived("Human"),
+            origin_id: String::new(),
+            background_id: String::new(),
+            soul: sf_soul,
+        };
+        let ron_text = ron::to_string(&pc).expect("PlayerCharacter RON");
+        let pc_from_ron: crate::identity::PlayerCharacter =
+            ron::from_str(&ron_text).expect("PlayerCharacter from RON");
+        entries.push(Entry {
+            generator: format!("player_character_ron_{seed}"),
+            seed,
+            checksum: hash_serde(&pc_from_ron),
+        });
+        let json_text = serde_json::to_string(&pc).expect("PlayerCharacter JSON");
+        let pc_from_json: crate::identity::PlayerCharacter =
+            serde_json::from_str(&json_text).expect("PlayerCharacter from JSON");
+        entries.push(Entry {
+            generator: format!("player_character_json_{seed}"),
+            seed,
+            checksum: hash_serde(&pc_from_json),
+        });
+    }
+
     // S36 — procedural dilemma generator (frontier system).
     for &seed in &CANONICAL_SEEDS {
         entries.push(Entry {
@@ -699,7 +764,13 @@ pub fn manifest() -> Manifest {
             bpm_range: (60, 120),
             allowed_variations: crate::generator::music::VariationMask(u16::MAX),
         };
-        let themed = crate::generator::generate_themed_music(seed, crate::generator::Mood::Tense, &theme, 4, 2);
+        let themed = crate::generator::generate_themed_music(
+            seed,
+            crate::generator::Mood::Tense,
+            &theme,
+            4,
+            2,
+        );
         entries.push(Entry {
             generator: "music_themed".into(),
             seed,
@@ -760,7 +831,9 @@ pub fn manifest() -> Manifest {
             slots: vec![
                 crate::generator::trope::TropeSlot {
                     slot_name: "ship".into(),
-                    slot_kind: crate::generator::trope::SlotKind::Text { options: vec!["Grief".into()] },
+                    slot_kind: crate::generator::trope::SlotKind::Text {
+                        options: vec!["Grief".into()],
+                    },
                     constraints: vec![],
                 },
                 crate::generator::trope::TropeSlot {
@@ -827,6 +900,20 @@ pub fn manifest() -> Manifest {
             generator: "soul".into(),
             seed,
             checksum: hash_serde(&generator::generate_soul(seed, "Human")),
+        });
+    }
+
+    // S76 — generate_soul_with_look (pins a CharacterLookConfig on the soul).
+    for &seed in &CANONICAL_SEEDS {
+        let mut cfg = crate::generator::sprite::CharacterLookConfig::seed_derived("Human");
+        cfg.hair_style = Some(3);
+        cfg.hair_color = Some([180, 120, 60]);
+        entries.push(Entry {
+            generator: "soul_with_look".into(),
+            seed,
+            checksum: hash_serde(&generator::soul::generate_soul_with_look(
+                seed, "Human", cfg,
+            )),
         });
     }
 
@@ -900,9 +987,9 @@ pub fn manifest() -> Manifest {
         entries.push(Entry {
             generator: "scripted_encounter".into(),
             seed,
-            checksum: hash_serde(
-                &generator::scripted_encounter::evaluate_scripted_encounter(&encounter, &gs),
-            ),
+            checksum: hash_serde(&generator::scripted_encounter::evaluate_scripted_encounter(
+                &encounter, &gs,
+            )),
         });
     }
 
@@ -960,9 +1047,9 @@ pub fn manifest() -> Manifest {
         entries.push(Entry {
             generator: "log_entry".into(),
             seed,
-            checksum: hash_serde(
-                &crate::agency::log_generation::template_narrative(&events, &moments),
-            ),
+            checksum: hash_serde(&crate::agency::log_generation::template_narrative(
+                &events, &moments,
+            )),
         });
     }
 
@@ -1045,7 +1132,9 @@ pub fn manifest() -> Manifest {
         // v27: skipped piracy (state machine — no seeded generation func).
         // v28: added S37 log entry template narrative golden entries.
         // v29: added S38 deliberation theater golden entries.
-        version: 29,
+        // v30: added S75 PlayerCharacter round-trip golden entries (RON + JSON).
+        // v31: S76: SoulFile gained look: Option<CharacterLookConfig> field.
+        version: 31,
         entries,
     }
 }

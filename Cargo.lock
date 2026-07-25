@@ -7684,6 +7684,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.26.2",
  "totp-rs",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "urlencoding",
@@ -9815,10 +9816,12 @@ dependencies = [
  "futures-util",
  "http",
  "http-body",
+ "http-body-util",
  "pin-project-lite",
  "tower",
  "tower-layer",
  "tower-service",
+ "tracing",
  "url",
 ]
 

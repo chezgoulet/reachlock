@@ -1,0 +1,37 @@
+ContentFile(
+    id: "ghost",
+    display_name: "Ghost",
+    asset_type: origin,
+    seed: 31000001,
+    universe: "all",
+    priority: authoritative,
+    payload: origin((
+        id: "ghost",
+        name: "Ghost",
+        description: "You have a criminal record longer than your flight log. Wanted in three systems, you fly a stolen light fighter with contraband in the hold and zero faction standing. The Reach is full of opportunities for someone who doesn't mind bending — or breaking — the rules. Stay out of the spotlight and the credits will follow.",
+        icon: "skull",
+        starting_career: "outlaw",
+        starting_rank: 1,
+        faction_deltas: [
+            (faction_id: "compact", delta: -30),
+            (faction_id: "free_traders", delta: -10),
+        ],
+        starting_credits: 500,
+        ship_template: Some("stolen_fighter"),
+        ship_seed: None,
+        starting_gear: [
+            (item_id: "smuggled_tech", count: 3),
+            (item_id: "black_market_id", count: 1),
+            (item_id: "concealed_pistol", count: 1),
+        ],
+        starting_crew: [],
+        known_systems: [
+            31000001,
+        ],
+        start_system: 31000001,
+        start_location: "Shadow Port Nines",
+        opening_log_entries: [
+            (title: "New Identity", body: "The transponder is swapped. The heat from the last job should cool down in a few weeks. Shadow Port Nines is as good a place as any to lie low — and maybe find the next score.", tick_offset: 0),
+        ],
+    )),
+)

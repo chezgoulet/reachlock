@@ -1,6 +1,9 @@
-//! Deliberation timing telemetry (S14): per-call latency into an in-memory
-//! histogram, rendered as Prometheus text at `GET /metrics`. Lock-free
-//! atomics — the proxy must never contend on telemetry.
+//! Telemetry and Prometheus metrics (S14, S73): LLM latency histograms,
+//! server ops counters and gauges.
+
+use prometheus::{Counter, Gauge, Histogram, HistogramOpts, Opts, Registry};
+
+use std::sync::Arc;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -63,6 +66,102 @@ impl LatencyHistogram {
             self.failures.load(Ordering::Relaxed)
         ));
         out
+    }
+}
+
+/// S73: production server metrics. Registered on the prometheus registry at
+/// startup. All metric names are prefixed with `reachlock_`.
+pub struct ServerMetrics {
+    pub connections_active: Gauge,
+    pub connections_total: Counter,
+    pub messages_sent: Counter,
+    pub messages_received: Counter,
+    pub db_pool_connections: Gauge,
+    pub tick_duration: Histogram,
+    pub ws_message_size: Histogram,
+    pub uptime_seconds: Gauge,
+}
+
+impl ServerMetrics {
+    pub fn new(registry: &Registry) -> Arc<Self> {
+        let connections_active = Gauge::with_opts(Opts::new(
+            "reachlock_connections_active",
+            "Current number of active WebSocket connections",
+        ))
+        .unwrap();
+        let connections_total = Counter::with_opts(Opts::new(
+            "reachlock_connections_total",
+            "Total number of WebSocket connections opened",
+        ))
+        .unwrap();
+        let messages_sent = Counter::with_opts(Opts::new(
+            "reachlock_messages_sent_total",
+            "Total messages sent to clients",
+        ))
+        .unwrap();
+        let messages_received = Counter::with_opts(Opts::new(
+            "reachlock_messages_received_total",
+            "Total messages received from clients",
+        ))
+        .unwrap();
+        let db_pool_connections = Gauge::with_opts(Opts::new(
+            "reachlock_db_pool_connections",
+            "Database pool connection counts by state",
+        ))
+        .unwrap();
+        let tick_duration = Histogram::with_opts(HistogramOpts::new(
+            "reachlock_tick_duration_seconds",
+            "Universe tick duration in seconds",
+        ))
+        .unwrap();
+        let ws_message_size = Histogram::with_opts(HistogramOpts::new(
+            "reachlock_ws_message_size_bytes",
+            "WebSocket message size in bytes",
+        ))
+        .unwrap();
+        let uptime_seconds = Gauge::with_opts(Opts::new(
+            "reachlock_uptime_seconds",
+            "Server uptime in seconds",
+        ))
+        .unwrap();
+
+        let metrics = Arc::new(ServerMetrics {
+            connections_active,
+            connections_total,
+            messages_sent,
+            messages_received,
+            db_pool_connections,
+            tick_duration,
+            ws_message_size,
+            uptime_seconds,
+        });
+
+        registry
+            .register(Box::new(metrics.connections_active.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(metrics.connections_total.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(metrics.messages_sent.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(metrics.messages_received.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(metrics.db_pool_connections.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(metrics.tick_duration.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(metrics.ws_message_size.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(metrics.uptime_seconds.clone()))
+            .unwrap();
+
+        metrics
     }
 }
 

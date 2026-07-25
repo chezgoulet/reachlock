@@ -87,6 +87,18 @@
             ),
         ],
         dialogue: None,
+        look: Some((
+            species: "Human",
+            hair_style: Some(2),
+            hair_color: Some((184, 168, 128)),
+            skin_color: Some((237, 199, 168)),
+            shirt_color: Some((191, 107, 41)),
+            pants_color: Some((140, 82, 36)),
+            jacket_enabled: Some(false),
+            jacket_color: None,
+            chassis_color: None,
+            visor_color: None,
+        )),
         deflections: [
             "Oh, the ISC days? Lots of signals, lots of static. You learn to let it wash over you.",
             "I keep a few old friends on the grid, but we don't talk shop. That life is behind me.",

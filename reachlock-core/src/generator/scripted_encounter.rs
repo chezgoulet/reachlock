@@ -39,8 +39,12 @@ pub enum ScriptedEncounterType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EncounterTrigger {
-    OnSystemEntry { system_id: String },
-    OnStationDock { station_id: String },
+    OnSystemEntry {
+        system_id: String,
+    },
+    OnStationDock {
+        station_id: String,
+    },
     OnFactionReputation {
         faction: String,
         threshold: i64,
@@ -50,14 +54,22 @@ pub enum EncounterTrigger {
         path_type: PathType,
         rank: u8,
     },
-    OnItemAcquired { item_type: ItemType },
+    OnItemAcquired {
+        item_type: ItemType,
+    },
     OnCrewMilestone {
         crew_id: String,
         milestone_type: String,
     },
-    OnTropeResolved { template_id: String },
-    OnDilemmaResolved { dilemma_type: DilemmaType },
-    OnTimerElapsed { ticks: u64 },
+    OnTropeResolved {
+        template_id: String,
+    },
+    OnDilemmaResolved {
+        dilemma_type: DilemmaType,
+    },
+    OnTimerElapsed {
+        ticks: u64,
+    },
     Manual,
 }
 
@@ -161,7 +173,11 @@ pub fn evaluate_scripted_encounter(
 ) -> Option<EncounterEvaluation> {
     // Check prerequisites — simple state-key existence check for now.
     for prereq in &encounter.prerequisites {
-        let key = format!("{:?}_{}", prereq.condition_type, prereq.params.get("key").unwrap_or(&String::new()));
+        let key = format!(
+            "{:?}_{}",
+            prereq.condition_type,
+            prereq.params.get("key").unwrap_or(&String::new())
+        );
         if !game_state.contains_key(&key) {
             return None;
         }
@@ -187,9 +203,15 @@ pub fn advance_scene(
     choice_index: usize,
     game_state: &BTreeMap<String, String>,
 ) -> Option<EncounterEvaluation> {
-    let current = encounter.scenes.iter().find(|s| s.scene_id == current_scene_id)?;
+    let current = encounter
+        .scenes
+        .iter()
+        .find(|s| s.scene_id == current_scene_id)?;
     let choice = current.choices.get(choice_index)?;
-    let next = encounter.scenes.iter().find(|s| s.scene_id == choice.outcome_scene)?;
+    let next = encounter
+        .scenes
+        .iter()
+        .find(|s| s.scene_id == choice.outcome_scene)?;
     let narrative = resolve_references(&choice.narrative_response, game_state);
     Some(EncounterEvaluation {
         encounter_id: encounter.id.clone(),
@@ -212,12 +234,13 @@ pub fn apply_consequences(
         let value = match c.consequence_type {
             ConsequenceType::ModifyCredits => {
                 let delta = c.params.get("delta").and_then(|v| v.as_i64()).unwrap_or(0);
-                let current: i64 = game_state.get(&key).and_then(|v| v.parse().ok()).unwrap_or(0);
+                let current: i64 = game_state
+                    .get(&key)
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
                 (current + delta).to_string()
             }
-            ConsequenceType::SetStoryFlag => {
-                "true".to_string()
-            }
+            ConsequenceType::SetStoryFlag => "true".to_string(),
             _ => {
                 // Generic: mark as triggered.
                 "done".to_string()
@@ -254,15 +277,13 @@ mod tests {
                     scene_id: "opening".into(),
                     narrative: "The {ship} drifts near {planet}.".into(),
                     speaker: Some("AI".into()),
-                    choices: vec![
-                        EncounterChoice {
-                            label: "Investigate".into(),
-                            condition: None,
-                            outcome_scene: "approach".into(),
-                            immediate_consequences: vec![],
-                            narrative_response: "You move closer to the signal.".into(),
-                        },
-                    ],
+                    choices: vec![EncounterChoice {
+                        label: "Investigate".into(),
+                        condition: None,
+                        outcome_scene: "approach".into(),
+                        immediate_consequences: vec![],
+                        narrative_response: "You move closer to the signal.".into(),
+                    }],
                     time_pressure: None,
                 },
                 EncounterScene {

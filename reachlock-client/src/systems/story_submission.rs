@@ -8,7 +8,9 @@ use bevy::input::ButtonState;
 use bevy::prelude::*;
 
 use reachlock_core::contract::metadata::ContractStory;
+use reachlock_core::network::ClientMessage;
 
+use crate::net::NetOutbox;
 use crate::settings::{InputAction, Settings};
 use crate::systems::comms::CommFeed;
 use crate::systems::contract::DeliberationState;
@@ -61,6 +63,7 @@ pub fn story_prompt_system(
     mut submission: ResMut<StorySubmissionState>,
     mut feed: ResMut<CommFeed>,
     mut deliberation: ResMut<DeliberationState>,
+    mut outbox: ResMut<NetOutbox>,
 ) {
     // ---- Detect deliberation just completed ----
     if let Some(crew) = deliberation.just_completed.take() {
@@ -103,9 +106,17 @@ pub fn story_prompt_system(
                     outcome_type: pending.outcome_type.clone(),
                     timestamp: pending.timestamp,
                 };
-                submission.stories.push(story);
+                // Keep local copy.
+                submission.stories.push(story.clone());
+                // Submit to server (S86).
+                outbox.push(ClientMessage::LibrarySubmitStory {
+                    story: story.story,
+                    contract_id: story.contract_id,
+                    event_type: story.event_type,
+                    outcome_type: story.outcome_type,
+                });
                 submission.story_prompt_count += 1;
-                feed.say("story", "Story saved. Thanks, captain.");
+                feed.say("story", "Story saved and submitted. Thanks, captain.");
                 submission.typing = false;
                 submission.buffer.clear();
                 submission.pending = None;

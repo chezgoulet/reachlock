@@ -458,9 +458,15 @@ fn start_synthesis_thread() -> (
         .name("reachlock-tts".into())
         .spawn(move || {
             while let Ok(request) = rx.recv() {
-                let (samples, sample_rate) =
-                    speech::SpeechSynthesizer::synthesize(&request.text, &request.voice_params, request.seed);
-                let _ = result_tx.send(SynthesisResult { samples, sample_rate });
+                let (samples, sample_rate) = speech::SpeechSynthesizer::synthesize(
+                    &request.text,
+                    &request.voice_params,
+                    request.seed,
+                );
+                let _ = result_tx.send(SynthesisResult {
+                    samples,
+                    sample_rate,
+                });
             }
         })
         .expect("failed to spawn TTS thread");
@@ -473,7 +479,11 @@ fn start_mic_capture(preferred: Option<&str>, tx: voice_native::MicSender) {
 
     let host = cpal::default_host();
     let device = preferred
-        .and_then(|name| host.input_devices().ok()?.find(|d| d.name().ok().as_deref() == Some(name)))
+        .and_then(|name| {
+            host.input_devices()
+                .ok()?
+                .find(|d| d.name().ok().as_deref() == Some(name))
+        })
         .or_else(|| host.default_input_device());
 
     let device = match device {

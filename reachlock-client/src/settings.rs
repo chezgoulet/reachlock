@@ -24,6 +24,122 @@ use bevy::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 // ---------------------------------------------------------------------------
+// AnimationSpeedMultiplier — scales timed animations when reduce_motion is on
+// ---------------------------------------------------------------------------
+
+/// Resource that all animation systems read. Derived from
+/// `accessibility.reduce_motion` on settings change.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct AnimationSpeedMultiplier(pub f32);
+
+impl Default for AnimationSpeedMultiplier {
+    fn default() -> Self {
+        AnimationSpeedMultiplier(1.0)
+    }
+}
+
+impl AnimationSpeedMultiplier {
+    pub fn from_settings(settings: &Settings) -> Self {
+        if settings.accessibility.reduce_motion {
+            AnimationSpeedMultiplier(0.25)
+        } else {
+            AnimationSpeedMultiplier(1.0)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SemanticGlyph — glyph/icon companion for colour-coded game states
+// ---------------------------------------------------------------------------
+
+/// A glyph that accompanies every colour-coded game state indicator so
+/// meaning is never conveyed by hue alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SemanticGlyph {
+    // Faction standing
+    Ally,
+    Neutral,
+    Hostile,
+    // Health / hull
+    HullFull,
+    HullDamaged,
+    HullCritical,
+    HullDestroyed,
+    // Threat level
+    Passive,
+    Alert,
+    Engaged,
+    CriticalThreat,
+    // Reputation tier
+    Tier1,
+    Tier2,
+    Tier3,
+    Tier4,
+    // Online/offline
+    Online,
+    Offline,
+    // Fuel
+    FuelFull,
+    FuelMid,
+    FuelLow,
+    FuelEmpty,
+    // Target lock
+    TargetLocked,
+    // Cargo
+    CargoEmpty,
+    CargoPartial,
+    CargoFull,
+    // Scanner contact
+    ContactFriendly,
+    ContactHostile,
+    // Mission difficulty
+    DifficultyEasy,
+    DifficultyMedium,
+    DifficultyHard,
+    DifficultyExtreme,
+}
+
+impl SemanticGlyph {
+    /// The Unicode glyph character.
+    pub fn glyph(&self) -> &'static str {
+        use SemanticGlyph::*;
+        match self {
+            Ally => "\u{2605}",                           // ★
+            Neutral => "\u{25C6}",                        // ◆
+            Hostile => "\u{26A0}",                        // ⚠
+            HullFull => "\u{2588}",                       // █
+            HullDamaged => "\u{2586}",                    // ▆
+            HullCritical => "\u{2584}",                   // ▄
+            HullDestroyed => "\u{2205}",                  // ∅
+            Passive => "\u{25C7}",                        // ◇
+            Alert => "\u{25C8}",                          // ◈
+            Engaged => "\u{25C6}",                        // ◆
+            CriticalThreat => "\u{25C6}\u{25C6}",         // ◆◆
+            Tier1 => "\u{2160}",                          // Ⅰ
+            Tier2 => "\u{2161}",                          // Ⅱ
+            Tier3 => "\u{2162}",                          // Ⅲ
+            Tier4 => "\u{2163}",                          // Ⅳ
+            Online => "\u{2713}",                         // ✓
+            Offline => "\u{26D4}",                        // ⛔
+            FuelFull => "\u{26FD}\u{2588}",               // ⛽█
+            FuelMid => "\u{26FD}\u{2586}",                // ⛽▆
+            FuelLow => "\u{26FD}\u{2584}",                // ⛽▄
+            FuelEmpty => "\u{26FD}\u{2582}",              // ⛽▂
+            TargetLocked => "\u{25C6}",                   // ◆
+            CargoEmpty => "\u{25A1}",                     // □
+            CargoPartial => "\u{2588}",                   // ■█
+            CargoFull => "\u{2588}\u{2588}\u{2588}",      // ■■■
+            ContactFriendly => "\u{25C6}",                // ◆
+            ContactHostile => "\u{25C6}",                 // ◆
+            DifficultyEasy => "\u{2605}",                 // ★
+            DifficultyMedium => "\u{2605}\u{2605}",       // ★★
+            DifficultyHard => "\u{2605}\u{2605}\u{2605}", // ★★★
+            DifficultyExtreme => "\u{2620}",              // ☠
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Colorblind mode (accessibility)
 // ---------------------------------------------------------------------------
 
@@ -165,6 +281,10 @@ pub struct AccessibilitySettings {
     pub subtitle_size: f32,
     #[serde(default)]
     pub hold_for_interact: bool,
+    /// When true: screen_shake forced to 0, animations capped at 0.25×,
+    /// parallax halved, particle density reduced to 30%.
+    #[serde(default)]
+    pub reduce_motion: bool,
 }
 
 impl Default for AccessibilitySettings {
@@ -177,6 +297,7 @@ impl Default for AccessibilitySettings {
             subtitles: default_true(),
             subtitle_size: default_one(),
             hold_for_interact: false,
+            reduce_motion: false,
         }
     }
 }
@@ -353,8 +474,18 @@ pub enum InputAction {
     OpenCrewRoster,
     OpenShipLog,
     OpenMissionBoard,
+    // S83: captain's log replaces the old ship log as the L-key target.
+    OpenCaptainsLog,
     // S33: call a crew conference (co-deliberation) from the comms panel.
     OpenCrewConference,
+    // S64: dedicated panel toggles — each panel gets its own InputAction
+    // so one keypress doesn't open six overlapping panels.
+    OpenCareerPanel,
+    OpenCulturePanel,
+    OpenDiscoveryPanel,
+    OpenFactionsPanel,
+    OpenMarketPanel,
+    LeaveHelm,
 
     // Editor (S17/S18)
     EditorConfirm,
@@ -371,12 +502,26 @@ pub enum InputAction {
     EditorTabNext,
     EditorRotate,
     EditorDelete,
+    /// S81/D9: install the workshop draft (or an imported contract) into the
+    /// live ContractRuntime so it actually runs on the ship.
+    InstallContract,
 
     // OnBoard consoles
     ConsoleDigit1,
     ConsoleDigit2,
     ConsoleDigit3,
     ConsoleDigit4,
+
+    // UI Navigation (gamepad / keyboard focus ring)
+    UiUp,
+    UiDown,
+    UiLeft,
+    UiRight,
+    UiConfirm,
+    UiCancel,
+
+    // S72: diegetic help mode toggle.
+    OpenHelp,
 
     // Reserved (do not assign defaults that collide; variant exists for S29 /
     // save-management so future sprints don't hardcode literals).
@@ -408,7 +553,9 @@ impl InputAction {
             (FireWeapons, KeyBind(KeyF)),
             (FireMissile, KeyBind(KeyG)),
             (CycleTarget, KeyBind(KeyR)),
-            (CycleTargetReverse, KeyBind(KeyF)),
+            // KeyX, not KeyF: KeyF is FireWeapons, and both live in the
+            // Combat group during SpaceFlight — firing also cycled the target.
+            (CycleTargetReverse, KeyBind(KeyX)),
             (PowerSelectUp, KeyBind(ArrowUp)),
             (PowerSelectDown, KeyBind(ArrowDown)),
             (PowerAdjustLeft, KeyBind(ArrowLeft)),
@@ -431,10 +578,22 @@ impl InputAction {
             (OpenMap, KeyBind(KeyM)),
             (OpenInventory, KeyBind(KeyI)),
             (OpenCrewRoster, KeyBind(KeyU)),
-            (OpenShipLog, KeyBind(KeyL)),
+            // S83 moved the captain's log onto KeyL; the older ship log keeps
+            // its own binding rather than firing both panels at once.
+            (OpenShipLog, KeyBind(KeyZ)),
+            (OpenCaptainsLog, KeyBind(KeyL)),
             (OpenMissionBoard, KeyBind(KeyJ)),
             // S33: call a crew conference (co-deliberation) from the comms panel.
             (OpenCrewConference, KeyBind(KeyY)),
+            // S64: dedicated panel toggles (defaults overlap combat/flight
+            // keys where contexts are disjoint).
+            // KeyO, not KeyU: KeyU is OpenCrewRoster, same Interaction group.
+            (OpenCareerPanel, KeyBind(KeyO)),
+            (OpenCulturePanel, KeyBind(KeyP)),
+            (OpenDiscoveryPanel, KeyBind(KeyH)),
+            (OpenFactionsPanel, KeyBind(KeyN)),
+            (OpenMarketPanel, KeyBind(KeyK)),
+            (LeaveHelm, KeyBind(KeyB)),
             // Editor
             (EditorConfirm, KeyBind(Enter)),
             (EditorCancel, KeyBind(Escape)),
@@ -447,14 +606,25 @@ impl InputAction {
             (EditorTabNext, KeyBind(Tab)),
             (EditorRotate, KeyBind(KeyR)),
             (EditorDelete, KeyBind(Backspace)),
+            (InstallContract, KeyBind(F2)),
             // OnBoard consoles
             (ConsoleDigit1, KeyBind(Digit1)),
             (ConsoleDigit2, KeyBind(Digit2)),
             (ConsoleDigit3, KeyBind(Digit3)),
             (ConsoleDigit4, KeyBind(Digit4)),
+            // UI Navigation (gamepad D-pad/left-stick mapped too)
+            (UiUp, KeyBind(ArrowUp)),
+            (UiDown, KeyBind(ArrowDown)),
+            (UiLeft, KeyBind(ArrowLeft)),
+            (UiRight, KeyBind(ArrowRight)),
+            (UiConfirm, KeyBind(Enter)),
+            (UiCancel, KeyBind(Escape)),
+            // S72: diegetic help
+            (OpenHelp, KeyBind(F1)),
             // Reserved
             (VoicePushToTalk, KeyBind(KeyV)),
-            (MicCycleDevice, KeyBind(KeyB)),
+            // F7, not KeyB: KeyB is LeaveHelm, and both are live in flight.
+            (MicCycleDevice, KeyBind(F7)),
             (QuickSave, KeyBind(F5)),
             (QuickLoad, KeyBind(F9)),
         ])
@@ -496,8 +666,17 @@ impl InputAction {
             OpenCrewRoster,
             OpenShipLog,
             OpenMissionBoard,
+            // S83: captain's log toggle.
+            OpenCaptainsLog,
             // S33: call a crew conference (co-deliberation) from the comms panel.
             OpenCrewConference,
+            // S64: dedicated panel toggles.
+            OpenCareerPanel,
+            OpenCulturePanel,
+            OpenDiscoveryPanel,
+            OpenFactionsPanel,
+            OpenMarketPanel,
+            LeaveHelm,
             EditorConfirm,
             EditorCancel,
             EditorCursorUp,
@@ -509,14 +688,22 @@ impl InputAction {
             EditorTabNext,
             EditorRotate,
             EditorDelete,
+            InstallContract,
             ConsoleDigit1,
             ConsoleDigit2,
             ConsoleDigit3,
             ConsoleDigit4,
+            UiUp,
+            UiDown,
+            UiLeft,
+            UiRight,
+            UiConfirm,
+            UiCancel,
             VoicePushToTalk,
             MicCycleDevice,
             QuickSave,
             QuickLoad,
+            OpenHelp,
         ]
     }
 
@@ -554,8 +741,16 @@ impl InputAction {
             OpenInventory => "Open inventory",
             OpenCrewRoster => "Open crew roster",
             OpenShipLog => "Open ship log",
+            OpenCaptainsLog => "Open captain's log",
             OpenMissionBoard => "Open mission board",
             OpenCrewConference => "Open crew conference",
+            // S64: dedicated panel toggles.
+            OpenCareerPanel => "Open career panel",
+            OpenCulturePanel => "Open culture panel",
+            OpenDiscoveryPanel => "Open discovery panel",
+            OpenFactionsPanel => "Open factions panel",
+            OpenMarketPanel => "Open market panel",
+            LeaveHelm => "Leave helm",
             EditorConfirm => "Editor confirm",
             EditorCancel => "Editor cancel",
             EditorCursorUp => "Editor cursor up",
@@ -567,16 +762,125 @@ impl InputAction {
             EditorTabNext => "Editor tab next",
             EditorRotate => "Editor rotate",
             EditorDelete => "Editor delete",
+            InstallContract => "Install contract",
             ConsoleDigit1 => "Console 1",
             ConsoleDigit2 => "Console 2",
             ConsoleDigit3 => "Console 3",
             ConsoleDigit4 => "Console 4",
+            UiUp => "UI up",
+            UiDown => "UI down",
+            UiLeft => "UI left",
+            UiRight => "UI right",
+            UiConfirm => "UI confirm",
+            UiCancel => "UI back / cancel",
             VoicePushToTalk => "Voice push-to-talk",
             MicCycleDevice => "Cycle mic device",
             QuickSave => "Quick save",
             QuickLoad => "Quick load",
+            OpenHelp => "Open help",
         }
     }
+
+    /// Which group this action belongs to (for the keybind table UI).
+    pub fn group(&self) -> &'static str {
+        use InputAction::*;
+        match self {
+            ThrustForward | ThrustBackward | StrafeLeft | StrafeRight | RollLeft | RollRight
+            | Boost | Brake => "Movement",
+            FireWeapons | FireMissile | CycleTarget | CycleTargetReverse | PowerSelectUp
+            | PowerSelectDown | PowerAdjustLeft | PowerAdjustRight | LaunchChaff => "Combat",
+            LockOnCycleNext | LockOnCyclePrev | AttackLight | AttackHeavy | Dodge | Block => {
+                "Landed Combat"
+            }
+            Interact | Pause | OpenComms | OpenMap | OpenInventory | OpenCrewRoster
+            | OpenShipLog | OpenCaptainsLog | OpenMissionBoard | OpenCrewConference
+            | OpenCareerPanel | OpenCulturePanel | OpenDiscoveryPanel | OpenFactionsPanel
+            | OpenMarketPanel | LeaveHelm => "Interaction",
+            EditorConfirm | EditorCancel | EditorCursorUp | EditorCursorDown | EditorCursorLeft
+            | EditorCursorRight | EditorCycleNext | EditorCyclePrev | EditorTabNext
+            | EditorRotate | EditorDelete | InstallContract => "Editor",
+            ConsoleDigit1 | ConsoleDigit2 | ConsoleDigit3 | ConsoleDigit4 => "OnBoard",
+            UiUp | UiDown | UiLeft | UiRight | UiConfirm | UiCancel => "Navigation",
+            VoicePushToTalk | MicCycleDevice => "Voice",
+            QuickSave | QuickLoad => "Reserved",
+            OpenHelp => "Interaction",
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Settings consumer registry — used by the completeness gate test
+// ---------------------------------------------------------------------------
+
+/// Returns a map of every settings field path to its consumer description.
+/// Every field in `Settings` (and all sub-structs) must have an entry here.
+/// Adding a new field without a registry entry causes a test failure.
+pub fn settings_consumer_registry() -> HashMap<&'static str, &'static str> {
+    HashMap::from([
+        ("version", "settings.rs — serialization schema tracking"),
+        (
+            "audio.master_volume",
+            "voice/audio_feed_voice, sfx/process_sfx, music/tick_music, setup/play_music",
+        ),
+        ("audio.music_volume", "music/tick_music, setup/play_music"),
+        ("audio.sfx_volume", "sfx/process_sfx"),
+        ("audio.voice_volume", "voice/audio_feed_voice"),
+        ("audio.mute_when_unfocused", "music/tick_music"),
+        (
+            "audio.voice_input_device",
+            "voice/start_voice_thread, voice/mic_cycle_system",
+        ),
+        ("video.fullscreen", "setup/apply_video_settings"),
+        ("video.resolution", "setup/apply_video_settings"),
+        ("video.vsync", "setup/apply_video_settings"),
+        ("video.render_scale", "setup/apply_video_settings"),
+        ("video.ui_scale", "setup/apply_video_settings"),
+        (
+            "video.show_fps",
+            "settings_ui (display-config exception — toggles FPS overlay)",
+        ),
+        ("controls.keybinds", "ALL systems via settings.key()"),
+        ("controls.mouse_sensitivity", "ship/control"),
+        ("controls.invert_y", "ship/control"),
+        (
+            "controls.controller_deadzone",
+            "ship/control (apply_deadzone)",
+        ),
+        (
+            "gameplay.aim_assist",
+            "ship/fire_weapons (aim_assisted_forward)",
+        ),
+        ("gameplay.auto_dock", "docking/try_dock"),
+        ("gameplay.show_tutorial_hints", "onboarding/tutorial_hints"),
+        (
+            "gameplay.combat_log_verbosity",
+            "log_capture/capture_combat_damage, log_ui",
+        ),
+        (
+            "gameplay.auto_save_interval_secs",
+            "inventory/autosave_system",
+        ),
+        (
+            "accessibility.colorblind_mode",
+            "hud/semantic_glyphs, hud/update_hud_status",
+        ),
+        ("accessibility.text_scale", "hud/text_scaling"),
+        ("accessibility.high_contrast_ui", "hud/high_contrast_ui"),
+        ("accessibility.screen_shake", "ship/camera_follow"),
+        ("accessibility.subtitles", "captions"),
+        ("accessibility.subtitle_size", "captions"),
+        (
+            "accessibility.hold_for_interact",
+            "interaction/try_interact",
+        ),
+        (
+            "accessibility.reduce_motion",
+            "ship/camera_follow, starfield/dust_parallax, ship/control",
+        ),
+        ("network.server_url", "network/connect_on_enter_playing"),
+        ("network.auto_connect", "network/connect_on_enter_playing"),
+        ("network.show_latency", "network/poll_network"),
+    ])
 }
 
 // ---------------------------------------------------------------------------
@@ -638,6 +942,9 @@ impl KeyBind {
             KeyU => "KeyU",
             KeyP => "KeyP",
             KeyC => "KeyC",
+            KeyH => "KeyH",
+            KeyO => "KeyO",
+            KeyZ => "KeyZ",
             Space => "Space",
             Enter => "Enter",
             Escape => "Escape",
@@ -752,6 +1059,9 @@ impl KeyBind {
             "KeyU" => KeyU,
             "KeyP" => KeyP,
             "KeyC" => KeyC,
+            "KeyH" => KeyH,
+            "KeyO" => KeyO,
+            "KeyZ" => KeyZ,
             "Space" => Space,
             "Enter" => Enter,
             "Escape" => Escape,
@@ -1118,6 +1428,7 @@ mod tests {
         let s: Settings = ron::from_str(old).unwrap();
         assert!(s.accessibility.high_contrast_ui);
         assert_eq!(s.accessibility.screen_shake, 1.0);
+        assert!(!s.accessibility.reduce_motion); // S71: new field defaults to false
     }
 
     #[test]
@@ -1148,10 +1459,174 @@ mod tests {
         }
     }
 
+    /// Every key actually used in the shipped defaults must survive the
+    /// string table. A `KeyCode` missing from `name()`/`from_name()` silently
+    /// round-trips as `KeyF`, so a settings save would rebind the action.
+    /// The five-keycode spot check above cannot catch that.
+    #[test]
+    fn every_default_keybind_round_trips() {
+        for (action, bind) in InputAction::default_keybinds() {
+            let name = KeyBind::name(bind.0);
+            assert_eq!(
+                KeyBind::from_name(name),
+                bind.0,
+                "{action:?} is bound to a KeyCode missing from the string table \
+                 (it would load back as KeyF); add it to KeyBind::name/from_name"
+            );
+            assert!(
+                !KeyBind::display(bind.0).is_empty(),
+                "{action:?} has no display string"
+            );
+        }
+    }
+
+    /// Two actions in the same group must not share a default key: those
+    /// actions are live at the same time, so one press fires both. Reuse
+    /// ACROSS groups is deliberate (flight / editor / UI navigation are
+    /// never active simultaneously) and is not checked here.
+    #[test]
+    fn no_default_key_collisions_within_a_group() {
+        use std::collections::HashMap;
+        let binds = InputAction::default_keybinds();
+        let mut seen: HashMap<(&str, KeyCode), InputAction> = HashMap::new();
+        for action in InputAction::all() {
+            let Some(bind) = binds.get(action) else {
+                continue;
+            };
+            let key = (action.group(), bind.0);
+            if let Some(other) = seen.insert(key, *action) {
+                panic!(
+                    "{:?} and {:?} are both in the \"{}\" group and both default to {} \
+                     — one keypress fires both",
+                    other,
+                    action,
+                    action.group(),
+                    KeyBind::display(bind.0)
+                );
+            }
+        }
+    }
+
     #[test]
     fn key_display_known() {
         assert_eq!(KeyBind::display(KeyCode::KeyW), "W");
         assert_eq!(KeyBind::display(KeyCode::ArrowUp), "↑");
         assert_eq!(KeyBind::display(KeyCode::ShiftLeft), "LShift");
+    }
+
+    /// Every `Settings` field has a registered consumer outside `settings_ui`.
+    ///
+    /// The field list is *derived* by serializing `Settings::default()` and
+    /// walking it, not hand-written. That matters: the previous version of
+    /// this test compared the registry against a hardcoded list of 33 paths,
+    /// so a newly added field was invisible to it — the gate could only ever
+    /// re-confirm what someone had already remembered to type.
+    #[test]
+    fn all_settings_have_consumers() {
+        let consumers = settings_consumer_registry();
+        let expected = enumerate_settings_field_paths();
+        assert!(
+            expected.len() >= 30,
+            "field enumeration collapsed ({} paths) — the walker is broken, \
+             not the settings struct",
+            expected.len()
+        );
+
+        let mut missing: Vec<String> = expected
+            .iter()
+            .filter(|path| !consumers.contains_key(path.as_str()))
+            .cloned()
+            .collect();
+        missing.sort();
+        assert!(
+            missing.is_empty(),
+            "these Settings fields have no entry in settings_consumer_registry(): \
+             {missing:?} — wire the field, then name its consumer"
+        );
+
+        // A registry entry that names no real consumer is worse than a missing
+        // one: it makes the gate certify a dead setting. `gameplay.aim_assist`
+        // shipped claiming "combat/cycle_target, combat/enemy_fly" while being
+        // read by neither.
+        let placeholders: Vec<&&str> = consumers
+            .iter()
+            .filter(|(_, v)| {
+                let v = v.to_ascii_lowercase();
+                v.contains("placeholder") || v.contains("todo") || v.contains("future")
+            })
+            .map(|(k, _)| k)
+            .collect();
+        assert!(
+            placeholders.is_empty(),
+            "these registry entries are placeholders, so the gate is green on a \
+             setting that does nothing: {placeholders:?}"
+        );
+
+        // Stale entries point at fields that no longer exist.
+        let mut stale: Vec<&&str> = consumers
+            .keys()
+            .filter(|k| !expected.iter().any(|e| e == *k))
+            .collect();
+        stale.sort();
+        assert!(
+            stale.is_empty(),
+            "registry entries for fields that no longer exist: {stale:?}"
+        );
+    }
+
+    /// Walk `Settings::default()` as JSON and collect every leaf field path
+    /// (`audio.master_volume`, …). Containers that are themselves the unit of
+    /// configuration — the keybind map, the resolution tuple — are leaves.
+    fn enumerate_settings_field_paths() -> Vec<String> {
+        fn walk(value: &serde_json::Value, prefix: &str, out: &mut Vec<String>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for (k, v) in map {
+                        let path = if prefix.is_empty() {
+                            k.clone()
+                        } else {
+                            format!("{prefix}.{k}")
+                        };
+                        // Only recurse into the top-level sub-structs; below
+                        // that, a map or array IS the configured value.
+                        if matches!(v, serde_json::Value::Object(_)) && prefix.is_empty() {
+                            walk(v, &path, out);
+                        } else {
+                            out.push(path);
+                        }
+                    }
+                }
+                _ => out.push(prefix.to_string()),
+            }
+        }
+        let json = serde_json::to_value(Settings::default()).expect("Settings serializes");
+        let mut out = Vec::new();
+        walk(&json, "", &mut out);
+        out
+    }
+
+    #[test]
+    fn all_input_actions_have_labels() {
+        for action in InputAction::all() {
+            let label = action.label();
+            assert!(!label.is_empty(), "InputAction {action:?} has empty label");
+            let group = action.group();
+            assert!(!group.is_empty(), "InputAction {action:?} has empty group");
+        }
+    }
+
+    #[test]
+    fn reduce_motion_defaults_to_false() {
+        let s = Settings::default();
+        assert!(!s.accessibility.reduce_motion);
+    }
+
+    #[test]
+    fn animation_speed_multiplier_from_settings() {
+        let mut s = Settings::default();
+        s.accessibility.reduce_motion = false;
+        assert_eq!(AnimationSpeedMultiplier::from_settings(&s).0, 1.0);
+        s.accessibility.reduce_motion = true;
+        assert_eq!(AnimationSpeedMultiplier::from_settings(&s).0, 0.25);
     }
 }

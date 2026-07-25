@@ -99,7 +99,7 @@ pub struct InteractionPrompt {
 
 /// Which interaction panel (if any) is currently open. Set by `try_interact`
 /// on `E`; cleared by `pause::toggle_pause` (Esc). Drives the HUD.
-#[derive(Resource, Default, PartialEq, Eq)]
+#[derive(Resource, Default, PartialEq, Eq, Clone, Copy, Debug)]
 pub enum ActivePanel {
     #[default]
     None,
@@ -117,7 +117,6 @@ pub enum ActivePanel {
     Miner,
     Power,
     /// S12 galactic news feed.
-    #[allow(dead_code)]
     News,
     /// S17 exterior editor (spec §19), opened from a Shipyard terminal.
     ShipExterior,
@@ -129,6 +128,12 @@ pub enum ActivePanel {
     ContractWorkshop,
     /// S34 contract library browser — browse, import, share contracts.
     ContractLibrary,
+    /// S82 dilemma panel — displays a generated dilemma with choices.
+    Dilemma,
+    /// S82 scripted encounter panel — displays encounter narrative and choices.
+    Encounter,
+    /// S82 trope narrative popup — lightweight procedural seasoning display.
+    TropePopup,
     Unknown,
 }
 

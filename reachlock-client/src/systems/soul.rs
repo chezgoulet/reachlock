@@ -109,6 +109,21 @@ pub fn init_souls(content: Res<ContentIndex>, mut registry: ResMut<SoulRegistry>
     if !registry.files.is_empty() {
         info!("souls: loaded {} authored soul(s)", registry.files.len());
     }
+
+    // Load soul mutations from the storylines directory (raw Vec<SoulMutation> RON).
+    let mutation_path = std::path::Path::new("mods/reachlock/storylines/loup_garou_souls.ron");
+    if mutation_path.exists() {
+        match std::fs::read_to_string(mutation_path) {
+            Ok(text) => match ron::from_str::<Vec<reachlock_core::soul::SoulMutation>>(&text) {
+                Ok(mutations) => {
+                    registry.mutations = mutations;
+                    info!("souls: loaded {} mutation arc(s)", registry.mutations.len());
+                }
+                Err(e) => warn!("souls: failed to parse mutations: {e}"),
+            },
+            Err(e) => warn!("souls: failed to read mutations: {e}"),
+        }
+    }
 }
 
 /// Feed ship damage into the crew's souls: when the hull takes a hit, every
@@ -311,6 +326,7 @@ mod tests {
             }],
             dialogue: None,
             deflections: vec![],
+            look: None,
         }
     }
 
@@ -335,10 +351,44 @@ mod tests {
 
     #[test]
     fn authored_mutation_arcs_fire_through_apply() {
-        // S16B: the boris_the_mark_earned arc (loup_garou_souls.ron) fires
-        // when trust is earned during a crisis — through the same apply()
-        // every game event uses, fired once.
+        // S16B: the boris_the_mark_earned arc fires when trust is earned
+        // during a crisis. Since mutations now load from the content index
+        // (not embedded), we seed them directly for the test.
+        use reachlock_core::contract::types::{Comparison, Condition};
+        use reachlock_core::soul::types::{Goal, GoalPriority};
+        use reachlock_core::soul::{SoulChange, SoulMutation};
+        let boris_mutation = SoulMutation {
+            id: "boris_the_mark_earned".into(),
+            soul_id: "boris".into(),
+            trigger: Condition::All(vec![
+                Condition::Compare {
+                    field: "trust.player".into(),
+                    op: Comparison::Gt,
+                    value: 819,
+                },
+                Condition::Compare {
+                    field: "event.player_showed_trust_during_crisis".into(),
+                    op: Comparison::Eq,
+                    value: 1,
+                },
+            ]),
+            changes: vec![
+                SoulChange::AddTrait("Devoted".into()),
+                SoulChange::SetRelationship {
+                    target: "player".into(),
+                    trust: 870,
+                    familiarity: 700,
+                },
+                SoulChange::UnlockSecret("the_mark".into()),
+                SoulChange::AddGoal(Goal {
+                    id: "protect_the_captain_specifically".into(),
+                    priority: GoalPriority::Constant,
+                    description: "Ludger Thibodeaux does not die on an EVA.".into(),
+                }),
+            ],
+        };
         let mut registry = registry_with(minimal_soul("boris"));
+        registry.mutations = vec![boris_mutation];
         let trust_event = |t: u64| SoulEvent {
             event_type: "player_showed_trust_during_crisis".into(),
             player_involved: true,

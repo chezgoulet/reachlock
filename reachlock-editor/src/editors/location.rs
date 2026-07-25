@@ -75,7 +75,11 @@ impl LocationEditor {
             entries.push(Entry {
                 location: blank_location(),
                 path: None,
-                dirty: true,
+                // Not dirty: this is a placeholder so the editor has something
+                // to show, not authored content. Marking it dirty made
+                // the first Ctrl+S write a file the author never created,
+                // while `has_unsaved_changes()` still reported clean.
+                dirty: false,
             });
         }
         LocationEditor {
@@ -176,8 +180,8 @@ impl Editor for LocationEditor {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn ui(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("location_toolbar").show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::TopBottomPanel::top("location_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Generate from Seed").clicked() {
                     let seed = self.selected as u64 + 42;
@@ -209,7 +213,7 @@ impl Editor for LocationEditor {
         egui::SidePanel::left("location_list")
             .resizable(true)
             .default_width(200.0)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("🔍");
                     ui.text_edit_singleline(&mut self.search);
@@ -230,7 +234,7 @@ impl Editor for LocationEditor {
             });
 
         let validation = self.validate();
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let Some(entry) = self.entries.get_mut(self.selected) else {
                 ui.label("No location selected.");
                 return;
@@ -611,7 +615,10 @@ impl Editor for LocationEditor {
             wrote += 1;
         }
         if wrote == 0 {
-            return Err("no dirty entries to save".into());
+            // Nothing dirty is not an error: this editor handled the save
+            // request and correctly wrote nothing. Returning Err here made
+            // Ctrl+S on a clean tab report "Save error: no dirty entries".
+            return Ok(true);
         }
         Ok(true)
     }

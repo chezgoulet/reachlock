@@ -38,9 +38,9 @@ pub enum SfxKind {
 impl SfxKind {
     fn sample_count(self) -> usize {
         match self {
-            SfxKind::UiConfirm => 8000,      // ~180ms at 44100
-            SfxKind::Alarm => 44100,         // 1s
-            SfxKind::DoorOpen => 22050,      // 0.5s
+            SfxKind::UiConfirm => 8000, // ~180ms at 44100
+            SfxKind::Alarm => 44100,    // 1s
+            SfxKind::DoorOpen => 22050, // 0.5s
             SfxKind::DoorClose => 22050,
             SfxKind::ArtifactPulse => 44100, // 1s
             SfxKind::EngineHum => 44100,     // 1s
@@ -75,7 +75,11 @@ pub fn generate_sfx(seed: u64, kind: SfxKind) -> GeneratedAudio {
                 let freq = if (i / 22050) % 2 == 0 { 440.0 } else { 880.0 };
                 let phase = (t * freq) % 1.0;
                 let env = 1.0 - frac * 0.3;
-                if phase < 0.5 { env * 0.5 } else { -env * 0.5 }
+                if phase < 0.5 {
+                    env * 0.5
+                } else {
+                    -env * 0.5
+                }
             }
             SfxKind::DoorOpen => {
                 // Rising pitch with noise burst.
@@ -143,7 +147,10 @@ pub fn generate_sfx(seed: u64, kind: SfxKind) -> GeneratedAudio {
         samples.push((clamped * i16::MAX as f64) as i16);
     }
 
-    GeneratedAudio { sample_rate, samples }
+    GeneratedAudio {
+        sample_rate,
+        samples,
+    }
 }
 
 /// A triggered SFX event — queued by game systems and drained by the client.
@@ -156,7 +163,11 @@ pub struct SfxEvent {
 
 impl SfxEvent {
     pub fn new(kind: SfxKind, seed: u64) -> Self {
-        SfxEvent { kind, seed, gain: 1.0 }
+        SfxEvent {
+            kind,
+            seed,
+            gain: 1.0,
+        }
     }
 }
 
@@ -181,8 +192,12 @@ mod tests {
     #[test]
     fn sample_count_matches_kind() {
         for kind in &[
-            SfxKind::UiConfirm, SfxKind::Alarm, SfxKind::DoorOpen,
-            SfxKind::WeaponFire, SfxKind::Footstep, SfxKind::Explosion,
+            SfxKind::UiConfirm,
+            SfxKind::Alarm,
+            SfxKind::DoorOpen,
+            SfxKind::WeaponFire,
+            SfxKind::Footstep,
+            SfxKind::Explosion,
             SfxKind::SignalPulse,
         ] {
             let audio = generate_sfx(1, *kind);

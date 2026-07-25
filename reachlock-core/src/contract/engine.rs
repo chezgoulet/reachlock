@@ -73,6 +73,49 @@ pub fn evaluate<'c>(contract: &'c Contract, ctx: &EvalContext) -> Outcome<'c> {
     }
 }
 
+/// Result of evaluating a single rule — used by `evaluate_all` for display.
+#[derive(Debug, Clone)]
+pub struct RuleResult {
+    pub index: usize,
+    pub label: String,
+    pub action: String,
+    pub condition_summary: String,
+    pub matched: bool,
+}
+
+/// Evaluate every rule in a contract against game state without short-circuiting.
+/// Pure display function — the runtime still uses `evaluate` which stops at the
+/// first match. This returns all rules with their match status so the deliberation
+/// panel can show which rules matched and which didn't.
+pub fn evaluate_all(contract: &Contract, ctx: &EvalContext) -> Vec<RuleResult> {
+    let mut order: Vec<usize> = (0..contract.rules.len()).collect();
+    order.sort_by_key(|&i| std::cmp::Reverse(contract.rules[i].priority));
+
+    order
+        .into_iter()
+        .map(|i| {
+            let rule = &contract.rules[i];
+            let matched = condition_holds(&rule.condition, ctx);
+            let condition_summary = match &rule.condition {
+                super::Condition::Always => "always".into(),
+                super::Condition::Compare { field, op, value } => {
+                    format!("{field} {op:?} {value}")
+                }
+                super::Condition::Not(_) => "not(…)".into(),
+                super::Condition::All(inner) => format!("all({})", inner.len()),
+                super::Condition::Any(inner) => format!("any({})", inner.len()),
+            };
+            RuleResult {
+                index: i,
+                label: rule.action.kind.clone(),
+                action: rule.action.kind.clone(),
+                condition_summary,
+                matched,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

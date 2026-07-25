@@ -22,28 +22,21 @@ const CONTRACT_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/contrac
 const SOUL_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/soul.schema.json");
 const ROOM_TEMPLATE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/room_template.schema.json");
-const ECOSYSTEM_SCHEMA: &str =
-    include_str!("../../mods/reachlock/schemas/ecosystem.schema.json");
+const ECOSYSTEM_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/ecosystem.schema.json");
 const PLANT_CULTURE_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/planet_culture.schema.json");
-const CAREER_SCHEMA: &str =
-    include_str!("../../mods/reachlock/schemas/career_path.schema.json");
-const THEME_SCHEMA: &str =
-    include_str!("../../mods/reachlock/schemas/theme.schema.json");
-const TROPE_SCHEMA: &str =
-    include_str!("../../mods/reachlock/schemas/trope.schema.json");
+const CAREER_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/career_path.schema.json");
+const THEME_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/theme.schema.json");
+const TROPE_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/trope.schema.json");
 const SCRIPTED_ENCOUNTER_SCHEMA: &str =
     include_str!("../../mods/reachlock/schemas/scripted_encounter.schema.json");
-const DUNGEON_SCHEMA: &str =
-    include_str!("../../mods/reachlock/schemas/dungeon.schema.json");
-const EVENT_SCHEMA: &str =
-    include_str!("../../mods/reachlock/schemas/event.schema.json");
-const RECIPE_SCHEMA: &str =
-    include_str!("../../mods/reachlock/schemas/recipe.schema.json");
+const DUNGEON_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/dungeon.schema.json");
+const EVENT_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/event.schema.json");
+const RECIPE_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/recipe.schema.json");
+const ORIGIN_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/origin.schema.json");
 
 // Dialogue schema is pending from S53 — use ecosystem as placeholder.
-const DIALOGUE_SCHEMA: &str =
-    include_str!("../../mods/reachlock/schemas/ecosystem.schema.json");
+const DIALOGUE_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/ecosystem.schema.json");
 
 #[derive(Subcommand)]
 pub enum ContentCommand {
@@ -378,6 +371,17 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                     }
                     return Ok(());
                 }
+                ContentPayload::Origin(origin) => {
+                    println!(
+                        "{}: origin \"{}\" (\"{}\") — career: {}, credits: {}",
+                        path.display(),
+                        origin.id,
+                        origin.name,
+                        origin.starting_career,
+                        origin.starting_credits,
+                    );
+                    return Ok(());
+                }
             };
             let out = out.unwrap_or_else(|| path.with_extension("svg"));
             std::fs::write(&out, svg).map_err(|e| format!("writing {}: {e}", out.display()))?;
@@ -397,14 +401,14 @@ pub fn run(cmd: ContentCommand) -> Result<(), String> {
                 let resp: serde_json::Value = response
                     .json()
                     .map_err(|e| format!("parsing response: {e}"))?;
-                let override_id = resp["content_override_id"]
-                    .as_str()
-                    .unwrap_or("unknown");
+                let override_id = resp["content_override_id"].as_str().unwrap_or("unknown");
                 println!("published: content_override_id = {override_id}");
                 Ok(())
             } else {
                 let status = response.status();
-                let text = response.text().unwrap_or_else(|e| format!("(response body unavailable: {e})"));
+                let text = response
+                    .text()
+                    .unwrap_or_else(|e| format!("(response body unavailable: {e})"));
                 Err(format!("failed (HTTP {status}): {text}"))
             }
         }
@@ -434,6 +438,7 @@ fn validate_schema(
         AssetType::Dungeon => DUNGEON_SCHEMA,
         AssetType::Event => EVENT_SCHEMA,
         AssetType::Recipe => RECIPE_SCHEMA,
+        AssetType::Origin => ORIGIN_SCHEMA,
     };
 
     let schema = serde_json::from_str::<serde_json::Value>(schema_text)

@@ -4,11 +4,11 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
 use std::sync::LazyLock;
+use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use aes_gcm::aead::{Aead, KeyInit, AeadCore};
+use aes_gcm::aead::{Aead, AeadCore, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use argon2::password_hash::SaltString;
 use argon2::Argon2;
@@ -26,6 +26,11 @@ use subtle::ConstantTimeEq;
 // ---------------------------------------------------------------------------
 // Rate limiter for auth endpoints (S63)
 // ---------------------------------------------------------------------------
+
+/// Hard cap on distinct rate-limit keys held at once. Without it, an attacker
+/// sending unique keys grows the map without bound — a memory-exhaustion
+/// vector in the very component meant to blunt abuse.
+const RATE_LIMIT_MAX_KEYS: usize = 50_000;
 
 /// Simple sliding-window rate limiter for auth endpoints.
 pub struct AuthRateLimiter {
@@ -45,8 +50,24 @@ impl AuthRateLimiter {
 
     pub fn is_limited(&self, key: &str) -> bool {
         let now = Instant::now();
-        let cutoff = now - Duration::from_secs(self.window_secs);
-        let mut buckets = self.buckets.lock().unwrap();
+        let cutoff = now
+            .checked_sub(Duration::from_secs(self.window_secs))
+            .unwrap_or(now);
+        let mut buckets = self.buckets.lock().unwrap_or_else(|e| e.into_inner());
+
+        // Sweep expired buckets before inserting, and hard-cap the map.
+        if buckets.len() >= RATE_LIMIT_MAX_KEYS {
+            buckets.retain(|_, v| {
+                v.retain(|&t| t > cutoff);
+                !v.is_empty()
+            });
+            if buckets.len() >= RATE_LIMIT_MAX_KEYS && !buckets.contains_key(key) {
+                // Still saturated by live traffic: fail closed for new keys
+                // rather than growing without limit.
+                return true;
+            }
+        }
+
         let entries = buckets.entry(key.to_string()).or_default();
         entries.retain(|&t| t > cutoff);
         if entries.len() as u32 >= self.max_attempts {
@@ -55,11 +76,98 @@ impl AuthRateLimiter {
         entries.push(now);
         false
     }
+
+    #[cfg(test)]
+    fn key_count(&self) -> usize {
+        self.buckets.lock().unwrap_or_else(|e| e.into_inner()).len()
+    }
+}
+
+/// Comma-separated CIDR-less list of proxy addresses permitted to set
+/// `X-Forwarded-For`, from `REACHLOCK_TRUSTED_PROXIES`. Empty (the default)
+/// means the header is never trusted.
+fn trusted_proxies() -> &'static [String] {
+    static PROXIES: LazyLock<Vec<String>> = LazyLock::new(|| {
+        std::env::var("REACHLOCK_TRUSTED_PROXIES")
+            .map(|v| {
+                v.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
+    });
+    &PROXIES
+}
+
+/// The address to rate-limit on.
+///
+/// `X-Forwarded-For` is honoured **only** when the request actually arrived
+/// from a configured trusted proxy; otherwise the peer socket address is used.
+/// The previous version read the header unconditionally and fell back to the
+/// literal string `"unknown"`, which meant that with no proxy in front every
+/// caller shared one bucket (one registration per hour for the entire server),
+/// and with a proxy any client could mint unlimited buckets by varying the
+/// header.
+pub fn rate_limit_key(
+    peer: Option<std::net::SocketAddr>,
+    headers: &axum::http::HeaderMap,
+) -> String {
+    let peer_ip = peer.map(|a| a.ip().to_string());
+    if let Some(ip) = &peer_ip {
+        if trusted_proxies().iter().any(|p| p == ip) {
+            if let Some(fwd) = headers
+                .get("x-forwarded-for")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.split(',').next())
+                .map(|v| v.trim())
+                .filter(|v| !v.is_empty())
+            {
+                return fwd.to_string();
+            }
+        }
+    }
+    // No trusted proxy: the socket address is the only thing a caller cannot
+    // forge. `None` (a transport with no peer) gets its own bucket rather
+    // than sharing the global one.
+    peer_ip.unwrap_or_else(|| "no-peer".to_string())
+}
+
+/// The peer socket address, or `None` when the transport has none.
+///
+/// A plain `ConnectInfo<SocketAddr>` extractor rejects when the router was not
+/// built with `into_make_service_with_connect_info` (every integration test),
+/// and axum 0.8 does not implement `OptionalFromRequestParts` for it. This
+/// infallible wrapper reads the extension directly so handlers behave the same
+/// in production and under test.
+pub struct PeerAddr(pub Option<std::net::SocketAddr>);
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for PeerAddr {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        Ok(PeerAddr(
+            parts
+                .extensions
+                .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                .map(|c| c.0),
+        ))
+    }
 }
 
 static LOGIN_LIMITER: LazyLock<AuthRateLimiter> = LazyLock::new(|| AuthRateLimiter::new(5, 60));
-static REGISTER_LIMITER: LazyLock<AuthRateLimiter> = LazyLock::new(|| AuthRateLimiter::new(1, 3600));
-static FORGOT_PW_LIMITER: LazyLock<AuthRateLimiter> = LazyLock::new(|| AuthRateLimiter::new(1, 600));
+/// Per-IP, not global: 5 accounts an hour from one address is generous for a
+/// household and still throttles scripted signup floods.
+static REGISTER_LIMITER: LazyLock<AuthRateLimiter> =
+    LazyLock::new(|| AuthRateLimiter::new(5, 3600));
+static FORGOT_PW_LIMITER: LazyLock<AuthRateLimiter> =
+    LazyLock::new(|| AuthRateLimiter::new(3, 600));
+/// The 2FA challenge endpoint was unlimited, leaving 6-digit TOTP codes and
+/// recovery codes open to online brute force.
+static TFA_LIMITER: LazyLock<AuthRateLimiter> = LazyLock::new(|| AuthRateLimiter::new(5, 300));
 
 // ---------------------------------------------------------------------------
 // AuthConfig — runtime-editable settings
@@ -134,6 +242,17 @@ impl AuthConfig {
 // REACHLOCK_SECRET_KEY retrieval
 // ---------------------------------------------------------------------------
 
+/// Public base URL for links in outbound email. `https://reachlock.example`
+/// was a placeholder that shipped in real verification and reset messages —
+/// every recipient got a dead link.
+fn public_base_url() -> String {
+    std::env::var("REACHLOCK_PUBLIC_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim_end_matches('/').to_string())
+        .unwrap_or_else(|| "http://localhost:40711".to_string())
+}
+
 fn secret_key() -> Option<Vec<u8>> {
     let hex_key = std::env::var("REACHLOCK_SECRET_KEY").ok()?;
     hex::decode(&hex_key).ok().filter(|b| b.len() == 32)
@@ -165,7 +284,13 @@ pub trait PlayerStore: Send + Sync {
     fn by_id(&self, id: &str) -> Option<PlayerRecord>;
     fn by_email(&self, email: &str) -> Option<PlayerRecord>;
     fn by_provider(&self, provider: &str, provider_uid: &str) -> Option<PlayerRecord>;
-    fn link_provider(&self, player_id: &str, provider: &str, provider_uid: &str, provider_email: &str);
+    fn link_provider(
+        &self,
+        player_id: &str,
+        provider: &str,
+        provider_uid: &str,
+        provider_email: &str,
+    );
     fn update_hash(&self, player_id: &str, hash: &str);
     fn inc_fails(&self, player_id: &str);
     fn clear_fails(&self, player_id: &str);
@@ -214,7 +339,11 @@ impl PlayerStore for MemoryPlayerStore {
         let rec = PlayerRecord {
             id: id.clone(),
             username: username.to_string(),
-            email: if email.is_empty() { None } else { Some(email.to_string()) },
+            email: if email.is_empty() {
+                None
+            } else {
+                Some(email.to_string())
+            },
             password_hash: Some(hash.to_string()),
             role: "player".into(),
             verified_at: None,
@@ -260,11 +389,17 @@ impl PlayerStore for MemoryPlayerStore {
         self.players.lock().unwrap().get(pid).cloned()
     }
 
-    fn link_provider(&self, player_id: &str, provider: &str, provider_uid: &str, _provider_email: &str) {
-        self.by_provider
-            .lock()
-            .unwrap()
-            .insert((provider.to_string(), provider_uid.to_string()), player_id.to_string());
+    fn link_provider(
+        &self,
+        player_id: &str,
+        provider: &str,
+        provider_uid: &str,
+        _provider_email: &str,
+    ) {
+        self.by_provider.lock().unwrap().insert(
+            (provider.to_string(), provider_uid.to_string()),
+            player_id.to_string(),
+        );
     }
 
     fn update_hash(&self, player_id: &str, hash: &str) {
@@ -345,7 +480,10 @@ impl PlayerStore for MemoryPlayerStore {
         let mut all: Vec<_> = players.values().cloned().collect();
         all.sort_by_key(|a| a.created_at);
         let start = ((page.saturating_sub(1)) * per_page) as usize;
-        all.into_iter().skip(start).take(per_page as usize).collect()
+        all.into_iter()
+            .skip(start)
+            .take(per_page as usize)
+            .collect()
     }
 
     fn count(&self) -> usize {
@@ -369,12 +507,39 @@ pub trait SessionStore: Send + Sync {
     fn revoke(&self, token: &str);
     /// Reject all sessions for a player (used on password reset / ban).
     fn revoke_all_for_player(&self, player_id: &str);
+    /// S73: count of currently active sessions.
+    fn active_sessions(&self) -> usize;
 }
 
-#[derive(Default)]
 pub struct MemorySessionStore {
-    tokens: Mutex<HashMap<String, SessionInfo>>,
+    /// token -> (info, issued_at_epoch_secs). Sessions previously never
+    /// expired: `session_ttl_hours` was configurable, settable through the
+    /// admin API, and read by nothing.
+    tokens: Mutex<HashMap<String, (SessionInfo, i64)>>,
     counter: AtomicU64,
+    /// Lifetime in seconds; 0 disables expiry.
+    ttl_secs: i64,
+}
+
+impl Default for MemorySessionStore {
+    /// Defaults to `AuthConfig::default().session_ttl_hours`.
+    fn default() -> Self {
+        MemorySessionStore::with_ttl_hours(AuthConfig::default().session_ttl_hours)
+    }
+}
+
+impl MemorySessionStore {
+    pub fn with_ttl_hours(hours: u32) -> Self {
+        MemorySessionStore {
+            tokens: Mutex::new(HashMap::new()),
+            counter: AtomicU64::new(0),
+            ttl_secs: i64::from(hours) * 3600,
+        }
+    }
+
+    fn is_live(&self, issued_at: i64) -> bool {
+        self.ttl_secs <= 0 || now_secs() - issued_at < self.ttl_secs
+    }
 }
 
 impl SessionStore for MemorySessionStore {
@@ -385,28 +550,38 @@ impl SessionStore for MemorySessionStore {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         let token = format!("{n:x}_{nanos:x}_{}", rand_hex(16));
-        self.tokens
-            .lock()
-            .expect("session store poisoned")
-            .insert(token.clone(), info);
+        let mut tokens = self.tokens.lock().expect("session store poisoned");
+        // Opportunistic sweep so expired sessions do not accumulate.
+        tokens.retain(|_, (_, issued)| self.is_live(*issued));
+        tokens.insert(token.clone(), (info, now_secs()));
         token
     }
 
     fn resolve(&self, token: &str) -> Option<SessionInfo> {
-        self.tokens
-            .lock()
-            .expect("session store poisoned")
-            .get(token)
-            .cloned()
+        let mut tokens = self.tokens.lock().expect("session store poisoned");
+        let (info, issued) = tokens.get(token)?;
+        if !self.is_live(*issued) {
+            let expired = token.to_string();
+            tokens.remove(&expired);
+            return None;
+        }
+        Some(info.clone())
     }
 
     fn revoke(&self, token: &str) {
-        self.tokens.lock().expect("session store poisoned").remove(token);
+        self.tokens
+            .lock()
+            .expect("session store poisoned")
+            .remove(token);
     }
 
     fn revoke_all_for_player(&self, player_id: &str) {
         let mut tokens = self.tokens.lock().expect("session store poisoned");
-        tokens.retain(|_, info| info.player_id != player_id);
+        tokens.retain(|_, (info, _)| info.player_id != player_id);
+    }
+
+    fn active_sessions(&self) -> usize {
+        self.tokens.lock().expect("session store poisoned").len()
     }
 }
 
@@ -439,13 +614,13 @@ impl TempTokenStore {
     pub fn issue(&self, player_id: &str, ttl_mins: u32) -> String {
         let token = generate_crypto_token(32);
         let expires_at = now_secs() + (ttl_mins as i64 * 60);
-        self.tokens
-            .lock()
-            .unwrap()
-            .insert(token.clone(), TempTokenEntry {
+        self.tokens.lock().unwrap().insert(
+            token.clone(),
+            TempTokenEntry {
                 player_id: player_id.to_string(),
                 expires_at,
-            });
+            },
+        );
         token
     }
 
@@ -526,11 +701,7 @@ fn hash_password(password: &str, cfg: &AuthConfig) -> Result<String, String> {
         Some(32),
     )
     .map_err(|e| format!("argon2 params: {e}"))?;
-    let argon2 = Argon2::new(
-        argon2::Algorithm::Argon2id,
-        argon2::Version::V0x13,
-        params,
-    );
+    let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
     let hash = argon2
         .hash_password(password.as_bytes(), &salt)
         .map_err(|e| format!("argon2 hash: {e}"))?
@@ -812,7 +983,10 @@ async fn oauth_device_code(provider: &str) -> Result<OAuthDeviceResponse, String
         oauth_client_config(provider).ok_or_else(|| format!("{provider} OAuth not configured"))?;
 
     let client = reqwest::Client::new();
-    let params = [("client_id", client_id.as_str()), ("scope", "openid email profile")];
+    let params = [
+        ("client_id", client_id.as_str()),
+        ("scope", "openid email profile"),
+    ];
     let resp: serde_json::Value = client
         .post(device_auth_url(provider))
         .form(&params)
@@ -825,15 +999,9 @@ async fn oauth_device_code(provider: &str) -> Result<OAuthDeviceResponse, String
         .map_err(|e| format!("OAuth device resp: {e}"))?;
 
     Ok(OAuthDeviceResponse {
-        device_code: resp["device_code"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
+        device_code: resp["device_code"].as_str().unwrap_or("").to_string(),
         user_code: resp["user_code"].as_str().unwrap_or("").to_string(),
-        verification_uri: resp["verification_uri"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
+        verification_uri: resp["verification_uri"].as_str().unwrap_or("").to_string(),
         expires_in: resp["expires_in"].as_u64().unwrap_or(300),
     })
 }
@@ -843,10 +1011,7 @@ struct OAuthUser {
     email: Option<String>,
 }
 
-async fn oauth_poll_token(
-    provider: &str,
-    device_code: &str,
-) -> Result<Option<OAuthUser>, String> {
+async fn oauth_poll_token(provider: &str, device_code: &str) -> Result<Option<OAuthUser>, String> {
     let (client_id, client_secret) =
         oauth_client_config(provider).ok_or_else(|| format!("{provider} OAuth not configured"))?;
 
@@ -927,14 +1092,12 @@ pub fn resolve_player_id(
 
 pub async fn register(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
+    peer: PeerAddr,
     headers: axum::http::HeaderMap,
     axum::Json(body): axum::Json<RegisterRequest>,
 ) -> Result<axum::Json<RegisterResponse>, crate::ws::AppError> {
-    let client_ip = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("unknown");
-    if REGISTER_LIMITER.is_limited(&format!("register:{}", client_ip)) {
+    let client_ip = rate_limit_key(peer.0, &headers);
+    if REGISTER_LIMITER.is_limited(&format!("register:{client_ip}")) {
         return Err(app_err(429, "too many requests"));
     }
     let cfg = state.auth_config.read().unwrap();
@@ -948,17 +1111,29 @@ pub async fn register(
         .chars()
         .all(|c| c.is_alphanumeric() || c == '_')
     {
-        return Err(app_err(400, "username may only contain letters, digits, and underscores"));
+        return Err(app_err(
+            400,
+            "username may only contain letters, digits, and underscores",
+        ));
     }
     if body.password.len() < cfg.min_password_length {
-        return Err(app_err(400, &format!("password must be at least {} characters", cfg.min_password_length)));
+        return Err(app_err(
+            400,
+            &format!(
+                "password must be at least {} characters",
+                cfg.min_password_length
+            ),
+        ));
     }
     if !body.email.contains('@') || !body.email.contains('.') {
         return Err(app_err(400, "invalid email address"));
     }
 
     let hash = hash_password(&body.password, &cfg).map_err(|e| app_err(500, &e))?;
-    let record = state.players.create(&body.username, &body.email, &hash).map_err(|e| app_err(409, &e))?;
+    let record = state
+        .players
+        .create(&body.username, &body.email, &hash)
+        .map_err(|e| app_err(409, &e))?;
 
     let token = state.sessions.issue(SessionInfo {
         player_id: record.id.clone(),
@@ -970,12 +1145,21 @@ pub async fn register(
     // Store in memory for now — in production this goes to email_verification_tokens table
     // via PgPlayerStore. For the memory store, we hold it alongside the player record
     // in a separate map. For simplicity in the in-memory path, we'll use a shared map.
-    state.verification_tokens.lock().unwrap().insert(full.clone(), (record.id.clone(), now_secs() + 24 * 3600));
-    let token_escaped = full; // hex tokens are HTML-safe
-    let body_html = format!(
-        "<h2>Welcome to ReachLock!</h2><p>Verify your email: <a href='https://reachlock.example/auth/verify?token={token_escaped}'>click here</a></p><p>Your verification code: <code>{token_escaped}</code></p>"
+    state.verification_tokens.lock().unwrap().insert(
+        full.clone(),
+        (
+            record.id.clone(),
+            now_secs() + i64::from(cfg.verification_token_ttl_hours) * 3600,
+        ),
     );
-    let _ = state.email.send(&body.email, "Verify your ReachLock account", &body_html);
+    let token_escaped = full; // hex tokens are HTML-safe
+    let base = public_base_url();
+    let body_html = format!(
+        "<h2>Welcome to ReachLock!</h2><p>Verify your email: <a href='{base}/auth/verify?token={token_escaped}'>click here</a></p><p>Your verification code: <code>{token_escaped}</code></p>"
+    );
+    let _ = state
+        .email
+        .send(&body.email, "Verify your ReachLock account", &body_html);
 
     state.audit.record(crate::services::audit::AuditEntry {
         timestamp: chrono::Utc::now().to_rfc3339(),
@@ -994,15 +1178,29 @@ pub async fn register(
 
 pub async fn login(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
+    peer: PeerAddr,
+    headers: axum::http::HeaderMap,
     axum::Json(body): axum::Json<LoginRequest>,
 ) -> Result<axum::Json<LoginResponse>, crate::ws::AppError> {
-    if LOGIN_LIMITER.is_limited(&body.login) {
+    // Two buckets. The per-account one keeps a single account from being
+    // ground down; the per-IP one is the bucket an attacker cannot escape by
+    // varying the login string (which is entirely under their control — the
+    // previous single bucket was keyed on it alone, so `alice`, `Alice`, and
+    // ` alice` each got a fresh allowance).
+    let ip = rate_limit_key(peer.0, &headers);
+    let account_key = body.login.trim().to_ascii_lowercase();
+    if LOGIN_LIMITER.is_limited(&format!("ip:{ip}"))
+        || LOGIN_LIMITER.is_limited(&format!("acct:{account_key}"))
+    {
         return Err(app_err(429, "too many requests"));
     }
     let cfg = state.auth_config.read().unwrap();
     let Some(record) = state.players.by_login(&body.login) else {
         // Prevent timing enumeration: run dummy verify against a known hash
-        let _ = verify_password(&body.password, "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHlzYWx0Zm9yZHVtbXk$c2FsdHlzYWx0Zm9yZHVtbXlzYWx0");
+        let _ = verify_password(
+            &body.password,
+            "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHlzYWx0Zm9yZHVtbXk$c2FsdHlzYWx0Zm9yZHVtbXlzYWx0",
+        );
         return Err(app_err(401, "invalid login credentials"));
     };
 
@@ -1010,7 +1208,10 @@ pub async fn login(
     if let Some(locked_until) = record.locked_until {
         if now_secs() < locked_until {
             let remaining = locked_until - now_secs();
-            return Err(app_err(403, &format!("account locked, try again in {remaining}s")));
+            return Err(app_err(
+                403,
+                &format!("account locked, try again in {remaining}s"),
+            ));
         }
     }
 
@@ -1053,9 +1254,11 @@ pub async fn login(
     // For now, TOTP secrets are in-memory map on state
     if state.totp_secrets.lock().unwrap().contains_key(&record.id) {
         let temp = state.temp_tokens.issue(&record.id, cfg.temp_token_ttl_mins);
+        // No player_id here: the second factor has not been satisfied yet,
+        // and the temp token is the only handle the client needs.
         return Ok(axum::Json(LoginResponse {
             token: None,
-            player_id: Some(record.id),
+            player_id: None,
             requires_2fa: Some(true),
             temp_token: Some(temp),
         }));
@@ -1101,7 +1304,9 @@ pub async fn verify_email(
     axum::Json(body): axum::Json<VerifyEmailRequest>,
 ) -> Result<axum::Json<serde_json::Value>, crate::ws::AppError> {
     let mut tokens = state.verification_tokens.lock().unwrap();
-    let &(ref player_id, expires_at) = tokens.get(&body.token).ok_or_else(|| app_err(400, "invalid or expired token"))?;
+    let &(ref player_id, expires_at) = tokens
+        .get(&body.token)
+        .ok_or_else(|| app_err(400, "invalid or expired token"))?;
     if now_secs() > expires_at {
         tokens.remove(&body.token);
         return Err(app_err(400, "invalid or expired token"));
@@ -1109,7 +1314,11 @@ pub async fn verify_email(
     let player_id = player_id.clone();
     drop(tokens);
     state.players.set_verified(&player_id);
-    state.verification_tokens.lock().unwrap().remove(&body.token);
+    state
+        .verification_tokens
+        .lock()
+        .unwrap()
+        .remove(&body.token);
     Ok(axum::Json(serde_json::json!({"verified": true})))
 }
 
@@ -1117,20 +1326,39 @@ pub async fn resend_verification(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
     headers: axum::http::HeaderMap,
 ) -> Result<axum::Json<serde_json::Value>, crate::ws::AppError> {
-    let player_id =
-        resolve_player_id(&headers, &*state.sessions).ok_or_else(|| app_err(401, "unauthorized"))?;
-    let record = state.players.by_id(&player_id).ok_or_else(|| app_err(404, "player not found"))?;
+    let player_id = resolve_player_id(&headers, &*state.sessions)
+        .ok_or_else(|| app_err(401, "unauthorized"))?;
+    let record = state
+        .players
+        .by_id(&player_id)
+        .ok_or_else(|| app_err(404, "player not found"))?;
     if record.verified_at.is_some() {
         return Ok(axum::Json(serde_json::json!({"verified": true})));
     }
     let (full, _selector, _vhash) = generate_split_token();
     let email = record.email.as_deref().unwrap_or("unknown");
-    state.verification_tokens.lock().unwrap().insert(full.clone(), (player_id, now_secs() + 24 * 3600));
-    let token_escaped = full; // hex tokens are HTML-safe
-    let body_html = format!(
-        "<h2>ReachLock Email Verification</h2><p>Verify: <a href='https://reachlock.example/auth/verify?token={token_escaped}'>click here</a></p><p>Code: <code>{token_escaped}</code></p>"
+    state.verification_tokens.lock().unwrap().insert(
+        full.clone(),
+        (
+            player_id,
+            now_secs()
+                + i64::from(
+                    state
+                        .auth_config
+                        .read()
+                        .map(|c| c.verification_token_ttl_hours)
+                        .unwrap_or(24),
+                ) * 3600,
+        ),
     );
-    let _ = state.email.send(email, "Verify your ReachLock account", &body_html);
+    let token_escaped = full; // hex tokens are HTML-safe
+    let base = public_base_url();
+    let body_html = format!(
+        "<h2>ReachLock Email Verification</h2><p>Verify: <a href='{base}/auth/verify?token={token_escaped}'>click here</a></p><p>Code: <code>{token_escaped}</code></p>"
+    );
+    let _ = state
+        .email
+        .send(email, "Verify your ReachLock account", &body_html);
     Ok(axum::Json(serde_json::json!({"sent": true})))
 }
 
@@ -1147,12 +1375,28 @@ pub async fn forgot_password(
         return axum::Json(serde_json::json!({"message": always}));
     };
     let (full, _selector, _vhash) = generate_split_token();
-    state.reset_tokens.lock().unwrap().insert(full.clone(), (record.id.clone(), now_secs() + 24 * 3600));
-    let token_escaped = full; // hex tokens are HTML-safe
-    let body_html = format!(
-        "<h2>ReachLock Password Reset</h2><p><a href='https://reachlock.example/auth/reset?token={token_escaped}'>Reset password</a></p><p>Code: <code>{token_escaped}</code></p>"
+    state.reset_tokens.lock().unwrap().insert(
+        full.clone(),
+        (
+            record.id.clone(),
+            now_secs()
+                + i64::from(
+                    state
+                        .auth_config
+                        .read()
+                        .map(|c| c.password_reset_token_ttl_mins)
+                        .unwrap_or(60),
+                ) * 60,
+        ),
     );
-    let _ = state.email.send(&body.email, "Reset your ReachLock password", &body_html);
+    let token_escaped = full; // hex tokens are HTML-safe
+    let base = public_base_url();
+    let body_html = format!(
+        "<h2>ReachLock Password Reset</h2><p><a href='{base}/auth/reset?token={token_escaped}'>Reset password</a></p><p>Code: <code>{token_escaped}</code></p>"
+    );
+    let _ = state
+        .email
+        .send(&body.email, "Reset your ReachLock password", &body_html);
     axum::Json(serde_json::json!({"message": always}))
 }
 
@@ -1162,14 +1406,35 @@ pub async fn reset_password(
 ) -> Result<axum::Json<serde_json::Value>, crate::ws::AppError> {
     let cfg = state.auth_config.read().unwrap();
     if body.new_password.len() < cfg.min_password_length {
-        return Err(app_err(400, &format!("password must be at least {} characters", cfg.min_password_length)));
+        return Err(app_err(
+            400,
+            &format!(
+                "password must be at least {} characters",
+                cfg.min_password_length
+            ),
+        ));
     }
     let mut tokens = state.reset_tokens.lock().unwrap();
-    let (player_id, expires_at) = tokens.remove(&body.token).ok_or_else(|| app_err(400, "invalid or expired token"))?;
+    let (player_id, expires_at) = tokens
+        .remove(&body.token)
+        .ok_or_else(|| app_err(400, "invalid or expired token"))?;
     if now_secs() > expires_at {
         return Err(app_err(400, "invalid or expired token"));
     }
     drop(tokens);
+    // A banned or deleted account must not be recoverable through the reset
+    // flow — `login` refuses both, and resetting the password silently
+    // revoked sessions without ever telling the caller why.
+    match state.players.by_id(&player_id) {
+        Some(rec) if rec.banned_at.is_some() => {
+            return Err(app_err(403, "account is banned"));
+        }
+        Some(rec) if rec.deleted_at.is_some() => {
+            return Err(app_err(403, "account is scheduled for deletion"));
+        }
+        Some(_) => {}
+        None => return Err(app_err(400, "invalid or expired token")),
+    }
     let hash = hash_password(&body.new_password, &cfg).map_err(|e| app_err(500, &e))?;
     state.players.update_hash(&player_id, &hash);
     state.sessions.revoke_all_for_player(&player_id);
@@ -1181,11 +1446,17 @@ pub async fn delete_account(
     headers: axum::http::HeaderMap,
     axum::Json(body): axum::Json<DeleteAccountRequest>,
 ) -> Result<axum::Json<serde_json::Value>, crate::ws::AppError> {
-    let player_id =
-        resolve_player_id(&headers, &*state.sessions).ok_or_else(|| app_err(401, "unauthorized"))?;
-    let record = state.players.by_id(&player_id).ok_or_else(|| app_err(404, "player not found"))?;
+    let player_id = resolve_player_id(&headers, &*state.sessions)
+        .ok_or_else(|| app_err(401, "unauthorized"))?;
+    let record = state
+        .players
+        .by_id(&player_id)
+        .ok_or_else(|| app_err(404, "player not found"))?;
     let Some(ref pw_hash) = record.password_hash else {
-        return Err(app_err(400, "password login not configured for this account"));
+        return Err(app_err(
+            400,
+            "password login not configured for this account",
+        ));
     };
     if !verify_password(&body.password, pw_hash) {
         return Err(app_err(401, "invalid password"));
@@ -1213,8 +1484,8 @@ pub async fn cancel_deletion(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
     headers: axum::http::HeaderMap,
 ) -> Result<axum::Json<serde_json::Value>, crate::ws::AppError> {
-    let player_id =
-        resolve_player_id(&headers, &*state.sessions).ok_or_else(|| app_err(401, "unauthorized"))?;
+    let player_id = resolve_player_id(&headers, &*state.sessions)
+        .ok_or_else(|| app_err(401, "unauthorized"))?;
     state.players.cancel_deletion(&player_id);
 
     state.audit.record(crate::services::audit::AuditEntry {
@@ -1239,28 +1510,40 @@ pub async fn tfa_enable(
     if secret_key().is_none() {
         return Err(app_err(503, "2FA disabled — set REACHLOCK_SECRET_KEY"));
     }
-    let player_id =
-        resolve_player_id(&headers, &*state.sessions).ok_or_else(|| app_err(401, "unauthorized"))?;
+    let player_id = resolve_player_id(&headers, &*state.sessions)
+        .ok_or_else(|| app_err(401, "unauthorized"))?;
 
     let (secret_b32, otpauth_uri) = generate_totp_secret_inner();
     let encrypted = encrypt_secret(&secret_b32).map_err(|e| app_err(500, &e))?;
 
-    // Store encrypted secret
-    state.totp_secrets.lock().unwrap().insert(player_id.clone(), encrypted);
+    // Pending until the player proves they scanned it (tfa_verify).
+    state
+        .totp_pending
+        .lock()
+        .unwrap()
+        .insert(player_id.clone(), encrypted);
 
     // Generate recovery codes
     let mut recovery_codes = Vec::new();
     let mut code_strings = Vec::new();
     for _ in 0..10 {
-        let code = generate_crypto_token(4).to_uppercase();
-        let code_str = format!("{}-{}", &code[..4], &code[4..8]);
+        let code = generate_crypto_token(16).to_uppercase();
+        let code_str = format!(
+            "{}-{}-{}-{}",
+            &code[..8],
+            &code[8..16],
+            &code[16..24],
+            &code[24..32]
+        );
         let hashed = hash_recovery_code(&code_str).unwrap_or_default();
-        state.totp_recovery_codes.lock().unwrap().push((player_id.clone(), hashed));
+        state
+            .totp_recovery_codes
+            .lock()
+            .unwrap()
+            .push((player_id.clone(), hashed));
         recovery_codes.push(code_str.clone());
         code_strings.push(code_str);
     }
-
-    // Also store the secret for 2FA challenge (we already did above via totp_secrets map)
 
     let qr_url = totp_qr_data_uri(&otpauth_uri);
 
@@ -1276,20 +1559,49 @@ pub async fn tfa_verify(
     headers: axum::http::HeaderMap,
     axum::Json(body): axum::Json<TfaVerifyRequest>,
 ) -> Result<axum::Json<serde_json::Value>, crate::ws::AppError> {
-    let player_id =
-        resolve_player_id(&headers, &*state.sessions).ok_or_else(|| app_err(401, "unauthorized"))?;
+    let player_id = resolve_player_id(&headers, &*state.sessions)
+        .ok_or_else(|| app_err(401, "unauthorized"))?;
 
-    let secrets = state.totp_secrets.lock().unwrap();
-    let encrypted = secrets.get(&player_id).ok_or_else(|| app_err(400, "2FA not enabled"))?;
-    let secret_b32 = decrypt_secret(encrypted).map_err(|e| app_err(500, &e))?;
-    drop(secrets);
+    // Phase two of enrollment: the secret is promoted from pending to
+    // confirmed only once the player produces a code from it. Re-verifying an
+    // already-confirmed enrollment is also accepted, so the endpoint is
+    // idempotent.
+    let pending = state.totp_pending.lock().unwrap().get(&player_id).cloned();
+    let (encrypted, was_pending) = match pending {
+        Some(enc) => (enc, true),
+        None => {
+            let confirmed = state
+                .totp_secrets
+                .lock()
+                .unwrap()
+                .get(&player_id)
+                .cloned()
+                .ok_or_else(|| app_err(400, "2FA enrollment not started"))?;
+            (confirmed, false)
+        }
+    };
+    let secret_b32 = decrypt_secret(&encrypted).map_err(|e| app_err(500, &e))?;
 
-    if verify_totp_code(&secret_b32, &body.code) {
-        // Mark as enabled — in the in-memory store, it's already stored.
-        Ok(axum::Json(serde_json::json!({"enabled": true})))
-    } else {
-        Err(app_err(400, "invalid TOTP code"))
+    if !verify_totp_code(&secret_b32, &body.code) {
+        return Err(app_err(400, "invalid TOTP code"));
     }
+
+    if was_pending {
+        state.totp_pending.lock().unwrap().remove(&player_id);
+        state
+            .totp_secrets
+            .lock()
+            .unwrap()
+            .insert(player_id.clone(), encrypted);
+        state.audit.record(crate::services::audit::AuditEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            action: "tfa_enabled".into(),
+            target: player_id,
+            detail: String::new(),
+            admin_key_hash: String::new(),
+        });
+    }
+    Ok(axum::Json(serde_json::json!({"enabled": true})))
 }
 
 pub async fn tfa_disable(
@@ -1297,11 +1609,13 @@ pub async fn tfa_disable(
     headers: axum::http::HeaderMap,
     axum::Json(body): axum::Json<TfaDisableRequest>,
 ) -> Result<axum::Json<serde_json::Value>, crate::ws::AppError> {
-    let player_id =
-        resolve_player_id(&headers, &*state.sessions).ok_or_else(|| app_err(401, "unauthorized"))?;
+    let player_id = resolve_player_id(&headers, &*state.sessions)
+        .ok_or_else(|| app_err(401, "unauthorized"))?;
 
     let secrets = state.totp_secrets.lock().unwrap();
-    let encrypted = secrets.get(&player_id).ok_or_else(|| app_err(400, "2FA not enabled"))?;
+    let encrypted = secrets
+        .get(&player_id)
+        .ok_or_else(|| app_err(400, "2FA not enabled"))?;
     let secret_b32 = decrypt_secret(encrypted).map_err(|e| app_err(500, &e))?;
     drop(secrets);
 
@@ -1310,22 +1624,36 @@ pub async fn tfa_disable(
     }
 
     state.totp_secrets.lock().unwrap().remove(&player_id);
-    state.totp_recovery_codes.lock().unwrap().retain(|(pid, _)| pid != &player_id);
+    state.totp_pending.lock().unwrap().remove(&player_id);
+    state
+        .totp_recovery_codes
+        .lock()
+        .unwrap()
+        .retain(|(pid, _)| pid != &player_id);
 
     Ok(axum::Json(serde_json::json!({"disabled": true})))
 }
 
 pub async fn tfa_challenge(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
+    peer: PeerAddr,
+    headers: axum::http::HeaderMap,
     axum::Json(body): axum::Json<TfaChallengeRequest>,
 ) -> Result<axum::Json<LoginResponse>, crate::ws::AppError> {
+    // A 6-digit TOTP code is 10^6 wide; unlimited attempts make it guessable.
+    let ip = rate_limit_key(peer.0, &headers);
+    if TFA_LIMITER.is_limited(&format!("tfa:{ip}")) {
+        return Err(app_err(429, "too many requests"));
+    }
     let player_id = state
         .temp_tokens
         .consume(&body.temp_token)
         .ok_or_else(|| app_err(400, "invalid or expired temp token"))?;
 
     let secrets = state.totp_secrets.lock().unwrap();
-    let encrypted = secrets.get(&player_id).ok_or_else(|| app_err(400, "2FA not enabled"))?;
+    let encrypted = secrets
+        .get(&player_id)
+        .ok_or_else(|| app_err(400, "2FA not enabled"))?;
     let secret_b32 = decrypt_secret(encrypted).map_err(|e| app_err(500, &e))?;
     drop(secrets);
 
@@ -1345,29 +1673,39 @@ pub async fn tfa_challenge(
     }
 
     if let Some(rc) = &body.recovery_code {
-        let codes = state.totp_recovery_codes.lock().unwrap();
-        // Find a matching recovery code (argon2id verify each)
-        let mut found = false;
-        for (pid, hash) in codes.iter() {
-            if pid == &player_id {
-                let parsed = argon2::PasswordHash::new(hash);
-                if let Ok(parsed) = parsed {
-                    if Argon2::default().verify_password(rc.as_bytes(), &parsed).is_ok() {
-                        found = true;
-                        break;
-                    }
-                }
-            }
-        }
-        drop(codes);
-        if found {
-            // Burn the code and generate a replacement
-            let new_code = generate_crypto_token(4).to_uppercase();
-            let new_code_str = format!("{}-{}", &new_code[..4], &new_code[4..8]);
-            let new_hash = hash_recovery_code(&new_code_str).unwrap_or_default();
-            // Remove old, add new
-            state.totp_recovery_codes.lock().unwrap().retain(|(pid, _)| pid != &player_id);
-            state.totp_recovery_codes.lock().unwrap().push((player_id.clone(), new_hash));
+        // Find the matching recovery code and remember WHICH one matched, so
+        // only that one is burned. The previous version retained-out every
+        // code for the player and pushed a single replacement, so one use of
+        // one code destroyed all ten — the opposite of what a recovery-code
+        // set is for.
+        let matched_index = {
+            let codes = state.totp_recovery_codes.lock().unwrap();
+            codes.iter().position(|(pid, hash)| {
+                pid == &player_id
+                    && argon2::PasswordHash::new(hash)
+                        .map(|parsed| {
+                            Argon2::default()
+                                .verify_password(rc.as_bytes(), &parsed)
+                                .is_ok()
+                        })
+                        .unwrap_or(false)
+            })
+        };
+
+        if let Some(index) = matched_index {
+            let remaining = {
+                let mut codes = state.totp_recovery_codes.lock().unwrap();
+                codes.remove(index);
+                codes.iter().filter(|(pid, _)| pid == &player_id).count()
+            };
+
+            state.audit.record(crate::services::audit::AuditEntry {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                action: "tfa_recovery_code_used".into(),
+                target: player_id.clone(),
+                detail: format!("{remaining} code(s) remaining"),
+                admin_key_hash: String::new(),
+            });
 
             let token = state.sessions.issue(SessionInfo {
                 player_id: player_id.clone(),
@@ -1392,16 +1730,28 @@ pub async fn tfa_challenge(
 pub async fn oauth_google_device(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
 ) -> Result<axum::Json<OAuthDeviceResponse>, crate::ws::AppError> {
-    let resp = oauth_device_code("google").await.map_err(|e| app_err(503, &e))?;
-    state.oauth_flows.lock().unwrap().insert(resp.device_code.clone(), "google".into());
+    let resp = oauth_device_code("google")
+        .await
+        .map_err(|e| app_err(503, &e))?;
+    state
+        .oauth_flows
+        .lock()
+        .unwrap()
+        .insert(resp.device_code.clone(), "google".into());
     Ok(axum::Json(resp))
 }
 
 pub async fn oauth_github_device(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
 ) -> Result<axum::Json<OAuthDeviceResponse>, crate::ws::AppError> {
-    let resp = oauth_device_code("github").await.map_err(|e| app_err(503, &e))?;
-    state.oauth_flows.lock().unwrap().insert(resp.device_code.clone(), "github".into());
+    let resp = oauth_device_code("github")
+        .await
+        .map_err(|e| app_err(503, &e))?;
+    state
+        .oauth_flows
+        .lock()
+        .unwrap()
+        .insert(resp.device_code.clone(), "github".into());
     Ok(axum::Json(resp))
 }
 
@@ -1422,19 +1772,20 @@ pub async fn oauth_token(
             state.oauth_flows.lock().unwrap().remove(&body.device_code);
 
             // Find or create player
-            let player_id =
-                if let Some(rec) = state.players.by_provider(&provider, &user.sub) {
+            let player_id = if let Some(rec) = state.players.by_provider(&provider, &user.sub) {
+                rec.id
+            } else if let Some(ref user_email) = user.email {
+                if let Some(rec) = state.players.by_email(user_email) {
+                    state
+                        .players
+                        .link_provider(&rec.id, &provider, &user.sub, user_email);
                     rec.id
-                } else if let Some(ref user_email) = user.email {
-                    if let Some(rec) = state.players.by_email(user_email) {
-                        state.players.link_provider(&rec.id, &provider, &user.sub, user_email);
-                        rec.id
-                    } else {
-                        create_oauth_player(&state, &provider, &user.sub, user_email).await?
-                    }
                 } else {
-                    create_oauth_player(&state, &provider, &user.sub, "").await?
-                };
+                    create_oauth_player(&state, &provider, &user.sub, user_email).await?
+                }
+            } else {
+                create_oauth_player(&state, &provider, &user.sub, "").await?
+            };
 
             let token = state.sessions.issue(SessionInfo {
                 player_id: player_id.clone(),
@@ -1464,19 +1815,19 @@ pub async fn dev_login(
     state: axum::extract::State<std::sync::Arc<crate::ws::AppState>>,
     axum::Json(body): axum::Json<DevLoginRequest>,
 ) -> Result<axum::Json<DevLoginResponse>, crate::ws::AppError> {
-    if state.auth_required.load(std::sync::atomic::Ordering::Relaxed) {
+    if state
+        .auth_required
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
         return Err(app_err(403, "dev auth disabled in production mode"));
     }
     // Ensure player exists in the store
-    let record = state
-        .players
-        .by_login(&body.username)
-        .unwrap_or_else(|| {
-            state
-                .players
-                .create(&body.username, "dev@local", "")
-                .unwrap_or_else(|_| state.players.by_login(&body.username).unwrap())
-        });
+    let record = state.players.by_login(&body.username).unwrap_or_else(|| {
+        state
+            .players
+            .create(&body.username, "dev@local", "")
+            .unwrap_or_else(|_| state.players.by_login(&body.username).unwrap())
+    });
     let token = state.sessions.issue(SessionInfo {
         player_id: record.id.clone(),
         universe: body.universe,
@@ -1506,7 +1857,10 @@ async fn create_oauth_player(
         }
         Err(_) => {
             let username2 = format!("oauth_{}_{}", provider, &sub[..12.min(sub.len())]);
-            let rec = state.players.create(&username2, email, "").map_err(|e| app_err(500, &e))?;
+            let rec = state
+                .players
+                .create(&username2, email, "")
+                .map_err(|e| app_err(500, &e))?;
             state.players.link_provider(&rec.id, provider, sub, email);
             state.players.set_verified(&rec.id);
             Ok(rec.id)
@@ -1595,7 +1949,23 @@ pub mod pg {
             let pool = self.pool.clone();
             let login = login.to_string();
             self.runtime.block_on(async move {
-                sqlx::query_as::<_, (String, String, Option<String>, Option<String>, String, Option<i64>, Option<i64>, Option<i64>, Option<String>, i32, Option<i64>, i64)>(
+                sqlx::query_as::<
+                    _,
+                    (
+                        String,
+                        String,
+                        Option<String>,
+                        Option<String>,
+                        String,
+                        Option<i64>,
+                        Option<i64>,
+                        Option<i64>,
+                        Option<String>,
+                        i32,
+                        Option<i64>,
+                        i64,
+                    ),
+                >(
                     "SELECT id, username, email, password_hash, role,
                             EXTRACT(EPOCH FROM verified_at)::bigint,
                             EXTRACT(EPOCH FROM deleted_at)::bigint,
@@ -1611,34 +1981,68 @@ pub mod pg {
                 .fetch_optional(&pool)
                 .await
                 .ok()?
-                .map(|(id, uname, email, pw_hash, role, verified, deleted, banned, reason, fails, locked, created)| {
-                    PlayerRecord {
-                        id, username: uname, email, password_hash: pw_hash,
-                        role, verified_at: verified.filter(|&v| v > 0),
-                        deleted_at: deleted.filter(|&v| v > 0),
-                        banned_at: banned.filter(|&v| v > 0),
-                        banned_reason: reason,
-                        failed_login_attempts: fails as u32,
-                        locked_until: locked.filter(|&v| v > 0),
-                        created_at: created,
-                    }
-                })
+                .map(
+                    |(
+                        id,
+                        uname,
+                        email,
+                        pw_hash,
+                        role,
+                        verified,
+                        deleted,
+                        banned,
+                        reason,
+                        fails,
+                        locked,
+                        created,
+                    )| {
+                        PlayerRecord {
+                            id,
+                            username: uname,
+                            email,
+                            password_hash: pw_hash,
+                            role,
+                            verified_at: verified.filter(|&v| v > 0),
+                            deleted_at: deleted.filter(|&v| v > 0),
+                            banned_at: banned.filter(|&v| v > 0),
+                            banned_reason: reason,
+                            failed_login_attempts: fails as u32,
+                            locked_until: locked.filter(|&v| v > 0),
+                            created_at: created,
+                        }
+                    },
+                )
             })
         }
 
         fn by_id(&self, id: &str) -> Option<PlayerRecord> {
             let pool = self.pool.clone();
             let id = id.to_string();
-            self.runtime.block_on(async move {
-                fetch_player_by_id(&pool, &id).await
-            })
+            self.runtime
+                .block_on(async move { fetch_player_by_id(&pool, &id).await })
         }
 
         fn by_email(&self, email: &str) -> Option<PlayerRecord> {
             let pool = self.pool.clone();
             let email = email.to_string();
             self.runtime.block_on(async move {
-                sqlx::query_as::<_, (String, String, Option<String>, Option<String>, String, Option<i64>, Option<i64>, Option<i64>, Option<String>, i32, Option<i64>, i64)>(
+                sqlx::query_as::<
+                    _,
+                    (
+                        String,
+                        String,
+                        Option<String>,
+                        Option<String>,
+                        String,
+                        Option<i64>,
+                        Option<i64>,
+                        Option<i64>,
+                        Option<String>,
+                        i32,
+                        Option<i64>,
+                        i64,
+                    ),
+                >(
                     "SELECT id, username, email, password_hash, role,
                             EXTRACT(EPOCH FROM verified_at)::bigint,
                             EXTRACT(EPOCH FROM deleted_at)::bigint,
@@ -1653,18 +2057,37 @@ pub mod pg {
                 .fetch_optional(&pool)
                 .await
                 .ok()?
-                .map(|(id, uname, email, pw_hash, role, verified, deleted, banned, reason, fails, locked, created)| {
-                    PlayerRecord {
-                        id, username: uname, email, password_hash: pw_hash,
-                        role, verified_at: verified.filter(|&v| v > 0),
-                        deleted_at: deleted.filter(|&v| v > 0),
-                        banned_at: banned.filter(|&v| v > 0),
-                        banned_reason: reason,
-                        failed_login_attempts: fails as u32,
-                        locked_until: locked.filter(|&v| v > 0),
-                        created_at: created,
-                    }
-                })
+                .map(
+                    |(
+                        id,
+                        uname,
+                        email,
+                        pw_hash,
+                        role,
+                        verified,
+                        deleted,
+                        banned,
+                        reason,
+                        fails,
+                        locked,
+                        created,
+                    )| {
+                        PlayerRecord {
+                            id,
+                            username: uname,
+                            email,
+                            password_hash: pw_hash,
+                            role,
+                            verified_at: verified.filter(|&v| v > 0),
+                            deleted_at: deleted.filter(|&v| v > 0),
+                            banned_at: banned.filter(|&v| v > 0),
+                            banned_reason: reason,
+                            failed_login_attempts: fails as u32,
+                            locked_until: locked.filter(|&v| v > 0),
+                            created_at: created,
+                        }
+                    },
+                )
             })
         }
 
@@ -1686,7 +2109,13 @@ pub mod pg {
             })
         }
 
-        fn link_provider(&self, player_id: &str, provider: &str, provider_uid: &str, provider_email: &str) {
+        fn link_provider(
+            &self,
+            player_id: &str,
+            provider: &str,
+            provider_uid: &str,
+            provider_email: &str,
+        ) {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
             let prov = provider.to_string();
@@ -1749,12 +2178,10 @@ pub mod pg {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
             self.runtime.block_on(async move {
-                let _ = sqlx::query(
-                    "UPDATE players SET verified_at = NOW() WHERE id = $1",
-                )
-                .bind(&pid)
-                .execute(&pool)
-                .await;
+                let _ = sqlx::query("UPDATE players SET verified_at = NOW() WHERE id = $1")
+                    .bind(&pid)
+                    .execute(&pool)
+                    .await;
             });
         }
 
@@ -1762,12 +2189,10 @@ pub mod pg {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
             self.runtime.block_on(async move {
-                let _ = sqlx::query(
-                    "UPDATE players SET deleted_at = NOW() WHERE id = $1",
-                )
-                .bind(&pid)
-                .execute(&pool)
-                .await;
+                let _ = sqlx::query("UPDATE players SET deleted_at = NOW() WHERE id = $1")
+                    .bind(&pid)
+                    .execute(&pool)
+                    .await;
             });
         }
 
@@ -1775,12 +2200,10 @@ pub mod pg {
             let pool = self.pool.clone();
             let pid = player_id.to_string();
             self.runtime.block_on(async move {
-                let _ = sqlx::query(
-                    "UPDATE players SET deleted_at = NULL WHERE id = $1",
-                )
-                .bind(&pid)
-                .execute(&pool)
-                .await;
+                let _ = sqlx::query("UPDATE players SET deleted_at = NULL WHERE id = $1")
+                    .bind(&pid)
+                    .execute(&pool)
+                    .await;
             });
         }
 
@@ -1831,13 +2254,11 @@ pub mod pg {
             let pid = player_id.to_string();
             let role = role.to_string();
             self.runtime.block_on(async move {
-                let _ = sqlx::query(
-                    "UPDATE players SET role = $1::auth_role WHERE id = $2",
-                )
-                .bind(&role)
-                .bind(&pid)
-                .execute(&pool)
-                .await;
+                let _ = sqlx::query("UPDATE players SET role = $1::auth_role WHERE id = $2")
+                    .bind(&role)
+                    .bind(&pid)
+                    .execute(&pool)
+                    .await;
             });
         }
 
@@ -1846,7 +2267,23 @@ pub mod pg {
             let offset = ((page.saturating_sub(1)) * per_page) as i64;
             let limit = per_page as i64;
             self.runtime.block_on(async move {
-                sqlx::query_as::<_, (String, String, Option<String>, Option<String>, String, Option<i64>, Option<i64>, Option<i64>, Option<String>, i32, Option<i64>, i64)>(
+                sqlx::query_as::<
+                    _,
+                    (
+                        String,
+                        String,
+                        Option<String>,
+                        Option<String>,
+                        String,
+                        Option<i64>,
+                        Option<i64>,
+                        Option<i64>,
+                        Option<String>,
+                        i32,
+                        Option<i64>,
+                        i64,
+                    ),
+                >(
                     "SELECT id, username, email, password_hash, role,
                             EXTRACT(EPOCH FROM verified_at)::bigint,
                             EXTRACT(EPOCH FROM deleted_at)::bigint,
@@ -1863,18 +2300,37 @@ pub mod pg {
                 .await
                 .unwrap_or_default()
                 .into_iter()
-                .map(|(id, uname, email, pw_hash, role, verified, deleted, banned, reason, fails, locked, created)| {
-                    PlayerRecord {
-                        id, username: uname, email, password_hash: pw_hash,
-                        role, verified_at: verified.filter(|&v| v > 0),
-                        deleted_at: deleted.filter(|&v| v > 0),
-                        banned_at: banned.filter(|&v| v > 0),
-                        banned_reason: reason,
-                        failed_login_attempts: fails as u32,
-                        locked_until: locked.filter(|&v| v > 0),
-                        created_at: created,
-                    }
-                })
+                .map(
+                    |(
+                        id,
+                        uname,
+                        email,
+                        pw_hash,
+                        role,
+                        verified,
+                        deleted,
+                        banned,
+                        reason,
+                        fails,
+                        locked,
+                        created,
+                    )| {
+                        PlayerRecord {
+                            id,
+                            username: uname,
+                            email,
+                            password_hash: pw_hash,
+                            role,
+                            verified_at: verified.filter(|&v| v > 0),
+                            deleted_at: deleted.filter(|&v| v > 0),
+                            banned_at: banned.filter(|&v| v > 0),
+                            banned_reason: reason,
+                            failed_login_attempts: fails as u32,
+                            locked_until: locked.filter(|&v| v > 0),
+                            created_at: created,
+                        }
+                    },
+                )
                 .collect()
             })
         }
@@ -1892,7 +2348,23 @@ pub mod pg {
 
     /// Helper: fetch a player row by id.
     async fn fetch_player_by_id(pool: &PgPool, id: &str) -> Option<PlayerRecord> {
-        sqlx::query_as::<_, (String, String, Option<String>, Option<String>, String, Option<i64>, Option<i64>, Option<i64>, Option<String>, i32, Option<i64>, i64)>(
+        sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                String,
+                Option<i64>,
+                Option<i64>,
+                Option<i64>,
+                Option<String>,
+                i32,
+                Option<i64>,
+                i64,
+            ),
+        >(
             "SELECT id, username, email, password_hash, role,
                     EXTRACT(EPOCH FROM verified_at)::bigint,
                     EXTRACT(EPOCH FROM deleted_at)::bigint,
@@ -1907,18 +2379,37 @@ pub mod pg {
         .fetch_optional(pool)
         .await
         .ok()?
-        .map(|(id, uname, email, pw_hash, role, verified, deleted, banned, reason, fails, locked, created)| {
-            PlayerRecord {
-                id, username: uname, email, password_hash: pw_hash,
-                role, verified_at: verified.filter(|&v| v > 0),
-                deleted_at: deleted.filter(|&v| v > 0),
-                banned_at: banned.filter(|&v| v > 0),
-                banned_reason: reason,
-                failed_login_attempts: fails as u32,
-                locked_until: locked.filter(|&v| v > 0),
-                created_at: created,
-            }
-        })
+        .map(
+            |(
+                id,
+                uname,
+                email,
+                pw_hash,
+                role,
+                verified,
+                deleted,
+                banned,
+                reason,
+                fails,
+                locked,
+                created,
+            )| {
+                PlayerRecord {
+                    id,
+                    username: uname,
+                    email,
+                    password_hash: pw_hash,
+                    role,
+                    verified_at: verified.filter(|&v| v > 0),
+                    deleted_at: deleted.filter(|&v| v > 0),
+                    banned_at: banned.filter(|&v| v > 0),
+                    banned_reason: reason,
+                    failed_login_attempts: fails as u32,
+                    locked_until: locked.filter(|&v| v > 0),
+                    created_at: created,
+                }
+            },
+        )
     }
 
     // ------------------------------------------------------------------
@@ -2001,5 +2492,136 @@ pub mod pg {
                     .await;
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod hardening_tests {
+    use super::*;
+
+    fn hdr(pairs: &[(&str, &str)]) -> axum::http::HeaderMap {
+        let mut h = axum::http::HeaderMap::new();
+        for (k, v) in pairs {
+            h.insert(
+                axum::http::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                v.parse().unwrap(),
+            );
+        }
+        h
+    }
+
+    fn addr(s: &str) -> std::net::SocketAddr {
+        s.parse().unwrap()
+    }
+
+    /// With no trusted proxy configured, `X-Forwarded-For` must be ignored:
+    /// otherwise any caller mints unlimited rate-limit buckets by varying it.
+    #[test]
+    fn xff_is_ignored_without_a_trusted_proxy() {
+        let h = hdr(&[("x-forwarded-for", "1.2.3.4")]);
+        let key = rate_limit_key(Some(addr("10.0.0.7:5555")), &h);
+        assert_eq!(key, "10.0.0.7", "must key on the peer, not the header");
+    }
+
+    /// A request with no peer address must not share a bucket with everyone
+    /// else — the old code fell back to the literal string "unknown", which
+    /// made registration one-per-hour for the entire server.
+    #[test]
+    fn missing_peer_does_not_collapse_into_a_shared_bucket() {
+        let key = rate_limit_key(None, &axum::http::HeaderMap::new());
+        assert_ne!(key, "unknown");
+        assert_eq!(key, "no-peer");
+    }
+
+    /// Distinct peers get distinct buckets.
+    #[test]
+    fn distinct_peers_get_distinct_keys() {
+        let h = axum::http::HeaderMap::new();
+        let a = rate_limit_key(Some(addr("10.0.0.1:1")), &h);
+        let b = rate_limit_key(Some(addr("10.0.0.2:1")), &h);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn limiter_allows_up_to_max_then_blocks() {
+        let l = AuthRateLimiter::new(3, 60);
+        assert!(!l.is_limited("k"));
+        assert!(!l.is_limited("k"));
+        assert!(!l.is_limited("k"));
+        assert!(l.is_limited("k"), "fourth attempt in the window is blocked");
+        assert!(!l.is_limited("other"), "a different key is unaffected");
+    }
+
+    /// The bucket map must not grow without bound on unique keys.
+    #[test]
+    fn limiter_bounds_its_key_space() {
+        let l = AuthRateLimiter::new(5, 60);
+        for i in 0..(RATE_LIMIT_MAX_KEYS + 1_000) {
+            l.is_limited(&format!("k{i}"));
+        }
+        assert!(
+            l.key_count() <= RATE_LIMIT_MAX_KEYS,
+            "key space grew to {} — memory exhaustion vector",
+            l.key_count()
+        );
+    }
+
+    /// Recovery codes must carry real entropy. The shipped version used
+    /// `generate_crypto_token(4)` — 32 bits, brute-forceable online.
+    #[test]
+    fn recovery_codes_are_at_least_128_bits() {
+        let code = generate_crypto_token(16);
+        assert_eq!(code.len(), 32, "32 hex chars == 128 bits");
+    }
+
+    /// Sessions must expire once `session_ttl_hours` has passed.
+    #[test]
+    fn sessions_expire_after_their_ttl() {
+        let store = MemorySessionStore::with_ttl_hours(24);
+        let token = store.issue(SessionInfo {
+            player_id: "p1".into(),
+            universe: UniverseTier::Classic,
+        });
+        assert!(store.resolve(&token).is_some(), "fresh session resolves");
+
+        // Backdate the issue stamp past the TTL.
+        {
+            let mut tokens = store.tokens.lock().unwrap();
+            if let Some((_, issued)) = tokens.get_mut(&token) {
+                *issued = now_secs() - (25 * 3600);
+            }
+        }
+        assert!(
+            store.resolve(&token).is_none(),
+            "a session older than the TTL must not resolve"
+        );
+    }
+
+    /// TTL 0 means "never expire" — used by tests and single-player.
+    #[test]
+    fn zero_ttl_disables_expiry() {
+        let store = MemorySessionStore::with_ttl_hours(0);
+        let token = store.issue(SessionInfo {
+            player_id: "p1".into(),
+            universe: UniverseTier::Classic,
+        });
+        {
+            let mut tokens = store.tokens.lock().unwrap();
+            if let Some((_, issued)) = tokens.get_mut(&token) {
+                *issued = 0;
+            }
+        }
+        assert!(store.resolve(&token).is_some());
+    }
+
+    /// The public URL used in outbound email must be configurable, not the
+    /// `reachlock.example` placeholder that shipped in real messages.
+    #[test]
+    fn public_base_url_has_no_placeholder_domain() {
+        let url = public_base_url();
+        assert!(
+            !url.contains("reachlock.example"),
+            "placeholder domain leaked into email links: {url}"
+        );
     }
 }

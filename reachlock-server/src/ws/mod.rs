@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::StatusCode;
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
@@ -19,6 +19,8 @@ use reachlock_core::seed::types::{Seed, SystemId};
 use reachlock_core::universe::tier::UniverseTier;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
+
+use std::time::Instant;
 
 use axum::response::{IntoResponse, Response};
 
@@ -132,6 +134,10 @@ pub struct AppState {
     connected: AtomicUsize,
     pub voice: VoiceRegistry,
     pub library: Box<dyn ContractLibrary>,
+    /// S73: server uptime start instant.
+    pub uptime_started: Instant,
+    /// S73: server metrics for prometheus.
+    pub metrics: std::sync::Arc<crate::services::metrics::ServerMetrics>,
     /// S49: Postgres connection pool. `None` when using in-memory stores.
     /// When Some, tick events are persisted to `universe_events`.
     #[cfg(feature = "postgres")]
@@ -141,7 +147,11 @@ pub struct AppState {
     #[cfg(feature = "redis")]
     pub redis_pool: Option<std::sync::Arc<crate::services::redis::RedisPool>>,
     /// S54: per-player message senders for targeted delivery (voice signaling).
-    pub player_senders: std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, tokio::sync::mpsc::Sender<ServerMessage>>>>,
+    pub player_senders: std::sync::Arc<
+        tokio::sync::RwLock<
+            std::collections::HashMap<String, tokio::sync::mpsc::Sender<ServerMessage>>,
+        >,
+    >,
     // S51: authentication stores.
     pub players: Box<dyn PlayerStore>,
     pub email: Box<dyn EmailBackend>,
@@ -149,7 +159,14 @@ pub struct AppState {
     pub verification_tokens: std::sync::Arc<Mutex<HashMap<String, (String, i64)>>>,
     pub reset_tokens: std::sync::Arc<Mutex<HashMap<String, (String, i64)>>>,
     pub temp_tokens: TempTokenStore,
+    /// Confirmed TOTP enrollments. A player here is required to pass 2FA.
     pub totp_secrets: std::sync::Arc<Mutex<HashMap<String, String>>>,
+    /// Enrollments awaiting `tfa_verify`. Kept separate from `totp_secrets`
+    /// so starting enrollment cannot lock a player out: previously
+    /// `tfa_enable` wrote straight into `totp_secrets`, and `login` gates on
+    /// that map, so anyone who opened the 2FA screen and never scanned the QR
+    /// could no longer log in.
+    pub totp_pending: std::sync::Arc<Mutex<HashMap<String, String>>>,
     pub totp_recovery_codes: std::sync::Arc<Mutex<Vec<(String, String)>>>,
     pub oauth_flows: std::sync::Arc<Mutex<HashMap<String, String>>>,
 }
@@ -157,9 +174,12 @@ pub struct AppState {
 impl AppState {
     pub fn new(config: &Config) -> Self {
         let (events, _) = broadcast::channel(256);
+        let prometheus_registry = crate::observability::init_prometheus();
+        let metrics = crate::services::metrics::ServerMetrics::new(&prometheus_registry);
         let cfg = crate::services::auth::AuthConfig::from_env();
         let smtp_url = std::env::var("REACHLOCK_SMTP_URL").ok();
-        let from_addr = std::env::var("REACHLOCK_SMTP_FROM").unwrap_or_else(|_| "noreply@reachlock.test".into());
+        let from_addr = std::env::var("REACHLOCK_SMTP_FROM")
+            .unwrap_or_else(|_| "noreply@reachlock.test".into());
         let email: Box<dyn EmailBackend> = if let Some(url) = &smtp_url {
             match crate::services::email::SmtpEmailBackend::new(url, &from_addr) {
                 Ok(b) => Box::new(b),
@@ -179,7 +199,7 @@ impl AppState {
         cfg_if::cfg_if! {
             if #[cfg(feature = "postgres")] {
                 if let Some(url) = &config.db_url {
-                    return Self::new_pg(url, events, email, cfg, config.auth_required);
+                    return Self::new_pg(url, events, email, cfg, config.auth_required, metrics, prometheus_registry);
                 }
             }
         }
@@ -198,7 +218,7 @@ impl AppState {
             player_senders: std::sync::Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             presence: PresenceManager::default(),
             audit: Box::new(MemoryAuditLog::default()),
-            prometheus: crate::observability::init_prometheus(),
+            prometheus: prometheus_registry,
             health: std::sync::Arc::new(HealthAggregator::default()),
             auth_required: std::sync::atomic::AtomicBool::new(config.auth_required),
             connected: AtomicUsize::new(0),
@@ -212,8 +232,11 @@ impl AppState {
             reset_tokens: std::sync::Arc::new(Mutex::new(HashMap::new())),
             temp_tokens: TempTokenStore::new(),
             totp_secrets: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            totp_pending: std::sync::Arc::new(Mutex::new(HashMap::new())),
             totp_recovery_codes: std::sync::Arc::new(Mutex::new(Vec::new())),
             oauth_flows: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            uptime_started: Instant::now(),
+            metrics,
         }
     }
 
@@ -221,7 +244,10 @@ impl AppState {
     /// Replaces memory stores with Redis-backed ones when Redis is reachable.
     #[cfg(feature = "redis")]
     pub fn try_init_redis(&mut self) {
-        let url = match std::env::var("REACHLOCK_REDIS_URL").ok().filter(|s| !s.is_empty()) {
+        let url = match std::env::var("REACHLOCK_REDIS_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+        {
             Some(u) => u,
             None => return,
         };
@@ -248,9 +274,11 @@ impl AppState {
         email: Box<dyn EmailBackend>,
         cfg: crate::services::auth::AuthConfig,
         auth_required: bool,
+        metrics: std::sync::Arc<crate::services::metrics::ServerMetrics>,
+        prometheus_registry: prometheus::Registry,
     ) -> Self {
-        use crate::services::seed::pg::PgSeedStore;
         use crate::services::auth::pg::{PgPlayerStore, PgSessionStore};
+        use crate::services::seed::pg::PgSeedStore;
 
         let rt = tokio::runtime::Handle::current();
         let pool = rt.block_on(async {
@@ -278,7 +306,7 @@ impl AppState {
             player_senders: std::sync::Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             presence: PresenceManager::default(),
             audit: Box::new(MemoryAuditLog::default()),
-            prometheus: crate::observability::init_prometheus(),
+            prometheus: prometheus_registry,
             health: std::sync::Arc::new(HealthAggregator::default()),
             auth_required: std::sync::atomic::AtomicBool::new(auth_required),
             connected: AtomicUsize::new(0),
@@ -292,8 +320,11 @@ impl AppState {
             reset_tokens: std::sync::Arc::new(Mutex::new(HashMap::new())),
             temp_tokens: TempTokenStore::new(),
             totp_secrets: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            totp_pending: std::sync::Arc::new(Mutex::new(HashMap::new())),
             totp_recovery_codes: std::sync::Arc::new(Mutex::new(Vec::new())),
             oauth_flows: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            uptime_started: Instant::now(),
+            metrics,
         }
     }
 
@@ -303,6 +334,7 @@ impl AppState {
 
     pub(crate) fn session_started(&self) {
         self.connected.fetch_add(1, Ordering::Relaxed);
+        self.metrics.connections_total.inc();
     }
 
     pub(crate) fn session_ended(&self) {
@@ -326,6 +358,7 @@ impl IntoResponse for AppError {
 
 pub fn router(state: Arc<AppState>) -> Router {
     let admin_routes = admin::admin_routes();
+
     Router::new()
         .route("/health", get(health_handler))
         .route("/metrics", get(metrics_handler))
@@ -334,7 +367,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auth/login", post(login_handler))
         .route("/auth/logout", post(logout_handler))
         .route("/auth/verify-email", post(verify_email_handler))
-        .route("/auth/resend-verification", post(resend_verification_handler))
+        .route(
+            "/auth/resend-verification",
+            post(resend_verification_handler),
+        )
         .route("/auth/forgot-password", post(forgot_password_handler))
         .route("/auth/reset-password", post(reset_password_handler))
         .route("/auth/delete-account", post(delete_account_handler))
@@ -343,8 +379,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auth/2fa/verify", post(tfa_verify_handler))
         .route("/auth/2fa/disable", post(tfa_disable_handler))
         .route("/auth/2fa/challenge", post(tfa_challenge_handler))
-        .route("/auth/oauth/google/device", post(oauth_google_device_handler))
-        .route("/auth/oauth/github/device", post(oauth_github_device_handler))
+        .route(
+            "/auth/oauth/google/device",
+            post(oauth_google_device_handler),
+        )
+        .route(
+            "/auth/oauth/github/device",
+            post(oauth_github_device_handler),
+        )
         .route("/auth/oauth/token", post(oauth_token_handler))
         // S57: seed discovery via HTTP
         .route("/seed/discover", post(seed_discover))
@@ -366,11 +408,69 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(billing_entitlement_token),
         )
         .merge(admin_routes)
+        .layer(request_body_limit())
+        .layer(cors_layer())
+        .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)
 }
 
-/// `GET /metrics` — Prometheus text exposition (S26).
+/// Cap request bodies. Axum's default applies only to `Json`-extracted
+/// handlers; this covers the whole surface.
+fn request_body_limit() -> tower_http::limit::RequestBodyLimitLayer {
+    const DEFAULT_MAX_BODY_BYTES: usize = 1024 * 1024;
+    let max = std::env::var("REACHLOCK_MAX_BODY_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_MAX_BODY_BYTES);
+    tower_http::limit::RequestBodyLimitLayer::new(max)
+}
+
+/// CORS policy.
+///
+/// Origins come from `REACHLOCK_ALLOWED_ORIGINS` (comma-separated); unset
+/// means same-origin only, which is the right default now that the only
+/// clients are native. Kept because the admin/ops surface and any future
+/// browser-based tooling are served over HTTP from another origin. A literal
+/// `*` is honoured but must never be combined with credentials.
+fn cors_layer() -> tower_http::cors::CorsLayer {
+    use tower_http::cors::{Any, CorsLayer};
+    let raw = std::env::var("REACHLOCK_ALLOWED_ORIGINS").unwrap_or_default();
+    let origins: Vec<&str> = raw
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let base = CorsLayer::new()
+        .allow_methods(Any)
+        .allow_headers(Any)
+        .max_age(std::time::Duration::from_secs(3600));
+
+    if origins.is_empty() {
+        // Same-origin only: no Access-Control-Allow-Origin is emitted.
+        return CorsLayer::new();
+    }
+    if origins.contains(&"*") {
+        return base.allow_origin(Any);
+    }
+    let parsed: Vec<axum::http::HeaderValue> = origins
+        .iter()
+        .filter_map(|o| o.parse::<axum::http::HeaderValue>().ok())
+        .collect();
+    base.allow_origin(parsed)
+}
+
+/// `GET /metrics` — Prometheus text exposition (S26/S73).
 async fn metrics_handler(State(state): State<Arc<AppState>>) -> String {
+    // Update uptime gauge before rendering.
+    state
+        .metrics
+        .uptime_seconds
+        .set(state.uptime_started.elapsed().as_secs_f64());
+    state
+        .metrics
+        .connections_active
+        .set(state.connected_count() as f64);
     use prometheus::TextEncoder;
     let encoder = TextEncoder::new();
     let mut buffer = String::new();
@@ -380,17 +480,54 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> String {
     buffer
 }
 
-/// S26: aggregate health check across all backends.
+/// S26/S73: aggregate health check across all backends.
+/// Returns uptime, connected players, DB pool status, and per-check status.
 async fn health_handler(
     State(state): State<Arc<AppState>>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> (axum::http::StatusCode, Json<serde_json::Value>) {
     let agg = state.health.aggregate();
+    let uptime_secs = state.uptime_started.elapsed().as_secs();
+    let connected_players = state.connected_count();
+
+    let mut body = serde_json::json!({
+        "uptime_secs": uptime_secs,
+        "connected_players": connected_players,
+        "status": agg.status,
+        "checks": agg.checks,
+    });
+
+    #[cfg(feature = "postgres")]
+    if let Some(ref pool) = state.pg_pool {
+        let pool_status = {
+            let opts = pool.options();
+            serde_json::json!({
+                "connections_active": opts.min_connections,
+                "connections_idle": 0,
+                "connections_max": opts.max_connections,
+            })
+        };
+        body["db"] = pool_status;
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    {
+        body["db"] = serde_json::json!({
+            "state": "in_memory",
+        });
+    }
+
+    if params.get("verbose").map(|s| s == "true").unwrap_or(false) {
+        let active_sessions = state.sessions.active_sessions();
+        body["active_sessions"] = serde_json::json!(active_sessions);
+    }
+
     let code = if agg.status == "ok" {
         axum::http::StatusCode::OK
     } else {
         axum::http::StatusCode::SERVICE_UNAVAILABLE
     };
-    (code, Json(serde_json::to_value(&agg).unwrap_or_default()))
+    (code, Json(body))
 }
 
 /// `POST /byok` — register the caller's own provider endpoint + API key
@@ -443,11 +580,14 @@ async fn seed_discover(
     })?;
     let system_id = SystemId(system_id_str.to_string());
     let seed = Seed::new(tentative_seed);
-    let result = state.seeds.discover(universe, &system_id, seed);
+    // HTTP endpoint has no player context, so discoverer is None.
+    let result = state.seeds.discover(universe, &system_id, seed, None);
     Ok(Json(serde_json::json!({
         "canonical_seed": result.canonical_seed.value(),
         "diffs": result.diffs,
         "you_discovered": result.you_discovered,
+        "discoverer_name": result.discoverer_name,
+        "discovered_at": result.discovered_at,
     })))
 }
 
@@ -473,7 +613,10 @@ async fn content_publish_handler(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     // Require auth
     if resolve_bearer_token(&headers, &state).is_none() {
-        return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "unauthorized"}))));
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "unauthorized"})),
+        ));
     }
     tracing::info!("content published: {}", content.id);
     Ok(Json(serde_json::json!({
@@ -495,17 +638,20 @@ async fn auth_dev(
 
 async fn register_handler(
     State(state): State<Arc<AppState>>,
+    peer: crate::services::auth::PeerAddr,
     headers: axum::http::HeaderMap,
     Json(body): Json<crate::services::auth::RegisterRequest>,
 ) -> Result<Json<crate::services::auth::RegisterResponse>, AppError> {
-    crate::services::auth::register(State(state), headers, Json(body)).await
+    crate::services::auth::register(State(state), peer, headers, Json(body)).await
 }
 
 async fn login_handler(
     State(state): State<Arc<AppState>>,
+    peer: crate::services::auth::PeerAddr,
+    headers: axum::http::HeaderMap,
     Json(body): Json<crate::services::auth::LoginRequest>,
 ) -> Result<Json<crate::services::auth::LoginResponse>, AppError> {
-    crate::services::auth::login(State(state), Json(body)).await
+    crate::services::auth::login(State(state), peer, headers, Json(body)).await
 }
 
 async fn logout_handler(
@@ -583,9 +729,11 @@ async fn tfa_disable_handler(
 
 async fn tfa_challenge_handler(
     State(state): State<Arc<AppState>>,
+    peer: crate::services::auth::PeerAddr,
+    headers: axum::http::HeaderMap,
     Json(body): Json<crate::services::auth::TfaChallengeRequest>,
 ) -> Result<axum::Json<crate::services::auth::LoginResponse>, AppError> {
-    crate::services::auth::tfa_challenge(State(state), Json(body)).await
+    crate::services::auth::tfa_challenge(State(state), peer, headers, Json(body)).await
 }
 
 async fn oauth_google_device_handler(

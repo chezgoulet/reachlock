@@ -26,16 +26,22 @@ The pre-archive tree is also tagged as `v1` — `git checkout v1` restores the o
 make run          # launch the game (native)
 make server       # launch the ledger server
 make test         # workspace tests
-make check        # fmt + clippy + tests + wasm gate
+make check        # fmt + clippy + tests + engine purity
 make determinism  # local generator-determinism self-check
 ```
 
 In flight: `W/↑` thrust, `A/D` turn, `X` inject an anomaly no rule covers —
 watch Boris deliberate and, offline, time out into his fallback routine.
 
-CI enforces the two invariants that define the project: the full plugin
-stack keeps compiling to `wasm32-unknown-unknown`, and the determinism
-manifest is bit-identical across x86_64, aarch64, and wasm32 (wasmtime).
+CI enforces the two invariants that define the project: `reachlock-core`
+stays free of rendering/IO dependencies (`make check-purity`), and the
+determinism manifest is bit-identical across x86_64, aarch64, and i686 —
+the 32-bit target is there to catch pointer-width assumptions the two
+64-bit targets would both agree on.
+
+ReachLock is a **native desktop game**. There is no browser build: web
+distribution was cut, and the WASM targets, size budget, and bundle
+pipeline were removed with it.
 
 ## What carries forward from v1
 
@@ -48,7 +54,7 @@ The ideas, not the code:
 
 ## Status
 
-**Spike #1 passed (2026-07-10):** the full plugin stack — bevy + bevy_rapier2d + bevy_prototype_lyon + bevy_audio — compiles to `wasm32-unknown-unknown` (spec §2, WASM Build Risk). Version note: rapier lags bevy by one release, so the workspace pins **bevy 0.18.1 + rapier 0.34 + lyon 0.16**; bump to bevy 0.19 when rapier 0.35 ships.
+**Spike #1 passed (2026-07-10):** the full plugin stack — bevy + bevy_rapier3d + bevy_prototype_lyon + bevy_audio — compiles and runs natively. Version note: rapier lags bevy by one release, so the workspace pins **bevy 0.18.1 + rapier 0.34 + lyon 0.16**; bump to bevy 0.19 when rapier 0.35 ships.
 
 Native Linux builds need the usual Bevy system deps:
 

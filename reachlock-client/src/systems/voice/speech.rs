@@ -35,8 +35,7 @@ impl SpeechSynthesizer {
             let char_freq = base_freq + (ch as u32 % 24) as f32 * 10.0;
             let dur = (sample_rate as f32 * speed_factor) as usize;
             for t in 0..dur {
-                let phase =
-                    2.0 * std::f32::consts::PI * char_freq * t as f32 / sample_rate as f32;
+                let phase = 2.0 * std::f32::consts::PI * char_freq * t as f32 / sample_rate as f32;
                 let amp = 0.3 * (1.0 - t as f32 / dur as f32);
                 samples.push(phase.sin() * amp);
             }

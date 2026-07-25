@@ -220,7 +220,7 @@ mod tests {
     }
 
     /// Golden vector: if this changes, generator output changed on SOME
-    /// target — the determinism harness compares it across x86/ARM/wasm.
+    /// target — the determinism harness compares it across x86_64/ARM/i686.
     #[test]
     fn golden_hull_seed_42() {
         let mesh = generate_hull(42);

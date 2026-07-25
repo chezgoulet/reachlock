@@ -23,7 +23,7 @@ use reachlock_core::contract::co_deliberation::{
 use crate::settings::{InputAction, Settings};
 use crate::states::GameMode;
 use crate::systems::contract::{DeliberationState, ShipLog};
-use crate::systems::crew::{CrewFigure, CrewRole, CrewRoster};
+use crate::systems::crew::{CrewFigure, CrewRoster};
 use crate::systems::interior::ysort;
 use crate::systems::soul::SoulRegistry;
 
@@ -230,14 +230,9 @@ pub struct CoDeliberationLog {
 /// What a crew role proposes when a conference opens. The real system would
 /// derive this from each crew member's contract evaluation (S06/S16); this
 /// is the offline-first default so co-deliberation runs without a server.
-fn role_action(role: CrewRole) -> &'static str {
-    match role {
-        CrewRole::Pilot => "hold_course",
-        CrewRole::Engineer => "repair_systems",
-        CrewRole::Navigator => "plot_jump",
-        CrewRole::Medic => "tend_medbay",
-        CrewRole::Gunner => "man_battle_stations",
-    }
+/// Uses `role_id_to_action` from crew.rs which replaced the old enum match.
+fn role_action(role: &str) -> &'static str {
+    crate::systems::crew::role_id_to_action(role)
 }
 
 /// Build a co-deliberation session from the current crew: each member opens
@@ -253,7 +248,7 @@ pub fn start_conference(roster: &CrewRoster, trigger: GameEvent) -> CoDeliberati
             for other in ids.iter().filter(|o| **o != m.id) {
                 relationship_state.insert(other.clone(), CrewRelationship::default());
             }
-            let action = role_action(m.role);
+            let action = role_action(&m.role.id);
             CrewDeliberant {
                 crew_id: m.id.clone(),
                 relationship_state,

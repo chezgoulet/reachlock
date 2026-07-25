@@ -127,12 +127,12 @@ impl Editor for ItemBrowser {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn ui(&mut self, ctx: &egui::Context) {
+    fn ui(&mut self, ui: &mut egui::Ui) {
         if self.dirty {
-            self.regenerate(ctx);
+            self.regenerate(ui.ctx());
         }
 
-        egui::TopBottomPanel::top("item_browser_toolbar").show(ctx, |ui| {
+        egui::TopBottomPanel::top("item_browser_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Tier:");
                 if ui
@@ -154,7 +154,7 @@ impl Editor for ItemBrowser {
         egui::SidePanel::left("item_browser_families")
             .resizable(true)
             .default_width(250.0)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.heading("Families");
                 ui.separator();
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -175,7 +175,7 @@ impl Editor for ItemBrowser {
             egui::SidePanel::right("item_browser_detail")
                 .resizable(true)
                 .default_width(300.0)
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     let Some(card) = self.cards.get(sel) else {
                         return;
                     };
@@ -234,7 +234,7 @@ impl Editor for ItemBrowser {
                 });
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 egui::Grid::new("item_browser_grid")
                     .num_columns(4)

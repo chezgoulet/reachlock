@@ -15,13 +15,16 @@ use crate::net::{handshake_url, ConnectionState, NetMode, NetOutbox, TransportEv
 use crate::settings::Settings;
 use crate::states::CurrentLocation;
 
+use crate::systems::career::CareerResource;
 use crate::systems::contract::{self, ContractRuntime, DeliberationState, ShipLog};
 use crate::systems::contract_library::ContractLibraryState;
+use crate::systems::discovery::{DiscoveryLog, DiscoveryLogEntry, NotificationQueue};
 use crate::systems::presence::PresenceEvents;
 use crate::systems::ship::ShipSystems;
 use crate::systems::ticker::UniverseTicker;
 use crate::systems::voice;
 use bevy::ecs::system::SystemParam;
+use reachlock_core::career::{record_progress, ProgressionCriterionType};
 
 /// Owns the live socket, if any. `None` whenever offline, still connecting
 /// via backoff, or between "dropped" and "reconnected".
@@ -37,13 +40,17 @@ pub struct NetworkClient {
 }
 
 /// Server-pushed state the network system folds into the world: the content
-/// index (wasm content distribution, wasm-only) and presence events (S23).
+/// index (server-pushed content distribution) and presence events (S23).
 /// Bundled into one `SystemParam` to keep `poll_network` under Bevy's 16-arg
 /// limit.
 #[derive(SystemParam)]
 pub struct IncomingState<'w> {
     pub presence: ResMut<'w, PresenceEvents>,
     pub library: ResMut<'w, ContractLibraryState>,
+    pub discover_log: ResMut<'w, DiscoveryLog>,
+    pub notif_queue: ResMut<'w, NotificationQueue>,
+    pub career: ResMut<'w, CareerResource>,
+    pub known_systems: ResMut<'w, crate::systems::galaxy_map::KnownSystems>,
 }
 
 /// Exponential-ish reconnect backoff (1s, 2s, 4s, 8s, 16s, capped at 30s).
@@ -84,11 +91,14 @@ impl ReconnectBackoff {
 pub struct SeedState {
     pub current_system: Option<SystemId>,
     pub adopted: Option<Seed>,
+    /// S85: discoverer name for the current system (from canonical response).
+    pub discoverer_name: Option<String>,
+    pub discovered_at: Option<i64>,
 }
 
 /// OnEnter(Playing), online mode only: opens the socket. The handshake
 /// itself completes asynchronously (background thread on native, the
-/// browser's event loop on wasm) — `poll_network` picks up `Opened` once it
+/// the transport's event loop) — `poll_network` picks up `Opened` once it
 /// lands.
 pub fn connect_on_enter_playing(
     mode: Res<NetMode>,
@@ -173,7 +183,7 @@ pub fn poll_network(
                     system_id,
                     seed: Seed::new(location.system_seed),
                 });
-                // WASM content distribution: wasm clients have no filesystem,
+                // Server-pushed content distribution: a client with no local
                 // so they ask the server for authored content over the wire.
                 // Pause the local universe ticker — server is authoritative.
                 if let Some(ref mut ticker) = ticker {
@@ -184,24 +194,68 @@ pub fn poll_network(
                 system_id,
                 seed,
                 you_discovered,
+                discoverer_name,
+                discovered_at,
                 ..
             }) => {
                 if seed_state.adopted != Some(seed) {
-                    log.log("Synchronizing system data…");
+                    seed_state.adopted = Some(seed);
+                    seed_state.discoverer_name = discoverer_name.clone();
+                    seed_state.discovered_at = discovered_at;
+                    // Sync into KnownSystems for galaxy map attribution.
+                    incoming.known_systems.map.insert(
+                        system_id.clone(),
+                        crate::systems::galaxy_map::KnownSystemInfo {
+                            seed: seed.value(),
+                            discoverer_name: discoverer_name.clone(),
+                            discovered_at,
+                        },
+                    );
                     if you_discovered {
                         log.log(format!(
                             "{} — canonical seed adopted (ours, {:#x}).",
                             system_id.0,
                             seed.value()
                         ));
+                        // Add to discovery log.
+                        let entry = DiscoveryLogEntry {
+                            system_name: system_id.0.clone(),
+                            galaxy_coord: reachlock_core::galaxy::GalaxyCoord { x: 0, y: 0, z: 0 },
+                            discovered_at: discovered_at.unwrap_or_else(|| {
+                                std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_secs() as i64)
+                                    .unwrap_or(0)
+                            }),
+                            system_id: system_id.0.clone(),
+                        };
+                        incoming.discover_log.push(entry);
+                        // Toast notification.
+                        incoming
+                            .notif_queue
+                            .0
+                            .push(format!("System charted: {}", system_id.0));
+                        // Career progression: increment systems_discovered.
+                        if let Some(ref mut pc) = incoming.career.0 {
+                            let updated = record_progress(
+                                pc.clone(),
+                                ProgressionCriterionType::SystemsDiscovered,
+                                1,
+                            );
+                            *pc = updated;
+                        }
                     } else {
                         log.log(format!(
                             "{} — canonical seed adopted ({:#x}); diverges from local.",
                             system_id.0,
                             seed.value()
                         ));
+                        let name = discoverer_name.as_deref().unwrap_or("another player");
+                        incoming
+                            .notif_queue
+                            .0
+                            .push(format!("System already charted by {name}",));
                     }
-                    seed_state.adopted = Some(seed);
                 }
             }
             TransportEvent::Message(ServerMessage::EvalVerified { .. }) => {
@@ -310,8 +364,7 @@ pub fn poll_network(
             TransportEvent::Message(ServerMessage::ChatMessage { from_player, text }) => {
                 incoming.presence.chat_messages.push((from_player, text));
             }
-            TransportEvent::Message(ServerMessage::ContentUpdate { .. }) => {
-            }
+            TransportEvent::Message(ServerMessage::ContentUpdate { .. }) => {}
             TransportEvent::Message(ServerMessage::VoiceSignal {
                 from_player,
                 signal,
@@ -343,6 +396,7 @@ pub fn poll_network(
                 }
             }
             TransportEvent::Message(ServerMessage::LibraryListResponse { entries }) => {
+                incoming.library.total = entries.len() as u32;
                 incoming.library.entries = entries;
                 log.log(format!(
                     "Library: {} contract(s) synced",
@@ -354,6 +408,48 @@ pub fn poll_network(
                     log.log("Contract published to library.");
                 } else {
                     log.log(format!("Library publish failed: {message}"));
+                }
+            }
+            TransportEvent::Message(ServerMessage::LibrarySyncResponse {
+                entries,
+                total,
+                page,
+            }) => {
+                incoming.library.entries = entries;
+                incoming.library.total = total;
+                incoming.library.page = page;
+                log.log(format!(
+                    "Library: {} contract(s) synced (page {}, {} total)",
+                    incoming.library.entries.len(),
+                    page + 1,
+                    total,
+                ));
+            }
+            TransportEvent::Message(ServerMessage::LibraryPublishResponse {
+                ok,
+                share_code,
+                error,
+            }) => {
+                if ok {
+                    let code = share_code.as_deref().unwrap_or("unknown");
+                    log.log(format!("Contract published! Share code: {code}"));
+                    incoming
+                        .notif_queue
+                        .0
+                        .push(format!("Published! Share code: {code}"));
+                } else {
+                    let msg = error.as_deref().unwrap_or("unknown error");
+                    log.log(format!("Publish failed: {msg}"));
+                }
+            }
+            TransportEvent::Message(ServerMessage::LibraryShareResponse { entry }) => {
+                if let Some(e) = entry {
+                    incoming.library.entries.push(e);
+                    incoming.library.status = "contract imported from share code".into();
+                    log.log("Contract imported from share code.");
+                } else {
+                    incoming.library.status = "no contract found with that share code".into();
+                    log.log("No contract found with that share code.");
                 }
             }
             TransportEvent::Message(ServerMessage::LibraryStoryAck { success, story_id }) => {

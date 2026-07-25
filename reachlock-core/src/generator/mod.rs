@@ -7,12 +7,11 @@
 //! structs (spec §10 — the bridge doesn't know the difference).
 
 pub mod contract;
+pub mod culture;
 pub mod dilemma;
 pub mod economy;
 pub mod ecosystem;
 pub mod ecosystem_events;
-pub mod culture;
-pub mod planet_extended;
 pub mod enemy;
 pub mod faction;
 pub mod hull;
@@ -20,43 +19,42 @@ pub mod location;
 pub mod mission;
 pub mod music;
 pub mod planet;
-pub mod ship;
-pub mod sfx;
-pub mod soul;
+pub mod planet_extended;
 pub mod scripted_encounter;
+pub mod sfx;
+pub mod ship;
+pub mod soul;
 pub mod sprite;
 pub mod station;
-pub mod trope;
 pub mod storyline;
 pub mod system;
 pub mod transit;
+pub mod trope;
 pub mod ui;
 
 pub use contract::generate_contract;
+pub use culture::generate_culture;
 pub use economy::generate_economy_catalog;
 pub use ecosystem::{generate_ecosystem, generate_species_visual, Ecosystem, PlanetParams};
-pub use mission::generate_missions;
 pub use ecosystem_events::{apply_ecosystem_event, EcosystemEvent, EcosystemEventType};
-pub use planet_extended::{
-    generate_planet_extended, PlanetExtended, SystemParams,
-};
-pub use culture::generate_culture;
 pub use enemy::generate_enemy;
 pub use faction::generate_faction;
 pub use hull::{generate_hull, generate_hull_class};
 pub use location::generate_location;
+pub use mission::generate_missions;
 pub use music::{
     generate_music, generate_music_intent, generate_themed_music, generate_tone, music_intensity,
     music_mood_for_context, Mood, MusicIntent, MusicSource, Scale, Theme, VariationMask,
 };
 pub use planet::generate_planet;
+pub use planet_extended::{generate_planet_extended, PlanetExtended, SystemParams};
+pub use sfx::{generate_sfx, SfxEvent, SfxKind};
 pub use soul::generate_soul;
 pub use sprite::generate_character_sprite;
 pub use station::generate_station;
 pub use storyline::generate_storyline;
 pub use system::{generate_starfield, generate_system, HostileLocationKind, HostileLocationSlot};
 pub use transit::{anomaly_rolls, malfunction_roll, transit_destination};
-pub use sfx::{generate_sfx, SfxEvent, SfxKind};
 pub use trope::{fill_trope_slots, instantiate_trope, TropeInstance, TropeTemplate, TropeType};
 pub use ui::generate_ui_panel;
 

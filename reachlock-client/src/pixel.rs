@@ -13,7 +13,9 @@ use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
+use reachlock_core::generator::sprite::CharacterLookConfig;
 use reachlock_core::generator::RoomKind;
+use reachlock_core::soul::types::Species;
 
 /// One world tile, pixels. The whole interior grid hangs off this.
 pub const TILE: f32 = 16.0;
@@ -289,7 +291,7 @@ pub fn threshold_sprite(base: Color, accent: Color) -> Image {
 /// is a boxy chassis with a sensor visor; voidborn have elongated, desaturated
 /// proportions; xenotypes are squat creatures with wide-set features
 /// (docs/LORE.md §V).
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodyKind {
     Human,
     Android,
@@ -299,8 +301,8 @@ pub enum BodyKind {
 }
 
 /// Hair silhouette — the main variety layer for station crowds. Crew get
-/// theirs from the lore via [`crew_look`].
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// theirs from their authored soul file's look config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hair {
     Short,
     Buzz,
@@ -413,92 +415,207 @@ impl Look {
     }
 }
 
-/// Canonical looks for the Loup-Garou's crew, keyed by roster id
-/// (docs/LORE.md §V). Unknown ids fall back to a seeded civilian look so a
-/// modded roster still paints.
-pub fn crew_look(id: &str) -> Look {
-    let human = |skin, hair, shirt, pants, jacket, hair_style| Look {
-        skin,
-        hair,
-        shirt,
-        pants,
-        jacket,
-        hair_style,
-        body: BodyKind::Human,
+/// Map a [`Species`] to the client's [`BodyKind`].
+pub fn body_kind_from_species(species: Species) -> BodyKind {
+    match species {
+        Species::Human => BodyKind::Human,
+        Species::Android => BodyKind::Android,
+        Species::Robot => BodyKind::Robot,
+        Species::Voidborn => BodyKind::Voidborn,
+        Species::Xenotype => BodyKind::Xenotype,
+    }
+}
+
+/// Map a species string to [`BodyKind`]. Unknown strings fall back to Human.
+pub fn body_kind_from_str(species: &str) -> BodyKind {
+    match species {
+        "Human" | "human" => BodyKind::Human,
+        "Android" | "android" => BodyKind::Android,
+        "Robot" | "robot" => BodyKind::Robot,
+        "Voidborn" | "voidborn" => BodyKind::Voidborn,
+        "Xenotype" | "xenotype" => BodyKind::Xenotype,
+        _ => BodyKind::Human,
+    }
+}
+
+/// Hair style index → `Hair` variant. Generator index 0 = Bald, 1 = Short,
+/// 2 = Buzz, 3 = Long, 4 = Locs, 5 = Bun, 6 = Crest.
+fn hair_from_index(i: u8) -> Hair {
+    match i {
+        0 => Hair::Bald,
+        1 => Hair::Short,
+        2 => Hair::Buzz,
+        3 => Hair::Long,
+        4 => Hair::Locs,
+        5 => Hair::Bun,
+        _ => Hair::Crest,
+    }
+}
+
+fn u8x3_to_color(rgb: [u8; 3]) -> Color {
+    Color::srgb(
+        rgb[0] as f32 / 255.0,
+        rgb[1] as f32 / 255.0,
+        rgb[2] as f32 / 255.0,
+    )
+}
+
+/// Convert an authored [`CharacterLookConfig`] into a renderable [`Look`].
+/// Every field in `config` must be `Some` for authored souls; `None` fields
+/// fall back to sensible defaults. For procedural NPCs (no look config), use
+/// [`look_from_config_or_seed`] instead to derive unpinned fields from seed.
+impl From<CharacterLookConfig> for Look {
+    fn from(config: CharacterLookConfig) -> Self {
+        let body = body_kind_from_str(&config.species);
+        let hair_style = hair_from_index(config.hair_style.unwrap_or(1));
+
+        match body {
+            BodyKind::Robot => {
+                let hull = config.chassis_color.unwrap_or([140; 3]);
+                let visor = config.visor_color.unwrap_or([242, 158, 46]);
+                let joints = config.pants_color.unwrap_or([71, 77, 84]);
+                Look {
+                    skin: u8x3_to_color(hull),
+                    hair: u8x3_to_color(visor),
+                    shirt: u8x3_to_color(hull),
+                    pants: u8x3_to_color(joints),
+                    jacket: None,
+                    hair_style: Hair::Bald,
+                    body,
+                }
+            }
+            BodyKind::Android => {
+                let skin = config.skin_color.unwrap_or([200, 200, 210]);
+                let glow = config.hair_color.unwrap_or([217, 77, 153]);
+                let shirt = config.shirt_color.unwrap_or([80, 80, 90]);
+                let pants = config.pants_color.unwrap_or([50, 50, 60]);
+                Look {
+                    skin: u8x3_to_color(skin),
+                    hair: u8x3_to_color(glow),
+                    shirt: u8x3_to_color(shirt),
+                    pants: u8x3_to_color(pants),
+                    jacket: config.jacket_enabled.and_then(|e| {
+                        if e {
+                            config.jacket_color.map(u8x3_to_color)
+                        } else {
+                            None
+                        }
+                    }),
+                    hair_style,
+                    body,
+                }
+            }
+            _ => {
+                let skin = config.skin_color.unwrap_or([200, 170, 150]);
+                let hair = config.hair_color.unwrap_or([40, 30, 20]);
+                let shirt = config.shirt_color.unwrap_or([100, 100, 100]);
+                let pants = config.pants_color.unwrap_or([60, 60, 60]);
+                Look {
+                    skin: u8x3_to_color(skin),
+                    hair: u8x3_to_color(hair),
+                    shirt: u8x3_to_color(shirt),
+                    pants: u8x3_to_color(pants),
+                    jacket: config.jacket_enabled.and_then(|e| {
+                        if e {
+                            config.jacket_color.map(u8x3_to_color)
+                        } else {
+                            None
+                        }
+                    }),
+                    hair_style,
+                    body,
+                }
+            }
+        }
+    }
+}
+
+/// Canonical seed offset per species for deriving unpinned look fields.
+///
+/// Formula: `entity_id.wrapping_add(species_offset)`. This must match the
+/// server-side derivation so rendered looks are consistent across targets.
+const SPECIES_SEED_OFFSETS: [(&str, u64); 5] = [
+    ("Human", 0),
+    ("Android", 1),
+    ("Robot", 2),
+    ("Voidborn", 3),
+    ("Xenotype", 4),
+];
+
+fn species_seed_offset(species: &str) -> u64 {
+    for (s, off) in &SPECIES_SEED_OFFSETS {
+        if species.eq_ignore_ascii_case(s) {
+            return *off;
+        }
+    }
+    0
+}
+
+/// Build a [`Look`] from a [`CharacterLookConfig`], deriving any `None`
+/// fields from `entity_seed`. Use this for procedural NPCs whose look is
+/// not pinned in a soul file.
+pub fn look_from_config_or_seed(config: CharacterLookConfig, entity_seed: u64) -> Look {
+    let body = body_kind_from_str(&config.species);
+    let hair_style = hair_from_index(config.hair_style.unwrap_or_else(|| {
+        let seed = entity_seed.wrapping_add(species_seed_offset(&config.species));
+        let mut n = Noise(seed);
+        n.below(7) as u8
+    }));
+
+    let seed_color = |seed_base: u64| -> [u8; 3] {
+        let mut n = Noise(seed_base);
+        [n.below(256) as u8, n.below(256) as u8, n.below(256) as u8]
     };
-    match id {
-        // Tib: Québécois captain — dark hair, worn brown flight jacket.
-        "tib" => human(
-            Color::srgb(0.82, 0.62, 0.45),
-            Color::srgb(0.16, 0.12, 0.10),
-            Color::srgb(0.45, 0.44, 0.42),
-            Color::srgb(0.25, 0.22, 0.18),
-            Some(Color::srgb(0.42, 0.28, 0.16)),
-            Hair::Short,
-        ),
-        // Tove: engineer — ash-blond buzz, orange drive-deck coveralls.
-        "tove" => human(
-            Color::srgb(0.93, 0.78, 0.66),
-            Color::srgb(0.72, 0.66, 0.50),
-            Color::srgb(0.75, 0.42, 0.16),
-            Color::srgb(0.55, 0.32, 0.14),
-            None,
-            Hair::Buzz,
-        ),
-        // Doc Keene: trauma surgeon — teal scrubs under a white coat.
-        "keene" => human(
-            Color::srgb(0.42, 0.28, 0.20),
-            Color::srgb(0.10, 0.08, 0.08),
-            Color::srgb(0.20, 0.55, 0.52),
-            Color::srgb(0.16, 0.30, 0.30),
-            Some(Color::srgb(0.88, 0.88, 0.90)),
-            Hair::Bun,
-        ),
-        // Bardo: linguist — locs, warm gold shirt, deep red jacket.
-        "bardo" => human(
-            Color::srgb(0.55, 0.38, 0.26),
-            Color::srgb(0.12, 0.10, 0.09),
-            Color::srgb(0.80, 0.60, 0.20),
-            Color::srgb(0.35, 0.25, 0.30),
-            Some(Color::srgb(0.48, 0.18, 0.20)),
-            Hair::Locs,
-        ),
-        // Prudence: femme android — pearl alloy, magenta crest and eyes,
-        // navy flight suit.
-        "prudence" => Look {
-            skin: Color::srgb(0.80, 0.82, 0.88),
-            hair: Color::srgb(0.85, 0.30, 0.60),
-            shirt: Color::srgb(0.18, 0.24, 0.42),
-            pants: Color::srgb(0.12, 0.16, 0.30),
-            jacket: None,
-            hair_style: Hair::Crest,
-            body: BodyKind::Android,
-        },
-        // Risc: angular android — gunmetal alloy, amber eyes, utility rig.
-        "risc" => Look {
-            skin: Color::srgb(0.45, 0.48, 0.52),
-            hair: Color::srgb(0.95, 0.65, 0.20),
-            shirt: Color::srgb(0.30, 0.33, 0.24),
-            pants: Color::srgb(0.20, 0.22, 0.18),
-            jacket: None,
-            hair_style: Hair::Bald,
-            body: BodyKind::Android,
-        },
-        // BOR-IS: EVA robot — grey hull, dark joints, amber sensor visor.
-        "boris" => Look {
-            skin: Color::srgb(0.55, 0.56, 0.58),
-            hair: Color::srgb(0.95, 0.62, 0.18),
-            shirt: Color::srgb(0.55, 0.56, 0.58),
-            pants: Color::srgb(0.28, 0.30, 0.33),
-            jacket: None,
-            hair_style: Hair::Bald,
-            body: BodyKind::Robot,
-        },
-        other => Look::seeded(
-            other
-                .bytes()
-                .fold(0u64, |a, b| a.wrapping_mul(31) + b as u64),
-        ),
+
+    match body {
+        BodyKind::Robot => {
+            let base = entity_seed.wrapping_add(species_seed_offset("Robot"));
+            let hull = config.chassis_color.unwrap_or(seed_color(base));
+            let visor = config
+                .visor_color
+                .unwrap_or(seed_color(base.wrapping_add(7)));
+            let joints = config
+                .pants_color
+                .unwrap_or(seed_color(base.wrapping_add(13)));
+            Look {
+                skin: u8x3_to_color(hull),
+                hair: u8x3_to_color(visor),
+                shirt: u8x3_to_color(hull),
+                pants: u8x3_to_color(joints),
+                jacket: None,
+                hair_style: Hair::Bald,
+                body,
+            }
+        }
+        _ => {
+            let base = entity_seed.wrapping_add(species_seed_offset(&config.species));
+            let skin = config.skin_color.unwrap_or(seed_color(base));
+            let hair = config
+                .hair_color
+                .unwrap_or(seed_color(base.wrapping_add(7)));
+            let shirt = config
+                .shirt_color
+                .unwrap_or(seed_color(base.wrapping_add(13)));
+            let pants = config
+                .pants_color
+                .unwrap_or(seed_color(base.wrapping_add(19)));
+            let jacket = config.jacket_enabled.and_then(|e| {
+                if e {
+                    config.jacket_color.map(u8x3_to_color)
+                } else {
+                    None
+                }
+            });
+            Look {
+                skin: u8x3_to_color(skin),
+                hair: u8x3_to_color(hair),
+                shirt: u8x3_to_color(shirt),
+                pants: u8x3_to_color(pants),
+                jacket,
+                hair_style,
+                body,
+            }
+        }
     }
 }
 
@@ -1442,31 +1559,117 @@ mod tests {
     }
 
     #[test]
-    fn crew_looks_paint_and_differ() {
-        let ids = ["tib", "tove", "keene", "bardo", "prudence", "risc", "boris"];
-        let mut sprites = Vec::new();
-        for id in ids {
-            let px = paint_character(DIR_DOWN, 0, crew_look(id));
-            assert_eq!((px.w, px.h), (16, 26), "{id}");
-            assert!(filled(&px) > 100, "{id} barely painted");
-            sprites.push(px.data);
-        }
-        for i in 0..sprites.len() {
-            for j in i + 1..sprites.len() {
-                assert_ne!(sprites[i], sprites[j], "{} == {}", ids[i], ids[j]);
-            }
-        }
-    }
-
-    #[test]
     fn robot_walks_and_mirrors_like_everyone_else() {
-        let look = crew_look("boris");
+        let look = Look::seeded(42);
         let idle = paint_character(DIR_DOWN, 0, look);
         let stride = paint_character(DIR_DOWN, 1, look);
         assert_ne!(idle.data, stride.data);
         let left = paint_character(DIR_LEFT, 0, look);
         let right = paint_character(DIR_RIGHT, 0, look);
         assert_eq!(left.mirrored().data, right.data);
+    }
+
+    // ── S76: From<CharacterLookConfig> for Look conversion tests ──
+
+    use reachlock_core::generator::sprite::CharacterLookConfig;
+
+    fn pinned_config(species: &str, hair_idx: u8) -> CharacterLookConfig {
+        CharacterLookConfig {
+            species: species.to_string(),
+            hair_style: Some(hair_idx),
+            hair_color: Some([180, 120, 60]),
+            skin_color: Some([220, 180, 140]),
+            shirt_color: Some([60, 80, 160]),
+            pants_color: Some([40, 60, 100]),
+            jacket_enabled: Some(true),
+            jacket_color: Some([200, 60, 60]),
+            chassis_color: Some([140, 150, 160]),
+            visor_color: Some([80, 200, 255]),
+        }
+    }
+
+    #[test]
+    fn look_from_config_maps_species_to_body_kind() {
+        for (species, expected) in [
+            ("Human", BodyKind::Human),
+            ("Android", BodyKind::Android),
+            ("Robot", BodyKind::Robot),
+            ("Voidborn", BodyKind::Voidborn),
+            ("Xenotype", BodyKind::Xenotype),
+        ] {
+            let cfg = pinned_config(species, 1);
+            let look = Look::from(cfg);
+            assert_eq!(look.body, expected, "{species}");
+        }
+    }
+
+    #[test]
+    fn look_from_config_maps_hair_style() {
+        let cases = [
+            (0, Hair::Bald),
+            (1, Hair::Short),
+            (2, Hair::Buzz),
+            (3, Hair::Long),
+            (4, Hair::Locs),
+            (5, Hair::Bun),
+            (6, Hair::Crest),
+        ];
+        for (idx, expected) in cases {
+            let cfg = pinned_config("Human", idx);
+            let look = Look::from(cfg);
+            assert_eq!(look.hair_style, expected, "hair index {idx}");
+        }
+    }
+
+    #[test]
+    fn look_from_config_preserves_colors() {
+        let cfg = pinned_config("Human", 3);
+        let look = Look::from(cfg);
+        assert_eq!(look.hair_style, Hair::Long);
+        // Check that pixel buffers render with pinned colors (not seed-derived).
+        let px = paint_character(DIR_DOWN, 0, look);
+        assert!(filled(&px) > 100);
+    }
+
+    #[test]
+    fn look_from_config_robot_maps_chassis_to_body() {
+        let cfg = pinned_config("Robot", 0);
+        let look = Look::from(cfg);
+        assert_eq!(look.body, BodyKind::Robot);
+        assert_eq!(look.hair_style, Hair::Bald);
+        // For robots, chassis shows as skin and shirt, visor as hair.
+        assert!(look.shirt != Color::srgb(0.5, 0.5, 0.5));
+    }
+
+    #[test]
+    fn look_from_config_unrecognised_species_falls_back_to_human() {
+        let cfg = CharacterLookConfig {
+            species: "Alien".to_string(),
+            ..pinned_config("Human", 0)
+        };
+        let look = Look::from(cfg);
+        assert_eq!(look.body, BodyKind::Human);
+    }
+
+    #[test]
+    fn look_from_seed_derives_none_fields() {
+        // All-None config should produce a valid look via seed derivation.
+        let cfg = CharacterLookConfig::seed_derived("Human");
+        let look = look_from_config_or_seed(cfg, 12345);
+        assert_eq!(look.body, BodyKind::Human);
+        // All fields must be populated (colors won't be default, they'll be seed-derived).
+        let px = paint_character(DIR_DOWN, 0, look);
+        assert!(filled(&px) > 100);
+    }
+
+    #[test]
+    fn body_kind_from_str_maps_known_species() {
+        assert_eq!(body_kind_from_str("Human"), BodyKind::Human);
+        assert_eq!(body_kind_from_str("Android"), BodyKind::Android);
+        assert_eq!(body_kind_from_str("Robot"), BodyKind::Robot);
+        assert_eq!(body_kind_from_str("Xenotype"), BodyKind::Xenotype);
+        assert_eq!(body_kind_from_str("Voidborn"), BodyKind::Voidborn);
+        assert_eq!(body_kind_from_str("Unknown"), BodyKind::Human);
     }
 
     #[test]

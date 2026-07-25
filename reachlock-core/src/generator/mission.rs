@@ -50,8 +50,12 @@ pub enum MissionIssuer {
         faction_id: String,
         division_id: Option<String>,
     },
-    Station { station_id: String },
-    Npc { npc_id: String },
+    Station {
+        station_id: String,
+    },
+    Npc {
+        npc_id: String,
+    },
     Personal,
     DistressBeacon,
 }
@@ -151,7 +155,10 @@ pub fn generate_missions(context: &MissionGenerationContext) -> Vec<Mission> {
             id,
             mission_type: mt,
             title: format!("{:?} Mission", mt),
-            briefing: format!("A {:?} assignment from {} at tick {}.", mt, context.station_faction, context.tick),
+            briefing: format!(
+                "A {:?} assignment from {} at tick {}.",
+                mt, context.station_faction, context.tick
+            ),
             issuer: MissionIssuer::Faction {
                 faction_id: context.station_faction.clone(),
                 division_id: None,
@@ -170,7 +177,10 @@ pub fn generate_missions(context: &MissionGenerationContext) -> Vec<Mission> {
             },
             rewards: MissionRewards {
                 credits: 100 + rng.next_below(1000),
-                reputation_gains: vec![(context.station_faction.clone(), (rng.next_below(20) as i64 + 1))],
+                reputation_gains: vec![(
+                    context.station_faction.clone(),
+                    (rng.next_below(20) as i64 + 1),
+                )],
                 career_progress: vec![(ProgressionCriterionType::MissionsCompleted, 1)],
                 ..Default::default()
             },
@@ -234,8 +244,7 @@ fn weighted_type(rng: &mut SeededRng, ctx: &MissionGenerationContext) -> Mission
 
 /// Compute the next mission seed in a chain deterministically.
 pub fn next_chain_seed(current_seed: u64, current_position: u8) -> u64 {
-    SeededRng::new(current_seed.wrapping_add(current_position as u64 * 0x9E37_79B9))
-        .next_u64()
+    SeededRng::new(current_seed.wrapping_add(current_position as u64 * 0x9E37_79B9)).next_u64()
 }
 
 #[cfg(test)]
@@ -299,7 +308,10 @@ mod tests {
         let mut ctx = sample_context();
         ctx.system_kind = "war".into();
         let ms = generate_missions(&ctx);
-        let combat = ms.iter().filter(|m| matches!(m.mission_type, MissionType::Combat | MissionType::Escort)).count();
+        let combat = ms
+            .iter()
+            .filter(|m| matches!(m.mission_type, MissionType::Combat | MissionType::Escort))
+            .count();
         assert!(combat > ms.len() / 3, "expected many combat in war zone");
     }
 }
