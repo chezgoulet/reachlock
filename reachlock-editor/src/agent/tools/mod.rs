@@ -17,6 +17,7 @@
 //! time.
 
 pub mod content;
+pub mod render;
 pub mod session;
 
 use serde_json::Value;
@@ -126,6 +127,7 @@ impl ToolRegistry {
     /// Every tool the editor knows about.
     pub fn new() -> Self {
         let mut tools = content::tools();
+        tools.extend(render::tools());
         tools.extend(session::tools());
         ToolRegistry { tools }
     }
