@@ -40,7 +40,7 @@ impl EnvelopeMeta {
         }
     }
 
-    fn from_file(file: &ContentFile) -> Self {
+    pub(crate) fn from_file(file: &ContentFile) -> Self {
         EnvelopeMeta {
             id: file.id.clone(),
             display_name: file.display_name.clone(),
