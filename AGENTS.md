@@ -21,6 +21,7 @@ The v1 Godot prototype is archived on the `archive-v1` branch. Both `main` and `
 | `reachlock-client/` | Bevy game client — bridge layer, ECS systems, plugins |
 | `reachlock-server/` | WebSocket server — Tokio + Axum, seed service, LLM proxy |
 | `reachlock-cli/` | CLI tools — `gen`, `determinism`, `content` |
+| `assets/ui/` | UI stylesheets — the game's theme, hot-reloadable with F5 |
 | `reachlock-editor/` | Content editor — RON round-trip, schema validation, multi-entry saving |
 
 ## Development Workflow
@@ -58,7 +59,16 @@ The v1 Godot prototype is archived on the `archive-v1` branch. Both `main` and `
 - Multi-entry editors (soul/station/enemy/…) save each dirty entry to its own `entry.path` via `Editor::save_all`. Never make a single-entry `save(path)` collapse all loaded entries onto the tab path — that silently loses authored content in the other entries.
 - RON is not JSON about aggregates. A fixed-size array `[u8; 3]` serializes as a **tuple** — `Some((176, 148, 92))`, not `Some([176, 148, 92])` — and a newtype struct like `VariationMask(u16)` needs its parens: `allowed_variations: (65535)`. Both fail at parse time with a message that names the struct, not the line's real problem.
 - Authored content must be wrapped in a `ContentFile` envelope or the dispatch layer never sees it. `mods/reachlock/themes/calm_exploration.ron` sat as a bare `Theme(...)` and the one authored theme silently never reached the audio engine. `content check` reports these as UNPARSEABLE — a file in a content directory that parses as no known payload is skipped by every loader, which is worse than a file that errors.
-- Career `conflicting_paths` are symmetric and validated at load. Adding `a -> b` without `b -> a` is a load-time failure, not a warning.
+- Career `conflicting_paths` are symmetric and validated at load.
+- UI colors come from the stylesheet, never from code. Name a style class —
+  `theme::text("row.value", …)` for new UI, `theme::fg` / `theme::surface` when
+  migrating an existing widget — and let `assets/ui/phosphor.ron` decide the
+  color. `make check-theme` fails on a literal `TextColor`/`BackgroundColor`/
+  `BorderColor`. F5 reloads the stylesheet in-game.
+- RON enum variants are snake_case (`species: human`, `asset_type: crew_package`),
+  and a newtype payload variant needs its second paren: `payload: origin((…))`.
+  Getting either wrong makes the file unparseable, which every loader silently
+  skips. Adding `a -> b` without `b -> a` is a load-time failure, not a warning.
 
 ## Build & Test
 

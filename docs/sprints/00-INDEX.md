@@ -234,6 +234,24 @@ re-confirm what someone already remembered to type.
   `Option<String>`. Changing a content type means changing its schema.
 - Career `conflicting_paths` are symmetric and validated at load — `a -> b`
   without `b -> a` is a load failure, not a warning.
+- UI colors come from `assets/ui/*.ron`, never from code. Name a style class
+  (`theme::text` for new UI, `theme::fg` / `theme::surface` when migrating an
+  existing widget); `make check-theme` fails on a literal `TextColor` /
+  `BackgroundColor` / `BorderColor` in the client. F5 reloads the stylesheet
+  in-game, and a broken edit keeps the last good theme rather than blanking
+  the UI.
+- Bevy's built-in default font is a **FiraMono subset** with no box-drawing or
+  geometric glyphs — `●◉○ ▸ ⚠ ↑↓ ←→` all render as tofu. The theme loads
+  DejaVu Sans Mono from `assets/fonts/`; any text entity that misses the
+  themed font falls back to the subset and starts showing boxes.
+- RON enum variants are snake_case and newtype payload variants need a second
+  paren — `payload: origin((…))`, `asset_type: crew_package`, `species: human`.
+  Both mistakes make the file unparseable, and every loader skips silently
+  what it cannot parse.
+- A `spawn_*` system registered on `Startup` can never run again. Anything the
+  player can leave and come back to belongs on `OnEnter(state)` with a matching
+  `OnExit` teardown — the main menu was spawned at `Startup` and despawned by
+  hand, so backing out of character creation left a dead grey window.
 - bevy 0.18: mesh types import from `bevy::mesh::`, not `bevy::render::mesh::`.
   `Timer::finished` is now `is_finished`. `RapierPhysicsPlugin::<()>` (unit
   generic, not `NoUserData`).
