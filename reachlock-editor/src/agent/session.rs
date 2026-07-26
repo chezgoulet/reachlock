@@ -18,6 +18,7 @@
 //! errors" is the default path rather than something the author has to drive.
 
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 
 use super::bridge::SessionHandle;
 use super::mode::Mode;
@@ -34,6 +35,10 @@ const MAX_TURNS: usize = 24;
 /// What the loop tells the UI. One variant per thing worth rendering.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentEvent {
+    /// What the author asked. Emitted by the UI rather than the loop, so the
+    /// panel reads as a conversation instead of a series of answers with no
+    /// questions.
+    UserPrompt(String),
     /// Assistant prose.
     Text(String),
     /// A tool is about to run. Rendered before the result so a slow tool shows
@@ -53,8 +58,55 @@ pub enum AgentEvent {
 /// Handle to a running task.
 pub struct AgentTask {
     pub events: Receiver<AgentEvent>,
-    /// Where this session is being written, for the panel to show.
+}
+
+/// State that outlives a single Send.
+///
+/// Each Send used to start from `vec![Message::user(prompt)]`, so the
+/// assistant had no memory of the previous exchange: a follow-up like "now do
+/// the same for the other one" landed with no idea what "the same" was, and
+/// every send re-explored the tree from nothing. That is the opposite of what
+/// is wanted from a tool whose main cost is rediscovery.
+///
+/// Shared with the agent thread, which appends as it goes, so the panel can
+/// report how large the conversation has grown.
+#[derive(Default)]
+pub struct Conversation {
+    pub messages: Vec<Message>,
+    log: Option<TranscriptLog>,
     pub log_path: Option<std::path::PathBuf>,
+    /// The mode the previous send ran under, so a switch can be made explicit
+    /// to a model that has already been told the other set of rules.
+    last_mode: Option<Mode>,
+}
+
+impl Conversation {
+    /// Roughly how much has accumulated. Characters, not tokens: the point is
+    /// to warn an author before a context limit bites, not to be exact.
+    pub fn size_hint(&self) -> usize {
+        self.messages
+            .iter()
+            .map(|m| match m {
+                Message::Turn { parts, .. } => parts
+                    .iter()
+                    .map(|p| match p {
+                        Part::Text(t) => t.len(),
+                        Part::Image { data, .. } => data.len(),
+                    })
+                    .sum::<usize>(),
+                Message::ToolResults(rs) => rs.iter().map(|r| r.content.len()).sum(),
+            })
+            .sum()
+    }
+
+    pub fn turns(&self) -> usize {
+        self.messages.len()
+    }
+
+    /// Start over: new history, new log file.
+    pub fn reset(&mut self) {
+        *self = Conversation::default();
+    }
 }
 
 /// Append-only transcript on disk.
@@ -69,7 +121,7 @@ struct TranscriptLog {
 }
 
 impl TranscriptLog {
-    fn create(mode: Mode, provider: &str, prompt: &str) -> (Self, Option<std::path::PathBuf>) {
+    fn create(mode: Mode, provider: &str) -> (Self, Option<std::path::PathBuf>) {
         let dir = std::path::PathBuf::from("save/agent-logs");
         if std::fs::create_dir_all(&dir).is_err() {
             return (TranscriptLog { file: None }, None);
@@ -94,15 +146,19 @@ impl TranscriptLog {
         match std::fs::File::create(&path) {
             Ok(mut file) => {
                 use std::io::Write as _;
-                let _ = writeln!(
-                    file,
-                    "mode: {}\nprovider: {provider}\n\n== prompt ==\n{prompt}\n",
-                    mode.label()
-                );
+                let _ = writeln!(file, "mode: {}\nprovider: {provider}\n", mode.label());
                 (TranscriptLog { file: Some(file) }, Some(path))
             }
             // Logging is a convenience, never a reason to refuse the task.
             Err(_) => (TranscriptLog { file: None }, None),
+        }
+    }
+
+    fn write_prompt(&mut self, prompt: &str) {
+        use std::io::Write as _;
+        if let Some(file) = self.file.as_mut() {
+            let _ = write!(file, "\n== prompt ==\n{prompt}\n");
+            let _ = file.flush();
         }
     }
 
@@ -112,6 +168,9 @@ impl TranscriptLog {
             return;
         };
         let line = match event {
+            // The prompt is written by `write_prompt` when the send starts,
+            // so it is on disk even if the model never answers.
+            AgentEvent::UserPrompt(_) => String::new(),
             AgentEvent::Text(t) => format!("\n== assistant ==\n{t}\n"),
             AgentEvent::ToolStarted { summary, .. } => format!("-> {summary}\n"),
             AgentEvent::ToolFinished { name, is_error } => {
@@ -212,22 +271,53 @@ pub fn spawn(
     mode: Mode,
     max_tokens: u32,
     prompt: String,
+    conversation: Arc<Mutex<Conversation>>,
 ) -> AgentTask {
     let (tx, rx) = channel();
-    let (mut log, log_path) = TranscriptLog::create(mode, provider.name(), &prompt);
-    std::thread::spawn(move || {
-        run(provider, session, mode, max_tokens, prompt, &tx, &mut log);
-    });
-    AgentTask {
-        events: rx,
-        log_path,
+    {
+        let mut c = conversation.lock().unwrap_or_else(|e| e.into_inner());
+        // One log per conversation, not per send: a transcript split across
+        // files at every prompt is exactly as hard to read as no transcript.
+        if c.log.is_none() {
+            let (log, path) = TranscriptLog::create(mode, provider.name());
+            c.log = Some(log);
+            c.log_path = path;
+        }
+        // A mid-conversation mode switch changes the rules under a model that
+        // was told the previous set. Saying so beats letting it infer the
+        // change from a refusal.
+        if let Some(previous) = c.last_mode {
+            if previous != mode {
+                c.messages.push(Message::user(format!(
+                    "(The author switched to {} mode. {})",
+                    mode.label(),
+                    match mode {
+                        Mode::Plan => "Your tools are read-only again.",
+                        Mode::Build => "You may write and save now.",
+                    }
+                )));
+            }
+        }
+        c.last_mode = Some(mode);
+        c.messages.push(Message::user(prompt.clone()));
+        if let Some(log) = c.log.as_mut() {
+            log.write_prompt(&prompt);
+        }
     }
+    std::thread::spawn(move || {
+        run(provider, session, mode, max_tokens, &tx, conversation);
+    });
+    AgentTask { events: rx }
 }
 
 /// Emit an event to the UI and the log together, so the file is never a
 /// partial record of what the panel showed.
-fn emit(tx: &Sender<AgentEvent>, log: &mut TranscriptLog, event: AgentEvent) {
-    log.write(&event);
+fn emit(tx: &Sender<AgentEvent>, conversation: &Mutex<Conversation>, event: AgentEvent) {
+    if let Ok(mut c) = conversation.lock() {
+        if let Some(log) = c.log.as_mut() {
+            log.write(&event);
+        }
+    }
     let _ = tx.send(event);
 }
 
@@ -236,9 +326,8 @@ fn run(
     session: SessionHandle,
     mode: Mode,
     max_tokens: u32,
-    prompt: String,
     tx: &Sender<AgentEvent>,
-    log: &mut TranscriptLog,
+    conversation: Arc<Mutex<Conversation>>,
 ) {
     let registry = ToolRegistry::new();
     let ctx = ToolCtx::with_session(session);
@@ -246,7 +335,7 @@ fn run(
     if !provider.caps().tools {
         emit(
             tx,
-            log,
+            &conversation,
             AgentEvent::Done(Err(format!(
                 "The `{}` profile is not marked as supporting tool calling, so it cannot drive \
              the editor. Tick \"Supports tool calling\" in AI Settings if the model does \
@@ -264,12 +353,27 @@ fn run(
     // not the safety boundary.
     let tools = tool_defs(&registry, mode, true);
     let system = system_prompt(mode);
-    let mut messages = vec![Message::user(prompt)];
+
+    /// Append to the shared history. A poisoned lock means another thread
+    /// panicked mid-update; the history is still structurally fine to append
+    /// to, and losing the conversation on top of that helps nobody.
+    fn push(conversation: &Mutex<Conversation>, message: Message) {
+        conversation
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .messages
+            .push(message);
+    }
 
     for turn in 0..MAX_TURNS {
+        let messages = conversation
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .messages
+            .clone();
         let request = Request {
             system: system.clone(),
-            messages: messages.clone(),
+            messages,
             tools: tools.clone(),
             max_tokens,
             temperature: 0.7,
@@ -278,19 +382,33 @@ fn run(
         let response = match provider.complete(&request) {
             Ok(r) => r,
             Err(e) => {
-                emit(tx, log, AgentEvent::Done(Err(e.to_string())));
+                emit(tx, &conversation, AgentEvent::Done(Err(e.to_string())));
                 return;
             }
         };
 
         if !response.text.trim().is_empty() {
-            emit(tx, log, AgentEvent::Text(response.text.clone()));
+            emit(tx, &conversation, AgentEvent::Text(response.text.clone()));
         }
 
         if response.tool_calls.is_empty() {
+            // Record the closing turn. Without it the next Send resumes from a
+            // history that contains the questions but none of the answers, so
+            // the model contradicts its own previous reply for no visible
+            // reason — worse than having no memory at all.
+            if !response.text.trim().is_empty() {
+                push(
+                    &conversation,
+                    Message::Turn {
+                        role: Role::Assistant,
+                        parts: vec![Part::Text(response.text.clone())],
+                        tool_calls: Vec::new(),
+                    },
+                );
+            }
             emit(
                 tx,
-                log,
+                &conversation,
                 AgentEvent::Done(match response.stop {
                     StopReason::MaxTokens => Err(
                         "The model hit its token ceiling mid-answer. Raise Max tokens in AI \
@@ -308,21 +426,24 @@ fn run(
         // running them. Both wire formats require the calls to be present in
         // the history the results answer; omitting them makes the next request
         // a protocol error rather than a silently worse one.
-        messages.push(Message::Turn {
-            role: Role::Assistant,
-            parts: if response.text.trim().is_empty() {
-                Vec::new()
-            } else {
-                vec![Part::Text(response.text.clone())]
+        push(
+            &conversation,
+            Message::Turn {
+                role: Role::Assistant,
+                parts: if response.text.trim().is_empty() {
+                    Vec::new()
+                } else {
+                    vec![Part::Text(response.text.clone())]
+                },
+                tool_calls: response.tool_calls.clone(),
             },
-            tool_calls: response.tool_calls.clone(),
-        });
+        );
 
         let mut results = Vec::new();
         for call in &response.tool_calls {
             emit(
                 tx,
-                log,
+                &conversation,
                 AgentEvent::ToolStarted {
                     name: call.name.clone(),
                     summary: summarize(&call.name, &call.arguments),
@@ -331,7 +452,7 @@ fn run(
             let outcome = registry.dispatch(&call.name, &call.arguments, mode, &ctx);
             emit(
                 tx,
-                log,
+                &conversation,
                 AgentEvent::ToolFinished {
                     name: call.name.clone(),
                     is_error: outcome.is_error,
@@ -358,12 +479,12 @@ fn run(
         // All results for the turn go back as one message. Splitting them is
         // accepted by both APIs and then quietly suppresses parallel tool
         // calls on later turns.
-        messages.push(Message::ToolResults(results));
+        push(&conversation, Message::ToolResults(results));
 
         if turn + 1 == MAX_TURNS {
             emit(
                 tx,
-                log,
+                &conversation,
                 AgentEvent::Done(Err(format!(
                     "Stopped after {MAX_TURNS} turns without finishing. If most of those turns \
                  were spent looking things up, `describe_content_type` returns a type's \
@@ -441,7 +562,15 @@ mod tests {
             responses: Mutex::new(vec![text_only("here is the plan")]),
             seen: Mutex::new(Vec::new()),
         });
-        let task = spawn(p, queue.handle(), Mode::Plan, 1024, "plan something".into());
+        let convo = Arc::new(Mutex::new(Conversation::default()));
+        let task = spawn(
+            p,
+            queue.handle(),
+            Mode::Plan,
+            1024,
+            "plan something".into(),
+            convo.clone(),
+        );
         let events = drain(&task.events);
         assert_eq!(events[0], AgentEvent::Text("here is the plan".into()));
         assert_eq!(events.last(), Some(&AgentEvent::Done(Ok(()))));
@@ -460,7 +589,15 @@ mod tests {
             responses: Mutex::new(vec![text_only("unreachable")]),
             seen: Mutex::new(Vec::new()),
         });
-        let task = spawn(p, queue.handle(), Mode::Build, 1024, "do something".into());
+        let convo = Arc::new(Mutex::new(Conversation::default()));
+        let task = spawn(
+            p,
+            queue.handle(),
+            Mode::Build,
+            1024,
+            "do something".into(),
+            convo.clone(),
+        );
         let events = drain(&task.events);
         match events.last() {
             Some(AgentEvent::Done(Err(msg))) => {
@@ -495,7 +632,15 @@ mod tests {
             ]),
             seen: Mutex::new(Vec::new()),
         });
-        let task = spawn(p, queue.handle(), Mode::Plan, 1024, "change it".into());
+        let convo = Arc::new(Mutex::new(Conversation::default()));
+        let task = spawn(
+            p,
+            queue.handle(),
+            Mode::Plan,
+            1024,
+            "change it".into(),
+            convo.clone(),
+        );
         let events = drain(&task.events);
 
         assert!(
@@ -534,7 +679,15 @@ mod tests {
             ]),
             seen: Mutex::new(Vec::new()),
         });
-        let task = spawn(p, queue.handle(), Mode::Plan, 1024, "check".into());
+        let convo = Arc::new(Mutex::new(Conversation::default()));
+        let task = spawn(
+            p,
+            queue.handle(),
+            Mode::Plan,
+            1024,
+            "check".into(),
+            convo.clone(),
+        );
         let events = drain(&task.events);
         assert!(events
             .iter()
@@ -557,12 +710,119 @@ mod tests {
             }]),
             seen: Mutex::new(Vec::new()),
         });
-        let task = spawn(p, queue.handle(), Mode::Build, 16, "write a lot".into());
+        let convo = Arc::new(Mutex::new(Conversation::default()));
+        let task = spawn(
+            p,
+            queue.handle(),
+            Mode::Build,
+            16,
+            "write a lot".into(),
+            convo.clone(),
+        );
         let events = drain(&task.events);
         match events.last() {
             Some(AgentEvent::Done(Err(msg))) => assert!(msg.contains("token ceiling"), "{msg}"),
             other => panic!("expected a truncation report, got {other:?}"),
         }
+    }
+
+    /// The bug this whole type exists for: every Send used to start from
+    /// `vec![Message::user(prompt)]`, so a follow-up arrived with no idea what
+    /// the previous exchange had been, and the model re-explored from nothing.
+    #[test]
+    fn a_second_send_carries_the_first_exchange() {
+        let queue = SessionQueue::new();
+        let convo = Arc::new(Mutex::new(Conversation::default()));
+
+        let first = Box::new(Scripted {
+            caps: Caps {
+                vision: false,
+                tools: true,
+            },
+            responses: Mutex::new(vec![text_only("the ecosystem lives in ecosystems/")]),
+            seen: Mutex::new(Vec::new()),
+        });
+        let task = spawn(
+            first,
+            queue.handle(),
+            Mode::Plan,
+            1024,
+            "where do ecosystems live?".into(),
+            convo.clone(),
+        );
+        let _ = drain(&task.events);
+
+        // Second send, same conversation.
+        let second = Box::new(Scripted {
+            caps: Caps {
+                vision: false,
+                tools: true,
+            },
+            responses: Mutex::new(vec![text_only("as I said, ecosystems/")]),
+            seen: Mutex::new(Vec::new()),
+        });
+        let task = spawn(
+            second,
+            queue.handle(),
+            Mode::Plan,
+            1024,
+            "and the one after that?".into(),
+            convo.clone(),
+        );
+        let _ = drain(&task.events);
+
+        let c = convo.lock().unwrap();
+        let text: String = format!("{:?}", c.messages);
+        assert!(
+            text.contains("where do ecosystems live?"),
+            "the first prompt was dropped:\n{text}"
+        );
+        assert!(
+            text.contains("the ecosystem lives in ecosystems/"),
+            "the first answer was dropped — a follow-up would contradict it:\n{text}"
+        );
+        assert!(
+            text.contains("and the one after that?"),
+            "the second prompt is missing:\n{text}"
+        );
+        assert!(c.turns() >= 4, "expected both exchanges, got {}", c.turns());
+    }
+
+    /// Switching mode mid-conversation changes the rules under a model that
+    /// was told the other set; it should be told, not left to infer it from a
+    /// refusal.
+    #[test]
+    fn a_mode_switch_is_announced_in_the_history() {
+        let queue = SessionQueue::new();
+        let convo = Arc::new(Mutex::new(Conversation::default()));
+        for (mode, reply) in [(Mode::Plan, "planned"), (Mode::Build, "built")] {
+            let p = Box::new(Scripted {
+                caps: Caps {
+                    vision: false,
+                    tools: true,
+                },
+                responses: Mutex::new(vec![text_only(reply)]),
+                seen: Mutex::new(Vec::new()),
+            });
+            let task = spawn(p, queue.handle(), mode, 1024, "go".into(), convo.clone());
+            let _ = drain(&task.events);
+        }
+        let text = format!("{:?}", convo.lock().unwrap().messages);
+        assert!(
+            text.contains("switched to Build mode"),
+            "the mode change was not announced:\n{text}"
+        );
+    }
+
+    /// Starting over must actually start over.
+    #[test]
+    fn a_reset_clears_history_and_the_log() {
+        let mut c = Conversation::default();
+        c.messages.push(Message::user("something"));
+        assert_eq!(c.turns(), 1);
+        c.reset();
+        assert_eq!(c.turns(), 0);
+        assert!(c.log_path.is_none());
     }
 
     /// A session that hangs or is killed is exactly the one worth reading, so
@@ -578,10 +838,23 @@ mod tests {
             responses: Mutex::new(vec![text_only("a written answer")]),
             seen: Mutex::new(Vec::new()),
         });
-        let task = spawn(p, queue.handle(), Mode::Plan, 1024, "log this".into());
+        let convo = Arc::new(Mutex::new(Conversation::default()));
+        let task = spawn(
+            p,
+            queue.handle(),
+            Mode::Plan,
+            1024,
+            "log this".into(),
+            convo.clone(),
+        );
         let _ = drain(&task.events);
 
-        let path = task.log_path.expect("a log path was reported");
+        let path = convo
+            .lock()
+            .unwrap()
+            .log_path
+            .clone()
+            .expect("a log path was reported");
         let text = std::fs::read_to_string(&path).expect("log file exists");
         assert!(text.contains("mode: Plan"), "{text}");
         assert!(text.contains("log this"), "prompt missing:\n{text}");

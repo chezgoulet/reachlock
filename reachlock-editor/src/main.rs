@@ -122,9 +122,10 @@ struct EditorApp {
     /// The MCP-over-HTTP endpoint, when the author has switched it on.
     /// Dropping it stops the listener.
     mcp_http: Option<mcp_http::McpHttpServer>,
-    /// Where the most recent session was logged. Kept after the task ends —
-    /// the log is most wanted once a run has gone wrong.
-    agent_log_path: Option<std::path::PathBuf>,
+    /// The running conversation: message history and its log. Shared with the
+    /// agent thread, and deliberately **not** reset per Send — see
+    /// [`agent::session::Conversation`].
+    agent_conversation: std::sync::Arc<std::sync::Mutex<agent::session::Conversation>>,
 }
 
 /// Find Usages state: what the author typed, and what the index answered.
@@ -280,7 +281,7 @@ impl Default for EditorApp {
             agent_prompt: String::new(),
             show_assistant: false,
             mcp_http: None,
-            agent_log_path: None,
+            agent_conversation: Default::default(),
         }
     }
 }
@@ -1272,6 +1273,7 @@ impl EditorApp {
         let mut out = String::new();
         for e in &self.agent_transcript {
             match e {
+                E::UserPrompt(t) => out.push_str(&format!("\n> {t}\n")),
                 E::Text(t) => out.push_str(&format!("\n{t}\n")),
                 E::ToolStarted { summary, .. } => out.push_str(&format!("-> {summary}\n")),
                 E::ToolFinished { name, is_error } => {
@@ -1304,18 +1306,21 @@ impl EditorApp {
                 return;
             }
         };
-        self.agent_transcript.clear();
+        // The transcript is NOT cleared: a Send continues the conversation, so
+        // the panel should read as one exchange rather than resetting each
+        // time. "New conversation" is the explicit way to start over.
+        self.agent_transcript
+            .push(agent::session::AgentEvent::UserPrompt(prompt.clone()));
         self.agent_prompt.clear();
         self.status_text = format!("Assistant working ({} mode)…", self.agent_mode.label());
-        let task = agent::session::spawn(
+        self.agent_task = Some(agent::session::spawn(
             provider,
             self.session_queue.handle(),
             self.agent_mode,
             profile.max_tokens,
             prompt,
-        );
-        self.agent_log_path = task.log_path.clone();
-        self.agent_task = Some(task);
+            self.agent_conversation.clone(),
+        ));
     }
 
     fn assistant_panel(&mut self, ctx: &egui::Context) {
@@ -1362,6 +1367,11 @@ impl EditorApp {
                         }
                         for event in &self.agent_transcript {
                             match event {
+                                agent::session::AgentEvent::UserPrompt(t) => {
+                                    ui.add_space(6.0);
+                                    ui.strong(format!("> {t}"));
+                                    ui.add_space(2.0);
+                                }
                                 agent::session::AgentEvent::Text(t) => {
                                     ui.label(t);
                                     ui.add_space(4.0);
@@ -1404,12 +1414,50 @@ impl EditorApp {
                         ui.ctx().copy_text(text);
                         self.status_text = "Transcript copied.".into();
                     }
-                    if let Some(path) = &self.agent_log_path {
+                    let (turns, size, log_path) = {
+                        let c = self
+                            .agent_conversation
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        (c.turns(), c.size_hint(), c.log_path.clone())
+                    };
+                    if ui
+                        .add_enabled(turns > 0, egui::Button::new("New conversation"))
+                        .on_hover_text(
+                            "Forget the exchange so far and start fresh. Sends otherwise \
+                             continue the same conversation, so the assistant remembers \
+                             what it already looked up.",
+                        )
+                        .clicked()
+                    {
+                        self.agent_conversation
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .reset();
+                        self.agent_transcript.clear();
+                        self.status_text = "Started a new conversation.".into();
+                    }
+                    if let Some(path) = &log_path {
                         ui.weak(format!("log: {}", path.display()))
                             .on_hover_text(
                                 "Every session is written here as it runs, so a run that \
                                  hangs or fails can still be read with ordinary tools.",
                             );
+                    }
+                    if turns > 0 {
+                        // Characters, not tokens — enough to warn before a
+                        // context limit bites without pretending to be exact.
+                        let label = format!("{turns} msgs / ~{}k chars", size / 1000);
+                        if size > 120_000 {
+                            ui.colored_label(egui::Color32::from_rgb(0xFF, 0xB3, 0x00), label)
+                                .on_hover_text(
+                                    "This conversation is getting long and every Send \
+                                     resends all of it. Start a new one when you change \
+                                     task.",
+                                );
+                        } else {
+                            ui.weak(label);
+                        }
                     }
                 });
 
