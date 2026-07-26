@@ -1,11 +1,11 @@
 ContentFile(
     id: "loup_garou",
     display_name: "Loup-Garou Crew",
-    asset_type: CrewPackage,
+    asset_type: crew_package,
     seed: 16843009,
     universe: "all",
     priority: authoritative,
-    payload: CrewPackage(
+    payload: crew_package((
         id: "loup_garou",
         name: "Loup-Garou Veteran",
         description: "The canonical crew from the prototype — Tib, Tove, Keene, Bardo, Prudence, Risc, and Boris.",
@@ -18,5 +18,5 @@ ContentFile(
             (soul_id: "risc", role: "Gunner", duty_room: Some("bridge"), starting: true, salary: 0),
             (soul_id: "boris", role: "General", duty_room: Some("tech_bay"), starting: true, salary: 0),
         ],
-    ),
+    )),
 )

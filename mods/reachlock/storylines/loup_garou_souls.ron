@@ -1,11 +1,11 @@
 ContentFile(
     id: "loup_garou_souls",
     display_name: "Loup-Garou Soul Mutations",
-    asset_type: SoulMutations,
+    asset_type: soul_mutations,
     seed: 0,
     universe: "all",
     priority: authoritative,
-    payload: SoulMutations([
+    payload: soul_mutations([
         // The mark on Boris's forearm. Nobody has asked. At some point someone
         // will — and if they've earned it, the answer changes things.
         (

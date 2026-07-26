@@ -38,7 +38,7 @@ use std::path::{Path, PathBuf};
 use crate::combat::location::HostileLocation;
 use crate::combat::HostileArchetype;
 use crate::content::{AssetType, ContentFile, ContentPayload};
-use crate::crew::{CrewPackage, ShipTemplate};
+use crate::crew::ShipTemplate;
 use crate::faction::FactionCatalog;
 use crate::galaxy::ChartedSystem;
 
@@ -206,6 +206,11 @@ impl ContentTree {
             "dungeons",
             "events",
             "recipes",
+            // `crews/` is enveloped: the client loads crew packages through
+            // the dispatch layer as `ContentPayload::CrewPackage`. Scanning
+            // it as a bare `CrewPackage` made the validator call the one
+            // authored crew "unparseable" while the game read it fine.
+            "crews",
         ];
         for dir in ENVELOPE_DIRS {
             tree.scan_envelopes(&root.join(dir));
@@ -220,18 +225,6 @@ impl ContentTree {
         tree.scan_bare::<FactionCatalog>(&root.join("factions"), &mut |cat, path, t| {
             for f in &cat.factions {
                 t.define(&f.id.0, RefKind::Faction, path);
-            }
-        });
-        tree.scan_bare::<CrewPackage>(&root.join("crews"), &mut |pkg, path, t| {
-            t.define(&pkg.id, RefKind::Crew, path);
-            for m in &pkg.members {
-                t.reference(
-                    &pkg.id,
-                    path,
-                    "members[].soul_id",
-                    &m.soul_id,
-                    RefKind::Soul,
-                );
             }
         });
         tree.scan_bare::<ChartedSystem>(&root.join("systems"), &mut |sys, path, t| {
@@ -427,6 +420,11 @@ impl ContentTree {
                             RefKind::Soul,
                         );
                     }
+                }
+            }
+            ContentPayload::CrewPackage(pkg) => {
+                for m in &pkg.members {
+                    self.reference(&id, path, "members[].soul_id", &m.soul_id, RefKind::Soul);
                 }
             }
             ContentPayload::Career(career) => {

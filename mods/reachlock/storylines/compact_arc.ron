@@ -1,11 +1,11 @@
 ContentFile(
     id: "compact_arc",
     display_name: "Compact Story Arc",
-    asset_type: Storyline,
+    asset_type: storyline,
     seed: 0,
     universe: "all",
     priority: authoritative,
-    payload: Storylines([
+    payload: storylines([
         (
             faction: ("compact"),
             chapters: [

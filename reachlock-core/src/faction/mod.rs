@@ -902,31 +902,53 @@ mod tests {
 
     /// Core's embedded fallbacks must not drift from the authored content the
     /// pipeline ships. Skipped when `mods/` is absent (packaged crate).
+    ///
+    /// This compares *meaning*, not bytes. The two files legitimately have
+    /// different shapes — the authored storylines are wrapped in a
+    /// `ContentFile` envelope (every loader requires one), while the embedded
+    /// fallback is the bare payload `ron::from_str` parses at startup. A
+    /// byte-equality check can therefore never pass once the envelope exists,
+    /// and it also failed on differences that do not matter, like trailing
+    /// whitespace.
     #[test]
-    fn default_faction_data_matches_authored_content() {
+    fn default_factions_match_authored_content() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        for (authored, embedded, label) in [
-            (
-                "mods/reachlock/factions/canon.ron",
-                FACTION_CATALOG_RON,
-                "default_factions.ron",
-            ),
-            (
-                "mods/reachlock/storylines/compact_arc.ron",
-                STORYLINES_RON,
-                "default_storylines.ron",
-            ),
-        ] {
-            let Ok(text) = std::fs::read_to_string(root.join(authored)) else {
-                continue;
-            };
-            assert_eq!(
-                text.trim_end(),
-                embedded.trim_end(),
-                "reachlock-core/src/data/{label} has drifted from {authored} \
-                 — copy the authored file over it"
-            );
-        }
+        let Ok(text) = std::fs::read_to_string(root.join("mods/reachlock/factions/canon.ron"))
+        else {
+            return;
+        };
+        let authored: FactionCatalog =
+            ron::from_str(&text).expect("authored canon.ron parses as a FactionCatalog");
+        let embedded: FactionCatalog =
+            ron::from_str(FACTION_CATALOG_RON).expect("embedded default_factions.ron parses");
+        assert_eq!(
+            authored, embedded,
+            "reachlock-core/src/data/default_factions.ron has drifted from \
+             mods/reachlock/factions/canon.ron — copy the authored file over it"
+        );
+    }
+
+    #[test]
+    fn default_storylines_match_authored_content() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let Ok(text) =
+            std::fs::read_to_string(root.join("mods/reachlock/storylines/compact_arc.ron"))
+        else {
+            return;
+        };
+        let file: crate::content::ContentFile =
+            ron::from_str(&text).expect("authored compact_arc.ron parses as a ContentFile");
+        let crate::content::ContentPayload::Storylines(authored) = file.payload else {
+            panic!("compact_arc.ron must carry a Storylines payload");
+        };
+        let embedded: Vec<Storyline> =
+            ron::from_str(STORYLINES_RON).expect("embedded default_storylines.ron parses");
+        assert_eq!(
+            authored, embedded,
+            "reachlock-core/src/data/default_storylines.ron has drifted from \
+             mods/reachlock/storylines/compact_arc.ron — copy the authored \
+             file's payload (the inner array, without the envelope) over it"
+        );
     }
 
     fn catalog() -> FactionCatalog {
