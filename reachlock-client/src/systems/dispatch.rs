@@ -489,6 +489,8 @@ pub mod stash {
     pub fn set_dialogues(v: Vec<Dialogue>) {
         STASH.lock().unwrap().dialogues = v;
     }
+    // No authored dialogues/ directory content and no consuming system yet.
+    // Wiring is tracked by whatever sprint owns the dialogue feature.
     #[expect(dead_code)]
     pub fn take_dialogues() -> Vec<Dialogue> {
         std::mem::take(&mut STASH.lock().unwrap().dialogues)
@@ -497,6 +499,8 @@ pub mod stash {
     pub fn set_dungeons(v: Vec<Dungeon>) {
         STASH.lock().unwrap().dungeons = v;
     }
+    // No authored dungeons/ directory content and no consuming system yet.
+    // Wiring is tracked by whatever sprint owns the dungeon feature.
     #[expect(dead_code)]
     pub fn take_dungeons() -> Vec<Dungeon> {
         std::mem::take(&mut STASH.lock().unwrap().dungeons)
@@ -512,6 +516,8 @@ pub mod stash {
     pub fn set_events(v: Vec<Event>) {
         STASH.lock().unwrap().events = v;
     }
+    // No authored events/ directory content and no consuming system yet.
+    // Wiring is tracked by whatever sprint owns the event feature.
     #[expect(dead_code)]
     pub fn take_events() -> Vec<Event> {
         std::mem::take(&mut STASH.lock().unwrap().events)
@@ -527,6 +533,8 @@ pub mod stash {
     pub fn set_recipes(v: Vec<Recipe>) {
         STASH.lock().unwrap().recipes = v;
     }
+    // No authored recipes/ directory content and no consuming system yet.
+    // Wiring is tracked by whatever sprint owns the recipe feature.
     #[expect(dead_code)]
     pub fn take_recipes() -> Vec<Recipe> {
         std::mem::take(&mut STASH.lock().unwrap().recipes)

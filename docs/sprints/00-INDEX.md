@@ -299,6 +299,13 @@ re-confirm what someone already remembered to type.
   meant authored content stopped one layer short of a player. Follow a content
   type all the way to the system that consumes it, and put the test at that
   end — "it reaches `ContentIndex`" proves nothing.
+- Four content directories are registered as envelope dirs in
+  `core::content::dirs` and pass the consumer-coverage gate, but have zero
+  authored files and no consuming system that reads from the stash:
+  `dialogues/`, `dungeons/`, `events/`, `recipes/`. Their `take_*` functions
+  sit behind `#[expect(dead_code)]` — not dead because they are unused, but
+  because nothing has implemented the feature they are part of. Wiring all
+  four is tracked as a follow-up; do not delete the takers.
 - A file with no `mod` line is invisible to the compiler, so it rots without
   telling anyone. `crew_package.rs` and `cross_ref.rs` both drifted out of
   sync with core types while sitting on disk looking finished. Declare the
