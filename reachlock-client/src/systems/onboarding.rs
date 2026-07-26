@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 
 use crate::settings::Settings;
+use crate::theme;
 use reachlock_core::contract::stage::{DeliberationStage, RuleSnapshot, StagePhase};
 
 const ONBOARDING_FLAG: &str = "save/onboarding_completed.flag";
@@ -157,7 +158,7 @@ pub fn spawn_onboarding_overlay(state: Res<OnboardingState>, mut commands: Comma
             height: Val::Percent(100.0),
             ..default()
         },
-        BackgroundColor(Color::srgb(0.05, 0.05, 0.1)),
+        theme::surface("surface"),
         ZIndex(1000),
     ));
     commands.spawn((
@@ -167,7 +168,7 @@ pub fn spawn_onboarding_overlay(state: Res<OnboardingState>, mut commands: Comma
             font_size: 22.0,
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.9, 1.0)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Percent(30.0),

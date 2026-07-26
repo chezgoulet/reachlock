@@ -7,6 +7,7 @@ use reachlock_core::contract::{
 
 use crate::systems::contract::{ContractRuntime, DeliberationState, ShipLog};
 use crate::systems::ship::ShipSystems;
+use crate::theme;
 
 #[derive(Resource)]
 pub struct DeliberationPanel {
@@ -179,7 +180,7 @@ pub fn spawn_deliberation_panel(mut commands: Commands) {
             font_size: 16.0,
             ..default()
         },
-        TextColor(Color::srgb(0.95, 0.85, 0.5)),
+        theme::fg("text.warn"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(40.0),

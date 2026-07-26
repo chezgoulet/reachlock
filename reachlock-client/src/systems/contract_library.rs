@@ -14,6 +14,7 @@ use crate::net::NetOutbox;
 use crate::settings::{InputAction, Settings};
 use crate::systems::contract_crafting::ContractWorkshopState;
 use crate::systems::interaction::ActivePanel;
+use crate::theme;
 
 // ---------------------------------------------------------------------------
 // Sort modes
@@ -645,7 +646,7 @@ pub fn spawn_library_panel(mut commands: Commands) {
             font_size: 12.0,
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.9, 0.95)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(100.0),

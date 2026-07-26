@@ -1,3 +1,4 @@
+use crate::theme;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -17,7 +18,7 @@ pub fn spawn_list(commands: &mut Commands, items: &[&str], selected: usize) -> E
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.08, 0.08, 0.1)),
+            theme::surface("surface"),
             ListWidget {
                 selected,
                 items: item_strs.clone(),
@@ -50,7 +51,7 @@ pub fn spawn_list(commands: &mut Commands, items: &[&str], selected: usize) -> E
                     font_size: 13.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.85, 0.9, 0.95)),
+                theme::fg("text"),
             ))
             .id();
 

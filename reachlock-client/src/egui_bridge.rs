@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::systems::interaction::ActivePanel;
+use crate::theme;
 
 #[derive(Component)]
 pub struct EguiManaged;
@@ -28,7 +29,7 @@ pub fn sync_egui_context(
                 top: Val::Percent(10.0),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.95)),
+            theme::surface("surface.sunk"),
             EguiManaged,
             Visibility::Visible,
             ZIndex(10),

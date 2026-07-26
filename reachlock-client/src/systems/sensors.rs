@@ -12,6 +12,7 @@ use crate::states::{GameMode, ModeScope};
 use crate::systems::docking::Dockable;
 use crate::systems::setup::Gate;
 use crate::systems::ship::{PlayerShip, ShipSystems};
+use crate::theme;
 
 /// Marker for entities the player's sensors can detect (stations, planets,
 /// gates, asteroids). Spawned by `setup.rs` alongside the entity's visual.
@@ -195,7 +196,7 @@ pub fn system_map(
                     justify_self: JustifySelf::Center,
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.75)),
+                theme::surface("surface.sunk"),
                 MapOverlay,
             ))
             .with_child((
@@ -204,7 +205,7 @@ pub fn system_map(
                     font_size: 14.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.8, 0.9, 0.95)),
+                theme::fg("text"),
                 MapOverlayText,
             ));
     }

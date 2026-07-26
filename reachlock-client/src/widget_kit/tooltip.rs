@@ -1,3 +1,4 @@
+use crate::theme;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -38,7 +39,7 @@ pub fn tooltip_system(
                                     padding: UiRect::all(Val::Px(4.0)),
                                     ..default()
                                 },
-                                BackgroundColor(Color::srgba(0.1, 0.1, 0.12, 0.9)),
+                                theme::surface("surface"),
                                 TooltipOverlay,
                             ))
                             .with_child((
@@ -47,7 +48,7 @@ pub fn tooltip_system(
                                     font_size: 11.0,
                                     ..default()
                                 },
-                                TextColor(Color::srgb(0.7, 0.75, 0.85)),
+                                theme::fg("text"),
                             ));
                     }
                     hovered = true;

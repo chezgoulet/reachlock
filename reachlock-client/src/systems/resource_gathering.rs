@@ -4,6 +4,7 @@ use reachlock_core::economy::GoodId;
 
 use crate::settings::{InputAction, Settings};
 use crate::systems::inventory::PlayerInventory;
+use crate::theme;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ResourceType {
@@ -144,8 +145,7 @@ pub fn spawn_gathering_progress_bar(mut commands: Commands) {
             border: UiRect::all(Val::Px(1.0)),
             ..default()
         },
-        BorderColor::all(Color::srgb(0.6, 0.6, 0.6)),
-        BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
+        theme::surface("surface.control"),
         Visibility::Hidden,
     ));
     commands.spawn((
@@ -158,7 +158,7 @@ pub fn spawn_gathering_progress_bar(mut commands: Commands) {
             height: Val::Px(12.0),
             ..default()
         },
-        BackgroundColor(Color::srgb(0.2, 0.8, 0.3)),
+        theme::surface("surface.raised"),
         Visibility::Hidden,
     ));
 }

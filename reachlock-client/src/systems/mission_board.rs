@@ -4,6 +4,7 @@ use bevy::prelude::*;
 
 use crate::settings::{InputAction, Settings};
 use crate::systems::jump::MissionBoardResource;
+use crate::theme;
 
 /// Panel visibility toggle.
 #[derive(Resource, Default)]
@@ -33,7 +34,7 @@ pub fn spawn_mission_board(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.8, 0.9, 0.7)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),

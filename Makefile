@@ -2,12 +2,13 @@
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
 .PHONY: test check fmt clippy run run-debug editor install-cli dev server server-db determinism clean \
-	db db-down db-reset db-psql db-test dev-secrets check-features check-content
+	db db-down db-reset db-psql db-test dev-secrets check-features check-content \
+	check-theme
 
 test:
 	cargo test --workspace
 
-check: fmt clippy test check-purity check-features check-content
+check: fmt clippy test check-purity check-features check-content check-theme
 	@echo "all gates green"
 
 # Whole-tree content integrity (iron rule #8: a system nobody can reach is
@@ -17,6 +18,15 @@ check: fmt clippy test check-purity check-features check-content
 # been authored. Each of those files was individually valid.
 check-content:
 	cargo run -q -p reachlock-cli -- content check mods/reachlock
+
+# Every screen is styled from assets/ui/*.ron. A widget that builds its own
+# TextColor/BackgroundColor/BorderColor is invisible to the stylesheet: editing
+# the theme will not restyle it. The client had 89 such literals across 35
+# files, no two quite the same shade. `--self-test` checks the guard itself
+# still catches a violation.
+check-theme:
+	python3 scripts/check_theme.py --self-test
+	python3 scripts/check_theme.py
 
 # The `postgres` and `redis` features are off by default, so nothing in the
 # default build ever compiles them — and they rotted unnoticed: PgSessionStore

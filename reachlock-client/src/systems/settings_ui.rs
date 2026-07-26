@@ -21,6 +21,7 @@ use crate::bridge;
 use crate::settings::{
     save_settings, ColorblindMode, HelpTextCache, InputAction, KeyBind, Settings,
 };
+use crate::theme;
 
 /// Which tab is showing. Order is the cycle order.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -182,7 +183,7 @@ pub fn sync_settings_panel(
                 font_size: 14.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.85, 0.9, 0.95)),
+            theme::fg("text"),
             Node {
                 position_type: PositionType::Absolute,
                 top: Val::Px(8.0),

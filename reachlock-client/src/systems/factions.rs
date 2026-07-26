@@ -6,6 +6,7 @@ use bevy::prelude::*;
 
 use crate::settings::{InputAction, Settings};
 use crate::systems::ticker::UniverseTicker;
+use crate::theme;
 
 /// Toggle for the reputation panel.
 #[derive(Resource, Default)]
@@ -39,7 +40,7 @@ pub fn spawn_reputation_panel(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.7, 0.95, 0.7)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),
@@ -59,7 +60,7 @@ pub fn spawn_faction_banner(mut commands: Commands) {
             font_size: 16.0,
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.9, 0.95)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(48.0),

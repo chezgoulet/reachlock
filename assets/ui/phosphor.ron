@@ -231,5 +231,37 @@
             size: "body",
             weight: "bold",
         ),
+
+        // ── Color-only classes ───────────────────────────────────────────
+        // These set paint and nothing else, so applying one to an existing
+        // widget re-colors it and swaps in the themed font without moving
+        // its layout or resizing its text. Screens migrate onto the theme
+        // with these first; they adopt the sized classes above as each screen
+        // is redesigned.
+        "text":         ( fg: "text" ),
+        "text.muted":   ( fg: "text-muted" ),
+        "text.faint":   ( fg: "text-faint" ),
+        "text.accent":  ( fg: "accent" ),
+        "text.focus":   ( fg: "focus" ),
+        "text.ok":      ( fg: "ok" ),
+        "text.warn":    ( fg: "warn" ),
+        "text.danger":  ( fg: "danger" ),
+
+        "surface":        ( bg: "surface" ),
+        "surface.raised": ( bg: "surface-raised" ),
+        "surface.sunk":   ( bg: "surface-sunk" ),
+        "surface.overlay": ( bg: "surface-sunk" ),
+        // A bordered control (buttons, inputs, dropdowns): one class, because
+        // background and border live on the same entity.
+        "surface.control": (
+            bg: "surface-raised",
+            border_color: "border",
+        ),
+        "surface.control.active": (
+            bg: "surface-raised",
+            border_color: "focus",
+        ),
+        "border":        ( border_color: "border" ),
+        "border.strong": ( border_color: "border-strong" ),
     },
 )

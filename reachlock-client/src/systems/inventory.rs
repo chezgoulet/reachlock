@@ -20,6 +20,7 @@ use crate::settings::Settings;
 use crate::states::CurrentLocation;
 use crate::systems::discovery::DiscoveryLog;
 use crate::systems::ticker::UniverseTicker;
+use crate::theme;
 
 /// The player's wallet + hold. `capacity` is cargo slots (not weight); S10
 /// may reinterpret it. `GoodId` is a string newtype (economy module).
@@ -308,7 +309,7 @@ pub fn spawn_inventory_panel(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.7, 0.9, 0.7)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),

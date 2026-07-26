@@ -26,6 +26,7 @@ use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::setup::Gate;
 use crate::systems::ship::{PlayerShip, ShipSystems};
+use crate::theme;
 
 /// Seconds the hyperspace transit lasts.
 pub const TRANSIT_SECS: f32 = 4.0;
@@ -263,7 +264,7 @@ pub fn hyperspace_tick(
                 height: Val::Percent(100.0),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.05, 0.25, 0.5, 0.55)),
+            theme::surface("surface.raised"),
             TransitVisual,
         ));
     }
@@ -545,7 +546,7 @@ pub fn gate_choice_overlay(
                 font_size: 18.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.9, 0.85, 0.7)),
+            theme::fg("text.warn"),
             Node {
                 position_type: PositionType::Absolute,
                 bottom: Val::Px(80.0),

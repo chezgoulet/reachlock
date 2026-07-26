@@ -16,6 +16,7 @@ use crate::systems::market::{market_panel_text, MarketState};
 use crate::systems::pause::PauseOverlay;
 use crate::systems::ship::{FlightFeel, ShipSystems};
 use crate::systems::ticker::UniverseTicker;
+use crate::theme;
 
 /// Threat severity hierarchy for the feedback HUD.
 #[derive(Clone, Debug)]
@@ -118,7 +119,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 18.0,
             ..default()
         },
-        TextColor(Color::srgb(0.7, 0.9, 0.7)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(8.0),
@@ -133,7 +134,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 18.0,
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.9, 0.95)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(8.0),
@@ -148,7 +149,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.75, 0.8, 0.9)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             bottom: Val::Px(8.0),
@@ -163,7 +164,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 16.0,
             ..default()
         },
-        TextColor(Color::srgb(0.95, 0.85, 0.5)),
+        theme::fg("text.warn"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(60.0),
@@ -178,7 +179,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 16.0,
             ..default()
         },
-        TextColor(Color::srgb(0.95, 0.4, 0.4)),
+        theme::fg("text.danger"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(8.0),
@@ -193,7 +194,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 13.0,
             ..default()
         },
-        TextColor(Color::srgb(0.5, 0.6, 0.6)),
+        theme::fg("text.muted"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(24.0),
@@ -208,7 +209,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 13.0,
             ..default()
         },
-        TextColor(Color::srgb(0.5, 0.6, 0.6)),
+        theme::fg("text.muted"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(36.0),
@@ -223,7 +224,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 28.0,
             ..default()
         },
-        TextColor(Color::srgb(0.95, 0.95, 0.6)),
+        theme::fg("text.warn"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Percent(45.0),
@@ -238,7 +239,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 12.0,
             ..default()
         },
-        TextColor(Color::srgb(0.5, 0.55, 0.6)),
+        theme::fg("text.muted"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(30.0),
@@ -253,7 +254,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 18.0,
             ..default()
         },
-        TextColor(Color::srgb(1.0, 0.95, 0.6)),
+        theme::fg("text.warn"),
         Node {
             position_type: PositionType::Absolute,
             bottom: Val::Percent(18.0),
@@ -268,7 +269,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 16.0,
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.9, 0.75)),
+        theme::fg("text.accent"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),
@@ -283,7 +284,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.7, 0.95, 0.7)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),
@@ -298,7 +299,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.85, 0.7)),
+        theme::fg("text.warn"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(100.0),
@@ -313,7 +314,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.8, 0.9, 0.85)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(100.0),
@@ -328,7 +329,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.8, 0.95)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(100.0),

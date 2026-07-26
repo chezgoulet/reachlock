@@ -36,6 +36,7 @@ use crate::systems::crew::{CrewFigure, CrewNav, CrewRoster};
 use crate::systems::interaction::{InteractKind, Interactable, InteractionPrompt, Npc};
 use crate::systems::mode::PlayerAvatar;
 use crate::systems::soul::SoulRegistry;
+use crate::theme;
 
 /// Seed for the player's hull interior. Must match the player-ship generation
 /// seed in `systems/setup.rs` so the On-Board scene is the ship you fly.
@@ -472,7 +473,7 @@ pub fn enter_interior(
                     font_size: 12.0,
                     ..default()
                 },
-                TextColor(Color::srgba(0.95, 0.96, 1.0, 0.5)),
+                theme::fg("text"),
                 Transform::from_xyz(c.x, c.y + room.height as f32 * 0.5 - 26.0, 2.0),
                 ModeScope(mode),
             ));
@@ -1263,7 +1264,7 @@ fn spawn_figure(
                         font_size: 8.0,
                         ..default()
                     },
-                    TextColor(Color::srgba(0.95, 0.9, 0.8, 0.9)),
+                    theme::fg("text.accent"),
                     Transform::from_xyz(0.0, 30.0, 0.05),
                 ));
             }
@@ -1339,7 +1340,7 @@ fn spawn_consoles(commands: &mut Commands, images: &mut Assets<Image>, layout: &
                 font_size: 7.0,
                 ..default()
             },
-            TextColor(Color::srgba(0.75, 0.9, 1.0, 0.7)),
+            theme::fg("text"),
             Transform::from_xyz(x, y + 18.0, 1.9),
             ModeScope(GameMode::OnBoard),
         ));

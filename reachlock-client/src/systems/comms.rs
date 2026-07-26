@@ -26,6 +26,7 @@ use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::crew::{CrewFigure, CrewRoster};
 use crate::systems::interior::ysort;
 use crate::systems::soul::SoulRegistry;
+use crate::theme;
 
 /// Seconds between co-deliberation turns. Deliberate by design — the player
 /// watches the exchange unfold (spec S33).
@@ -99,7 +100,7 @@ pub fn spawn_comm_hud(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.95, 0.9)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(56.0),
@@ -190,7 +191,7 @@ pub fn comm_bubbles(
                 font_size: 9.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.95, 0.97, 0.9)),
+            theme::fg("text"),
             Transform::from_xyz(pos.x, pos.y + 34.0, ysort(pos.y) + 0.05),
             crate::states::ModeScope(GameMode::OnBoard),
         ));

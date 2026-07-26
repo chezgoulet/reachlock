@@ -8,6 +8,7 @@ use bevy::prelude::*;
 
 use crate::states::GameMode;
 use crate::systems::ship::{PlayerShip, ShipSystems, SpaceCamera};
+use crate::theme;
 
 /// Distances ahead of the nose the two reticles sit at (world units). The far
 /// one leads the near one, SF64-style, so the pair reads as an aiming axis.
@@ -30,7 +31,7 @@ pub fn spawn_reticle(mut commands: Commands) {
             font_size: 26.0,
             ..default()
         },
-        TextColor(Color::srgba(0.4, 1.0, 0.6, 0.9)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             ..default()
@@ -44,7 +45,7 @@ pub fn spawn_reticle(mut commands: Commands) {
             font_size: 20.0,
             ..default()
         },
-        TextColor(Color::srgba(0.4, 1.0, 0.6, 0.7)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             ..default()

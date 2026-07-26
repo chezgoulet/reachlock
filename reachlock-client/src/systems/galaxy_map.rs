@@ -12,6 +12,7 @@ use reachlock_core::seed::types::SystemId;
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::content_index::ContentIndex;
 use crate::systems::jump::FtlRoute;
+use crate::theme;
 
 /// Known system info from server seed discovery (S85).
 #[derive(Debug, Clone)]
@@ -69,7 +70,7 @@ pub fn galaxy_map_toggle(
                     font_size: 14.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.7, 0.8, 0.9)),
+                theme::fg("text"),
                 Node {
                     position_type: PositionType::Absolute,
                     bottom: Val::Px(40.0),

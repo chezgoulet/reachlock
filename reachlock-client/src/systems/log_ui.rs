@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use reachlock_core::agency::log::{LogEntry, NarratorVoice};
 
 use crate::settings::{InputAction, Settings};
+use crate::theme;
 
 /// Panel visibility toggle.
 #[derive(Resource, Default)]
@@ -41,7 +42,7 @@ pub fn spawn_captains_log_panel(mut commands: Commands) {
             font_size: 13.0,
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.95)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),

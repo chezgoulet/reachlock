@@ -1,3 +1,4 @@
+use crate::theme;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -33,7 +34,7 @@ pub fn spawn_dropdown(
                 font_size: 13.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.85, 0.9, 0.95)),
+            theme::fg("text"),
         ))
         .with_child((
             Node {
@@ -44,8 +45,7 @@ pub fn spawn_dropdown(
                 border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
-            BorderColor::all(Color::srgb(0.3, 0.3, 0.35)),
-            BackgroundColor(Color::srgb(0.12, 0.12, 0.15)),
+            theme::surface("surface.control"),
             DropdownWidget {
                 options: opts.clone(),
                 selected,
@@ -59,7 +59,7 @@ pub fn spawn_dropdown(
                 font_size: 13.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.85, 0.9, 0.95)),
+            theme::fg("text"),
         ))
         .id()
 }

@@ -1,3 +1,4 @@
+use crate::theme;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -16,7 +17,7 @@ pub fn spawn_scroll_area(commands: &mut Commands, children: &[Entity]) -> Entity
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.06, 0.06, 0.08)),
+            theme::surface("surface.sunk"),
             ScrollArea {
                 content_height: 0.0,
                 scroll_offset: 0.0,

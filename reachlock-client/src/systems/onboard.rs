@@ -16,6 +16,7 @@ use crate::systems::crew::{CrewFigure, CrewRoster, ORDER_ROOMS};
 use crate::systems::interaction::ActivePanel;
 use crate::systems::ship::{ShipCommand, ShipSystems, POWER_BUDGET, POWER_MAX_NOTCH};
 use crate::systems::ticker::UniverseTicker;
+use crate::theme;
 
 /// Which console is showing the live flight scene (S09d station views —
 /// docs/SHIPS.md §1: "each station has its own view of the same live world").
@@ -136,7 +137,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
             font_size: 16.0,
             ..default()
         },
-        TextColor(Color::srgb(0.8, 0.95, 0.9)),
+        theme::fg("text"),
         base(120.0, 360.0),
     ));
     commands.spawn((
@@ -146,7 +147,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.7, 0.6)),
+        theme::fg("text.accent"),
         base(200.0, 360.0),
     ));
     commands.spawn((
@@ -156,7 +157,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.7, 0.85, 0.95)),
+        theme::fg("text"),
         base(260.0, 360.0),
     ));
     commands.spawn((
@@ -166,7 +167,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
             font_size: 12.0,
             ..default()
         },
-        TextColor(Color::srgb(0.8, 0.85, 0.9)),
+        theme::fg("text"),
         base(320.0, 360.0),
     ));
     commands.spawn((
@@ -176,7 +177,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.95, 0.9, 0.8)),
+        theme::fg("text.accent"),
         base(120.0, 8.0),
     ));
     // S09b flight consoles, stacked on the right.
@@ -193,7 +194,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.95, 0.7, 0.6)),
+        theme::fg("text.accent"),
         flight(120.0),
     ));
     commands.spawn((
@@ -203,7 +204,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.6, 0.85, 0.95)),
+        theme::fg("text"),
         flight(200.0),
     ));
     commands.spawn((
@@ -213,7 +214,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.7, 0.95, 0.8)),
+        theme::fg("text.ok"),
         flight(280.0),
     ));
     commands.spawn((
@@ -223,7 +224,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.95, 0.9, 0.6)),
+        theme::fg("text.warn"),
         flight(360.0),
     ));
     // S12: galactic news feed, accessible from any interactable.
@@ -234,7 +235,7 @@ pub fn spawn_onboard_panels(mut commands: Commands) {
             font_size: 13.0,
             ..default()
         },
-        TextColor(Color::srgb(0.6, 0.95, 0.85)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),

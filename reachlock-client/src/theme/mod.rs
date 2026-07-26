@@ -311,6 +311,29 @@ pub fn node_with(class: &str, layout: Node) -> impl Bundle {
     )
 }
 
+/// Paint-only styling for a text entity that keeps its own `TextFont`.
+///
+/// Use this when migrating an existing widget: it replaces a literal
+/// `TextColor(...)` without touching font size or layout, so a screen adopts
+/// the stylesheet without being redesigned in the same change. New UI should
+/// prefer [`text`], which styles size and weight too.
+pub fn fg(class: &str) -> impl Bundle {
+    (Styled::new(class), TextColor::default())
+}
+
+/// Paint-only styling for a node's background and border.
+///
+/// Covers both components deliberately: a bordered control carries its
+/// background and border on one entity, and an entity can hold only one
+/// [`Styled`], so both have to come from a single class.
+pub fn surface(class: &str) -> impl Bundle {
+    (
+        Styled::new(class),
+        BackgroundColor(Color::NONE),
+        BorderColor::all(Color::NONE),
+    )
+}
+
 /// Replace a themed entity's text, keeping tracking consistent.
 pub fn set_text(text: &mut Text, source: Option<&mut SourceText>, content: impl Into<String>) {
     let content = content.into();

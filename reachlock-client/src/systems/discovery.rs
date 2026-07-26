@@ -8,6 +8,7 @@ use reachlock_core::galaxy::GalaxyCoord;
 use reachlock_core::generator::Ecosystem;
 
 use crate::settings::{InputAction, Settings};
+use crate::theme;
 
 /// Panel visibility toggle.
 #[derive(Resource, Default)]
@@ -101,7 +102,7 @@ pub fn spawn_discovery_panel(mut commands: Commands) {
             font_size: 13.0,
             ..default()
         },
-        TextColor(Color::srgb(0.6, 0.9, 0.7)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),
@@ -123,7 +124,7 @@ pub fn spawn_notification(commands: &mut Commands, text: &str) {
             font_size: 16.0,
             ..default()
         },
-        TextColor(Color::srgb(0.6, 0.95, 0.6)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Percent(5.0),
@@ -153,7 +154,7 @@ pub fn process_notifications(
                 font_size: 16.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.6, 0.95, 0.6)),
+            theme::fg("text.ok"),
             Node {
                 position_type: PositionType::Absolute,
                 top: Val::Percent(5.0),

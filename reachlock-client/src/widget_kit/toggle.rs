@@ -1,3 +1,4 @@
+use crate::theme;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -23,11 +24,13 @@ pub fn spawn_toggle(commands: &mut Commands, label: &str, value: bool) -> (Entit
                 border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
-            BorderColor::all(Color::srgb(0.3, 0.3, 0.35)),
-            BackgroundColor(if value {
-                Color::srgb(0.3, 0.6, 0.9)
+            // On and off are two states of the same control, so they are two
+            // classes rather than two literals — the stylesheet decides what
+            // "on" looks like.
+            theme::surface(if value {
+                "surface.control.active"
             } else {
-                Color::srgb(0.12, 0.12, 0.15)
+                "surface.control"
             }),
             ToggleValue(value),
             ToggleWidget,
@@ -40,7 +43,7 @@ pub fn spawn_toggle(commands: &mut Commands, label: &str, value: bool) -> (Entit
                 height: Val::Px(16.0),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.85, 0.9, 0.95)),
+            theme::surface("surface.raised"),
         ))
         .id();
 
@@ -64,7 +67,7 @@ pub fn spawn_toggle(commands: &mut Commands, label: &str, value: bool) -> (Entit
                 font_size: 13.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.85, 0.9, 0.95)),
+            theme::fg("text"),
         ))
         .add_child(track_id)
         .id();

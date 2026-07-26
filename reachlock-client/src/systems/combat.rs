@@ -37,6 +37,7 @@ use crate::systems::sensors::Contact;
 use crate::systems::ship::{
     FlightFeel, PlayerShip, Projectile, ShipCommand, ShipSystems, POWER_BUDGET, POWER_MAX_NOTCH,
 };
+use crate::theme;
 
 // --- collision groups (S19 gotcha: separate groups from the start) ----------
 pub const G_PLAYER: Group = Group::GROUP_1;
@@ -1009,7 +1010,7 @@ pub fn spawn_combat_hud(mut commands: Commands) {
             font_size: 15.0,
             ..default()
         },
-        TextColor(Color::srgb(0.95, 0.75, 0.55)),
+        theme::fg("text.accent"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(30.0),

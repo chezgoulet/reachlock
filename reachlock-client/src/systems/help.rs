@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use crate::settings::{InputAction, Settings};
 use crate::states::GameMode;
+use crate::theme;
 
 #[derive(Resource, Default)]
 pub struct HelpMode {
@@ -44,7 +45,7 @@ pub fn spawn_help_labels(help: Res<HelpMode>, mut commands: Commands, mode: Res<
                     font_size: 12.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.6, 0.8, 1.0)),
+                theme::fg("text"),
                 Node {
                     position_type: PositionType::Absolute,
                     ..default()

@@ -5,6 +5,7 @@ use crate::settings::{InputAction, Settings};
 use crate::systems::crew::{CrewMember, CrewRoster};
 use crate::systems::interaction::ActivePanel;
 use crate::systems::soul::SoulRegistry;
+use crate::theme;
 use crate::widget_kit::panel::{navigate_selectable_panel, SelectableRow};
 use bevy::prelude::*;
 use reachlock_core::contract::engine::{evaluate, EvalContext, Outcome};
@@ -763,7 +764,7 @@ pub fn spawn_workshop_panel(mut commands: Commands) {
             font_size: 12.0,
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.95, 0.85)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(100.0),

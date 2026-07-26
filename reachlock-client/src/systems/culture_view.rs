@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use reachlock_core::generator::culture::PlanetCulture;
 
 use crate::settings::{InputAction, Settings};
+use crate::theme;
 
 /// Panel visibility toggle.
 #[derive(Resource, Default)]
@@ -41,7 +42,7 @@ pub fn spawn_culture_panel(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.75, 0.85, 0.95)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),

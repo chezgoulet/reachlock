@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 
 use crate::settings::Settings;
+use crate::theme;
 
 const MAX_CAPTION_LINES: usize = 3;
 const FADE_IN_MS: f32 = 200.0;
@@ -37,7 +38,7 @@ pub fn spawn_captions_overlay(mut commands: Commands) {
             font_size: 16.0,
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.9, 0.9)),
+        theme::fg("text"),
         Node {
             position_type: PositionType::Absolute,
             bottom: Val::Px(40.0),

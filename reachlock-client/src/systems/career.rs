@@ -7,6 +7,7 @@ use reachlock_core::career::piracy::PiracyState;
 use reachlock_core::career::{PlayerCareer, ProgressionCriterionType};
 
 use crate::settings::{InputAction, Settings};
+use crate::theme;
 
 /// Career panel visibility toggle.
 #[derive(Resource, Default)]
@@ -44,7 +45,7 @@ pub fn spawn_career_panel(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.7, 0.95, 0.7)),
+        theme::fg("text.ok"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),

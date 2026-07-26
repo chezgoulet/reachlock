@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::settings::{InputAction, Settings};
+use crate::theme;
 
 #[derive(Clone, Debug)]
 pub struct SignatureRequest {
@@ -38,7 +39,7 @@ pub fn spawn_signature_panel(mut commands: Commands) {
             font_size: 14.0,
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.85, 0.7)),
+        theme::fg("text.warn"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(200.0),

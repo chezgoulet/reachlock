@@ -35,6 +35,7 @@ use crate::systems::interior::Figure;
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::mode::PlayerAvatar;
 use crate::systems::setup::{BeaconPulse, BeaconRing};
+use crate::theme;
 
 // --- tuning (presentation scale; core keeps raw fixed-point stat units) ------
 
@@ -396,7 +397,7 @@ pub fn spawn_landed_enemies(
             font_size: 16.0,
             ..default()
         },
-        TextColor(Color::srgb(0.92, 0.86, 0.7)),
+        theme::fg("text.warn"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(52.0),

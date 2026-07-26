@@ -1,3 +1,4 @@
+use crate::theme;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -16,8 +17,7 @@ pub fn spawn_button(commands: &mut Commands, label: &str) -> Entity {
                 border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
-            BorderColor::all(Color::srgb(0.3, 0.3, 0.35)),
-            BackgroundColor(Color::srgb(0.12, 0.12, 0.15)),
+            theme::surface("surface.control"),
             WidgetButton { enabled: true },
             Button,
             Interaction::default(),
@@ -28,7 +28,7 @@ pub fn spawn_button(commands: &mut Commands, label: &str) -> Entity {
                 font_size: 14.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.85, 0.9, 0.95)),
+            theme::fg("text"),
         ))
         .id()
 }
