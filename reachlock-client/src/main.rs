@@ -26,14 +26,14 @@ use bevy_rapier3d::prelude::*;
 use net::NetMode;
 use states::{AppState, CurrentLocation, GameMode, SceneRegistry};
 use systems::{
-    career, character_creation, combat, comms, content_index, contract, contract_crafting,
-    contract_library, crew, crisis, cryojump, culture_view, deliberation_renderer, dialogue,
-    dilemma, discovery, dispatch, docking, ecosystem_events, encounter_executor, factions,
-    galaxy_map, gamepad, help, hints, hud, interaction, interior, inventory, jump, landed_combat,
-    log_capture, log_ui, market, menu, mission_board, mode, music, network, onboard, onboarding,
-    pause, presence, resource_gathering, reticle, screenshot, sensors, settings_ui, setup, sfx,
-    ship, shipeditor, signature_collector, soul, story_submission, storyline_driver, ticker,
-    trope_dispatcher, voice,
+    accessibility, captions, career, character_creation, combat, comms, content_index, contract,
+    contract_crafting, contract_library, crew, crisis, cryojump, culture_view,
+    deliberation_renderer, dialogue, dilemma, discovery, dispatch, docking, ecosystem_events,
+    encounter_executor, factions, galaxy_map, gamepad, help, hints, hud, interaction, interior,
+    inventory, jump, landed_combat, log_capture, log_ui, market, menu, mission_board, mode, music,
+    network, onboard, onboarding, pause, presence, resource_gathering, reticle, screenshot,
+    sensors, settings_ui, setup, sfx, ship, shipeditor, signature_collector, soul,
+    story_submission, storyline_driver, ticker, trope_dispatcher, voice,
 };
 
 /// Run condition: the player is flying (the SpaceFlight sub-state).
@@ -161,6 +161,23 @@ fn main() {
     .init_resource::<pause::PausedFrom>()
     .init_resource::<pause::PauseSelection>()
     .init_resource::<menu::MenuSelection>()
+    // Panel-visibility flags and per-system state that were declared, read,
+    // and bound to keybinds but never registered. Each one panicked the first
+    // time its system ran — `CulturePanelVisible` took the game down on the
+    // transition into InGame. Found by `make check-resources`.
+    .init_resource::<captions::CaptionQueue>()
+    .init_resource::<career::CareerPanelVisible>()
+    .init_resource::<culture_view::CulturePanelVisible>()
+    .init_resource::<discovery::DiscoveryPanelVisible>()
+    .init_resource::<factions::ReputationPanelVisible>()
+    .init_resource::<mission_board::MissionBoardVisible>()
+    .init_resource::<signature_collector::SignatureCollectorVisible>()
+    .init_resource::<accessibility::HighContrastMode>()
+    .init_resource::<gamepad::GamepadActive>()
+    .init_resource::<onboarding::OnboardingDemo>()
+    .init_resource::<presence::PositionSendTimer>()
+    .init_resource::<hud::TransitionState>()
+    .init_resource::<voice::VoiceHudState>()
     // Always present so entering CharacterCreation can never panic on a
     // missing resource; New Game replaces it with a fresh draft.
     .init_resource::<character_creation::CharacterCreationState>()

@@ -146,8 +146,32 @@ fn demo_deliberation_stage() -> DeliberationStage {
     }
 }
 
-pub fn spawn_onboarding_overlay(state: Res<OnboardingState>, mut commands: Commands) {
+/// Show the tutorial overlay while onboarding is active, and take it down
+/// when it finishes.
+///
+/// This runs every frame in `Update`, so it has to be idempotent. It was not:
+/// it spawned a fresh full-screen overlay and text entity on *every frame*
+/// that onboarding was active. On a first run that stacked hundreds of opaque
+/// panels over the game — the player launched into a flat, unresponsive
+/// rectangle, and the pile of UI nodes dragged the frame rate to a crawl.
+///
+/// The scrim is also translucent now. An opaque full-screen panel hid the
+/// scene the tutorial is describing.
+pub fn spawn_onboarding_overlay(
+    state: Res<OnboardingState>,
+    overlays: Query<Entity, With<OnboardingOverlay>>,
+    texts: Query<Entity, With<OnboardingText>>,
+    mut commands: Commands,
+) {
     if !state.active {
+        // Onboarding finished (or never started): make sure nothing is left
+        // covering the game.
+        for entity in overlays.iter().chain(texts.iter()) {
+            commands.entity(entity).despawn();
+        }
+        return;
+    }
+    if !overlays.is_empty() {
         return;
     }
     commands.spawn((
@@ -158,7 +182,7 @@ pub fn spawn_onboarding_overlay(state: Res<OnboardingState>, mut commands: Comma
             height: Val::Percent(100.0),
             ..default()
         },
-        theme::surface("surface"),
+        theme::surface("surface.scrim"),
         ZIndex(1000),
     ));
     commands.spawn((

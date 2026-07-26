@@ -3,12 +3,12 @@ export PATH := $(HOME)/.cargo/bin:$(PATH)
 
 .PHONY: test check fmt clippy run run-debug editor install-cli dev server server-db determinism clean \
 	db db-down db-reset db-psql db-test dev-secrets check-features check-content \
-	check-theme
+	check-theme check-resources
 
 test:
 	cargo test --workspace
 
-check: fmt clippy test check-purity check-features check-content check-theme
+check: fmt clippy test check-purity check-features check-content check-theme check-resources
 	@echo "all gates green"
 
 # Whole-tree content integrity (iron rule #8: a system nobody can reach is
@@ -27,6 +27,16 @@ check-content:
 check-theme:
 	python3 scripts/check_theme.py --self-test
 	python3 scripts/check_theme.py
+
+# A Bevy system taking `Res<T>` fails at RUNTIME if nothing inserted `T`, and
+# the default error handler turns that into a panic. Nothing in the compiler
+# catches it: the resource, the system, and the system's registration all
+# typecheck. `CulturePanelVisible` shipped declared, read, keybound, and
+# registered nowhere — it panicked on the transition into InGame, and with
+# `debug-names` off the message could not even name the system. Twelve more
+# were in the same state behind it.
+check-resources:
+	python3 scripts/check_resources.py
 
 # The `postgres` and `redis` features are off by default, so nothing in the
 # default build ever compiles them — and they rotted unnoticed: PgSessionStore

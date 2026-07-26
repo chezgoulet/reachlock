@@ -45,12 +45,17 @@
         "signal-bad":  "#ff6b6b",
 
         "transparent": "#00000000",
+        // Translucent scrim for modal overlays: dims the scene without
+        // hiding it. An opaque full-screen panel is how the tutorial
+        // overlay blanked the game.
+        "shade":       "#07090cc4",
     },
 
     // ── Roles ────────────────────────────────────────────────────────────
     // Semantic layer. Swap these to re-skin without touching classes.
     roles: {
         "background":    "void",
+        "scrim":         "shade",
         "surface":       "hull",
         "surface-raised":"hull-raised",
         "surface-sunk":  "hull-sunk",
@@ -251,6 +256,7 @@
         "surface.raised": ( bg: "surface-raised" ),
         "surface.sunk":   ( bg: "surface-sunk" ),
         "surface.overlay": ( bg: "surface-sunk" ),
+        "surface.scrim":   ( bg: "scrim" ),
         // A bordered control (buttons, inputs, dropdowns): one class, because
         // background and border live on the same entity.
         "surface.control": (

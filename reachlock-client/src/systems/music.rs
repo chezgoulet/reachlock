@@ -198,9 +198,14 @@ mod engine {
             let vel = note.velocity as f32 / 127.0;
 
             let graph = (sine_hz(freq as f32) * (vel * 0.2f32)) >> pan(0.0);
+            // `push_relative` takes start and *end* times, not a duration:
+            // fundsp computes `duration = end - start` and asserts the fades
+            // fit inside it. Passing the bare duration made every note that
+            // did not start at tick 0 end before it began, and the assertion
+            // took the audio thread down with it.
             seq.push_relative(
                 start_sec,
-                dur_sec + 0.03,
+                start_sec + dur_sec + 0.03,
                 Fade::Smooth,
                 0.005,
                 0.01,
@@ -237,6 +242,36 @@ mod engine {
         let semitones = (degree as i32 + octave as i32 * 12 - 12).clamp(0, 108) as u32;
         let ratio = 2.0f64.powf(semitones as f64 / 12.0);
         root_hz as f64 * ratio
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use reachlock_core::generator::music::{generate_music_intent, Mood};
+
+        /// `push_relative` asserts internally that the fades fit inside
+        /// `end - start`, and it panics on the audio thread where the failure
+        /// is easy to miss. Scheduling real generated intents here runs those
+        /// assertions on the test thread instead.
+        ///
+        /// The bug this pins: the melody passed a bare duration as the *end*
+        /// time, so every note starting after tick 0 ended before it began.
+        #[test]
+        fn scheduling_real_intents_never_trips_the_fundsp_assertions() {
+            for mood in [Mood::Calm, Mood::Tense, Mood::Combat, Mood::Derelict] {
+                for seed in [0u64, 1, 42, 0x5EED_0001, u32::MAX as u64] {
+                    let intent = generate_music_intent(seed, mood, 4);
+                    assert!(
+                        intent.notes.iter().any(|n| n.start_tick > 0),
+                        "fixture must contain a note after tick 0 — a intent \
+                         whose notes all start at 0 would not exercise the bug"
+                    );
+                    let engine = MusicEngine::default();
+                    let mut seq = Sequencer::new(0, 2, ReplayMode::None);
+                    schedule_intent(&mut seq, &intent, &engine);
+                }
+            }
+        }
     }
 }
 
