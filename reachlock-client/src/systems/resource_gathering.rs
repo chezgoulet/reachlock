@@ -35,7 +35,7 @@ impl Default for GatheringProgress {
     fn default() -> Self {
         GatheringProgress {
             active: false,
-            target: Entity::from_bits(0),
+            target: Entity::PLACEHOLDER,
             elapsed_ticks: 0,
             total_ticks: 0,
             resource_type: ResourceType::Mineral,

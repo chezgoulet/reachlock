@@ -1,7 +1,7 @@
 # ReachLock v2 — developer entry points.
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: test check fmt clippy run run-debug server server-db determinism clean \
+.PHONY: test check fmt clippy run run-debug editor install-cli dev server server-db determinism clean \
 	db db-down db-reset db-psql db-test dev-secrets check-features check-content
 
 test:
@@ -36,21 +36,29 @@ fmt:
 clippy:
 	cargo clippy --workspace --all-targets -- -D warnings
 
-# Launch the game (native).
-# FIXME(winit-0.30.13): WAYLAND_DISPLAY= forces X11/XWayland to avoid
-# a panic at winit/src/platform_impl/linux/wayland/window/state.rs:694
-# where self.size.width is 0 because the Wayland compositor never sent a
-# configure event. Remove the WAYLAND_DISPLAY= and WINIT_UNIX_BACKEND=
-# overrides when bevy/winit upgrades past 0.30.13 (the built-in
-# WINIT_UNIX_BACKEND=x11 alone is not sufficient on this system).
+# Launch the game (native). The winit/Wayland workaround is applied
+# in-process by the binary — see the FIXME in reachlock-client/src/main.rs.
 run:
-	WAYLAND_DISPLAY= WINIT_UNIX_BACKEND=x11 cargo run -p reachlock-client
+	cargo run -p reachlock-client
 
 # Launch with Bevy's `debug` feature so ECS errors (e.g. B0001 query
 # conflicts) print real component/system names instead of a placeholder.
-# Same Wayland workaround as `run`.
 run-debug:
-	WAYLAND_DISPLAY= WINIT_UNIX_BACKEND=x11 cargo run -p reachlock-client --features debug-names
+	cargo run -p reachlock-client --features debug-names
+
+# Launch the content editor.
+editor:
+	cargo run -p reachlock-editor
+
+# Put `reachlock` on PATH as a real command.
+install-cli:
+	cargo install --path reachlock-cli
+	@echo "installed: $$(command -v reachlock || echo '~/.cargo/bin/reachlock — add it to PATH')"
+
+# One command from clean checkout to a running server.
+dev: db
+	@[ -f .env ] || (cp .env.example .env && echo "created .env from .env.example")
+	$(MAKE) server-db
 
 # Launch the ledger server on 127.0.0.1:40711.
 server:
