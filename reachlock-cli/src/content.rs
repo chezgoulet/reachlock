@@ -35,6 +35,8 @@ const DUNGEON_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/dungeon.
 const EVENT_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/event.schema.json");
 const RECIPE_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/recipe.schema.json");
 const ORIGIN_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/origin.schema.json");
+const CREW_PACKAGE_SCHEMA: &str =
+    include_str!("../../mods/reachlock/schemas/crew_package.schema.json");
 
 const DIALOGUE_SCHEMA: &str = include_str!("../../mods/reachlock/schemas/dialogue.schema.json");
 
@@ -483,7 +485,7 @@ fn validate_schema(
         AssetType::Event => EVENT_SCHEMA,
         AssetType::Recipe => RECIPE_SCHEMA,
         AssetType::Origin => ORIGIN_SCHEMA,
-        AssetType::CrewPackage => "",
+        AssetType::CrewPackage => CREW_PACKAGE_SCHEMA,
         AssetType::SoulMutations => "",
         AssetType::Storyline => "",
     };
