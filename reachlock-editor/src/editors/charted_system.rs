@@ -62,6 +62,7 @@ pub struct ChartedSystemEditor {
     selected: usize,
     search: String,
     has_changes: bool,
+    load_warnings: Vec<String>,
 }
 
 fn blank_system() -> ChartedSystem {
@@ -77,26 +78,12 @@ fn blank_system() -> ChartedSystem {
 
 impl ChartedSystemEditor {
     fn new() -> Self {
-        let mut entries = Vec::new();
-        if let Ok(dir) = std::fs::read_dir(
-            crate::app::content_root().join(ContentType::ChartedSystem.directory()),
-        ) {
-            let mut paths: Vec<_> = dir
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|e| e == "ron"))
-                .collect();
-            paths.sort();
-            for path in paths {
-                if let Ok(system) = crate::io::read_ron::<ChartedSystem>(&path) {
-                    entries.push(Entry {
-                        system,
-                        path: Some(path),
-                        dirty: false,
-                    });
-                }
-            }
-        }
+        let dir = crate::app::content_root().join(ContentType::ChartedSystem.directory());
+        let (parsed, load_warnings) = crate::io::scan_content_dir::<ChartedSystem>(&dir);
+        let mut entries: Vec<_> = parsed
+            .into_iter()
+            .map(|(path, system)| Entry { system, path: Some(path), dirty: false })
+            .collect();
         entries.sort_by(|a, b| a.system.display_name.cmp(&b.system.display_name));
         if entries.is_empty() {
             entries.push(Entry {
@@ -114,6 +101,7 @@ impl ChartedSystemEditor {
             selected: 0,
             search: String::new(),
             has_changes: false,
+            load_warnings,
         }
     }
 }
@@ -435,6 +423,10 @@ impl Editor for ChartedSystemEditor {
         self.has_changes = self.entries.iter().any(|e| e.dirty);
         self.touch();
         Ok(())
+    }
+
+    fn load_warnings(&self) -> &[String] {
+        &self.load_warnings
     }
 
     fn mark_saved(&mut self) {

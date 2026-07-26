@@ -39,6 +39,7 @@ pub struct HullFrameEditor {
     selected: usize,
     search: String,
     has_changes: bool,
+    load_warnings: Vec<String>,
 }
 
 fn blank_file() -> ContentFile {
@@ -77,34 +78,18 @@ fn class_name(class: HullClass) -> &'static str {
 
 impl HullFrameEditor {
     fn new() -> Self {
-        let mut entries = Vec::new();
-        // Best-effort scan of the authored frames so the left panel starts
-        // populated; missing directory just means an empty list.
-        if let Ok(dir) =
-            std::fs::read_dir(crate::app::content_root().join(ContentType::HullFrame.directory()))
-        {
-            let mut paths: Vec<_> = dir
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| {
-                    p.file_name()
+        let dir = crate::app::content_root().join(ContentType::HullFrame.directory());
+        let (parsed, load_warnings) = crate::io::scan_content_dir::<ContentFile>(&dir);
+        let mut entries: Vec<_> = parsed
+            .into_iter()
+            .filter(|(path, file)| {
+                matches!(file.payload, ContentPayload::HullFrame(_))
+                    && path.file_name()
                         .and_then(|n| n.to_str())
                         .is_some_and(|n| n.ends_with("_frame.ron"))
-                })
-                .collect();
-            paths.sort();
-            for path in paths {
-                if let Ok(file) = crate::io::read_ron::<ContentFile>(&path) {
-                    if matches!(file.payload, ContentPayload::HullFrame(_)) {
-                        entries.push(Entry {
-                            file,
-                            path: Some(path),
-                            dirty: false,
-                        });
-                    }
-                }
-            }
-        }
+            })
+            .map(|(path, file)| Entry { file, path: Some(path), dirty: false })
+            .collect();
         if entries.is_empty() {
             entries.push(Entry {
                 file: blank_file(),
@@ -121,6 +106,7 @@ impl HullFrameEditor {
             selected: 0,
             search: String::new(),
             has_changes: false,
+            load_warnings,
         }
     }
 }
@@ -615,6 +601,10 @@ impl Editor for HullFrameEditor {
         self.has_changes = self.entries.iter().any(|e| e.dirty);
         self.touch();
         Ok(())
+    }
+
+    fn load_warnings(&self) -> &[String] {
+        &self.load_warnings
     }
 
     fn mark_saved(&mut self) {

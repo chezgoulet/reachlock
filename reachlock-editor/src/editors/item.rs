@@ -134,6 +134,7 @@ pub struct ItemEditor {
     selected: usize,
     search: String,
     has_changes: bool,
+    load_warnings: Vec<String>,
     preview: Option<GeneratedItem>,
 }
 
@@ -151,26 +152,12 @@ fn blank_seed() -> ItemSeed {
 
 impl ItemEditor {
     fn new() -> Self {
-        let mut entries = Vec::new();
-        if let Ok(dir) =
-            std::fs::read_dir(crate::app::content_root().join(ContentType::Item.directory()))
-        {
-            let mut paths: Vec<_> = dir
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|e| e == "ron"))
-                .collect();
-            paths.sort();
-            for path in paths {
-                if let Ok(item_seed) = crate::io::read_ron::<ItemSeed>(&path) {
-                    entries.push(Entry {
-                        item_seed,
-                        path: Some(path),
-                        dirty: false,
-                    });
-                }
-            }
-        }
+        let dir = crate::app::content_root().join(ContentType::Item.directory());
+        let (parsed, load_warnings) = crate::io::scan_content_dir::<ItemSeed>(&dir);
+        let mut entries: Vec<_> = parsed
+            .into_iter()
+            .map(|(path, item_seed)| Entry { item_seed, path: Some(path), dirty: false })
+            .collect();
         if entries.is_empty() {
             entries.push(Entry {
                 item_seed: blank_seed(),
@@ -187,6 +174,7 @@ impl ItemEditor {
             selected: 0,
             search: String::new(),
             has_changes: false,
+            load_warnings,
             preview: None,
         }
     }
@@ -623,6 +611,10 @@ impl Editor for ItemEditor {
             .map(|e| generate_item(&e.item_seed));
         self.touch();
         Ok(())
+    }
+
+    fn load_warnings(&self) -> &[String] {
+        &self.load_warnings
     }
 
     fn mark_saved(&mut self) {

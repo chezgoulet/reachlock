@@ -22,6 +22,7 @@ pub struct ContractEditor {
     selected: usize,
     search: String,
     has_changes: bool,
+    load_warnings: Vec<String>,
 }
 
 fn blank_contract() -> Contract {
@@ -87,26 +88,12 @@ impl TriggerKind {
 
 impl ContractEditor {
     fn new() -> Self {
-        let mut entries = Vec::new();
-        if let Ok(dir) =
-            std::fs::read_dir(crate::app::content_root().join(ContentType::Contract.directory()))
-        {
-            let mut paths: Vec<_> = dir
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|e| e == "ron"))
-                .collect();
-            paths.sort();
-            for path in paths {
-                if let Ok(contract) = crate::io::read_ron::<Contract>(&path) {
-                    entries.push(Entry {
-                        contract,
-                        path: Some(path),
-                        dirty: false,
-                    });
-                }
-            }
-        }
+        let dir = crate::app::content_root().join(ContentType::Contract.directory());
+        let (parsed, load_warnings) = crate::io::scan_content_dir::<Contract>(&dir);
+        let mut entries: Vec<_> = parsed
+            .into_iter()
+            .map(|(path, contract)| Entry { contract, path: Some(path), dirty: false })
+            .collect();
         if entries.is_empty() {
             entries.push(Entry {
                 contract: blank_contract(),
@@ -123,6 +110,7 @@ impl ContractEditor {
             selected: 0,
             search: String::new(),
             has_changes: false,
+            load_warnings,
         }
     }
 }
@@ -555,6 +543,10 @@ impl Editor for ContractEditor {
         self.has_changes = self.entries.iter().any(|e| e.dirty);
         self.touch();
         Ok(())
+    }
+
+    fn load_warnings(&self) -> &[String] {
+        &self.load_warnings
     }
 
     fn mark_saved(&mut self) {

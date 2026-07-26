@@ -66,6 +66,7 @@ pub struct GateNetworkEditor {
     network: GateNetwork,
     path: Option<std::path::PathBuf>,
     has_changes: bool,
+    load_warnings: Vec<String>,
     /// World-space node positions, keyed by system id.
     node_positions: HashMap<String, egui::Pos2>,
     /// Charted system biomes for node coloring.
@@ -88,19 +89,20 @@ impl GateNetworkEditor {
             Err(_) => (GateNetwork { gates: Vec::new() }, None),
         };
         let mut biomes = HashMap::new();
-        if let Ok(dir) = std::fs::read_dir(
-            crate::app::content_root().join(ContentType::ChartedSystem.directory()),
-        ) {
-            for entry in dir.flatten() {
-                if let Ok(system) = crate::io::read_ron::<ChartedSystem>(&entry.path()) {
-                    biomes.insert(system.id.clone(), system.biome);
-                }
+        let load_warnings;
+        {
+            let dir = crate::app::content_root().join(ContentType::ChartedSystem.directory());
+            let (parsed, w) = crate::io::scan_content_dir::<ChartedSystem>(&dir);
+            load_warnings = w;
+            for (_, system) in parsed {
+                biomes.insert(system.id.clone(), system.biome);
             }
         }
         let mut editor = GateNetworkEditor {
             network,
             path,
             has_changes: false,
+            load_warnings,
             node_positions: HashMap::new(),
             biomes,
             selected_gate: None,
@@ -544,6 +546,10 @@ impl Editor for GateNetworkEditor {
         self.ensure_positions();
         self.has_changes = true;
         Ok(())
+    }
+
+    fn load_warnings(&self) -> &[String] {
+        &self.load_warnings
     }
 
     fn mark_saved(&mut self) {
