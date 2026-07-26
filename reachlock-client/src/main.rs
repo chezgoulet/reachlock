@@ -73,6 +73,17 @@ fn space_live(mode: Option<Res<State<GameMode>>>, registry: Res<SceneRegistry>) 
 }
 
 fn main() {
+    // FIXME(winit-0.30.13): Wayland compositors may not send a configure
+    // event before the first render, causing a panic at
+    // winit/src/platform_impl/linux/wayland/window/state.rs:694.
+    // Force X11 when no backend is explicitly chosen. Remove when
+    // bevy's winit dependency moves past 0.30.13.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WINIT_UNIX_BACKEND").is_none() {
+        std::env::set_var("WINIT_UNIX_BACKEND", "x11");
+        std::env::remove_var("WAYLAND_DISPLAY");
+    }
+
     // Filesystem-backed save storage (native only).
     save_backend::init_save_backend();
 

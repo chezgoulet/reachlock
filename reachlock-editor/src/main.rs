@@ -1269,6 +1269,13 @@ impl eframe::App for EditorApp {
 }
 
 fn main() -> eframe::Result<()> {
+    // FIXME(winit-0.30.13): same Wayland workaround as the client.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WINIT_UNIX_BACKEND").is_none() {
+        std::env::set_var("WINIT_UNIX_BACKEND", "x11");
+        std::env::remove_var("WAYLAND_DISPLAY");
+    }
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("ReachLock Content Editor")
