@@ -92,5 +92,15 @@
                 content: "The second memorial — the small one, for Quebec City — appeared one day without authorization. Doss never ordered it removed. Some things are not worth the conversation, and some things are worth not having it.",
             ),
         ],
+        look: Some((
+            species: human,
+            hair_style: Some(2),
+            hair_color: Some((140, 120, 100)),
+            skin_color: Some((200, 180, 160)),
+            shirt_color: Some((70, 80, 60)),
+            pants_color: Some((50, 55, 40)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((80, 90, 65)),
+        )),
     )),
 )

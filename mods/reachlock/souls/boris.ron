@@ -178,5 +178,11 @@
             "I have logged the question, Captain Thibodeaux. The answer is not operationally available.",
             "Processing. The Loup-Garou requires my attention on the hull. Excuse me.",
         ],
+        look: Some((
+            species: robot,
+            hair_style: Some(0),
+            chassis_color: Some((180, 185, 190)),
+            visor_color: Some((0, 200, 255)),
+        )),
     )),
 )

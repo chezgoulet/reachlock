@@ -112,5 +112,15 @@
                 content: "He has never stopped in front of the second memorial. Not once, in all the transits through Sorrow Station. Tove stops there. He knows she stops there. Neither has ever said so.",
             ),
         ],
+        look: Some((
+            species: human,
+            hair_style: Some(3),
+            hair_color: Some((80, 60, 40)),
+            skin_color: Some((220, 195, 170)),
+            shirt_color: Some((46, 61, 107)),
+            pants_color: Some((31, 41, 77)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((55, 65, 85)),
+        )),
     )),
 )
