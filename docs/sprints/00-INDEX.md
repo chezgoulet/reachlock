@@ -265,6 +265,28 @@ re-confirm what someone already remembered to type.
   paren — `payload: origin((…))`, `asset_type: crew_package`, `species: human`.
   Both mistakes make the file unparseable, and every loader skips silently
   what it cannot parse.
+- Which directories under `mods/` hold `ContentFile` envelopes is
+  `core::content::dirs::classify`'s call and nowhere else. Three consumers —
+  the client loader, the tree checker in `content/refs.rs`, and the editor's
+  `cross_ref.rs` — each used to keep a private list, and the lists drifted:
+  `themes/` was skipped by the loader while the checker read it fine, so the
+  one authored theme reached nothing and the tree still reported clean.
+  Adding a content directory means classifying it, and a test fails the build
+  if a shipped directory has no classification.
+- Content reaching `ContentIndex` is not the same as content reaching a
+  player. The authored theme parsed, dispatched and landed in the stash — and
+  `stash::take_themes()` had no callers, so it stopped there. When wiring a
+  content type, follow it all the way to the system that consumes it and
+  write the test at that end. `#[expect(dead_code)]` on a `take_*` is the
+  smell.
+- A file with no `mod` line is invisible to the compiler, so it rots without
+  telling anyone. `crew_package.rs` and `cross_ref.rs` both drifted out of
+  sync with core types while sitting on disk looking finished. Declare the
+  module even if the feature is unwired — `#[allow(dead_code)]` with a note
+  costs nothing and keeps the type checker honest.
+- Editor tabs edit the bare payload; the files on disk are envelopes. Use
+  `io::read_enveloped` / `write_enveloped` and carry the `EnvelopeMeta`, or a
+  save silently resets the author's `seed`, `universe` and `priority`.
 - A `spawn_*` system registered on `Startup` can never run again. Anything the
   player can leave and come back to belongs on `OnEnter(state)` with a matching
   `OnExit` teardown — the main menu was spawned at `Startup` and despawned by
