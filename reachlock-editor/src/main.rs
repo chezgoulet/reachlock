@@ -109,6 +109,15 @@ struct EditorApp {
     startup_scan_done: bool,
     /// Requests from the agent thread, executed on this thread once a frame.
     session_queue: agent::bridge::SessionQueue,
+    /// Plan (read-only) vs Build (writes unlocked).
+    agent_mode: agent::mode::Mode,
+    /// The running task's event channel, if one is running.
+    agent_task: Option<agent::session::AgentTask>,
+    /// Everything the current task has emitted, oldest first.
+    agent_transcript: Vec<agent::session::AgentEvent>,
+    agent_prompt: String,
+    /// Whether the assistant side panel is visible.
+    show_assistant: bool,
 }
 
 /// Find Usages state: what the author typed, and what the index answered.
@@ -258,6 +267,11 @@ impl Default for EditorApp {
             show_warnings: false,
             startup_scan_done: false,
             session_queue: agent::bridge::SessionQueue::new(),
+            agent_mode: agent::mode::Mode::default(),
+            agent_task: None,
+            agent_transcript: Vec::new(),
+            agent_prompt: String::new(),
+            show_assistant: false,
         }
     }
 }
@@ -888,6 +902,28 @@ impl EditorApp {
         // Undo/redo stay out of the way while a text field has focus so
         // TextEdit keeps its own in-field undo.
         let typing = ctx.wants_keyboard_input();
+
+        // Tab toggles Plan/Build — but ONLY when nothing is taking keyboard
+        // input. Tab is egui's focus-navigation key and this editor is almost
+        // entirely text fields, so an unguarded binding would break tabbing
+        // between every field in every tab. The guard is the same one undo
+        // uses below.
+        if !typing && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab)) {
+            self.agent_mode = self.agent_mode.toggled();
+            // Say it out loud: the mode changes what the assistant is allowed
+            // to do, and a silent flip is how an author ends up surprised
+            // either by a refusal or by a write.
+            self.status_text = format!(
+                "Assistant mode: {} — {}",
+                self.agent_mode.label(),
+                match self.agent_mode {
+                    agent::mode::Mode::Plan => "read-only",
+                    agent::mode::Mode::Build => "writes unlocked",
+                }
+            );
+            self.show_assistant = true;
+        }
+
         if !typing {
             let redo = ctx.input_mut(|i| {
                 i.consume_key(Modifiers::CTRL | Modifiers::SHIFT, Key::Z)
@@ -1197,6 +1233,163 @@ impl EditorApp {
         }
     }
 
+    /// Poll the running task and fold its events into the transcript.
+    fn poll_agent(&mut self) {
+        let Some(task) = &self.agent_task else {
+            return;
+        };
+        // Collect first, then mutate: the receiver borrows `self.agent_task`
+        // and the transcript and status both live on `self`.
+        // `try_iter` rather than a blocking recv — this runs inside the frame.
+        let events: Vec<_> = task.events.try_iter().collect();
+        if events.is_empty() {
+            return;
+        }
+        let mut finished = false;
+        for event in events {
+            if let agent::session::AgentEvent::Done(result) = &event {
+                finished = true;
+                self.status_text = match result {
+                    Ok(()) => "Assistant finished.".into(),
+                    Err(e) => format!("Assistant stopped: {e}"),
+                };
+            }
+            self.agent_transcript.push(event);
+        }
+        self.request_repaint();
+        if finished {
+            self.agent_task = None;
+        }
+    }
+
+    fn agent_running(&self) -> bool {
+        self.agent_task.is_some()
+    }
+
+    /// Start a task from the prompt box.
+    fn start_agent(&mut self) {
+        let prompt = self.agent_prompt.trim().to_string();
+        if prompt.is_empty() || self.agent_running() {
+            return;
+        }
+        let profile = self.ai_settings.active_profile().clone();
+        let provider = match profile.build() {
+            Ok(p) => p,
+            Err(e) => {
+                self.status_text = format!("Assistant: {e}");
+                return;
+            }
+        };
+        self.agent_transcript.clear();
+        self.agent_prompt.clear();
+        self.status_text = format!("Assistant working ({} mode)…", self.agent_mode.label());
+        self.agent_task = Some(agent::session::spawn(
+            provider,
+            self.session_queue.handle(),
+            self.agent_mode,
+            profile.max_tokens,
+            prompt,
+        ));
+    }
+
+    fn assistant_panel(&mut self, ctx: &egui::Context) {
+        if !self.show_assistant {
+            return;
+        }
+        egui::SidePanel::right("assistant")
+            .default_width(380.0)
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Assistant");
+                    // The mode button carries the whole Plan/Build story, so
+                    // it says what the mode means rather than just naming it.
+                    let (label, hover) = match self.agent_mode {
+                        agent::mode::Mode::Plan => (
+                            "Plan (read-only)",
+                            "Read-only: the assistant can investigate and propose, but no tool \
+                             it can call writes to a tab or to disk. Tab switches to Build.",
+                        ),
+                        agent::mode::Mode::Build => (
+                            "Build (can edit)",
+                            "The assistant can open tabs, write documents and save. Every write \
+                             is undoable with Ctrl+Z. Tab switches to Plan.",
+                        ),
+                    };
+                    if ui.button(label).on_hover_text(hover).clicked() {
+                        self.agent_mode = self.agent_mode.toggled();
+                    }
+                    ui.weak(self.ai_settings.active_profile().name.clone());
+                });
+                ui.separator();
+
+                let transcript_height = ui.available_height() - 96.0;
+                egui::ScrollArea::vertical()
+                    .max_height(transcript_height.max(80.0))
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        if self.agent_transcript.is_empty() {
+                            ui.weak(
+                                "Ask for something. In Plan mode it will investigate and \
+                                 propose; in Build mode it can make the change.",
+                            );
+                        }
+                        for event in &self.agent_transcript {
+                            match event {
+                                agent::session::AgentEvent::Text(t) => {
+                                    ui.label(t);
+                                    ui.add_space(4.0);
+                                }
+                                agent::session::AgentEvent::ToolStarted { summary, .. } => {
+                                    ui.weak(format!("→ {summary}"));
+                                }
+                                agent::session::AgentEvent::ToolFinished { name, is_error } => {
+                                    if *is_error {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(0xF4, 0x43, 0x36),
+                                            format!("   {name} failed"),
+                                        );
+                                    }
+                                }
+                                agent::session::AgentEvent::Done(Ok(())) => {
+                                    ui.add_space(4.0);
+                                    ui.weak("done");
+                                }
+                                agent::session::AgentEvent::Done(Err(e)) => {
+                                    ui.add_space(4.0);
+                                    ui.colored_label(egui::Color32::from_rgb(0xF4, 0x43, 0x36), e);
+                                }
+                            }
+                        }
+                    });
+
+                ui.separator();
+                let running = self.agent_running();
+                ui.add_enabled_ui(!running, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.agent_prompt)
+                            .desired_rows(2)
+                            .desired_width(f32::INFINITY)
+                            .hint_text("what should it do?"),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    if running {
+                        ui.spinner();
+                        ui.label("working…");
+                    } else if ui
+                        .add_enabled(
+                            !self.agent_prompt.trim().is_empty(),
+                            egui::Button::new("Send"),
+                        )
+                        .clicked()
+                    {
+                        self.start_agent();
+                    }
+                });
+            });
+    }
+
     fn handle_pending(&mut self, ctx: &egui::Context) {
         let Some(pending) = self.pending.take() else {
             return;
@@ -1488,6 +1681,14 @@ impl EditorApp {
                         .changed()
                     {
                         self.show_browser = browser_visible;
+                    }
+                    let mut assistant_visible = self.show_assistant;
+                    if ui
+                        .checkbox(&mut assistant_visible, "Assistant")
+                        .on_hover_text("Tab toggles Plan / Build mode when no field has focus.")
+                        .changed()
+                    {
+                        self.show_assistant = assistant_visible;
                     }
                     if ui.button("Command Palette    Ctrl+Shift+P").clicked() {
                         self.palette.open = true;
@@ -1791,6 +1992,8 @@ impl eframe::App for EditorApp {
                 });
             });
 
+        self.assistant_panel(ctx);
+
         let mut open_recent = None;
         egui::SidePanel::right("preview_panel")
             .resizable(true)
@@ -2068,6 +2271,7 @@ impl eframe::App for EditorApp {
         // sides. Runs before `track_changes` so an agent write gets its undo
         // step in the same frame it lands.
         self.drain_session_requests();
+        self.poll_agent();
 
         self.handle_pending(ctx);
 

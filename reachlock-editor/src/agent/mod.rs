@@ -9,6 +9,7 @@
 pub mod bridge;
 pub mod mode;
 pub mod provider;
+pub mod session;
 pub mod tools;
 
 use std::path::PathBuf;
