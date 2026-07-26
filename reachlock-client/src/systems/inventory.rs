@@ -405,6 +405,13 @@ pub fn load_save(
                     .or_insert_with(|| reachlock_core::soul::SoulState::from_file(&soul));
                 souls.player_soul_id = Some(soul.id.clone());
                 souls.files.insert(soul.id.clone(), soul);
+                // Put the character aboard the ship their origin grants them.
+                //
+                // Nothing called `set_active_ship_template`, so `ACTIVE_SHIP`
+                // was never written and every character flew the neutral
+                // starter hull no matter which origin they picked — while the
+                // character-creation summary told them otherwise.
+                apply_origin_ship(&character.origin_id, &content);
             }
             // S17: restore the applied exterior config; handling re-derives
             // from the config + frame (never stored — it's derived data).
@@ -426,9 +433,83 @@ pub fn load_save(
     }
 }
 
+/// Select the active ship from the character's origin.
+///
+/// Falls back to the neutral starter when the origin is unknown or grants no
+/// ship — never to another character's ship, which is what the old hardcoded
+/// fallback did.
+fn apply_origin_ship(
+    origin_id: &str,
+    content: &crate::systems::content_index::ContentIndex,
+) -> bool {
+    use reachlock_core::content::ContentPayload;
+
+    let ship_id = content.files.iter().find_map(|f| match &f.payload {
+        ContentPayload::Origin(o) if o.id == origin_id => o.ship_template.as_deref(),
+        _ => None,
+    });
+    let Some(ship_id) = ship_id else {
+        // No origin, or an origin that grants no ship: the starter is correct.
+        crate::systems::crew::clear_active_ship();
+        return false;
+    };
+    if crate::systems::crew::set_active_ship_template(ship_id) {
+        info!("ship: {origin_id} flies '{ship_id}'");
+        true
+    } else {
+        // `set_active_ship_template` already warned about the unknown id.
+        crate::systems::crew::clear_active_ship();
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every authored origin that names a ship must resolve it. A typo in an
+    /// origin's `ship_template` silently downgraded the player to the starter
+    /// hull, and the only symptom was a ship that looked wrong.
+    #[test]
+    fn every_authored_origin_ship_resolves_to_a_template() {
+        let catalog = crate::systems::crew::ship_template_catalog();
+        assert!(
+            !catalog.is_empty(),
+            "no ship templates found — the catalog reads mods/reachlock/hulls \
+             relative to the working directory"
+        );
+        let known: std::collections::HashSet<&str> =
+            catalog.iter().map(|t| t.id.as_str()).collect();
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root")
+            .join("mods/reachlock/origins");
+        let mut checked = 0usize;
+        let mut missing = Vec::new();
+        for entry in std::fs::read_dir(&dir).expect("origins dir").flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "ron") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("read origin");
+            let file: reachlock_core::content::ContentFile =
+                ron::from_str(&text).expect("origin is an envelope");
+            if let reachlock_core::content::ContentPayload::Origin(o) = file.payload {
+                if let Some(ship) = &o.ship_template {
+                    checked += 1;
+                    if !known.contains(ship.as_str()) {
+                        missing.push(format!("{} → {ship}", o.id));
+                    }
+                }
+            }
+        }
+        assert!(checked > 0, "no origin names a ship template");
+        assert!(
+            missing.is_empty(),
+            "origins naming a ship template nothing authors: {missing:?}"
+        );
+    }
 
     #[test]
     fn save_file_default_character_is_none() {

@@ -778,29 +778,24 @@ static ACTIVE_SHIP: std::sync::RwLock<Option<reachlock_core::crew::ShipTemplate>
 /// Every ship template authored under `<content root>/hulls/`.
 pub fn ship_template_catalog() -> Vec<reachlock_core::crew::ShipTemplate> {
     let mut out = Vec::new();
-    for root in ["mods/reachlock/hulls", "../mods/reachlock/hulls"] {
-        let dir = std::path::Path::new(root);
-        if !dir.is_dir() {
+    // Honour the same content root as every other loader. This used to try
+    // two hardcoded relative paths, so it silently found nothing whenever the
+    // working directory was neither the workspace root nor a crate dir.
+    let dir = reachlock_core::paths::content_root().join("hulls");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "ron") {
             continue;
         }
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_none_or(|e| e != "ron") {
-                continue;
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            // hulls/ also holds frames and room templates; only the files
+            // that parse as a ShipTemplate are ships.
+            if let Ok(t) = ron::from_str::<reachlock_core::crew::ShipTemplate>(&text) {
+                out.push(t);
             }
-            if let Ok(text) = std::fs::read_to_string(&path) {
-                // hulls/ also holds frames and room templates; only the files
-                // that parse as a ShipTemplate are ships.
-                if let Ok(t) = ron::from_str::<reachlock_core::crew::ShipTemplate>(&text) {
-                    out.push(t);
-                }
-            }
-        }
-        if !out.is_empty() {
-            break;
         }
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));

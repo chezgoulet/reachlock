@@ -391,6 +391,50 @@ pub fn get_available_origins() -> Vec<OriginEntry> {
 }
 
 /// Read `Origin` payloads from the content tree.
+/// The system id a character starting at `seed` begins in.
+///
+/// A charted system's id when the seed matches one; otherwise the same
+/// `uncharted_<n>` form `jump` uses for deep-space destinations. Never empty:
+/// an empty id silently matches nothing in every registry keyed by system, and
+/// that is what made the ship log read "ECOSYSTEM PROFILE — :".
+///
+/// Most authored origins start somewhere uncharted, which is a legitimate
+/// state — only the seeds that name a charted system get a charted id.
+fn start_system_id(seed: u64) -> reachlock_core::seed::types::SystemId {
+    charted_system_id_for_seed(seed)
+        .unwrap_or_else(|| reachlock_core::seed::types::SystemId(format!("uncharted_{seed}")))
+}
+
+/// The charted system whose seed is `seed`, if one is authored.
+///
+/// Authored systems are bare `ChartedSystem` files, so this reads them the same
+/// way `ContentIndex`'s typed pass does.
+fn charted_system_id_for_seed(seed: u64) -> Option<reachlock_core::seed::types::SystemId> {
+    let dir = reachlock_core::paths::content_root().join("systems");
+    let entries = std::fs::read_dir(&dir).ok()?;
+    let mut found: Option<String> = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "ron") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if let Ok(sys) = ron::from_str::<reachlock_core::galaxy::ChartedSystem>(&text) {
+            if sys.seed == seed {
+                // Deterministic on ties: read_dir order is not stable, so
+                // prefer the lexicographically first id.
+                found = Some(match found {
+                    Some(prev) if prev <= sys.id => prev,
+                    _ => sys.id,
+                });
+            }
+        }
+    }
+    found.map(reachlock_core::seed::types::SystemId)
+}
+
 fn load_authored_origins() -> Vec<reachlock_core::content::origin::Origin> {
     let mut out = Vec::new();
     let dir = reachlock_core::paths::content_root().join("origins");
@@ -1261,8 +1305,15 @@ fn confirm(creation: &CharacterCreationState, next_state: &mut NextState<AppStat
         ..Default::default()
     };
 
+    let system_seed = origin.map(|o| o.starting_location.0).unwrap_or(16843009);
     let loc = CurrentLocation {
-        system_seed: origin.map(|o| o.starting_location.0).unwrap_or(16843009),
+        system_seed,
+        // Resolve the charted system too. This was `..Default::default()`,
+        // which left `system_id` empty — and everything keyed by system id
+        // (authored ecosystems, cultures, the eco-event log key) then looked
+        // up the empty string and found nothing. The symptom was a ship log
+        // reading "ECOSYSTEM PROFILE — :" with no system name.
+        system_id: start_system_id(system_seed),
         ..Default::default()
     };
 
@@ -1653,5 +1704,51 @@ mod tests {
                 entry.id
             );
         }
+    }
+
+    /// A new game must record which system the character starts in, and the
+    /// id must never be empty.
+    ///
+    /// `confirm` built `CurrentLocation` with `..Default::default()`, leaving
+    /// `system_id` empty. Everything keyed by system id — authored ecosystems,
+    /// cultures, the eco-event dedupe key — then looked up "" and found
+    /// nothing, which surfaced in the ship log as "ECOSYSTEM PROFILE — :".
+    #[test]
+    fn every_origin_gets_a_non_empty_start_system_id() {
+        let origins = get_available_origins();
+        assert!(!origins.is_empty(), "no origins to check");
+        for o in &origins {
+            let id = start_system_id(o.starting_location.0);
+            assert!(
+                !id.0.is_empty(),
+                "origin {} produced an empty system id",
+                o.id
+            );
+        }
+    }
+
+    /// At least one authored origin starts somewhere charted, or the charted
+    /// systems are decorative. The rest legitimately start uncharted.
+    #[test]
+    fn at_least_one_origin_starts_in_a_charted_system() {
+        let origins = get_available_origins();
+        let charted = origins
+            .iter()
+            .filter(|o| charted_system_id_for_seed(o.starting_location.0).is_some())
+            .count();
+        assert!(
+            charted > 0,
+            "no authored origin starts in a charted system; every start_system \
+             seed matches nothing under systems/"
+        );
+    }
+
+    /// Uncharted starts follow the same `uncharted_<n>` convention `jump` uses,
+    /// so an id means the same thing wherever it came from.
+    #[test]
+    fn an_uncharted_seed_uses_the_jump_naming_convention() {
+        let seed = 0xDEAD_BEEF_DEAD_BEEFu64;
+        assert!(charted_system_id_for_seed(seed).is_none());
+        assert_eq!(start_system_id(seed).0, format!("uncharted_{seed}"));
     }
 }

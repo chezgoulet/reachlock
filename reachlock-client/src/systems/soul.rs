@@ -118,17 +118,13 @@ pub fn init_souls(content: Res<ContentIndex>, mut registry: ResMut<SoulRegistry>
         info!("souls: loaded {} authored soul(s)", registry.files.len());
     }
 
-    // Load soul mutations from the content index.
+    // Load soul mutations from the content index. Every file contributes:
+    // this used to `break` as soon as the registry was non-empty, so a second
+    // authored mutation file would have been silently dropped.
     for file in &content.files {
         if let reachlock_core::content::ContentPayload::SoulMutations(mutations) = &file.payload {
             registry.mutations.extend(mutations.clone());
         }
-        if !registry.mutations.is_empty() {
-            break;
-        }
-    }
-    if !registry.mutations.is_empty() {
-        info!("souls: loaded {} mutation arc(s)", registry.mutations.len());
     }
     if !registry.mutations.is_empty() {
         info!("souls: loaded {} mutation arc(s)", registry.mutations.len());

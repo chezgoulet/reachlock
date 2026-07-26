@@ -301,6 +301,7 @@ fn main() {
     .init_resource::<storyline_driver::StorylineLogVisible>()
     .init_resource::<trope_dispatcher::TropeRegistry>()
     .init_resource::<music::ThemeRegistry>()
+    .init_resource::<career::CareerCatalog>()
     .init_resource::<trope_dispatcher::TropeCooldown>()
     .init_resource::<trope_dispatcher::ActiveTropePopup>()
     // S78: continue-game flag. The menu sets this before transitioning to
@@ -327,6 +328,7 @@ fn main() {
                 trope_dispatcher::init_trope_registry,
                 encounter_executor::init_encounter_registry,
                 music::init_theme_registry,
+                career::init_career_catalog,
                 soul::init_souls,
                 crew::init_crew_roster,
             )

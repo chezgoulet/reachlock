@@ -461,7 +461,6 @@ pub mod stash {
     pub fn set_careers(v: Vec<CareerPath>) {
         STASH.lock().unwrap().careers = v;
     }
-    #[expect(dead_code)]
     pub fn take_careers() -> Vec<CareerPath> {
         std::mem::take(&mut STASH.lock().unwrap().careers)
     }
