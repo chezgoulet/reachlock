@@ -3,10 +3,15 @@
 use reachlock_core::generator::music::Theme;
 
 use super::super::app::{ContentType, Editor};
+use crate::io::EnvelopeMeta;
 
 pub struct ThemeEditor {
     path: Option<std::path::PathBuf>,
     theme: Theme,
+    /// Envelope fields the UI doesn't edit but the file must keep. Themes live
+    /// on disk as `ContentFile` envelopes; this tab used to read and write the
+    /// bare `Theme`, so it could not open a single authored theme.
+    meta: EnvelopeMeta,
     has_changes: bool,
 }
 
@@ -26,6 +31,7 @@ impl ThemeEditor {
                 bpm_range: (60, 80),
                 allowed_variations: reachlock_core::generator::music::VariationMask(511),
             },
+            meta: EnvelopeMeta::new_for("new_theme"),
             has_changes: false,
         }
     }
@@ -42,14 +48,17 @@ impl Editor for ThemeEditor {
         self.has_changes
     }
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
-        let theme: Theme = crate::io::read_ron(path).map_err(|e| format!("reading theme: {e}"))?;
+        let (meta, theme) =
+            crate::io::read_enveloped::<Theme>(path).map_err(|e| format!("reading theme: {e}"))?;
         self.theme = theme;
+        self.meta = meta;
         self.path = Some(path.to_path_buf());
         self.has_changes = false;
         Ok(())
     }
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        crate::io::write_ron(path, &self.theme).map_err(|e| format!("saving theme: {e}"))
+        crate::io::write_enveloped(path, &self.meta, self.theme.clone())
+            .map_err(|e| format!("saving theme: {e}"))
     }
     fn save_all(&mut self) -> Result<bool, String> {
         // Only write when dirty, and never invent a filename: the old
@@ -83,6 +92,12 @@ impl Editor for ThemeEditor {
             })
             .collect();
         self.theme.id = format!("theme_{:#x}", seed);
+        // The envelope's id is what the content tree indexes, so it has to
+        // follow the payload's rename or the file defines an id nothing
+        // references.
+        self.meta.id = self.theme.id.clone();
+        self.meta.display_name = self.theme.id.clone();
+        self.meta.seed = seed;
         self.has_changes = true;
     }
     fn validate(&self) -> Vec<String> {

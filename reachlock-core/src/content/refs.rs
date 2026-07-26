@@ -191,28 +191,12 @@ impl ContentTree {
         // Directories whose files are `ContentFile` envelopes. The envelope's
         // own `asset_type` decides the kind, so a file in the "wrong" folder
         // is still indexed correctly.
-        const ENVELOPE_DIRS: &[&str] = &[
-            "origins",
-            "souls",
-            "careers",
-            "stations",
-            "contracts",
-            "ecosystems",
-            "cultures",
-            "themes",
-            "tropes",
-            "encounters",
-            "dialogues",
-            "dungeons",
-            "events",
-            "recipes",
-            // `crews/` is enveloped: the client loads crew packages through
-            // the dispatch layer as `ContentPayload::CrewPackage`. Scanning
-            // it as a bare `CrewPackage` made the validator call the one
-            // authored crew "unparseable" while the game read it fine.
-            "crews",
-        ];
-        for dir in ENVELOPE_DIRS {
+        //
+        // The list comes from `super::dirs` rather than a copy kept here: this
+        // checker and the client's loader disagreeing about a directory is
+        // exactly how the authored theme went missing while the tree still
+        // reported clean.
+        for dir in super::dirs::envelope_dirs() {
             tree.scan_envelopes(&root.join(dir));
         }
 

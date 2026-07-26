@@ -4,10 +4,13 @@ use reachlock_core::content::origin::{
 use reachlock_core::seed::Seed;
 
 use super::super::app::{ContentType, Editor};
+use crate::io::EnvelopeMeta;
 
 pub struct OriginEditor {
     path: Option<std::path::PathBuf>,
     origin: Origin,
+    /// Envelope fields the UI doesn't edit but the file must keep.
+    meta: EnvelopeMeta,
     has_changes: bool,
 }
 
@@ -38,6 +41,7 @@ impl OriginEditor {
                 start_location: "Starting Station".into(),
                 opening_log_entries: vec![],
             },
+            meta: EnvelopeMeta::new_for("new_origin"),
             has_changes: false,
         }
     }
@@ -57,14 +61,17 @@ impl Editor for OriginEditor {
         self.has_changes = true;
     }
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
-        let o: Origin = crate::io::read_ron(path).map_err(|e| format!("reading origin: {e}"))?;
+        let (meta, o) = crate::io::read_enveloped::<Origin>(path)
+            .map_err(|e| format!("reading origin: {e}"))?;
         self.origin = o;
+        self.meta = meta;
         self.path = Some(path.to_path_buf());
         self.has_changes = false;
         Ok(())
     }
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        crate::io::write_ron(path, &self.origin).map_err(|e| format!("saving origin: {e}"))
+        crate::io::write_enveloped(path, &self.meta, self.origin.clone())
+            .map_err(|e| format!("saving origin: {e}"))
     }
     fn save_all(&mut self) -> Result<bool, String> {
         // Only write when dirty, and never invent a filename.
@@ -81,6 +88,10 @@ impl Editor for OriginEditor {
     fn generate_from_seed(&mut self, seed: u64) {
         self.origin.id = format!("origin_{:#x}", seed);
         self.origin.start_system = Seed::new(seed);
+        // Keep the envelope's identity aligned with the payload's.
+        self.meta.id = self.origin.id.clone();
+        self.meta.display_name = self.origin.name.clone();
+        self.meta.seed = seed;
         self.has_changes = true;
     }
     fn validate(&self) -> Vec<String> {

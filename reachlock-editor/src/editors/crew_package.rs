@@ -1,10 +1,13 @@
 use reachlock_core::crew::{CrewMemberEntry, CrewPackage};
 
 use super::super::app::{ContentType, Editor};
+use crate::io::EnvelopeMeta;
 
 pub struct CrewPackageEditor {
     path: Option<std::path::PathBuf>,
     pkg: CrewPackage,
+    /// Envelope fields the UI doesn't edit but the file must keep.
+    meta: EnvelopeMeta,
     has_changes: bool,
 }
 
@@ -26,14 +29,16 @@ impl Editor for CrewPackageEditor {
     }
 
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
-        self.pkg = crate::io::read_ron(path)?;
+        let (meta, pkg) = crate::io::read_enveloped::<CrewPackage>(path)?;
+        self.pkg = pkg;
+        self.meta = meta;
         self.path = Some(path.to_path_buf());
         self.has_changes = false;
         Ok(())
     }
 
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        crate::io::write_ron(path, &self.pkg)
+        crate::io::write_enveloped(path, &self.meta, self.pkg.clone())
     }
 
     fn validate(&self) -> Vec<String> {
@@ -98,6 +103,7 @@ impl Editor for CrewPackageEditor {
                 role: String::new(),
                 duty_room: None,
                 starting: true,
+                salary: 0,
             });
             changed = true;
         }
@@ -131,6 +137,7 @@ pub fn create_editor() -> Box<dyn Editor> {
     Box::new(CrewPackageEditor {
         path: None,
         pkg: default_pkg(),
+        meta: EnvelopeMeta::new_for("new_crew_package"),
         has_changes: false,
     })
 }

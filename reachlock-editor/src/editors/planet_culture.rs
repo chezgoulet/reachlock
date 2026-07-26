@@ -3,10 +3,13 @@
 use reachlock_core::generator::culture::PlanetCulture;
 
 use super::super::app::{ContentType, Editor};
+use crate::io::EnvelopeMeta;
 
 pub struct PlanetCultureEditor {
     path: Option<std::path::PathBuf>,
     culture: PlanetCulture,
+    /// Envelope fields the UI doesn't edit but the file must keep.
+    meta: EnvelopeMeta,
     has_changes: bool,
 }
 
@@ -92,6 +95,7 @@ impl PlanetCultureEditor {
                 dominant_values: vec![],
                 cultural_quirk: String::new(),
             },
+            meta: EnvelopeMeta::new_for("new_culture"),
             has_changes: false,
         }
     }
@@ -108,15 +112,17 @@ impl Editor for PlanetCultureEditor {
         self.has_changes
     }
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
-        let culture: PlanetCulture =
-            crate::io::read_ron(path).map_err(|e| format!("reading culture: {e}"))?;
+        let (meta, culture) = crate::io::read_enveloped::<PlanetCulture>(path)
+            .map_err(|e| format!("reading culture: {e}"))?;
         self.culture = culture;
+        self.meta = meta;
         self.path = Some(path.to_path_buf());
         self.has_changes = false;
         Ok(())
     }
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        crate::io::write_ron(path, &self.culture).map_err(|e| format!("saving culture: {e}"))
+        crate::io::write_enveloped(path, &self.meta, self.culture.clone())
+            .map_err(|e| format!("saving culture: {e}"))
     }
     fn save_all(&mut self) -> Result<bool, String> {
         // Only write when dirty, and never invent a filename: the old
@@ -146,6 +152,10 @@ impl Editor for PlanetCultureEditor {
             &fmap,
             20,
         );
+        // The envelope id is what the content tree indexes; keep it aligned.
+        self.meta.id = self.culture.cultural_id.clone();
+        self.meta.display_name = self.culture.cultural_id.clone();
+        self.meta.seed = seed;
         self.has_changes = true;
     }
     fn validate(&self) -> Vec<String> {

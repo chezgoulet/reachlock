@@ -1,6 +1,16 @@
 mod ai;
 mod app;
 mod browser;
+/// The reference validator (S67/S69). Compiled but not yet wired to any panel,
+/// so every public item here is currently unused.
+///
+/// It is declared anyway: without a `mod` line the compiler never sees a file,
+/// and this one had silently rotted out of sync with core — its matches were
+/// missing four `AssetType` variants and it read souls in a format that stopped
+/// existing. Type-checking it is what stops that happening again. Wiring it to
+/// a panel is its own sprint.
+#[allow(dead_code)]
+mod cross_ref;
 mod dialogs;
 pub mod editors;
 mod help_window;

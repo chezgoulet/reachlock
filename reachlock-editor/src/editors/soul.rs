@@ -134,6 +134,10 @@ fn string_list_ui(ui: &mut egui::Ui, items: &mut Vec<String>, add_label: &str) -
 
 struct Entry {
     soul: SoulFile,
+    /// Envelope fields the UI doesn't edit but the file must keep. Souls live
+    /// on disk as `ContentFile` envelopes; this tab used to read and write the
+    /// bare `SoulFile`, so it could not open a single authored soul.
+    meta: crate::io::EnvelopeMeta,
     path: Option<std::path::PathBuf>,
     dirty: bool,
 }
@@ -194,9 +198,10 @@ impl SoulEditor {
                 .collect();
             paths.sort();
             for path in paths {
-                if let Ok(soul) = crate::io::read_ron::<SoulFile>(&path) {
+                if let Ok((meta, soul)) = crate::io::read_enveloped::<SoulFile>(&path) {
                     entries.push(Entry {
                         soul,
+                        meta,
                         path: Some(path),
                         dirty: false,
                     });
@@ -206,6 +211,7 @@ impl SoulEditor {
         if entries.is_empty() {
             entries.push(Entry {
                 soul: blank_soul(),
+                meta: crate::io::EnvelopeMeta::new_for("new_soul"),
                 path: None,
                 // Not dirty: this is a placeholder so the editor has something
                 // to show, not authored content. Marking it dirty made
@@ -398,17 +404,19 @@ impl Editor for SoulEditor {
     }
 
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
-        let soul: SoulFile = crate::io::read_ron(path)?;
+        let (meta, soul) = crate::io::read_enveloped::<SoulFile>(path)?;
         if let Some(i) = self
             .entries
             .iter()
             .position(|e| e.path.as_deref() == Some(path))
         {
             self.entries[i].soul = soul;
+            self.entries[i].meta = meta;
             self.selected = i;
         } else {
             self.entries.push(Entry {
                 soul,
+                meta,
                 path: Some(path.to_path_buf()),
                 dirty: false,
             });
@@ -423,7 +431,7 @@ impl Editor for SoulEditor {
             .entries
             .get(self.selected)
             .ok_or_else(|| "no soul selected".to_string())?;
-        crate::io::write_ron(path, &entry.soul)
+        crate::io::write_enveloped(path, &entry.meta, entry.soul.clone())
     }
 
     fn validate(&self) -> Vec<String> {
@@ -473,6 +481,7 @@ impl Editor for SoulEditor {
                 if ui.button("New").clicked() {
                     self.entries.push(Entry {
                         soul: blank_soul(),
+                        meta: crate::io::EnvelopeMeta::new_for("new_soul"),
                         path: None,
                         dirty: true,
                     });
@@ -1062,8 +1071,10 @@ impl Editor for SoulEditor {
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.soul = inner;
         } else {
+            let meta = crate::io::EnvelopeMeta::new_for(&inner.id);
             self.entries.push(Entry {
                 soul: inner,
+                meta,
                 path: None,
                 dirty: true,
             });
@@ -1074,20 +1085,36 @@ impl Editor for SoulEditor {
     }
 
     fn snapshot(&self) -> Option<String> {
-        let state: Vec<(&SoulFile, &Option<std::path::PathBuf>, bool)> = self
+        let state: Vec<(
+            &SoulFile,
+            &crate::io::EnvelopeMeta,
+            &Option<std::path::PathBuf>,
+            bool,
+        )> = self
             .entries
             .iter()
-            .map(|e| (&e.soul, &e.path, e.dirty))
+            .map(|e| (&e.soul, &e.meta, &e.path, e.dirty))
             .collect();
         ron::to_string(&(state, self.selected)).ok()
     }
 
     fn restore_snapshot(&mut self, ron: &str) -> Result<(), String> {
-        let (state, selected): (Vec<(SoulFile, Option<std::path::PathBuf>, bool)>, usize) =
+        type SnapshotEntry = (
+            SoulFile,
+            crate::io::EnvelopeMeta,
+            Option<std::path::PathBuf>,
+            bool,
+        );
+        let (state, selected): (Vec<SnapshotEntry>, usize) =
             ron::from_str(ron).map_err(|e| e.to_string())?;
         self.entries = state
             .into_iter()
-            .map(|(soul, path, dirty)| Entry { soul, path, dirty })
+            .map(|(soul, meta, path, dirty)| Entry {
+                soul,
+                meta,
+                path,
+                dirty,
+            })
             .collect();
         self.selected = selected.min(self.entries.len().saturating_sub(1));
         // has_changes reflects whether anything is still dirty after undo.
@@ -1121,12 +1148,12 @@ impl Editor for SoulEditor {
                     entry.soul.id.clone()
                 };
                 let p = dir.join(format!("{stem}.ron"));
-                crate::io::write_ron(&p, &entry.soul)?;
+                crate::io::write_enveloped(&p, &entry.meta, entry.soul.clone())?;
                 entry.path = Some(p);
                 wrote += 1;
                 continue;
             };
-            crate::io::write_ron(path, &entry.soul)?;
+            crate::io::write_enveloped(path, &entry.meta, entry.soul.clone())?;
             wrote += 1;
         }
         if wrote == 0 {

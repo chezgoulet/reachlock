@@ -172,6 +172,11 @@ fn content_type_from_asset(asset: &reachlock_core::content::AssetType) -> Conten
         AssetType::Soul => ContentType::Soul,
         AssetType::HullFrame => ContentType::HullFrame,
         AssetType::RoomTemplates => ContentType::RoomTemplates,
+        AssetType::Origin => ContentType::Origin,
+        AssetType::CrewPackage => ContentType::CrewPackage,
+        // Mutation arcs are soul data; there is no tab of their own for them.
+        AssetType::SoulMutations => ContentType::Soul,
+        AssetType::Storyline => ContentType::Storyline,
     }
 }
 
@@ -241,6 +246,67 @@ fn extract_refs_from_content_file(file: &ContentFile, ct: &ContentType) -> Vec<R
         ContentPayload::Dungeon(_) => {}
         ContentPayload::Event(_) => {}
         ContentPayload::Recipe(_) => {}
+        ContentPayload::Origin(origin) => {
+            let mut push = |field: &str, target: &str| {
+                if !target.is_empty() {
+                    refs.push(Reference {
+                        source_id: source_id.clone(),
+                        source_type,
+                        field_path: field.into(),
+                        target_id: target.to_string(),
+                    });
+                }
+            };
+            push("starting_career", &origin.starting_career);
+            if let Some(hull) = &origin.ship_template {
+                push("ship_template", hull);
+            }
+            for delta in &origin.faction_deltas {
+                push("faction_deltas[].faction_id", &delta.faction_id);
+            }
+            for member in &origin.starting_crew {
+                // Procedural crew are generated from a seed and name no soul.
+                if let reachlock_core::content::CrewAssignment::Authored { soul_id, .. } = member {
+                    push("starting_crew[].soul_id", soul_id);
+                }
+            }
+        }
+        ContentPayload::CrewPackage(pkg) => {
+            for member in &pkg.members {
+                if !member.soul_id.is_empty() {
+                    refs.push(Reference {
+                        source_id: source_id.clone(),
+                        source_type,
+                        field_path: "members[].soul_id".into(),
+                        target_id: member.soul_id.clone(),
+                    });
+                }
+            }
+        }
+        ContentPayload::SoulMutations(mutations) => {
+            for mutation in mutations {
+                if !mutation.soul_id.is_empty() {
+                    refs.push(Reference {
+                        source_id: source_id.clone(),
+                        source_type,
+                        field_path: "soul_id".into(),
+                        target_id: mutation.soul_id.clone(),
+                    });
+                }
+            }
+        }
+        ContentPayload::Storylines(storylines) => {
+            for storyline in storylines {
+                if !storyline.faction.0.is_empty() {
+                    refs.push(Reference {
+                        source_id: source_id.clone(),
+                        source_type,
+                        field_path: "faction".into(),
+                        target_id: storyline.faction.0.clone(),
+                    });
+                }
+            }
+        }
     }
 
     refs
@@ -349,22 +415,20 @@ impl ContentIndexSnapshot {
     }
 }
 
+/// Collect every `ContentFile` envelope in the tree.
+///
+/// The directory list comes from `content::dirs` rather than a local copy.
+/// The local copy omitted `souls`, `origins`, `crews` and `storylines`, so the
+/// validator held no ids for any of them and reported every reference to a
+/// soul or an origin as dangling.
 fn scan_content_files(root: &Path, snapshot: &mut ContentIndexSnapshot) {
-    let dirs = [
-        "hulls",
-        "stations",
-        "contracts",
-        "ecosystems",
-        "careers",
-        "cultures",
-        "themes",
-        "tropes",
-        "encounters",
-        "dialogues",
-        "dungeons",
-        "events",
-        "recipes",
-    ];
+    // `hulls` is Mixed rather than Envelope — half its files are bare ship
+    // templates — but it does hold envelopes, so it is scanned too. Files that
+    // are not envelopes simply don't parse and are skipped.
+    let dirs: Vec<&str> = reachlock_core::content::dirs::envelope_dirs()
+        .into_iter()
+        .chain(std::iter::once("hulls"))
+        .collect();
     for dir in dirs {
         let path = root.join(dir);
         let Ok(entries) = std::fs::read_dir(&path) else {
@@ -381,6 +445,11 @@ fn scan_content_files(root: &Path, snapshot: &mut ContentIndexSnapshot) {
     }
 }
 
+/// Index soul ids and their references.
+///
+/// Souls are `ContentFile` envelopes on disk. This used to read them as bare
+/// `SoulFile`s, so every parse failed silently and the validator held no soul
+/// ids at all — which made every reference to a soul look dangling.
 fn scan_typed_souls(root: &Path, snapshot: &mut ContentIndexSnapshot) {
     let path = root.join("souls");
     let Ok(entries) = std::fs::read_dir(&path) else {
@@ -392,7 +461,7 @@ fn scan_typed_souls(root: &Path, snapshot: &mut ContentIndexSnapshot) {
     for entry in entries.flatten() {
         let p = entry.path();
         if p.extension().is_some_and(|e| e == "ron") {
-            if let Ok(soul) = crate::io::read_ron::<SoulFile>(&p) {
+            if let Ok((_, soul)) = crate::io::read_enveloped::<SoulFile>(&p) {
                 ids.push((soul.id.clone(), soul.name.clone()));
                 let soul_refs = extract_refs_from_soul(&soul, &soul.id, ct);
                 refs.extend(soul_refs);

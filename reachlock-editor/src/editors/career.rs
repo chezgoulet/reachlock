@@ -3,10 +3,13 @@
 use reachlock_core::career::{CareerPath, PathType};
 
 use super::super::app::{ContentType, Editor};
+use crate::io::EnvelopeMeta;
 
 pub struct CareerEditor {
     path: Option<std::path::PathBuf>,
     career: CareerPath,
+    /// Envelope fields the UI doesn't edit but the file must keep.
+    meta: EnvelopeMeta,
     has_changes: bool,
 }
 
@@ -41,6 +44,7 @@ impl CareerEditor {
                 perks: vec![],
                 conflicting_paths: vec![],
             },
+            meta: EnvelopeMeta::new_for("new_career"),
             has_changes: false,
         }
     }
@@ -57,15 +61,17 @@ impl Editor for CareerEditor {
         self.has_changes
     }
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
-        let career: CareerPath =
-            crate::io::read_ron(path).map_err(|e| format!("reading career: {e}"))?;
+        let (meta, career) = crate::io::read_enveloped::<CareerPath>(path)
+            .map_err(|e| format!("reading career: {e}"))?;
         self.career = career;
+        self.meta = meta;
         self.path = Some(path.to_path_buf());
         self.has_changes = false;
         Ok(())
     }
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        crate::io::write_ron(path, &self.career).map_err(|e| format!("saving career: {e}"))
+        crate::io::write_enveloped(path, &self.meta, self.career.clone())
+            .map_err(|e| format!("saving career: {e}"))
     }
     fn save_all(&mut self) -> Result<bool, String> {
         // Only write when dirty, and never invent a filename: the old
@@ -84,6 +90,10 @@ impl Editor for CareerEditor {
     fn generate_from_seed(&mut self, seed: u64) {
         self.career.id = format!("gen_career_{:#x}", seed);
         self.career.name = format!("Generated Career ({})", seed);
+        // The envelope id is what the content tree indexes; keep it aligned.
+        self.meta.id = self.career.id.clone();
+        self.meta.display_name = self.career.name.clone();
+        self.meta.seed = seed;
         self.has_changes = true;
     }
     fn validate(&self) -> Vec<String> {

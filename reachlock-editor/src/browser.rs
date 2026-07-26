@@ -31,7 +31,7 @@ pub enum BrowserAction {
 /// file_backed_type` in this module enforces it. An editor missing from this
 /// list is unreachable: its directory is never scanned, so its files never show
 /// up in the tree, no matter how complete the editor itself is.
-pub(crate) const FILE_TYPES: [ContentType; 25] = [
+pub(crate) const FILE_TYPES: [ContentType; 26] = [
     ContentType::ChartedSystem,
     ContentType::GateNetwork,
     ContentType::HullFrame,
@@ -47,6 +47,9 @@ pub(crate) const FILE_TYPES: [ContentType; 25] = [
     ContentType::Item,
     ContentType::Contract,
     ContentType::Origin,
+    // S120: the crew editor shipped with no `mod` line, no ContentType and no
+    // browser entry, so nothing in the app could reach it.
+    ContentType::CrewPackage,
     // Wave 9 / S55 types. These were registered in the editor registry but
     // absent from the browser and File > New, which made ten working editors
     // reachable only through File > Open with a hand-typed path.

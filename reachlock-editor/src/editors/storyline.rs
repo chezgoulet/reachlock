@@ -115,6 +115,10 @@ fn trigger_node_ui(
 pub struct StorylineEditor {
     storylines: Vec<Storyline>,
     path: Option<std::path::PathBuf>,
+    /// Envelope fields the UI doesn't edit but the file must keep. One
+    /// envelope carries the whole storyline list, the way `room_templates.ron`
+    /// carries the whole template set.
+    meta: crate::io::EnvelopeMeta,
     selected: usize,
     search: String,
     has_changes: bool,
@@ -137,13 +141,19 @@ impl StorylineEditor {
         let default_path = crate::app::content_root()
             .join(ContentType::Storyline.directory())
             .join("compact_arc.ron");
-        let (storylines, path) = match crate::io::read_ron::<Vec<Storyline>>(&default_path) {
-            Ok(s) if !s.is_empty() => (s, Some(default_path.to_path_buf())),
-            _ => (vec![blank_storyline()], None),
-        };
+        let (storylines, meta, path) =
+            match crate::io::read_enveloped::<Vec<Storyline>>(&default_path) {
+                Ok((meta, s)) if !s.is_empty() => (s, meta, Some(default_path.to_path_buf())),
+                _ => (
+                    vec![blank_storyline()],
+                    crate::io::EnvelopeMeta::new_for("new_storyline"),
+                    None,
+                ),
+            };
         StorylineEditor {
             storylines,
             path,
+            meta,
             selected: 0,
             search: String::new(),
             has_changes: false,
@@ -165,10 +175,12 @@ impl Editor for StorylineEditor {
     }
 
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
-        self.storylines = crate::io::read_ron(path)?;
+        let (meta, storylines) = crate::io::read_enveloped::<Vec<Storyline>>(path)?;
+        self.storylines = storylines;
         if self.storylines.is_empty() {
             self.storylines.push(blank_storyline());
         }
+        self.meta = meta;
         self.path = Some(path.to_path_buf());
         self.selected = 0;
         self.has_changes = false;
@@ -176,7 +188,7 @@ impl Editor for StorylineEditor {
     }
 
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        crate::io::write_ron(path, &self.storylines)
+        crate::io::write_enveloped(path, &self.meta, self.storylines.clone())
     }
 
     fn validate(&self) -> Vec<String> {

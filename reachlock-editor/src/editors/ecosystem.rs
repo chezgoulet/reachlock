@@ -3,10 +3,13 @@
 use reachlock_core::generator::Ecosystem;
 
 use super::super::app::{ContentType, Editor};
+use crate::io::EnvelopeMeta;
 
 pub struct EcosystemEditor {
     path: Option<std::path::PathBuf>,
     ecosystem: Ecosystem,
+    /// Envelope fields the UI doesn't edit but the file must keep.
+    meta: EnvelopeMeta,
     has_changes: bool,
 }
 
@@ -28,6 +31,7 @@ impl EcosystemEditor {
                     reachlock_core::generator::ecosystem::EcosystemComplexity::Barren,
                 baseline_recorded: false,
             },
+            meta: EnvelopeMeta::new_for("new_ecosystem"),
             has_changes: false,
         }
     }
@@ -44,15 +48,17 @@ impl Editor for EcosystemEditor {
         self.has_changes
     }
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
-        let eco: Ecosystem =
-            crate::io::read_ron(path).map_err(|e| format!("reading ecosystem: {e}"))?;
+        let (meta, eco) = crate::io::read_enveloped::<Ecosystem>(path)
+            .map_err(|e| format!("reading ecosystem: {e}"))?;
         self.ecosystem = eco;
+        self.meta = meta;
         self.path = Some(path.to_path_buf());
         self.has_changes = false;
         Ok(())
     }
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        crate::io::write_ron(path, &self.ecosystem).map_err(|e| format!("saving ecosystem: {e}"))
+        crate::io::write_enveloped(path, &self.meta, self.ecosystem.clone())
+            .map_err(|e| format!("saving ecosystem: {e}"))
     }
     fn save_all(&mut self) -> Result<bool, String> {
         // Only write when dirty, and never invent a filename: the old
@@ -77,6 +83,10 @@ impl Editor for EcosystemEditor {
         };
         self.ecosystem =
             reachlock_core::generator::generate_ecosystem(seed, vec![Biome::Frontier], params);
+        // Ecosystems have no id of their own; the envelope carries the identity.
+        self.meta.id = format!("ecosystem_{:#x}", seed);
+        self.meta.display_name = self.meta.id.clone();
+        self.meta.seed = seed;
         self.has_changes = true;
     }
     fn validate(&self) -> Vec<String> {

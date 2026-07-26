@@ -74,6 +74,9 @@ pub enum ContentType {
     Recipe,
     // S79 — Origin starting packages.
     Origin,
+    // S120 — authored crew packages. The editor file existed since S120 but
+    // had no `mod` line and no ContentType, so nothing could reach it.
+    CrewPackage,
 }
 
 /// The `File > New` menu, as data. The menu bar renders this and
@@ -101,6 +104,7 @@ pub const NEW_MENU_GROUPS: &[(&str, &[ContentType])] = &[
             ContentType::EnemyArchetype,
             ContentType::Career,
             ContentType::Origin,
+            ContentType::CrewPackage,
         ],
     ),
     (
@@ -174,6 +178,7 @@ impl ContentType {
             ContentType::Event,
             ContentType::Recipe,
             ContentType::Origin,
+            ContentType::CrewPackage,
         ]
     }
 
@@ -206,6 +211,7 @@ impl ContentType {
             ContentType::Event => "Scripted Event",
             ContentType::Recipe => "Crafting Recipe",
             ContentType::Origin => "Origin",
+            ContentType::CrewPackage => "Crew Package",
         }
     }
 
@@ -241,6 +247,7 @@ impl ContentType {
             ContentType::Event => "events",
             ContentType::Recipe => "recipes",
             ContentType::Origin => "origins",
+            ContentType::CrewPackage => "crews",
         }
     }
 
@@ -470,6 +477,10 @@ pub fn build_default_registry() -> EditorRegistry {
     r.register(ContentType::Event, crate::editors::event::create_editor);
     r.register(ContentType::Recipe, crate::editors::recipe::create_editor);
     r.register(ContentType::Origin, crate::editors::origin::create_editor);
+    r.register(
+        ContentType::CrewPackage,
+        crate::editors::crew_package::create_editor,
+    );
     r
 }
 

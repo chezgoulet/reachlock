@@ -66,6 +66,9 @@ pub fn schema_id(ct: &ContentType) -> Option<&'static str> {
         ContentType::Event => "event",
         ContentType::Recipe => "recipe",
         ContentType::Origin => "origin",
+        // No crew_package schema is authored yet, so there is nothing to
+        // validate against. Structural validation still runs via `validate()`.
+        ContentType::CrewPackage => return None,
         // Previewers persist nothing; no schema applies.
         ContentType::ItemBrowser | ContentType::SpriteViewer => return None,
     })

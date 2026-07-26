@@ -231,6 +231,11 @@ pub fn type_context(ct: &ContentType) -> &'static str {
              deltas, starting credits, ship template and seed, gear, crew assignments, known \
              systems, start location, and opening log entries."
         }
+        ContentType::CrewPackage => {
+            "A named set of crew members that travel together, each entry naming a soul id, a \
+             role, an optional duty room, whether they start with the player, and a salary \
+             demand. Wrapped in a ContentFile envelope with asset_type \"crew_package\"."
+        }
         ContentType::ItemBrowser | ContentType::SpriteViewer => {
             "A live preview with nothing persisted."
         }
