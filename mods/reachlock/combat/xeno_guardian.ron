@@ -1,0 +1,15 @@
+// Xeno Guardian — a xenotype bred for defence.
+// Slow, tough, short-range but hits very hard.
+HostileArchetype(
+    id: "xeno_guardian",
+    display_name: "Xeno Guardian",
+    hp: 24000,
+    speed: 128,
+    light_attack: (startup_ticks: 12, active_ticks: 6, recovery_ticks: 18, damage: 1536, range: 1536),
+    heavy_attack: (startup_ticks: 20, active_ticks: 8, recovery_ticks: 28, damage: 3072, range: 2048),
+    block: (active_ticks: 24, cooldown_ticks: 36, parry_ticks: 6),
+    dodge: (i_frame_ticks: 4, recovery_ticks: 16, distance: 1536),
+    chase_radius: 6144,
+    disengage_radius: 10240,
+    flee_hp_frac: 102,
+)

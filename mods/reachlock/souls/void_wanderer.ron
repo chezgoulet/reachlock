@@ -1,0 +1,61 @@
+// Void Wanderer — voidborn, space-dwelling being (docs/REACHLOCK-V2-SPEC.md §4).
+// First authored Voidborn soul. Elongated frame, desaturated palette, aura halo.
+(
+    id: "void_wanderer",
+    display_name: "Void Wanderer",
+    asset_type: soul,
+    seed: 7324196085125640,
+    universe: "all",
+    priority: authoritative,
+    payload: soul((
+        id: "void_wanderer",
+        name: "Void Wanderer",
+        species: voidborn,
+        portrait_id: "",
+        identity: (
+            origin: "Born in the drift between systems — no planet, no gravity well, no horizon.",
+            faction_affiliation: "None — independent of all faction structures",
+            role: "Navigator & Signal Interpreter",
+            public_bio: "They read the resonance of jump gates. They hear the echo of the network in ways machine sensors cannot reproduce. Their presence in a cockpit shortens route calculations by measurable increments.",
+        ),
+        personality: (
+            traits: ["Patient", "Observant", "Detached", "Curious"],
+            values: ["Resonance", "Stillness", "Accuracy"],
+            speaking_style: lyrical,
+            quirks: [
+                "Pauses mid-sentence to track sounds no one else can hear",
+                "Prefers unpressurized compartments when off-duty",
+                "Describes jump transitions as musical intervals",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 256,
+            triggers: [],
+        ),
+        memory_tree: [],
+        relationship_graph: [],
+        goals: [
+            (id: "map_the_resonance", priority: constant, description: "Chart the remaining unvisited gates by their harmonic signature."),
+        ],
+        breaking_points: [],
+        contracts: [],
+        backstory: "Voidborn are not born on planets. They emerge in the interstitial spaces — the cold, the radiation, the long silences between gate transits. This one has been riding the network alone for longer than most crews have existed, reading the hum of each gate like a language. They do not remember a surface. They do not miss it.",
+        secrets: [],
+        deflections: [
+            "The resonance in this sector is... unusual. I need to listen.",
+            "I was not born, captain. I emerged. There is a difference.",
+            "That question presumes a frame of reference I do not share.",
+        ],
+        look: Some((
+            species: voidborn,
+            hair_style: Some(0),
+            hair_color: Some((180, 200, 230)),
+            skin_color: Some((190, 200, 215)),
+            shirt_color: Some((60, 70, 90)),
+            pants_color: Some((40, 45, 60)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((80, 85, 100)),
+        )),
+    )),
+)
