@@ -7578,6 +7578,7 @@ name = "reachlock-editor"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "cpal",
  "eframe",
  "egui",
  "jsonschema",

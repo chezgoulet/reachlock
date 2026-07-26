@@ -1,6 +1,7 @@
 mod agent;
 mod ai;
 mod app;
+mod audio;
 mod browser;
 mod command_palette;
 mod cross_ref;

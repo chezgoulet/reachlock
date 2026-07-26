@@ -309,7 +309,13 @@ pub fn generate_themed_music(
         let segment_end = bar_start_tick + ticks_per_bar;
 
         while tick < segment_end && tick < total_ticks {
-            let mut n = if mask.0 & VariationMask::PHRASE_SWAP != 0 {
+            // The phrase-swap branch samples the theme's own seed notes, so it
+            // only applies when there are some. An empty note list is a normal
+            // state — it is what a newly authored theme has, and what the
+            // editor's "new theme" produces — and this indexed straight into
+            // it and panicked. A theme with no seed notes still has a scale
+            // and a tempo, so it falls through and generates from those.
+            let mut n = if mask.0 & VariationMask::PHRASE_SWAP != 0 && !theme.notes.is_empty() {
                 // Pick a random note from the theme at a rotated position.
                 let idx = rng.next_below(theme.notes.len() as u64) as usize;
                 theme.notes[idx]
@@ -429,6 +435,27 @@ pub fn to_wav_bytes(audio: &GeneratedAudio) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A theme with no seed notes is a normal state — it is what a newly
+    /// authored theme has — and `PHRASE_SWAP` indexed straight into the empty
+    /// list. The editor's preview crashed on every new theme, and so would
+    /// the game on an authored theme whose notes had not been filled in yet.
+    #[test]
+    fn an_empty_theme_generates_instead_of_panicking() {
+        let theme = Theme {
+            id: "empty".into(),
+            notes: Vec::new(),
+            scale: Scale::MinorPentatonic,
+            bpm_range: (90, 120),
+            // Every variation on, so the phrase-swap branch is definitely taken.
+            allowed_variations: VariationMask(u16::MAX),
+        };
+        let intent = generate_themed_music(7, Mood::Calm, &theme, 4, 2);
+        assert!(
+            !intent.notes.is_empty(),
+            "an empty seed theme should still generate from its scale"
+        );
+    }
     use super::*;
 
     #[test]

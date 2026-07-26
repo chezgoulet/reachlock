@@ -26,3 +26,7 @@ similar = "2"
 # x11grab and the GNOME portal are both blocked on this Wayland box.
 png = "0.17"
 base64 = "0.22"
+# Theme preview playback. Already in the workspace via reachlock-client, so
+# this costs no new compilation; a machine with no audio device degrades to an
+# error message rather than failing the build or the editor.
+cpal = "0.15"
