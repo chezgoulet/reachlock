@@ -732,7 +732,7 @@ fn paint_hair(px: &mut Px, dir: usize, style: Hair, hair: Rgba) {
 /// 16×26 character in SNES-JRPG proportions: oversized head, layered torso,
 /// short legs. `frame` 1 is mid-stride. Robots, voidborn, and xenotypes take
 /// their own painters.
-fn paint_character(dir: usize, frame: usize, look: Look) -> Px {
+pub fn paint_character(dir: usize, frame: usize, look: Look) -> Px {
     if look.body == BodyKind::Robot {
         return paint_robot(dir, frame, look);
     }

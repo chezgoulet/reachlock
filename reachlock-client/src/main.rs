@@ -376,6 +376,7 @@ fn main() {
             character_creation::character_creation_input,
             character_creation::update_step_header,
             character_creation::rebuild_body,
+            character_creation::update_character_preview,
             character_creation::blink_caret,
         )
             .chain()

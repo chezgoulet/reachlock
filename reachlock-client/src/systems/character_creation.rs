@@ -352,6 +352,10 @@ pub struct StepDot(pub usize);
 #[derive(Component)]
 pub struct Caret(pub Timer);
 
+/// The portrait of the character being created.
+#[derive(Component)]
+pub struct CharacterPreview;
+
 // ── Origins ─────────────────────────────────────────────────────────────
 
 /// Every origin the player can start from, read from authored content.
@@ -512,20 +516,61 @@ pub fn spawn_creation_ui(
                         header.spawn((StepHeading, theme::text("heading", STEP_LABELS[0])));
                     });
 
-                // Body: rebuilt on every state change.
-                frame.spawn((
-                    CreationBody,
-                    theme::node_with(
+                // Body: the fields column, rebuilt on every state change, and
+                // beside it a portrait of the character being made. The
+                // portrait lives outside `CreationBody` so the rebuild does
+                // not despawn and re-create an image every keystroke.
+                frame
+                    .spawn(theme::node_with(
                         "frame.body",
                         Node {
-                            flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Stretch,
+                            flex_direction: FlexDirection::Row,
+                            align_items: AlignItems::FlexStart,
+                            column_gap: Val::Px(24.0),
                             flex_grow: 1.0,
                             overflow: Overflow::clip_y(),
                             ..default()
                         },
-                    ),
-                ));
+                    ))
+                    .with_children(|body| {
+                        body.spawn((
+                            CreationBody,
+                            theme::node_with(
+                                "row",
+                                Node {
+                                    flex_direction: FlexDirection::Column,
+                                    align_items: AlignItems::Stretch,
+                                    flex_grow: 1.0,
+                                    padding: UiRect::ZERO,
+                                    ..default()
+                                },
+                            ),
+                        ));
+                        body.spawn(theme::node_with(
+                            "row",
+                            Node {
+                                flex_direction: FlexDirection::Column,
+                                align_items: AlignItems::Center,
+                                row_gap: Val::Px(8.0),
+                                padding: UiRect::ZERO,
+                                ..default()
+                            },
+                        ))
+                        .with_children(|col| {
+                            col.spawn((
+                                CharacterPreview,
+                                ImageNode::default(),
+                                Node {
+                                    // 16×26 source art at 6× — an integer
+                                    // scale, so the pixels stay square.
+                                    width: Val::Px(96.0),
+                                    height: Val::Px(156.0),
+                                    ..default()
+                                },
+                            ));
+                            col.spawn(theme::text("hint", "you"));
+                        });
+                    });
 
                 // Footer: the controls, stated plainly.
                 frame
@@ -951,6 +996,34 @@ fn spawn_choice(parent: &mut ChildSpawnerCommands, label: &str, detail: &str, fo
                 row.spawn(theme::text("muted", format!("    {detail_line}")));
             }
         });
+}
+
+/// Repaint the portrait whenever the character changes.
+///
+/// Creation used to show only hex codes for skin, hair and clothing, so the
+/// one screen whose entire job is choosing how you look never showed you.
+/// The sprite comes from the same generator the game renders you with in an
+/// interior, so what you pick here is what you get.
+pub fn update_character_preview(
+    creation: Res<CharacterCreationState>,
+    mut images: ResMut<Assets<Image>>,
+    mut preview: Query<&mut ImageNode, With<CharacterPreview>>,
+) {
+    if !creation.is_changed() {
+        return;
+    }
+    let Ok(mut node) = preview.single_mut() else {
+        return;
+    };
+    let look = crate::pixel::look_from_config_or_seed(creation.look.clone(), creation.sprite_seed);
+    let image = crate::pixel::paint_character(crate::pixel::DIR_DOWN, 0, look).into_image();
+
+    // Drop the previous portrait. Without this, every keystroke that touches
+    // the look leaks a texture for the lifetime of the session.
+    let previous = std::mem::replace(&mut node.image, images.add(image));
+    if previous != Handle::default() {
+        images.remove(&previous);
+    }
 }
 
 /// Blink the text-entry caret so an empty field still reads as focused.
