@@ -1478,7 +1478,7 @@ pub fn cockpit_seat_spawn() -> Option<(usize, Vec2)> {
 /// Built-in look configs for canonical crew members who don't yet have
 /// authored soul files. Preserves the visual identity from the old
 /// `crew_look()` until S77 ships their full soul files.
-fn builtin_crew_config(id: &str) -> Option<CharacterLookConfig> {
+fn builtin_crew_config(id: &str) -> Option<reachlock_core::generator::sprite::CharacterLookConfig> {
     use reachlock_core::generator::sprite::CharacterLookConfig;
     let cfg = || CharacterLookConfig {
         species: Species::Human,
@@ -1557,7 +1557,7 @@ fn soul_body_kind(souls: &SoulRegistry, id: &str) -> pixel::BodyKind {
     match souls.files.get(id) {
         Some(s) => pixel::body_kind_from_species(s.species),
         None => pixel::BodyKind::Human,
-    }
+    };
     if let Some(cfg) = builtin_crew_config(id) {
         return pixel::body_kind_from_species(cfg.species);
     }

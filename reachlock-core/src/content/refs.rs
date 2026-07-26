@@ -119,6 +119,9 @@ impl RefKind {
             AssetType::HullFrame => RefKind::HullFrame,
             AssetType::RoomTemplates => RefKind::RoomTemplates,
             AssetType::Origin => RefKind::Origin,
+            AssetType::CrewPackage => RefKind::Crew,
+            AssetType::SoulMutations => RefKind::Soul,
+            AssetType::Storyline => RefKind::Encounter,
         }
     }
 }
