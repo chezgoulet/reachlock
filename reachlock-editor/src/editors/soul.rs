@@ -434,6 +434,13 @@ impl Editor for SoulEditor {
         crate::io::write_enveloped(path, &entry.meta, entry.soul.clone())
     }
 
+    /// Every loaded soul, not just the selected one — the tab holds the
+    /// whole directory, and a reference report that only covered the visible
+    /// entry would call the rest clean without looking.
+    fn document_ids(&self) -> Vec<String> {
+        self.entries.iter().map(|e| e.soul.id.clone()).collect()
+    }
+
     fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
         let Some(entry) = self.entries.get(self.selected) else {

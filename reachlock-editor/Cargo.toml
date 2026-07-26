@@ -19,3 +19,5 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 # native-only desktop tool (eframe/egui).
 rfd = "0.15"
 tracing = "0.1"
+# Line diffing for the save-preview window (File > Preview Changes).
+similar = "2"

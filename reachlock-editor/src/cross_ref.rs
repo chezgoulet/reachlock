@@ -27,6 +27,7 @@ pub struct IdMeta {
     pub content_type: ContentType,
 }
 
+#[derive(Clone)]
 pub struct CrossReferenceIndex {
     pub incoming: HashMap<String, Vec<Reference>>,
     pub outgoing: HashMap<String, Vec<Reference>>,
@@ -410,6 +411,7 @@ impl ContentIndexSnapshot {
         scan_typed_archetypes(root, &mut snapshot);
         scan_typed_locations(root, &mut snapshot);
         scan_typed_gates(root, &mut snapshot);
+        scan_ship_templates(root, &mut snapshot);
 
         snapshot
     }
@@ -582,6 +584,31 @@ fn scan_typed_locations(root: &Path, snapshot: &mut ContentIndexSnapshot) {
     }
 }
 
+/// Index the bare `ShipTemplate` files in `hulls/`.
+///
+/// `hulls/` is a mixed directory: five `ContentFile` envelopes and ten bare
+/// ship templates the client reads through its own catalog. `scan_content_files`
+/// only sees the envelopes, so without this every origin's `ship_template`
+/// pointed at an id the index had never heard of and the reference report
+/// listed eight false positives. `content::refs::scan_hulls` does the same
+/// two-step in core.
+fn scan_ship_templates(root: &Path, snapshot: &mut ContentIndexSnapshot) {
+    let path = root.join("hulls");
+    let Ok(entries) = std::fs::read_dir(&path) else {
+        return;
+    };
+    let ct = ContentType::HullMesh;
+    let ids = snapshot.typed_ids.entry(ct).or_default();
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.extension().is_some_and(|e| e == "ron") {
+            if let Ok(template) = crate::io::read_ron::<reachlock_core::crew::ShipTemplate>(&p) {
+                ids.push((template.id.clone(), template.name.clone()));
+            }
+        }
+    }
+}
+
 fn scan_typed_gates(root: &Path, snapshot: &mut ContentIndexSnapshot) {
     let path = root.join("gate_network");
     let Ok(entries) = std::fs::read_dir(&path) else {
@@ -680,5 +707,71 @@ mod tests {
         assert_eq!(broken.len(), 1);
         assert_eq!(broken[0].0, "broken_soul");
         assert_eq!(broken[0].1, "missing_faction");
+    }
+}
+
+#[cfg(test)]
+mod content_tree_tests {
+    use super::*;
+
+    fn content_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root")
+            .join("mods/reachlock")
+    }
+
+    fn index() -> CrossReferenceIndex {
+        let snapshot = ContentIndexSnapshot::from_content_root(&content_root());
+        CrossReferenceIndex::build(&snapshot)
+    }
+
+    /// The scanner must actually find the tree. It used to read souls as bare
+    /// `SoulFile`s while they were envelopes on disk, so it indexed zero souls
+    /// and called every reference to one broken.
+    #[test]
+    fn the_index_sees_the_authored_tree() {
+        let index = index();
+        for id in ["tib", "bardo", "boris", "loup_garou_veteran", "compact"] {
+            assert!(
+                index.is_known(id),
+                "`{id}` is authored content but the index does not know it; \
+                 ids found: {}",
+                index.all_ids.len()
+            );
+        }
+        assert!(
+            index.all_ids.len() >= 60,
+            "expected the index to hold most of the tree, got {}",
+            index.all_ids.len()
+        );
+    }
+
+    /// The editor's reference view and `reachlock content check` look at the
+    /// same tree and must agree that it is clean. If this fails while
+    /// `make check-content` passes, the two have drifted again.
+    #[test]
+    fn the_authored_tree_has_no_broken_references() {
+        let broken = index().broken_references();
+        assert!(
+            broken.is_empty(),
+            "the editor reports broken references that `content check` does not: {:?}",
+            broken
+                .iter()
+                .map(|(s, t, f)| format!("{s} → {t} (via {f})"))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// Find Usages has to return something for a soul the crew package names,
+    /// or the panel is a search box over an empty index.
+    #[test]
+    fn find_usages_resolves_a_real_reference() {
+        let index = index();
+        let usages = index.usages_of("tib");
+        assert!(
+            !usages.is_empty(),
+            "nothing references `tib`, but the Loup-Garou crew package names them"
+        );
     }
 }

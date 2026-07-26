@@ -132,6 +132,13 @@ impl Editor for ContractEditor {
         "Contract Editor"
     }
 
+    /// Every loaded entry. The tab title is a fixed label, so without this the
+    /// default (title-as-id) would match nothing and quietly report the whole
+    /// tab as having no broken references.
+    fn document_ids(&self) -> Vec<String> {
+        self.entries.iter().map(|e| e.contract.id.clone()).collect()
+    }
+
     fn content_type(&self) -> ContentType {
         ContentType::Contract
     }

@@ -14,7 +14,6 @@ pub struct TemplateEntry {
     pub path: PathBuf,
 }
 
-#[expect(dead_code)]
 impl TemplateManager {
     pub fn new() -> Self {
         let templates_dir = find_templates_dir();

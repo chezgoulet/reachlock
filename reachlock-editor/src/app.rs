@@ -316,6 +316,43 @@ pub trait Editor {
     }
 
     fn validate(&self) -> Vec<String>;
+
+    /// The content ids this document defines.
+    ///
+    /// Defaults to the tab title, which single-document editors set to their
+    /// payload's id (`&self.theme.id`, `&self.origin.id`, …). Editors whose
+    /// title is a fixed label rather than an id return nothing useful here and
+    /// so contribute no cross-reference findings — silent is the right failure
+    /// for a hint: a wrong id would report references that are actually fine.
+    /// Multi-document editors override to list every loaded entry.
+    fn document_ids(&self) -> Vec<String> {
+        vec![self.title().to_string()]
+    }
+
+    /// Outgoing references from this document that point at an id nothing in
+    /// the content tree defines, as `(field_path, message)`.
+    ///
+    /// Provided, not required: it reads [`Editor::document_ids`] against the
+    /// index the shell built, so a tab gets reference checking without
+    /// implementing anything.
+    fn validate_cross_refs(
+        &self,
+        index: &crate::cross_ref::CrossReferenceIndex,
+    ) -> Vec<(String, String)> {
+        let ids = self.document_ids();
+        index
+            .broken_references()
+            .into_iter()
+            .filter(|(source_id, _, _)| ids.iter().any(|id| id == source_id))
+            .map(|(_, target_id, field_path)| {
+                (
+                    field_path.clone(),
+                    format!("{field_path} → `{target_id}` is not defined anywhere"),
+                )
+            })
+            .collect()
+    }
+
     /// Draw the editor into the region the shell hands it.
     ///
     /// Takes a `Ui`, not a `Context`: when this took `&egui::Context` every

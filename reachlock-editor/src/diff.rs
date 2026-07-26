@@ -1,6 +1,5 @@
 use std::path::Path;
 
-#[expect(dead_code)]
 pub struct DiffResult {
     pub old: Vec<String>,
     pub new: Vec<String>,
@@ -63,8 +62,20 @@ pub fn render_diff_ui(ui: &mut egui::Ui, diff: &DiffResult) {
 
     if diff.old.is_empty() {
         ui.label("New file — will be created on save.");
+        ui.weak(format!("{} line(s) will be written.", diff.new.len()));
         return;
     }
+
+    // Lead with the shape of the change: a save that adds two lines and one
+    // that rewrites the file look identical until you scroll.
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("On disk").strong());
+        ui.weak(format!("{} lines", diff.old.len()));
+        ui.label("→");
+        ui.label(egui::RichText::new("After save").strong());
+        ui.weak(format!("{} lines", diff.new.len()));
+    });
+    ui.separator();
 
     egui::ScrollArea::vertical()
         .max_height(400.0)

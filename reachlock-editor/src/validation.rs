@@ -1,18 +1,11 @@
 use crate::app::Editor;
 use crate::cross_ref::CrossReferenceIndex;
 
-#[expect(dead_code)]
-pub fn validate_cross_refs(
-    editor: &dyn Editor,
-    _index: &CrossReferenceIndex,
-) -> Vec<(String, String)> {
-    let mut issues = Vec::new();
-    let existing = editor.validate();
-
-    issues.extend(existing.into_iter().map(|msg| (String::new(), msg)));
-
-    issues
-}
+// A free `validate_cross_refs(editor, index)` used to live here and ignored
+// the index entirely — it just re-wrapped `editor.validate()`. It is now a
+// provided method on the `Editor` trait that actually consults the index, via
+// `Editor::document_ids`. Two functions with the same name and different
+// behaviour is worse than one.
 
 pub fn broken_reference_report(
     editors: &[(String, &dyn Editor)],

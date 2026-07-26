@@ -1,17 +1,10 @@
 mod ai;
 mod app;
 mod browser;
-/// The reference validator (S67/S69). Compiled but not yet wired to any panel,
-/// so every public item here is currently unused.
-///
-/// It is declared anyway: without a `mod` line the compiler never sees a file,
-/// and this one had silently rotted out of sync with core — its matches were
-/// missing four `AssetType` variants and it read souls in a format that stopped
-/// existing. Type-checking it is what stops that happening again. Wiring it to
-/// a panel is its own sprint.
-#[allow(dead_code)]
+mod command_palette;
 mod cross_ref;
 mod dialogs;
+mod diff;
 pub mod editors;
 mod help_window;
 mod io;
@@ -20,6 +13,8 @@ mod preview;
 mod schema;
 mod seed_workflow;
 mod settings_window;
+mod template_manager;
+mod validation;
 
 use std::sync::mpsc::channel;
 use std::sync::Arc;
@@ -82,12 +77,33 @@ struct EditorApp {
     /// File > Validate All results: (tab name, issues) per editor, shown in
     /// a window until dismissed. Empty issue lists mean the tab is clean.
     validation_report: Option<Vec<(String, Vec<String>)>>,
+    /// Ctrl+Shift+P command palette (S67).
+    palette: command_palette::CommandPalette,
+    /// Bundled starting-point documents for File > New from Template.
+    templates: template_manager::TemplateManager,
+    /// Cross-reference index over the content tree (S69). Built on demand and
+    /// dropped when the content root moves, since it is a snapshot of disk.
+    cross_refs: Option<cross_ref::CrossReferenceIndex>,
+    /// Find Usages query and its last results.
+    find_usages: Option<FindUsages>,
+    /// Save preview: the tab it was taken from and the computed diff.
+    diff_preview: Option<(String, diff::DiffResult)>,
     pending: Option<PendingAction>,
     /// Set once a quit is confirmed so the close request passes through.
     allow_close: bool,
     /// Repaint requested by a state change outside direct input (timers,
     /// async apply). Avoids a busy per-frame `request_repaint`.
     repaint_requested: bool,
+}
+
+/// Find Usages state: what the author typed, and what the index answered.
+struct FindUsages {
+    query: String,
+    /// `(source id, field path)` for each place the query id is referenced.
+    results: Vec<(String, String)>,
+    /// True once a search has run, so "no results" reads differently from
+    /// "nothing searched yet".
+    searched: bool,
 }
 
 struct OpenEditor {
@@ -200,6 +216,11 @@ impl Default for EditorApp {
             prefs_applied: false,
             last_autosave: Instant::now(),
             validation_report: None,
+            palette: command_palette::CommandPalette::new(),
+            templates: template_manager::TemplateManager::new(),
+            cross_refs: None,
+            find_usages: None,
+            diff_preview: None,
             pending: None,
             allow_close: false,
             repaint_requested: true,
@@ -294,6 +315,7 @@ impl EditorApp {
             Ok(true) => {
                 open.editor.mark_saved();
                 self.browser.invalidate();
+                self.invalidate_cross_refs();
                 self.status_text = "Saved".into();
                 true
             }
@@ -305,6 +327,7 @@ impl EditorApp {
                     Ok(()) => {
                         open.editor.mark_saved();
                         self.browser.invalidate();
+                        self.invalidate_cross_refs();
                         self.status_text = format!("Saved {}", path.display());
                         true
                     }
@@ -334,6 +357,7 @@ impl EditorApp {
             Ok(true) => {
                 open.editor.mark_saved();
                 self.browser.invalidate();
+                self.invalidate_cross_refs();
                 self.status_text = "Saved".into();
                 return true;
             }
@@ -371,6 +395,7 @@ impl EditorApp {
                 open.path = Some(path.clone());
                 open.editor.mark_saved();
                 self.browser.invalidate();
+                self.invalidate_cross_refs();
                 self.status_text = format!("Saved {}", path.display());
                 self.preferences.prefs.push_recent(&path);
                 self.preferences.save();
@@ -482,6 +507,278 @@ impl EditorApp {
         }
     }
 
+    /// Build (or reuse) the cross-reference index over the content tree.
+    ///
+    /// It is a snapshot of what is on disk, so unsaved edits are not in it.
+    /// Rebuilt whenever the content root moves or a save lands, which is what
+    /// `invalidate_cross_refs` is for.
+    fn cross_ref_index(&mut self) -> &cross_ref::CrossReferenceIndex {
+        if self.cross_refs.is_none() {
+            let snapshot = cross_ref::ContentIndexSnapshot::from_content_root(&self.browser.root);
+            self.cross_refs = Some(cross_ref::CrossReferenceIndex::build(&snapshot));
+        }
+        self.cross_refs.as_ref().expect("just built")
+    }
+
+    /// Drop the cached index so the next query re-reads disk.
+    fn invalidate_cross_refs(&mut self) {
+        self.cross_refs = None;
+    }
+
+    /// File > Broken Reference Report — every reference in the content tree
+    /// that points at an id nothing defines, plus each open tab's own
+    /// validation issues.
+    fn run_broken_reference_report(&mut self) {
+        self.invalidate_cross_refs();
+        let index = self.cross_ref_index().clone();
+        let editors: Vec<(String, &dyn Editor)> = self
+            .open_editors
+            .iter()
+            .map(|o| (o.name.clone(), o.editor.as_ref()))
+            .collect();
+        let report = validation::broken_reference_report(&editors, &index);
+        let broken = index.broken_references().len();
+        // How many open tabs are actually implicated, so the author knows
+        // whether this is something they can fix from here or a problem
+        // elsewhere in the tree.
+        let affected_tabs = self
+            .open_editors
+            .iter()
+            .filter(|o| validation::count_broken_refs_in_editor(o.editor.as_ref(), &index) > 0)
+            .count();
+        self.status_text = if broken == 0 {
+            "Reference check: every reference in the content tree resolves".into()
+        } else if affected_tabs == 0 {
+            format!("Reference check: {broken} broken reference(s), none in an open tab")
+        } else {
+            format!(
+                "Reference check: {broken} broken reference(s) across {affected_tabs} open tab(s)"
+            )
+        };
+        self.validation_report = Some(report);
+    }
+
+    /// Edit > Find Usages — where an id is referenced from.
+    fn run_find_usages(&mut self) {
+        let Some(state) = self.find_usages.as_ref() else {
+            return;
+        };
+        let query = state.query.trim().to_string();
+        if query.is_empty() {
+            if let Some(state) = self.find_usages.as_mut() {
+                state.results.clear();
+                state.searched = false;
+            }
+            return;
+        }
+        let results: Vec<(String, String)> = self
+            .cross_ref_index()
+            .usages_of(&query)
+            .iter()
+            .map(|r| (r.source_id.clone(), r.field_path.clone()))
+            .collect();
+        if let Some(state) = self.find_usages.as_mut() {
+            state.results = results;
+            state.searched = true;
+        }
+    }
+
+    /// File > Preview Changes — what Save would write, against what is on
+    /// disk. Read-only: it writes to a temp file, diffs, and deletes it, so a
+    /// preview can never be the thing that corrupts the document.
+    fn preview_changes(&mut self) {
+        let Some(idx) = self.active_tab else {
+            self.status_text = "No editor open to preview".into();
+            return;
+        };
+        let Some(open) = self.open_editors.get(idx) else {
+            return;
+        };
+        let Some(path) = open.path.clone() else {
+            self.status_text = "This document has never been saved — nothing to compare".into();
+            return;
+        };
+        let scratch = std::env::temp_dir().join(format!("reachlock_preview_{idx}.ron"));
+        if let Err(e) = open.editor.save(&scratch) {
+            self.status_text = format!("Preview failed: {e}");
+            return;
+        }
+        let new_text = match std::fs::read_to_string(&scratch) {
+            Ok(t) => t,
+            Err(e) => {
+                self.status_text = format!("Preview failed: {e}");
+                let _ = std::fs::remove_file(&scratch);
+                return;
+            }
+        };
+        let _ = std::fs::remove_file(&scratch);
+        match diff::DiffResult::compute(&path, &new_text) {
+            Ok(d) => {
+                self.status_text = if d.unchanged {
+                    format!("{} is up to date", path.display())
+                } else {
+                    format!("Previewing changes to {}", path.display())
+                };
+                self.diff_preview = Some((open.name.clone(), d));
+            }
+            Err(e) => self.status_text = format!("Preview failed: {e}"),
+        }
+    }
+
+    /// File > New from Template — open a fresh tab seeded from a bundled
+    /// starting-point document.
+    ///
+    /// The new tab is deliberately left with no path, so the first Save opens
+    /// Save As. Binding it to the template file would make an ordinary Ctrl+S
+    /// overwrite the template for every future document.
+    fn open_from_template(&mut self, entry: &template_manager::TemplateEntry) {
+        let text = match self.templates.load_template(entry) {
+            Ok(t) => t,
+            Err(e) => {
+                self.status_text = format!("Template failed: {e}");
+                return;
+            }
+        };
+        let Some(mut editor) = self.registry.create(entry.content_type) else {
+            self.status_text = format!("No editor for {:?}", entry.content_type);
+            return;
+        };
+        // Templates are content files, so load them the same way any file is
+        // loaded — via a scratch path, since `load` takes a path.
+        let scratch = std::env::temp_dir().join(format!(
+            "reachlock_template_{}.ron",
+            entry.content_type.directory()
+        ));
+        if let Err(e) = std::fs::write(&scratch, &text) {
+            self.status_text = format!("Template failed: {e}");
+            return;
+        }
+        let loaded = editor.load(&scratch);
+        let _ = std::fs::remove_file(&scratch);
+        if let Err(e) = loaded {
+            self.status_text = format!("Template failed: {e}");
+            return;
+        }
+        editor.touch();
+        let name = format!("New {} (template)", entry.content_type.name());
+        let idx = self.open_editors.len();
+        self.open_editors
+            .push(OpenEditor::new(editor, name.clone(), None));
+        self.active_tab = Some(idx);
+        self.status_text = format!("{name} — Save As to choose a filename");
+    }
+
+    /// Run one command-palette action. Every arm routes to the same method the
+    /// menu item does, so the palette can never drift into being a second,
+    /// subtly different way to do things.
+    fn run_palette_action(&mut self, action: command_palette::PaletteAction, ctx: &egui::Context) {
+        use command_palette::PaletteAction as A;
+        match action {
+            A::NewEditor(ct) => self.open_new_editor(&format!("New {}", ct.name()), ct),
+            A::Open => self.open_file_dialog(),
+            A::Save => {
+                if let Some(idx) = self.active_tab {
+                    self.save_editor(idx);
+                }
+            }
+            A::SaveAs => {
+                if let Some(idx) = self.active_tab {
+                    self.save_editor_as(idx);
+                }
+            }
+            A::CloseTab => {
+                if let Some(idx) = self.active_tab {
+                    self.request_close_tab(idx);
+                }
+            }
+            A::CloseAll => {
+                if self.dirty_tab_indices().is_empty() {
+                    self.open_editors.clear();
+                    self.active_tab = None;
+                } else {
+                    self.pending = Some(PendingAction::CloseAll);
+                }
+            }
+            A::Undo => {
+                if let Some(open) = self.active_open_mut() {
+                    self.status_text = open.undo();
+                }
+            }
+            A::Redo => {
+                if let Some(open) = self.active_open_mut() {
+                    self.status_text = open.redo();
+                }
+            }
+            A::ToggleBrowser => self.show_browser = !self.show_browser,
+            A::AiGenerate => {
+                self.status_text = "Use the Generate bar below the seed panel".into();
+            }
+            A::Help => self.help.open = true,
+            A::Preferences => self.preferences.open = true,
+            A::AiSettings => self.ai_settings.open = true,
+            A::ValidateAll => self.run_validate_all(),
+            A::FindUsages => self.open_find_usages(),
+            A::BrokenReferenceReport => self.run_broken_reference_report(),
+            A::PreviewChanges => self.preview_changes(),
+            A::Duplicate => self.duplicate_active_tab(),
+            A::Quit => self.request_quit(ctx),
+        }
+    }
+
+    /// Open the Find Usages window, pre-filled with the active document's id
+    /// when there is an obvious one.
+    fn open_find_usages(&mut self) {
+        let seed = self
+            .active_open()
+            .and_then(|o| o.editor.document_ids().into_iter().next())
+            .unwrap_or_default();
+        self.find_usages = Some(FindUsages {
+            query: seed,
+            results: Vec::new(),
+            searched: false,
+        });
+        self.run_find_usages();
+    }
+
+    /// File > Validate All Open Editors.
+    fn run_validate_all(&mut self) {
+        let report: Vec<(String, Vec<String>)> = self
+            .open_editors
+            .iter()
+            .map(|o| (o.name.clone(), o.editor.validate()))
+            .collect();
+        let clean = report.iter().filter(|(_, v)| v.is_empty()).count();
+        let dirty = report.len() - clean;
+        self.status_text = format!("Validation: {clean} editor(s) clean, {dirty} with issues");
+        self.validation_report = Some(report);
+    }
+
+    /// Duplicate the active tab's document into a new, unsaved tab.
+    fn duplicate_active_tab(&mut self) {
+        let Some(open) = self.active_open() else {
+            self.status_text = "No editor open to duplicate".into();
+            return;
+        };
+        let Some(state) = open.editor.snapshot() else {
+            self.status_text = "This editor does not support duplication".into();
+            return;
+        };
+        let ct = open.editor.content_type();
+        let name = format!("{} (copy)", open.name);
+        let Some(mut editor) = self.registry.create(ct) else {
+            return;
+        };
+        if let Err(e) = editor.restore_snapshot(&state) {
+            self.status_text = format!("Duplicate failed: {e}");
+            return;
+        }
+        let idx = self.open_editors.len();
+        self.open_editors
+            .push(OpenEditor::new(editor, name.clone(), None));
+        self.active_tab = Some(idx);
+        self.status_text = format!("{name} — Save As to choose a filename");
+    }
+
     /// Global keyboard shortcuts (handoff completion §Priority 2).
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
         use egui::{Key, Modifiers};
@@ -509,6 +806,14 @@ impl EditorApp {
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Q)) {
             self.request_quit(ctx);
+        }
+        // Ctrl+Shift+P before Ctrl+P: consume_key matches modifiers exactly,
+        // but the ordering keeps the intent readable.
+        if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::SHIFT, Key::P)) {
+            self.palette.open = !self.palette.open;
+        }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::SHIFT, Key::F)) {
+            self.open_find_usages();
         }
 
         // Undo/redo stay out of the way while a text field has focus so
@@ -542,12 +847,20 @@ impl EditorApp {
             }
         }
 
-        // Escape closes the AI settings window.
-        if self.ai_settings.open
-            && self.pending.is_none()
-            && ctx.input(|i| i.key_pressed(Key::Escape))
-        {
-            self.ai_settings.open = false;
+        // Escape dismisses the topmost transient surface, innermost first, so
+        // one press never closes two things at once.
+        if self.pending.is_none() && ctx.input(|i| i.key_pressed(Key::Escape)) {
+            if self.palette.open {
+                self.palette.open = false;
+            } else if self.find_usages.is_some() {
+                self.find_usages = None;
+            } else if self.diff_preview.is_some() {
+                self.diff_preview = None;
+            } else if self.validation_report.is_some() {
+                self.validation_report = None;
+            } else if self.ai_settings.open {
+                self.ai_settings.open = false;
+            }
         }
 
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F1)) {
@@ -598,6 +911,7 @@ impl EditorApp {
         }
         if saved > 0 || failed > 0 {
             self.browser.invalidate();
+            self.invalidate_cross_refs();
             self.request_repaint();
             self.status_text = if failed == 0 {
                 format!("Auto-saved {saved} editor(s)")
@@ -752,6 +1066,32 @@ impl EditorApp {
                             ui.close_menu();
                         }
                     });
+                    let templates = self.templates.list_templates();
+                    let templates_dir = self.templates.templates_dir().display().to_string();
+                    ui.menu_button("New from Template", |ui| {
+                        if templates.is_empty() {
+                            // Say where they go rather than showing an empty
+                            // menu — an author who wants templates can't guess
+                            // the directory.
+                            ui.weak("No templates found.");
+                            ui.weak(format!("Drop .ron files in {templates_dir}"));
+                            return;
+                        }
+                        let mut pick: Option<template_manager::TemplateEntry> = None;
+                        for entry in &templates {
+                            if ui
+                                .button(&entry.label)
+                                .on_hover_text(entry.path.display().to_string())
+                                .clicked()
+                            {
+                                pick = Some(entry.clone());
+                                ui.close_menu();
+                            }
+                        }
+                        if let Some(entry) = pick {
+                            self.open_from_template(&entry);
+                        }
+                    });
                     if ui.button("Open…            Ctrl+O").clicked() {
                         self.open_file_dialog();
                         ui.close_menu();
@@ -769,18 +1109,28 @@ impl EditorApp {
                         }
                         ui.close_menu();
                     }
+                    let has_saved_tab = self.active_open().is_some_and(|o| o.path.is_some());
+                    if ui
+                        .add_enabled(has_saved_tab, egui::Button::new("Preview Changes…"))
+                        .on_hover_text("Show what Save would write, against the file on disk")
+                        .clicked()
+                    {
+                        self.preview_changes();
+                        ui.close_menu();
+                    }
                     ui.separator();
                     if ui.button("Validate All Open Editors").clicked() {
-                        let report: Vec<(String, Vec<String>)> = self
-                            .open_editors
-                            .iter()
-                            .map(|o| (o.name.clone(), o.editor.validate()))
-                            .collect();
-                        let clean = report.iter().filter(|(_, v)| v.is_empty()).count();
-                        let dirty = report.len() - clean;
-                        self.status_text =
-                            format!("Validation: {clean} editor(s) clean, {dirty} with issues");
-                        self.validation_report = Some(report);
+                        self.run_validate_all();
+                        ui.close_menu();
+                    }
+                    if ui
+                        .button("Broken Reference Report")
+                        .on_hover_text(
+                            "Scan the whole content tree for references to ids nothing defines",
+                        )
+                        .clicked()
+                    {
+                        self.run_broken_reference_report();
                         ui.close_menu();
                     }
                     ui.separator();
@@ -828,6 +1178,21 @@ impl EditorApp {
                         ui.close_menu();
                     }
                     ui.separator();
+                    if ui.button("Find Usages…    Ctrl+Shift+F").clicked() {
+                        self.open_find_usages();
+                        ui.close_menu();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.active_open().is_some(),
+                            egui::Button::new("Duplicate Document"),
+                        )
+                        .clicked()
+                    {
+                        self.duplicate_active_tab();
+                        ui.close_menu();
+                    }
+                    ui.separator();
                     if ui.button("Preferences…").clicked() {
                         self.preferences.open = true;
                         ui.close_menu();
@@ -842,7 +1207,10 @@ impl EditorApp {
                     {
                         self.show_browser = browser_visible;
                     }
-                    ui.close_menu();
+                    if ui.button("Command Palette    Ctrl+Shift+P").clicked() {
+                        self.palette.open = true;
+                        ui.close_menu();
+                    }
                 });
 
                 ui.menu_button("AI", |ui| {
@@ -1251,6 +1619,95 @@ impl eframe::App for EditorApp {
                 self.validation_report = None;
             }
         }
+
+        // Command palette. It writes an action rather than acting, so the
+        // window closes before the action runs and a command that opens
+        // another window isn't fighting the palette for focus.
+        let mut palette_action = None;
+        self.palette.show(ctx, &mut palette_action);
+        if let Some(action) = palette_action {
+            self.run_palette_action(action, ctx);
+        }
+
+        if let Some(state) = self.find_usages.as_mut() {
+            let mut open = true;
+            let mut search = false;
+            let mut jump: Option<String> = None;
+            egui::Window::new("Find Usages")
+                .open(&mut open)
+                .resizable(true)
+                .default_size([420.0, 300.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Id:");
+                        let response = ui.add(
+                            egui::TextEdit::singleline(&mut state.query)
+                                .hint_text("a content id from the tree"),
+                        );
+                        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            search = true;
+                        }
+                        if ui.button("Search").clicked() {
+                            search = true;
+                        }
+                    });
+                    ui.separator();
+                    if !state.searched {
+                        ui.weak("Enter an id and press Search.");
+                    } else if state.results.is_empty() {
+                        ui.label(format!("Nothing references `{}`.", state.query.trim()));
+                        ui.weak(
+                            "Unreferenced content is not necessarily wrong — but it is content \
+                             no player can reach unless something points at it.",
+                        );
+                    } else {
+                        ui.label(format!(
+                            "{} reference(s) to `{}`:",
+                            state.results.len(),
+                            state.query.trim()
+                        ));
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            for (source, field) in &state.results {
+                                ui.horizontal(|ui| {
+                                    if ui.link(source).clicked() {
+                                        jump = Some(source.clone());
+                                    }
+                                    ui.weak(format!("via {field}"));
+                                });
+                            }
+                        });
+                    }
+                });
+            if search {
+                self.run_find_usages();
+            }
+            // Clicking a result searches from there, so the author can walk the
+            // reference graph without retyping ids.
+            if let Some(source) = jump {
+                if let Some(state) = self.find_usages.as_mut() {
+                    state.query = source;
+                }
+                self.run_find_usages();
+            }
+            if !open {
+                self.find_usages = None;
+            }
+        }
+
+        if let Some((name, result)) = &self.diff_preview {
+            let mut open = true;
+            egui::Window::new(format!("Preview Changes — {name}"))
+                .open(&mut open)
+                .resizable(true)
+                .default_size([620.0, 440.0])
+                .show(ctx, |ui| {
+                    diff::render_diff_ui(ui, result);
+                });
+            if !open {
+                self.diff_preview = None;
+            }
+        }
+
         if self.preferences.show(ctx) {
             // A preference changed — pick up a possible content-root move.
             let root = std::path::PathBuf::from(&self.preferences.prefs.content_root);
@@ -1258,6 +1715,10 @@ impl eframe::App for EditorApp {
             if self.browser.root != root {
                 self.browser.root = root;
                 self.browser.invalidate();
+                self.invalidate_cross_refs();
+                // Both of these are snapshots of a tree that just moved.
+                self.invalidate_cross_refs();
+                self.templates.reload();
             }
         }
         self.handle_pending(ctx);

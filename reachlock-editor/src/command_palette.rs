@@ -2,7 +2,9 @@ use crate::app::ContentType;
 
 pub struct CommandEntry {
     pub label: &'static str,
-    #[expect(dead_code)]
+    /// Where this command also lives in the menus, shown dimmed beside the
+    /// label. The palette is a shortcut, not a separate set of features, and
+    /// showing the menu path is what teaches that.
     pub category: &'static str,
     pub action: PaletteAction,
 }
@@ -25,7 +27,7 @@ pub enum PaletteAction {
     ValidateAll,
     FindUsages,
     BrokenReferenceReport,
-    PreviewLaunch,
+    PreviewChanges,
     Duplicate,
     Quit,
 }
@@ -227,24 +229,42 @@ const ALL_COMMANDS: &[CommandEntry] = &[
         action: PaletteAction::Help,
     },
     CommandEntry {
-        label: "Find Usages",
-        category: "View",
+        label: "Find Usages…",
+        category: "Edit",
         action: PaletteAction::FindUsages,
     },
     CommandEntry {
         label: "Broken Reference Report",
-        category: "View",
+        category: "File",
         action: PaletteAction::BrokenReferenceReport,
     },
     CommandEntry {
-        label: "Preview in Game",
+        label: "Preview Changes…",
         category: "File",
-        action: PaletteAction::PreviewLaunch,
+        action: PaletteAction::PreviewChanges,
     },
     CommandEntry {
-        label: "Duplicate",
+        label: "Duplicate Document",
         category: "Edit",
         action: PaletteAction::Duplicate,
+    },
+    CommandEntry {
+        label: "New Crew Package",
+        category: "File > New",
+        action: PaletteAction::NewEditor(ContentType::CrewPackage),
+    },
+    // The two previewers persist nothing, so "New" would be a lie — but they
+    // open through the same path, and leaving them out would make the palette
+    // a strictly smaller menu than File > New.
+    CommandEntry {
+        label: "Open Item Browser",
+        category: "File > New",
+        action: PaletteAction::NewEditor(ContentType::ItemBrowser),
+    },
+    CommandEntry {
+        label: "Open Sprite Viewer",
+        category: "File > New",
+        action: PaletteAction::NewEditor(ContentType::SpriteViewer),
     },
 ];
 
@@ -310,9 +330,15 @@ impl CommandPalette {
                 egui::ScrollArea::vertical()
                     .id_salt("command_palette_results")
                     .show(ui, |ui| {
+                        if entries.is_empty() {
+                            ui.weak("No command matches.");
+                        }
                         for (i, entry) in entries.iter().enumerate() {
                             let is_sel = selected == i;
-                            let response = ui.selectable_label(is_sel, entry.label);
+                            let text = egui::RichText::new(entry.label);
+                            let response = ui
+                                .selectable_label(is_sel, text)
+                                .on_hover_text(entry.category);
                             if response.clicked() {
                                 selected = i;
                                 execute = true;
@@ -351,5 +377,143 @@ impl CommandPalette {
         if should_close {
             self.open = false;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Stable name for a variant, so the coverage test below can report which
+    /// action is missing rather than just a count.
+    fn variant_name(action: &PaletteAction) -> &'static str {
+        match action {
+            PaletteAction::NewEditor(_) => "NewEditor",
+            PaletteAction::Open => "Open",
+            PaletteAction::Save => "Save",
+            PaletteAction::SaveAs => "SaveAs",
+            PaletteAction::CloseTab => "CloseTab",
+            PaletteAction::CloseAll => "CloseAll",
+            PaletteAction::Undo => "Undo",
+            PaletteAction::Redo => "Redo",
+            PaletteAction::ToggleBrowser => "ToggleBrowser",
+            PaletteAction::AiGenerate => "AiGenerate",
+            PaletteAction::Help => "Help",
+            PaletteAction::Preferences => "Preferences",
+            PaletteAction::AiSettings => "AiSettings",
+            PaletteAction::ValidateAll => "ValidateAll",
+            PaletteAction::FindUsages => "FindUsages",
+            PaletteAction::BrokenReferenceReport => "BrokenReferenceReport",
+            PaletteAction::PreviewChanges => "PreviewChanges",
+            PaletteAction::Duplicate => "Duplicate",
+            PaletteAction::Quit => "Quit",
+        }
+    }
+
+    /// Every action the palette can express must have a command that produces
+    /// it. An action with no entry is a feature with no way in — the same
+    /// failure `new_menu_covers_every_type` guards for content types.
+    ///
+    /// The `match` in `variant_name` is exhaustive on purpose: adding a
+    /// variant is a compile error until it is listed, and then a test failure
+    /// until a command exists for it.
+    #[test]
+    fn every_palette_action_has_a_command() {
+        const ALL_VARIANTS: &[&str] = &[
+            "NewEditor",
+            "Open",
+            "Save",
+            "SaveAs",
+            "CloseTab",
+            "CloseAll",
+            "Undo",
+            "Redo",
+            "ToggleBrowser",
+            "AiGenerate",
+            "Help",
+            "Preferences",
+            "AiSettings",
+            "ValidateAll",
+            "FindUsages",
+            "BrokenReferenceReport",
+            "PreviewChanges",
+            "Duplicate",
+            "Quit",
+        ];
+        let covered: std::collections::HashSet<&str> = ALL_COMMANDS
+            .iter()
+            .map(|e| variant_name(&e.action))
+            .collect();
+        let missing: Vec<&str> = ALL_VARIANTS
+            .iter()
+            .copied()
+            .filter(|v| !covered.contains(v))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "palette actions with no command entry, so nothing can invoke them: {missing:?}"
+        );
+    }
+
+    /// Every command must carry a category, since the palette shows it as the
+    /// hint for where the command also lives in the menus.
+    #[test]
+    fn every_command_is_labelled_and_categorised() {
+        for entry in ALL_COMMANDS {
+            assert!(!entry.label.is_empty(), "a command has no label");
+            assert!(
+                !entry.category.is_empty(),
+                "command `{}` has no category",
+                entry.label
+            );
+        }
+    }
+
+    /// The palette advertises itself as a faster route to the menus, so it
+    /// must not offer fewer content types than File > New does. `CrewPackage`
+    /// was added to the menu and missing here.
+    #[test]
+    fn palette_offers_every_type_the_new_menu_does() {
+        let in_palette: std::collections::HashSet<ContentType> = ALL_COMMANDS
+            .iter()
+            .filter_map(|e| match e.action {
+                PaletteAction::NewEditor(ct) => Some(ct),
+                _ => None,
+            })
+            .collect();
+        let missing: Vec<ContentType> = crate::app::NEW_MENU_GROUPS
+            .iter()
+            .flat_map(|(_, types)| types.iter().copied())
+            .filter(|ct| !in_palette.contains(ct))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "File > New offers these but the command palette does not: {missing:?}"
+        );
+    }
+
+    /// A category is a claim about where the command also lives. A wrong one
+    /// sends the author to a menu that does not have it.
+    #[test]
+    fn categories_name_real_menus() {
+        const MENUS: &[&str] = &["File", "File > New", "Edit", "View", "AI", "Help"];
+        for entry in ALL_COMMANDS {
+            assert!(
+                MENUS.contains(&entry.category),
+                "command `{}` claims category `{}`, which is not a menu",
+                entry.label,
+                entry.category
+            );
+        }
+    }
+
+    #[test]
+    fn fuzzy_filter_matches_subsequences_not_just_prefixes() {
+        assert!(CommandPalette::fuzzy_matches(
+            "Broken Reference Report",
+            "brr"
+        ));
+        assert!(CommandPalette::fuzzy_matches("New Soul", "soul"));
+        assert!(!CommandPalette::fuzzy_matches("New Soul", "zzz"));
     }
 }
