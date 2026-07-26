@@ -279,12 +279,20 @@ re-confirm what someone already remembered to type.
   content type, follow it all the way to the system that consumes it and
   write the test at that end. `#[expect(dead_code)]` on a `take_*` is the
   smell.
-- `reachlock-client/src/main.rs` carries a crate-level `#![allow(dead_code)]`.
-  It hides ~54 real findings, and it is the reason `scripts/check_resources.py`
-  had to be written by hand — that gate re-implements a subset of what this one
-  line switched off. Everything found under "content that reaches nobody" below
-  was found by removing it locally and reading the warnings. Do that before
-  claiming a feature is wired; do not add another crate-level allow.
+- Crate-level `#![allow(dead_code)]` is banned and `make check-dead-code`
+  enforces it. The client carried one; it hid 75 findings — two features no
+  player could reach, two duplicate implementations of features that already
+  worked, and a whole unadopted widget kit — while `make check` stayed green.
+  It is also why `check_resources.py` exists: a hand-written gate re-detecting
+  one special case of what that line switched off. A narrow
+  `#[allow(dead_code)]` on an item, or on a module that documents why, is the
+  supported escape hatch: each one names what it waits on and stays greppable.
+- Not all dead code should be wired. Three of those findings were *superseded*
+  duplicates — a breaking-point model fed by nothing while souls already drove
+  the real one, a notification spawner identical to the live queue's, a colour
+  helper that `check-theme` forbids outright. Before wiring something, check
+  whether the feature already works by another path; adding the second
+  implementation is worse than the dead code.
 - Content that reaches nobody has a signature: a `set_*` with callers and a
   `take_*`/getter with none. `take_themes`, `take_careers` and
   `set_active_ship_template` each sat behind `#[expect(dead_code)]`, and each

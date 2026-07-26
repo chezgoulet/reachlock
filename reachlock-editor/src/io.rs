@@ -109,6 +109,11 @@ pub fn write_ron<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), Stri
     std::fs::write(path, &text).map_err(|e| format!("failed to write {}: {e}", path.display()))
 }
 
+// Schema validation has no caller: `Editor::validate` checks structure
+// per tab, and the AI path validates the model's JSON before applying it,
+// but nothing validates a hand-edited document against
+// `mods/reachlock/schemas/*.json`. Wiring it needs a JSON view of an open
+// document; editors expose RON (`snapshot`) and their own typed state.
 #[allow(dead_code)]
 pub fn validate_content(content_type: &ContentType, value: &serde_json::Value) -> Vec<String> {
     let Some(schema_id) = crate::schema::schema_id(content_type) else {

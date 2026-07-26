@@ -40,6 +40,9 @@ impl Default for AiConfig {
 
 /// Why generation failed.
 #[derive(Debug, Clone)]
+// Not every variant is constructed yet: the pipeline reports failures as
+// strings to the status bar. Kept whole so the error taxonomy stays
+// meaningful when the UI starts distinguishing them.
 #[allow(dead_code)]
 pub enum GenerationError {
     HttpError(String),

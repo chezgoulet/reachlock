@@ -273,6 +273,8 @@ pub mod pg {
     use super::*;
     use sqlx::PgPool;
 
+    // The Postgres library is a stub: the fields are held so the type
+    // compiles under `--features postgres` while the queries are unwritten.
     pub struct PgContractLibrary {
         #[expect(dead_code)]
         pool: PgPool,
