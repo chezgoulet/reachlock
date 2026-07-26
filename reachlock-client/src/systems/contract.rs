@@ -197,7 +197,8 @@ fn auto_helm() -> Contract {
             fallback_on_timeout: true,
             timeout_ms: 4000,
             max_tokens: 128,
-            system_prompt: "You are the ship's pilot. Crew safety > ship integrity > mission.".into(),
+            system_prompt: "You are the ship's pilot. Crew safety > ship integrity > mission."
+                .into(),
             fallback_action: Some(Action::verb("all_stop")),
         }),
     }

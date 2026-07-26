@@ -19,6 +19,7 @@ use reachlock_core::dialogue::{
 use reachlock_core::soul::types::{Mood, Species};
 use reachlock_core::soul::SoulEvent;
 
+use crate::focus_stack::FocusStack;
 use crate::net::{NetMode, NetOutbox};
 use crate::settings::{InputAction, Settings};
 use crate::systems::contract::ShipLog;
@@ -26,7 +27,6 @@ use crate::systems::crew::CrewFigure;
 use crate::systems::interaction::{ActivePanel, Npc};
 use crate::systems::soul::SoulRegistry;
 use crate::systems::ticker::UniverseTicker;
-use crate::focus_stack::FocusStack;
 
 /// The live conversation, if any. One at a time — one surface.
 #[derive(Resource, Default)]

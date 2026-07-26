@@ -88,7 +88,9 @@ pub fn trope_input_system(
     settings: Res<Settings>,
     focus_stack: Res<crate::focus_stack::FocusStack>,
 ) {
-    if focus_stack.top_captures_input() { return; }
+    if focus_stack.top_captures_input() {
+        return;
+    }
     if popup.0.is_none() {
         return;
     }

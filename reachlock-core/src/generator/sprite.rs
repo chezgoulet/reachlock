@@ -479,7 +479,8 @@ mod tests {
 
     #[test]
     fn texture_dimensions() {
-        let c = generate_character_sprite(99, &CharacterLookConfig::seed_derived(Species::Voidborn));
+        let c =
+            generate_character_sprite(99, &CharacterLookConfig::seed_derived(Species::Voidborn));
         assert_eq!(c.body_layer.width, 32);
         assert_eq!(c.body_layer.height, 48);
         assert_eq!(c.body_layer.pixels.len(), 32 * 48 * 4);
@@ -516,7 +517,8 @@ mod tests {
 
     #[test]
     fn overrides_do_not_shift_seed_derived_values() {
-        let default = generate_character_sprite(42, &CharacterLookConfig::seed_derived(Species::Human));
+        let default =
+            generate_character_sprite(42, &CharacterLookConfig::seed_derived(Species::Human));
         let mut cfg = CharacterLookConfig::seed_derived(Species::Human);
         cfg.hair_style = Some(5);
         let partial = generate_character_sprite(42, &cfg);
@@ -568,7 +570,13 @@ mod tests {
 
     #[test]
     fn species_enum_round_trips_in_look_config() {
-        for sp in [Species::Human, Species::Android, Species::Robot, Species::Voidborn, Species::Xenotype] {
+        for sp in [
+            Species::Human,
+            Species::Android,
+            Species::Robot,
+            Species::Voidborn,
+            Species::Xenotype,
+        ] {
             let cfg = CharacterLookConfig::seed_derived(sp);
             assert_eq!(cfg.species, sp);
             let json = serde_json::to_string(&cfg).unwrap();

@@ -622,7 +622,13 @@ pub fn manifest() -> Manifest {
         // cross-platform (iron rule #3: generator change ⇒ golden entry).
         use crate::generator::sprite::{CharacterLookConfig, HAIR_STYLE_COUNT};
         use crate::soul::types::Species;
-        for species in [Species::Human, Species::Android, Species::Robot, Species::Voidborn, Species::Xenotype] {
+        for species in [
+            Species::Human,
+            Species::Android,
+            Species::Robot,
+            Species::Voidborn,
+            Species::Xenotype,
+        ] {
             entries.push(Entry {
                 generator: format!("sprite_{species}"),
                 seed,
@@ -692,7 +698,9 @@ pub fn manifest() -> Manifest {
             name: soul.name,
             pronouns: "they/them".into(),
             species: "Human".to_string(),
-            look: crate::generator::sprite::CharacterLookConfig::seed_derived(crate::soul::types::Species::Human),
+            look: crate::generator::sprite::CharacterLookConfig::seed_derived(
+                crate::soul::types::Species::Human,
+            ),
             origin_id: String::new(),
             background_id: String::new(),
             soul: sf_soul,
@@ -906,7 +914,9 @@ pub fn manifest() -> Manifest {
 
     // S76 — generate_soul_with_look (pins a CharacterLookConfig on the soul).
     for &seed in &CANONICAL_SEEDS {
-        let mut cfg = crate::generator::sprite::CharacterLookConfig::seed_derived(crate::soul::types::Species::Human);
+        let mut cfg = crate::generator::sprite::CharacterLookConfig::seed_derived(
+            crate::soul::types::Species::Human,
+        );
         cfg.hair_style = Some(3);
         cfg.hair_color = Some([180, 120, 60]);
         entries.push(Entry {

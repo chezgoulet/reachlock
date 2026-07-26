@@ -96,7 +96,9 @@ pub fn encounter_choice_system(
     mode: Res<State<GameMode>>,
     focus_stack: Res<crate::focus_stack::FocusStack>,
 ) {
-    if focus_stack.top_captures_input() { return; }
+    if focus_stack.top_captures_input() {
+        return;
+    }
     let Some(ref data) = active.0 else { return };
     let Some(encounter) = registry.0.get(&data.encounter_id) else {
         active.0 = None;
