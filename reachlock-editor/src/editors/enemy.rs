@@ -18,6 +18,7 @@ pub struct EnemyEditor {
     selected: usize,
     search: String,
     has_changes: bool,
+    load_warnings: Vec<String>,
 }
 
 fn blank_archetype() -> HostileArchetype {
@@ -58,26 +59,12 @@ fn blank_archetype() -> HostileArchetype {
 
 impl EnemyEditor {
     fn new() -> Self {
-        let mut entries = Vec::new();
-        if let Ok(dir) = std::fs::read_dir(
-            crate::app::content_root().join(ContentType::EnemyArchetype.directory()),
-        ) {
-            let mut paths: Vec<_> = dir
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|e| e == "ron"))
-                .collect();
-            paths.sort();
-            for path in paths {
-                if let Ok(archetype) = crate::io::read_ron::<HostileArchetype>(&path) {
-                    entries.push(Entry {
-                        archetype,
-                        path: Some(path),
-                        dirty: false,
-                    });
-                }
-            }
-        }
+        let dir = crate::app::content_root().join(ContentType::EnemyArchetype.directory());
+        let (parsed, warnings) = crate::io::scan_content_dir::<HostileArchetype>(&dir);
+        let mut entries: Vec<_> = parsed
+            .into_iter()
+            .map(|(path, archetype)| Entry { archetype, path: Some(path), dirty: false })
+            .collect();
         if entries.is_empty() {
             entries.push(Entry {
                 archetype: blank_archetype(),
@@ -94,6 +81,7 @@ impl EnemyEditor {
             selected: 0,
             search: String::new(),
             has_changes: false,
+            load_warnings: warnings,
         }
     }
 }
@@ -531,6 +519,10 @@ impl Editor for EnemyEditor {
         self.has_changes = self.entries.iter().any(|e| e.dirty);
         self.touch();
         Ok(())
+    }
+
+    fn load_warnings(&self) -> &[String] {
+        &self.load_warnings
     }
 
     fn mark_saved(&mut self) {

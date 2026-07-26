@@ -39,6 +39,7 @@ pub struct HullMeshEditor {
     selected: usize,
     search: String,
     has_changes: bool,
+    load_warnings: Vec<String>,
     /// Class used by the Regenerate button (not stored in the payload).
     regen_class: HullClass,
     compose_summary: Option<String>,
@@ -59,28 +60,13 @@ fn blank_file() -> ContentFile {
 
 impl HullMeshEditor {
     fn new() -> Self {
-        let mut entries = Vec::new();
-        if let Ok(dir) =
-            std::fs::read_dir(crate::app::content_root().join(ContentType::HullMesh.directory()))
-        {
-            let mut paths: Vec<_> = dir
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|e| e == "ron"))
-                .collect();
-            paths.sort();
-            for path in paths {
-                if let Ok(file) = crate::io::read_ron::<ContentFile>(&path) {
-                    if matches!(file.payload, ContentPayload::Hull(_)) {
-                        entries.push(Entry {
-                            file,
-                            path: Some(path),
-                            dirty: false,
-                        });
-                    }
-                }
-            }
-        }
+        let dir = crate::app::content_root().join(ContentType::HullMesh.directory());
+        let (parsed, load_warnings) = crate::io::scan_content_dir::<ContentFile>(&dir);
+        let mut entries: Vec<_> = parsed
+            .into_iter()
+            .filter(|(_, file)| matches!(file.payload, ContentPayload::Hull(_)))
+            .map(|(path, file)| Entry { file, path: Some(path), dirty: false })
+            .collect();
         if entries.is_empty() {
             entries.push(Entry {
                 file: blank_file(),
@@ -97,6 +83,7 @@ impl HullMeshEditor {
             selected: 0,
             search: String::new(),
             has_changes: false,
+            load_warnings,
             regen_class: HullClass::Corvette,
             compose_summary: None,
         }
@@ -482,6 +469,10 @@ impl Editor for HullMeshEditor {
         self.has_changes = self.entries.iter().any(|e| e.dirty);
         self.touch();
         Ok(())
+    }
+
+    fn load_warnings(&self) -> &[String] {
+        &self.load_warnings
     }
 
     fn mark_saved(&mut self) {

@@ -147,6 +147,7 @@ pub struct SoulEditor {
     selected: usize,
     search: String,
     has_changes: bool,
+    load_warnings: Vec<String>,
 }
 
 fn blank_soul() -> SoulFile {
@@ -187,27 +188,12 @@ fn blank_soul() -> SoulFile {
 
 impl SoulEditor {
     fn new() -> Self {
-        let mut entries = Vec::new();
-        if let Ok(dir) =
-            std::fs::read_dir(crate::app::content_root().join(ContentType::Soul.directory()))
-        {
-            let mut paths: Vec<_> = dir
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|e| e == "ron"))
-                .collect();
-            paths.sort();
-            for path in paths {
-                if let Ok((meta, soul)) = crate::io::read_enveloped::<SoulFile>(&path) {
-                    entries.push(Entry {
-                        soul,
-                        meta,
-                        path: Some(path),
-                        dirty: false,
-                    });
-                }
-            }
-        }
+        let dir = crate::app::content_root().join(ContentType::Soul.directory());
+        let (parsed, load_warnings) = crate::io::scan_enveloped_dir::<SoulFile>(&dir);
+        let mut entries: Vec<_> = parsed
+            .into_iter()
+            .map(|(path, meta, soul)| Entry { soul, meta, path: Some(path), dirty: false })
+            .collect();
         if entries.is_empty() {
             entries.push(Entry {
                 soul: blank_soul(),
@@ -225,6 +211,7 @@ impl SoulEditor {
             selected: 0,
             search: String::new(),
             has_changes: false,
+            load_warnings,
         }
     }
 }
@@ -1128,6 +1115,10 @@ impl Editor for SoulEditor {
         self.has_changes = self.entries.iter().any(|e| e.dirty);
         self.touch();
         Ok(())
+    }
+
+    fn load_warnings(&self) -> &[String] {
+        &self.load_warnings
     }
 
     fn mark_saved(&mut self) {

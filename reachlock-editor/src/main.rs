@@ -94,6 +94,10 @@ struct EditorApp {
     /// Repaint requested by a state change outside direct input (timers,
     /// async apply). Avoids a busy per-frame `request_repaint`.
     repaint_requested: bool,
+    /// Warnings from editor constructor scans: unparseable files.
+    load_warnings: Vec<String>,
+    /// Whether the Content Warnings window is visible.
+    show_warnings: bool,
 }
 
 /// Find Usages state: what the author typed, and what the index answered.
@@ -224,6 +228,8 @@ impl Default for EditorApp {
             pending: None,
             allow_close: false,
             repaint_requested: true,
+            load_warnings: Vec::new(),
+            show_warnings: false,
         }
     }
 }
@@ -246,6 +252,7 @@ fn suggest_stem(name: &str) -> String {
 impl EditorApp {
     fn open_new_editor(&mut self, name: &str, ct: ContentType) {
         if let Some(editor) = self.registry.create(ct) {
+            self.collect_load_warnings(&*editor);
             let idx = self.open_editors.len();
             self.open_editors
                 .push(OpenEditor::new(editor, name.to_string(), None));
@@ -271,6 +278,7 @@ impl EditorApp {
             self.status_text = format!("No editor for {:?}", ct);
             return;
         };
+        self.collect_load_warnings(&*editor);
         match editor.load(path) {
             Ok(()) => {
                 let idx = self.open_editors.len();
@@ -287,6 +295,17 @@ impl EditorApp {
             Err(e) => {
                 self.status_text = format!("Open failed: {e}");
             }
+        }
+    }
+
+    /// If the editor has constructor-scan warnings, surface them.
+    fn collect_load_warnings(&mut self, editor: &dyn Editor) {
+        let warns = editor.load_warnings();
+        if !warns.is_empty() {
+            self.load_warnings = warns.to_vec();
+            self.show_warnings = true;
+            let n = warns.len();
+            self.status_text = format!("{n} file(s) failed to parse — see Warnings");
         }
     }
 
@@ -858,6 +877,8 @@ impl EditorApp {
                 self.diff_preview = None;
             } else if self.validation_report.is_some() {
                 self.validation_report = None;
+            } else if self.show_warnings {
+                self.show_warnings = false;
             } else if self.ai_settings.open {
                 self.ai_settings.open = false;
             }
@@ -1617,6 +1638,30 @@ impl eframe::App for EditorApp {
                 });
             if !open {
                 self.validation_report = None;
+            }
+        }
+
+        // Content Warnings: files that failed to parse during constructor scan.
+        if self.show_warnings && !self.load_warnings.is_empty() {
+            let mut open = true;
+            egui::Window::new("Content Warnings")
+                .open(&mut open)
+                .resizable(true)
+                .default_size([440.0, 280.0])
+                .show(ctx, |ui| {
+                    ui.label(format!(
+                        "{} file(s) could not be parsed and were skipped:",
+                        self.load_warnings.len()
+                    ));
+                    ui.add_space(4.0);
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for w in &self.load_warnings {
+                            ui.label(w);
+                        }
+                    });
+                });
+            if !open {
+                self.show_warnings = false;
             }
         }
 
