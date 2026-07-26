@@ -23,7 +23,7 @@ use std::io::{BufRead, Write};
 use serde_json::{json, Value};
 
 use crate::agent::mode::Mode;
-use crate::agent::tools::ToolRegistry;
+use crate::agent::tools::{ToolCtx, ToolRegistry};
 
 /// Fallback protocol version when the client does not name one.
 ///
@@ -167,7 +167,7 @@ fn tools_call_result(registry: &ToolRegistry, request: &Value) -> Result<Value, 
         .get("arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
-    let outcome = registry.dispatch(name, &args, Mode::Build);
+    let outcome = registry.dispatch(name, &args, Mode::Build, &ToolCtx::headless());
 
     // A tool failure is a successful JSON-RPC call carrying `isError`, not a
     // JSON-RPC error. The distinction matters: a protocol error is the

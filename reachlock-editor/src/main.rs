@@ -107,6 +107,8 @@ struct EditorApp {
     show_warnings: bool,
     /// Whether the startup content-tree scan has run.
     startup_scan_done: bool,
+    /// Requests from the agent thread, executed on this thread once a frame.
+    session_queue: agent::bridge::SessionQueue,
 }
 
 /// Find Usages state: what the author typed, and what the index answered.
@@ -171,6 +173,16 @@ impl OpenEditor {
             }
             Some(_) => {}
         }
+    }
+
+    /// Guarantee the next `track_changes` records an undo step.
+    ///
+    /// Undo pushes are coalesced on an 800ms window so a burst of typing is
+    /// one step. An agent write is a single deliberate action, not typing —
+    /// without this it can land inside the author's coalescing window and
+    /// become unundoable.
+    fn force_undo_point(&mut self) {
+        self.last_push = None;
     }
 
     fn undo(&mut self) -> String {
@@ -245,6 +257,7 @@ impl Default for EditorApp {
             startup_warnings: Vec::new(),
             show_warnings: false,
             startup_scan_done: false,
+            session_queue: agent::bridge::SessionQueue::new(),
         }
     }
 }
@@ -998,6 +1011,192 @@ impl EditorApp {
     }
 
     /// Render and resolve the pending confirmation dialog, if any.
+    /// Execute queued agent tool requests against the live tabs.
+    ///
+    /// Runs on the UI thread, once per frame, unconditionally. Every request
+    /// taken must be answered — dropping one leaves the agent waiting out its
+    /// full timeout for no reason.
+    fn drain_session_requests(&mut self) {
+        for req in self.session_queue.drain() {
+            let outcome = self.run_session_op(&req.op);
+            req.reply(outcome);
+        }
+    }
+
+    fn run_session_op(&mut self, op: &agent::bridge::SessionOp) -> agent::tools::ToolOutcome {
+        use agent::bridge::SessionOp;
+        use agent::tools::ToolOutcome;
+
+        match op {
+            SessionOp::ListTabs => {
+                if self.open_editors.is_empty() {
+                    return ToolOutcome::ok(
+                        "No tabs are open. Use open_tab with a path from query_content.",
+                    );
+                }
+                let mut out = String::new();
+                for (i, o) in self.open_editors.iter().enumerate() {
+                    out.push_str(&format!(
+                        "{}{} [{}]{}{}\n",
+                        if Some(i) == self.active_tab {
+                            "* "
+                        } else {
+                            "  "
+                        },
+                        o.name,
+                        o.editor.content_type().name(),
+                        if o.editor.has_unsaved_changes() {
+                            " (unsaved)"
+                        } else {
+                            ""
+                        },
+                        o.path
+                            .as_ref()
+                            .map(|p| format!(" — {}", p.display()))
+                            .unwrap_or_default(),
+                    ));
+                }
+                out.push_str("\n* marks the active tab; document tools act on it.");
+                ToolOutcome::ok(out)
+            }
+
+            SessionOp::OpenTab { path } => {
+                let full = crate::app::content_root().join(path);
+                if !full.is_file() {
+                    return ToolOutcome::error(format!(
+                        "No such file under the content root: {path}"
+                    ));
+                }
+                let Some(ct) = browser::detect_content_type(&full) else {
+                    return ToolOutcome::error(format!(
+                        "Nothing in the editor handles {path}. Its directory is not one \
+                         of the known content directories."
+                    ));
+                };
+                let name = full
+                    .file_stem()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("document")
+                    .to_string();
+                self.open_editor_for_file(&name, ct, &full);
+                match self.active_open() {
+                    Some(_) => ToolOutcome::ok(format!(
+                        "Opened {path} in the {} editor. It is now the active tab.",
+                        ct.name()
+                    )),
+                    // `open_editor_for_file` reports its own failure to the
+                    // status bar; surface it to the model too rather than
+                    // claiming success.
+                    None => {
+                        ToolOutcome::error(format!("Could not open {path}: {}", self.status_text))
+                    }
+                }
+            }
+
+            SessionOp::ReadDocument => match self.active_open() {
+                None => ToolOutcome::error("No tab is active. Use open_tab first."),
+                Some(open) => match open.editor.snapshot() {
+                    Some(ron) => ToolOutcome::ok(ron),
+                    None => ToolOutcome::error(format!(
+                        "The {} tab is a live previewer and has no document to read.",
+                        open.editor.content_type().name()
+                    )),
+                },
+            },
+
+            SessionOp::WriteDocument { ron } => {
+                if self.active_tab.is_none() {
+                    return ToolOutcome::error("No tab is active. Use open_tab first.");
+                }
+                // Force the undo point before the write, so `track_changes`
+                // records this step even if the author was typing moments ago.
+                if let Some(open) = self.active_open_mut() {
+                    open.force_undo_point();
+                    if let Err(e) = open.editor.restore_snapshot(ron) {
+                        // RON is unforgiving and the message names the struct
+                        // rather than the line's real problem, so hand the
+                        // model the raw parse error to repair against.
+                        return ToolOutcome::error(format!(
+                            "The document was not written — it did not parse:\n{e}\n\n\
+                             Send the complete document in the shape read_document returns. \
+                             In RON a fixed-size array is a tuple, a newtype needs its parens, \
+                             and enum variants are snake_case."
+                        ));
+                    }
+                    open.editor.touch();
+                }
+                self.invalidate_cross_refs();
+                let findings = self.validation_findings();
+                ToolOutcome::ok(format!(
+                    "Written to the active tab (not yet saved to disk; Ctrl+Z undoes it).\n\n{findings}"
+                ))
+            }
+
+            SessionOp::Validate => {
+                if self.active_tab.is_none() {
+                    return ToolOutcome::error("No tab is active. Use open_tab first.");
+                }
+                ToolOutcome::ok(self.validation_findings())
+            }
+
+            SessionOp::SaveAll => {
+                let dirty: Vec<usize> = self
+                    .open_editors
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, o)| o.editor.has_unsaved_changes())
+                    .map(|(i, _)| i)
+                    .collect();
+                if dirty.is_empty() {
+                    return ToolOutcome::ok("Nothing to save — no tab has unsaved changes.");
+                }
+                let mut saved = Vec::new();
+                let mut failed = Vec::new();
+                for idx in dirty {
+                    let name = self.open_editors[idx].name.clone();
+                    if self.save_editor(idx) {
+                        saved.push(name);
+                    } else {
+                        failed.push(format!("{name}: {}", self.status_text));
+                    }
+                }
+                let mut out = String::new();
+                if !saved.is_empty() {
+                    out.push_str(&format!("Saved: {}\n", saved.join(", ")));
+                }
+                if !failed.is_empty() {
+                    out.push_str(&format!("Failed: {}\n", failed.join("; ")));
+                    return ToolOutcome::error(out);
+                }
+                out.push_str("Run check_tree to confirm the whole tree still resolves.");
+                ToolOutcome::ok(out)
+            }
+        }
+    }
+
+    /// Validation findings for the active tab, rendered for the model.
+    fn validation_findings(&mut self) -> String {
+        // Clone rather than borrow: `cross_ref_index` takes `&mut self`, and
+        // the findings below need `&self` for the active tab at the same time.
+        let index = self.cross_ref_index().clone();
+        let Some(open) = self.active_open() else {
+            return "No tab is active.".to_string();
+        };
+        let mut issues = open.editor.validate();
+        for (_field, msg) in open.editor.validate_cross_refs(&index) {
+            issues.push(msg);
+        }
+        if issues.is_empty() {
+            "Validation: clean.".to_string()
+        } else {
+            format!(
+                "Validation found {} issue(s):\n  {}",
+                issues.len(),
+                issues.join("\n  ")
+            )
+        }
+    }
+
     fn handle_pending(&mut self, ctx: &egui::Context) {
         let Some(pending) = self.pending.take() else {
             return;
@@ -1862,6 +2061,14 @@ impl eframe::App for EditorApp {
                 self.templates.reload();
             }
         }
+        // Agent tool requests. Drained unconditionally — including while a
+        // modal is up. If this were skipped whenever the editor was busy, an
+        // agent blocked on a reply would hang until the author happened to
+        // dismiss the dialog, and the editor would look frozen from both
+        // sides. Runs before `track_changes` so an agent write gets its undo
+        // step in the same frame it lands.
+        self.drain_session_requests();
+
         self.handle_pending(ctx);
 
         // Undo bookkeeping: one diff point per frame, after every mutation

@@ -17,9 +17,11 @@
 //! time.
 
 pub mod content;
+pub mod session;
 
 use serde_json::Value;
 
+use super::bridge::SessionHandle;
 use super::mode::Mode;
 
 /// Whether a tool changes anything.
@@ -71,6 +73,35 @@ impl ToolOutcome {
     }
 }
 
+/// What a tool is allowed to reach.
+///
+/// Carried rather than global so a headless frontend is a `ToolCtx` with no
+/// session, not a special code path — the same registry serves both.
+#[derive(Clone, Default)]
+pub struct ToolCtx {
+    /// Channel to the UI thread. `None` in the headless MCP server, where
+    /// there are no tabs to talk to.
+    pub session: Option<SessionHandle>,
+}
+
+impl ToolCtx {
+    pub fn headless() -> Self {
+        ToolCtx { session: None }
+    }
+
+    /// Built when the agent loop is spawned (P5).
+    #[allow(dead_code)]
+    pub fn with_session(session: SessionHandle) -> Self {
+        ToolCtx {
+            session: Some(session),
+        }
+    }
+
+    pub fn has_session(&self) -> bool {
+        self.session.is_some()
+    }
+}
+
 /// One callable tool.
 pub struct Tool {
     pub name: &'static str,
@@ -82,9 +113,9 @@ pub struct Tool {
     /// True when the tool needs a live editor session (P4). Content tools are
     /// false and run anywhere.
     pub needs_session: bool,
-    /// Executes the tool. Session tools get a `None` context in headless
-    /// frontends and must say so rather than panicking.
-    pub run: fn(&Value) -> ToolOutcome,
+    /// Executes the tool. Session tools get a context with no session in
+    /// headless frontends and must say so rather than panicking.
+    pub run: fn(&Value, &ToolCtx) -> ToolOutcome,
 }
 
 pub struct ToolRegistry {
@@ -94,9 +125,9 @@ pub struct ToolRegistry {
 impl ToolRegistry {
     /// Every tool the editor knows about.
     pub fn new() -> Self {
-        ToolRegistry {
-            tools: content::tools(),
-        }
+        let mut tools = content::tools();
+        tools.extend(session::tools());
+        ToolRegistry { tools }
     }
 
     pub fn get(&self, name: &str) -> Option<&Tool> {
@@ -118,7 +149,7 @@ impl ToolRegistry {
     }
 
     /// Run a tool by name, enforcing the mode gate.
-    pub fn dispatch(&self, name: &str, args: &Value, mode: Mode) -> ToolOutcome {
+    pub fn dispatch(&self, name: &str, args: &Value, mode: Mode, ctx: &ToolCtx) -> ToolOutcome {
         let Some(tool) = self.get(name) else {
             return ToolOutcome::error(format!(
                 "No tool named `{name}`. Available: {}",
@@ -138,7 +169,12 @@ impl ToolRegistry {
                  switches to Build mode (Tab) to apply it."
             ));
         }
-        (tool.run)(args)
+        if tool.needs_session && !ctx.has_session() {
+            return ToolOutcome::error(format!(
+                "`{name}` needs a live editor session and this process has none."
+            ));
+        }
+        (tool.run)(args, ctx)
     }
 }
 
@@ -179,7 +215,7 @@ mod tests {
         // No mutating tools exist until P4, so assert the rule directly
         // against the dispatcher rather than waiting for one to appear.
         for t in reg.available(Mode::Build, true) {
-            let out = reg.dispatch(t.name, &json!({}), Mode::Plan);
+            let out = reg.dispatch(t.name, &json!({}), Mode::Plan, &ToolCtx::headless());
             if t.mutability == Mutability::Mutating {
                 assert!(out.is_error, "`{}` ran in Plan mode", t.name);
                 assert!(
@@ -215,7 +251,12 @@ mod tests {
     #[test]
     fn an_unknown_tool_is_an_error_not_a_panic() {
         let reg = ToolRegistry::new();
-        let out = reg.dispatch("no_such_tool", &json!({}), Mode::Build);
+        let out = reg.dispatch(
+            "no_such_tool",
+            &json!({}),
+            Mode::Build,
+            &ToolCtx::headless(),
+        );
         assert!(out.is_error);
         assert!(out.content.contains("No tool named"));
     }

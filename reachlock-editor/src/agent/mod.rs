@@ -6,6 +6,7 @@
 //! offline is first-class, and a local model with no tool-calling support must
 //! still be able to author a document.
 
+pub mod bridge;
 pub mod mode;
 pub mod provider;
 pub mod tools;

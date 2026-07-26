@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use reachlock_core::content::refs::{ContentTree, RefKind};
 use serde_json::{json, Value};
 
-use super::{Mutability, Tool, ToolOutcome};
+use super::{Mutability, Tool, ToolCtx, ToolOutcome};
 
 /// Where the content tree lives.
 ///
@@ -157,7 +157,7 @@ pub fn tools() -> Vec<Tool> {
     ]
 }
 
-fn run_query_content(args: &Value) -> ToolOutcome {
+fn run_query_content(args: &Value, _ctx: &ToolCtx) -> ToolOutcome {
     let kind_filter = match arg_str(args, "kind") {
         Some(label) => match parse_kind(label) {
             Some(k) => Some(k),
@@ -207,7 +207,7 @@ fn run_query_content(args: &Value) -> ToolOutcome {
     ToolOutcome::ok(out)
 }
 
-fn run_find_references(args: &Value) -> ToolOutcome {
+fn run_find_references(args: &Value, _ctx: &ToolCtx) -> ToolOutcome {
     let Some(id) = arg_str(args, "id") else {
         return ToolOutcome::error("`id` is required and must be a non-empty string.");
     };
@@ -268,7 +268,7 @@ fn run_find_references(args: &Value) -> ToolOutcome {
     ToolOutcome::ok(out)
 }
 
-fn run_check_tree(_args: &Value) -> ToolOutcome {
+fn run_check_tree(_args: &Value, _ctx: &ToolCtx) -> ToolOutcome {
     let tree = scan();
     let report = tree.check();
 
@@ -320,7 +320,7 @@ fn run_check_tree(_args: &Value) -> ToolOutcome {
     ToolOutcome::ok(out)
 }
 
-fn run_read_file(args: &Value) -> ToolOutcome {
+fn run_read_file(args: &Value, _ctx: &ToolCtx) -> ToolOutcome {
     let Some(rel) = arg_str(args, "path") else {
         return ToolOutcome::error("`path` is required and must be a non-empty string.");
     };
@@ -381,7 +381,12 @@ mod tests {
     #[test]
     fn query_content_finds_authored_souls() {
         let out = with_real_root(|| {
-            ToolRegistry::new().dispatch("query_content", &json!({"kind": "soul"}), Mode::Plan)
+            ToolRegistry::new().dispatch(
+                "query_content",
+                &json!({"kind": "soul"}),
+                Mode::Plan,
+                &ToolCtx::headless(),
+            )
         });
         assert!(!out.is_error, "{}", out.content);
         assert!(
@@ -393,8 +398,12 @@ mod tests {
 
     #[test]
     fn query_content_rejects_an_unknown_kind_with_the_valid_list() {
-        let out =
-            ToolRegistry::new().dispatch("query_content", &json!({"kind": "nonsense"}), Mode::Plan);
+        let out = ToolRegistry::new().dispatch(
+            "query_content",
+            &json!({"kind": "nonsense"}),
+            Mode::Plan,
+            &ToolCtx::headless(),
+        );
         assert!(out.is_error);
         assert!(out.content.contains("soul"), "{}", out.content);
     }
@@ -406,6 +415,7 @@ mod tests {
                 "find_references",
                 &json!({"id": "definitely_not_a_real_id"}),
                 Mode::Plan,
+                &ToolCtx::headless(),
             )
         });
         assert!(!out.is_error);
@@ -414,8 +424,9 @@ mod tests {
 
     #[test]
     fn check_tree_reports_the_authored_tree() {
-        let out =
-            with_real_root(|| ToolRegistry::new().dispatch("check_tree", &json!({}), Mode::Plan));
+        let out = with_real_root(|| {
+            ToolRegistry::new().dispatch("check_tree", &json!({}), Mode::Plan, &ToolCtx::headless())
+        });
         assert!(!out.is_error, "{}", out.content);
         assert!(out.content.contains("ids defined"), "{}", out.content);
     }
@@ -435,7 +446,12 @@ mod tests {
                 .min()
                 .expect("at least one authored soul");
             let rel = format!("souls/{}", first.file_name().unwrap().to_str().unwrap());
-            ToolRegistry::new().dispatch("read_file", &json!({ "path": rel }), Mode::Plan)
+            ToolRegistry::new().dispatch(
+                "read_file",
+                &json!({ "path": rel }),
+                Mode::Plan,
+                &ToolCtx::headless(),
+            )
         });
         assert!(!out.is_error, "{}", out.content);
         // Returned verbatim, including the hand-written comments RON drops on
@@ -455,7 +471,12 @@ mod tests {
             "/etc/passwd",
         ] {
             let out = with_real_root(|| {
-                ToolRegistry::new().dispatch("read_file", &json!({ "path": attempt }), Mode::Plan)
+                ToolRegistry::new().dispatch(
+                    "read_file",
+                    &json!({ "path": attempt }),
+                    Mode::Plan,
+                    &ToolCtx::headless(),
+                )
             });
             assert!(
                 out.is_error,
@@ -469,7 +490,7 @@ mod tests {
     fn missing_required_arguments_are_errors_not_panics() {
         let reg = ToolRegistry::new();
         for name in ["find_references", "read_file"] {
-            let out = reg.dispatch(name, &json!({}), Mode::Plan);
+            let out = reg.dispatch(name, &json!({}), Mode::Plan, &ToolCtx::headless());
             assert!(out.is_error, "`{name}` accepted empty arguments");
         }
     }
