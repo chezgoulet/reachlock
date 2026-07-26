@@ -1199,6 +1199,11 @@ mod tests {
     /// creating a duplicate under a freshly generated name.
     #[test]
     fn save_all_records_path_for_new_entries() {
+        // `content_root` is process-wide; this test moves it, so it has to
+        // take the same guard `browser.rs` does.
+        let _guard = crate::app::ROOT_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join("reachlock_soul_saveall_tests");
         let _ = std::fs::create_dir_all(&root);
         crate::app::set_content_root(Some(root.clone()));

@@ -468,8 +468,11 @@ mod tests {
     #[test]
     fn a_new_editor_writes_nothing_to_disk() {
         // `content_root` is process-wide, so serialise the tests that move it.
-        static ROOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = ROOT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // The guard lives in `app` because `soul.rs` moves the root too — a
+        // lock private to this module left that one racing.
+        let _guard = crate::app::ROOT_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
 
         let tmp = std::env::temp_dir().join(format!("reachlock_new_editor_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);

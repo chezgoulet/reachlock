@@ -9,6 +9,19 @@ use std::sync::RwLock;
 /// hardcoding `mods/reachlock/` and silently ignoring the preference).
 static CONTENT_ROOT: RwLock<Option<PathBuf>> = RwLock::new(None);
 
+/// Serialises the tests that move the process-wide content root.
+///
+/// [`CONTENT_ROOT`] is global, so two tests that repoint it race: one asserts
+/// against a root the other has already replaced. `browser.rs` had a lock for
+/// exactly this, but it was private to that one test — and `soul.rs` moves the
+/// root too, without taking it. A lock only one participant holds is not a
+/// lock, and the result was a workspace test run that failed roughly one time
+/// in eight and passed on every rerun.
+///
+/// Every test that calls [`set_content_root`] must take this guard.
+#[cfg(test)]
+pub static ROOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Set the content root (called from the app shell at startup and on
 /// preference change). Pass `None` to fall back to the default.
 pub fn set_content_root(root: Option<PathBuf>) {
