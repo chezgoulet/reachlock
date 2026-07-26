@@ -46,6 +46,7 @@ pub mod pause;
 pub mod presence;
 pub mod resource_gathering;
 pub mod reticle;
+pub mod screenshot;
 pub mod sensors;
 pub mod settings_ui;
 pub mod setup;

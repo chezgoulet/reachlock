@@ -1,0 +1,235 @@
+// ReachLock UI theme — "Ship's Terminal" (phosphor).
+//
+// This file is the game's stylesheet. Editing it restyles every screen that
+// uses `Styled` classes; no Rust changes required. Press F5 in-game to
+// reload it live.
+//
+// Three layers, each resolving into the one above:
+//
+//   palette  raw colors, named by what they ARE      ("amber", "void")
+//   roles    semantic names, pointing at palette     ("accent" -> "amber")
+//   classes  style rules, pointing at roles          ("panel.title" -> accent)
+//
+// UI code only ever names a *class*. Re-skinning the game means repointing
+// roles and palette here — the call sites never move.
+(
+    id: "phosphor",
+    name: "Ship's Terminal",
+
+    fonts: (
+        regular: "fonts/DejaVuSansMono.ttf",
+        bold: "fonts/DejaVuSansMono-Bold.ttf",
+    ),
+
+    // ── Palette ──────────────────────────────────────────────────────────
+    // Named for the color, not the use. Add freely; nothing breaks.
+    palette: {
+        "void":        "#07090c",
+        "hull":        "#0d1117",
+        "hull-raised": "#151c24",
+        "hull-sunk":   "#04060a",
+        "edge":        "#1e2a33",
+        "edge-bright": "#2f4250",
+
+        "phosphor":       "#d7e3ea",
+        "phosphor-dim":   "#7c8b96",
+        "phosphor-faint": "#46535e",
+
+        "amber":      "#ffb454",
+        "amber-deep": "#c77d39",
+        "cyan":       "#4fd6e0",
+        "cyan-deep":  "#2a8f97",
+
+        "signal-good": "#7ee787",
+        "signal-warn": "#ffd166",
+        "signal-bad":  "#ff6b6b",
+
+        "transparent": "#00000000",
+    },
+
+    // ── Roles ────────────────────────────────────────────────────────────
+    // Semantic layer. Swap these to re-skin without touching classes.
+    roles: {
+        "background":    "void",
+        "surface":       "hull",
+        "surface-raised":"hull-raised",
+        "surface-sunk":  "hull-sunk",
+        "border":        "edge",
+        "border-strong": "edge-bright",
+
+        "text":        "phosphor",
+        "text-muted":  "phosphor-dim",
+        "text-faint":  "phosphor-faint",
+
+        "accent":      "amber",
+        "accent-dim":  "amber-deep",
+        "focus":       "cyan",
+        "focus-dim":   "cyan-deep",
+
+        "ok":      "signal-good",
+        "warn":    "signal-warn",
+        "danger":  "signal-bad",
+    },
+
+    // ── Scales ───────────────────────────────────────────────────────────
+    text_sizes: {
+        "display": 44.0,
+        "title":   24.0,
+        "heading": 18.0,
+        "body":    15.0,
+        "label":   13.0,
+        "micro":   11.0,
+    },
+    spacing: {
+        "none": 0.0,
+        "xs":   4.0,
+        "sm":   8.0,
+        "md":   16.0,
+        "lg":   24.0,
+        "xl":   40.0,
+    },
+
+    // ── Classes ──────────────────────────────────────────────────────────
+    // Every field is optional; omitted fields leave the entity untouched,
+    // so a class can style text only, layout only, or both.
+    classes: {
+        // Full-screen ground.
+        "screen": (
+            bg: "background",
+        ),
+
+        // The bordered console frame everything sits in.
+        "frame": (
+            bg: "surface",
+            border_color: "border",
+            border: 1.0,
+            padding: "none",
+        ),
+        "frame.header": (
+            bg: "surface-sunk",
+            border_color: "border",
+            border_bottom: 1.0,
+            padding_x: "md",
+            padding_y: "sm",
+        ),
+        "frame.body": (
+            padding_x: "xl",
+            padding_y: "lg",
+            row_gap: "sm",
+        ),
+        "frame.footer": (
+            bg: "surface-sunk",
+            border_color: "border",
+            border_top: 1.0,
+            padding_x: "md",
+            padding_y: "sm",
+            column_gap: "lg",
+        ),
+
+        // Typography.
+        "title": (
+            fg: "accent",
+            size: "display",
+            weight: "bold",
+            letter_spacing: 2.0,
+        ),
+        "subtitle": (
+            fg: "text-muted",
+            size: "label",
+            letter_spacing: 1.0,
+        ),
+        "heading": (
+            fg: "accent",
+            size: "heading",
+            weight: "bold",
+            letter_spacing: 2.0,
+        ),
+        "body": (
+            fg: "text",
+            size: "body",
+        ),
+        "muted": (
+            fg: "text-muted",
+            size: "label",
+        ),
+        "hint": (
+            fg: "text-faint",
+            size: "micro",
+        ),
+
+        // Key/value rows.
+        "row": (
+            column_gap: "md",
+            padding_y: "xs",
+        ),
+        "row.label": (
+            fg: "text-muted",
+            size: "label",
+            width: 150.0,
+        ),
+        "row.label.focused": (
+            fg: "focus",
+            size: "label",
+            weight: "bold",
+            width: 150.0,
+        ),
+        "row.value": (
+            fg: "text",
+            size: "body",
+        ),
+        "row.value.placeholder": (
+            fg: "text-faint",
+            size: "body",
+        ),
+        "row.affordance": (
+            fg: "focus-dim",
+            size: "micro",
+        ),
+
+        // Menu / list items.
+        "item": (
+            fg: "text-muted",
+            size: "heading",
+            padding_y: "xs",
+        ),
+        "item.selected": (
+            fg: "accent",
+            size: "heading",
+            weight: "bold",
+            padding_y: "xs",
+        ),
+        "item.disabled": (
+            fg: "text-faint",
+            size: "heading",
+            padding_y: "xs",
+        ),
+
+        // Status messages.
+        "status.ok":     ( fg: "ok",     size: "label" ),
+        "status.warn":   ( fg: "warn",   size: "label" ),
+        "status.danger": ( fg: "danger", size: "label" ),
+
+        // Footer keycaps.
+        "keycap": (
+            fg: "accent",
+            size: "label",
+            weight: "bold",
+        ),
+        "keycap.desc": (
+            fg: "text-muted",
+            size: "label",
+        ),
+
+        // Step progress dots.
+        "step.done":    ( fg: "accent-dim", size: "body" ),
+        "step.current": ( fg: "accent",     size: "body", weight: "bold" ),
+        "step.todo":    ( fg: "text-faint", size: "body" ),
+
+        // Text entry caret.
+        "caret": (
+            fg: "focus",
+            size: "body",
+            weight: "bold",
+        ),
+    },
+)
