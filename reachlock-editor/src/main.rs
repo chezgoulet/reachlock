@@ -908,12 +908,7 @@ impl EditorApp {
         // TextEdit keeps its own in-field undo.
         let typing = ctx.wants_keyboard_input();
 
-        // Tab toggles Plan/Build — but ONLY when nothing is taking keyboard
-        // input. Tab is egui's focus-navigation key and this editor is almost
-        // entirely text fields, so an unguarded binding would break tabbing
-        // between every field in every tab. The guard is the same one undo
-        // uses below.
-        if !typing && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab)) {
+        if tab_toggles_assistant_mode(ctx) {
             self.agent_mode = self.agent_mode.toggled();
             // Say it out loud: the mode changes what the assistant is allowed
             // to do, and a silent flip is how an author ends up surprised
@@ -2337,6 +2332,28 @@ impl eframe::App for EditorApp {
     }
 }
 
+/// Whether Tab should toggle the assistant's Plan/Build mode this frame.
+///
+/// Tab is egui's focus-navigation key and this editor is almost entirely text
+/// fields, so the binding is guarded on `wants_keyboard_input` — the same
+/// guard undo and redo use. Without it, tabbing between fields would stop
+/// working in every tab in the editor, which is a far worse regression than
+/// not having the shortcut.
+///
+/// Consuming the key is deliberately inside the guard: `consume_key` removes
+/// the event, so calling it first and testing the guard afterwards would still
+/// swallow the Tab that a focused text field needed.
+///
+/// A free function rather than a method so it can be driven by a test with a
+/// real `egui::Context`; there is no other way to be sure of this short of a
+/// human pressing Tab.
+fn tab_toggles_assistant_mode(ctx: &egui::Context) -> bool {
+    if ctx.wants_keyboard_input() {
+        return false;
+    }
+    ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab))
+}
+
 fn main() -> eframe::Result<()> {
     // Headless MCP server. Checked before anything touches winit or eframe:
     // an MCP client spawns this as a subprocess and speaks JSON-RPC over the
@@ -2369,6 +2386,104 @@ fn main() -> eframe::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Drive a real `egui::Context` for one frame with a Tab keypress, with
+    /// and without a focused text field, and check what the guard decides.
+    ///
+    /// This is the regression that would hurt most: Tab is how you move
+    /// between fields, and the editor is almost nothing but fields.
+    mod tab_guard {
+        use super::*;
+
+        fn tab_event() -> egui::Event {
+            egui::Event::Key {
+                key: egui::Key::Tab,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }
+        }
+
+        /// Run one frame; `body` draws the UI. Returns the guard's verdict.
+        ///
+        /// `send_tab` is separate because egui consumes Tab for its own focus
+        /// navigation: sending it on the frame that establishes focus would
+        /// move focus straight back off the field, and the test would be
+        /// measuring its own setup rather than the guard.
+        fn frame(ctx: &egui::Context, send_tab: bool, mut body: impl FnMut(&mut egui::Ui)) -> bool {
+            let input = egui::RawInput {
+                events: if send_tab {
+                    vec![tab_event()]
+                } else {
+                    Vec::new()
+                },
+                ..Default::default()
+            };
+            let mut verdict = false;
+            let _ = ctx.run(input, |ctx| {
+                // Guard first, then draw — the real frame calls
+                // `handle_shortcuts` before any panel. That ordering is what
+                // makes the guard work: `wants_keyboard_input` reports the
+                // focus carried in from the previous frame, before egui has
+                // had a chance to consume Tab for its own focus navigation.
+                // Checking after drawing measures the wrong thing entirely —
+                // egui will have moved focus off a lone text field by then,
+                // and the guard looks broken when it is not.
+                verdict = tab_toggles_assistant_mode(ctx);
+                egui::CentralPanel::default().show(ctx, |ui| body(ui));
+            });
+            verdict
+        }
+
+        #[test]
+        fn tab_toggles_the_mode_when_no_field_has_focus() {
+            let ctx = egui::Context::default();
+            // Warm-up frame: egui needs one pass to settle focus state.
+            frame(&ctx, false, |ui| {
+                ui.label("nothing focusable");
+            });
+            assert!(
+                frame(&ctx, true, |ui| {
+                    ui.label("nothing focusable");
+                }),
+                "Tab should toggle the assistant mode when nothing wants keys"
+            );
+        }
+
+        #[test]
+        fn tab_is_left_alone_while_a_text_field_has_focus() {
+            let ctx = egui::Context::default();
+            let mut text = String::from("typing here");
+
+            // Focus a TextEdit and keep it focused across frames.
+            let id = egui::Id::new("guarded_field");
+            // Two Tab-free frames: one to draw the field, one for the
+            // requested focus to take effect.
+            frame(&ctx, false, |ui| {
+                let r = ui.add(egui::TextEdit::singleline(&mut text).id(id));
+                r.request_focus();
+            });
+            let focused = frame(&ctx, false, |ui| {
+                ui.add(egui::TextEdit::singleline(&mut text).id(id));
+            });
+            assert!(!focused, "no Tab was sent, so nothing should have fired");
+            assert!(
+                ctx.wants_keyboard_input(),
+                "test setup failed: the field never took focus, so this would \
+                 not be testing the guard at all"
+            );
+
+            let verdict = frame(&ctx, true, |ui| {
+                ui.add(egui::TextEdit::singleline(&mut text).id(id));
+            });
+            assert!(
+                !verdict,
+                "Tab must NOT be captured while a text field has focus — that is \
+                 how focus moves between fields"
+            );
+        }
+    }
 
     #[test]
     fn suggest_stem_normalizes_names() {
