@@ -603,12 +603,11 @@ impl Editor for LocationEditor {
             let Some(path) = &entry.path else {
                 let dir = content_root().join(ContentType::Location.directory());
                 let _ = std::fs::create_dir_all(&dir);
-                let stem = if entry.location.display_name.is_empty() {
-                    format!("location_{}", wrote)
-                } else {
-                    entry.location.display_name.clone()
-                };
-                let p = dir.join(format!("{stem}.ron"));
+                let p = crate::io::new_entry_path(
+                    &dir,
+                    &entry.location.id,
+                    &format!("location_{wrote}"),
+                );
                 crate::io::write_ron(&p, &entry.location)?;
                 entry.path = Some(p);
                 wrote += 1;

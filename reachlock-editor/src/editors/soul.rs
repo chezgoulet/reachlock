@@ -1272,12 +1272,7 @@ impl Editor for SoulEditor {
                 // and record it so subsequent saves update the same file.
                 let dir = content_root().join(ContentType::Soul.directory());
                 let _ = std::fs::create_dir_all(&dir);
-                let stem = if entry.soul.id.is_empty() {
-                    format!("soul_{}", wrote)
-                } else {
-                    entry.soul.id.clone()
-                };
-                let p = dir.join(format!("{stem}.ron"));
+                let p = crate::io::new_entry_path(&dir, &entry.meta.id, &format!("soul_{wrote}"));
                 crate::io::write_enveloped(&p, &entry.meta, entry.soul.clone())?;
                 entry.path = Some(p);
                 wrote += 1;

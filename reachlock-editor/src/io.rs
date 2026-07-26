@@ -92,6 +92,77 @@ pub fn write_enveloped<T: Enveloped>(
     write_ron(path, &file)
 }
 
+/// Filename stem for a new entry, derived from its content id.
+///
+/// Nine multi-entry editors each rolled their own version of this and
+/// disagreed: some used the payload id, some the display name, one a loop
+/// counter. Naming from the display name is how an agent-authored star system
+/// with `id: "zola_swamp_system"` landed on disk as `Uncharted 0000.ron` —
+/// a file whose name matches nothing anyone would search for, containing
+/// content nothing references.
+///
+/// The id is the right source because it is what the rest of the tree refers
+/// to. `display_name` is prose and changes; the id is the handle.
+pub fn file_stem_for_id(id: &str, fallback: &str) -> String {
+    let stem: String = id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    // Collapse runs and trim, so "Uncharted 0000" cannot become
+    // "uncharted_0000" with a trailing separator, and an id that is entirely
+    // punctuation cannot produce a dotfile or an empty name.
+    let mut out = String::with_capacity(stem.len());
+    let mut last_underscore = false;
+    for c in stem.chars() {
+        if c == '_' {
+            if !last_underscore && !out.is_empty() {
+                out.push('_');
+            }
+            last_underscore = true;
+        } else {
+            out.push(c);
+            last_underscore = false;
+        }
+    }
+    while out.ends_with('_') {
+        out.pop();
+    }
+    if out.is_empty() {
+        fallback.to_string()
+    } else {
+        out
+    }
+}
+
+/// A free path in `dir` for a new entry with this id.
+///
+/// Suffixes rather than overwriting. `write_ron` truncates, so without this a
+/// second new entry that happened to share an id — two unnamed drafts, or a
+/// re-run of the same generation — silently destroyed the first one's file.
+pub fn new_entry_path(dir: &Path, id: &str, fallback: &str) -> PathBuf {
+    let stem = file_stem_for_id(id, fallback);
+    let first = dir.join(format!("{stem}.ron"));
+    if !first.exists() {
+        return first;
+    }
+    // Bounded: something is badly wrong long before 1000, and an unbounded
+    // loop here would hang the save rather than fail it.
+    for n in 2..1000 {
+        let candidate = dir.join(format!("{stem}_{n}.ron"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    // Give up distinctly rather than silently overwriting.
+    dir.join(format!("{stem}_overflow.ron"))
+}
+
 pub fn read_ron<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
     let bytes =
         std::fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
@@ -205,6 +276,59 @@ pub fn validate_content(content_type: &ContentType, value: &serde_json::Value) -
 
 #[cfg(test)]
 mod tests {
+
+    /// The case that started this: an agent-authored star system whose id was
+    /// `zola_swamp_system` was saved as `Uncharted 0000.ron`, because the
+    /// naming came from the display name rather than the id.
+    #[test]
+    fn a_stem_comes_from_the_id_not_a_display_name() {
+        assert_eq!(
+            file_stem_for_id("zola_swamp_system", "system_0"),
+            "zola_swamp_system"
+        );
+    }
+
+    #[test]
+    fn a_stem_is_filename_safe() {
+        // Spaces, capitals and punctuation all become one separator, and a
+        // trailing separator is trimmed — otherwise "Uncharted 0000" yields
+        // a name with a dangling underscore.
+        assert_eq!(file_stem_for_id("Uncharted 0000", "x"), "uncharted_0000");
+        assert_eq!(file_stem_for_id("a//b  c", "x"), "a_b_c");
+        assert_eq!(file_stem_for_id("trailing---", "x"), "trailing");
+        // An id that sanitizes to nothing must not produce "" or a dotfile.
+        assert_eq!(file_stem_for_id("///", "fallback"), "fallback");
+        assert_eq!(file_stem_for_id("", "fallback"), "fallback");
+    }
+
+    /// `write_ron` truncates, so without suffixing, a second new entry with
+    /// the same id silently destroyed the first one's file.
+    #[test]
+    fn a_colliding_name_is_suffixed_not_overwritten() {
+        let dir = std::env::temp_dir().join(format!(
+            "rl_entry_path_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let first = new_entry_path(&dir, "zola", "x");
+        assert_eq!(first.file_name().unwrap(), "zola.ron");
+        std::fs::write(&first, "()").unwrap();
+
+        let second = new_entry_path(&dir, "zola", "x");
+        assert_eq!(second.file_name().unwrap(), "zola_2.ron");
+        std::fs::write(&second, "()").unwrap();
+
+        let third = new_entry_path(&dir, "zola", "x");
+        assert_eq!(third.file_name().unwrap(), "zola_3.ron");
+
+        // The original is intact — the whole point.
+        assert_eq!(std::fs::read_to_string(&first).unwrap(), "()");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     use super::*;
 
     /// `write_ron` must produce pretty (multi-line) RON so author files stay

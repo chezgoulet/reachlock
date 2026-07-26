@@ -546,12 +546,8 @@ impl Editor for EnemyEditor {
             let Some(path) = &entry.path else {
                 let dir = content_root().join(ContentType::EnemyArchetype.directory());
                 let _ = std::fs::create_dir_all(&dir);
-                let stem = if entry.archetype.display_name.is_empty() {
-                    format!("enemy_{}", wrote)
-                } else {
-                    entry.archetype.display_name.clone()
-                };
-                let p = dir.join(format!("{stem}.ron"));
+                let p =
+                    crate::io::new_entry_path(&dir, &entry.archetype.id, &format!("enemy_{wrote}"));
                 crate::io::write_ron(&p, &entry.archetype)?;
                 entry.path = Some(p);
                 wrote += 1;

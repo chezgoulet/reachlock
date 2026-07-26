@@ -450,12 +450,8 @@ impl Editor for ChartedSystemEditor {
             let Some(path) = &entry.path else {
                 let dir = content_root().join(ContentType::ChartedSystem.directory());
                 let _ = std::fs::create_dir_all(&dir);
-                let stem = if entry.system.display_name.is_empty() {
-                    format!("system_{}", wrote)
-                } else {
-                    entry.system.display_name.clone()
-                };
-                let p = dir.join(format!("{stem}.ron"));
+                let p =
+                    crate::io::new_entry_path(&dir, &entry.system.id, &format!("system_{wrote}"));
                 crate::io::write_ron(&p, &entry.system)?;
                 entry.path = Some(p);
                 wrote += 1;
