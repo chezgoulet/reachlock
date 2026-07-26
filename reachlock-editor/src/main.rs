@@ -122,6 +122,9 @@ struct EditorApp {
     /// The MCP-over-HTTP endpoint, when the author has switched it on.
     /// Dropping it stops the listener.
     mcp_http: Option<mcp_http::McpHttpServer>,
+    /// Where the most recent session was logged. Kept after the task ends —
+    /// the log is most wanted once a run has gone wrong.
+    agent_log_path: Option<std::path::PathBuf>,
 }
 
 /// Find Usages state: what the author typed, and what the index answered.
@@ -277,6 +280,7 @@ impl Default for EditorApp {
             agent_prompt: String::new(),
             show_assistant: false,
             mcp_http: None,
+            agent_log_path: None,
         }
     }
 }
@@ -908,7 +912,7 @@ impl EditorApp {
         // TextEdit keeps its own in-field undo.
         let typing = ctx.wants_keyboard_input();
 
-        if tab_toggles_assistant_mode(ctx) {
+        if assistant_mode_shortcut(ctx) {
             self.agent_mode = self.agent_mode.toggled();
             // Say it out loud: the mode changes what the assistant is allowed
             // to do, and a silent flip is how an author ends up surprised
@@ -1262,6 +1266,26 @@ impl EditorApp {
         }
     }
 
+    /// The transcript as plain text, for the clipboard.
+    fn transcript_text(&self) -> String {
+        use agent::session::AgentEvent as E;
+        let mut out = String::new();
+        for e in &self.agent_transcript {
+            match e {
+                E::Text(t) => out.push_str(&format!("\n{t}\n")),
+                E::ToolStarted { summary, .. } => out.push_str(&format!("-> {summary}\n")),
+                E::ToolFinished { name, is_error } => {
+                    if *is_error {
+                        out.push_str(&format!("   {name}: FAILED\n"));
+                    }
+                }
+                E::Done(Ok(())) => out.push_str("\n[done]\n"),
+                E::Done(Err(e)) => out.push_str(&format!("\n[stopped] {e}\n")),
+            }
+        }
+        out
+    }
+
     fn agent_running(&self) -> bool {
         self.agent_task.is_some()
     }
@@ -1283,13 +1307,15 @@ impl EditorApp {
         self.agent_transcript.clear();
         self.agent_prompt.clear();
         self.status_text = format!("Assistant working ({} mode)…", self.agent_mode.label());
-        self.agent_task = Some(agent::session::spawn(
+        let task = agent::session::spawn(
             provider,
             self.session_queue.handle(),
             self.agent_mode,
             profile.max_tokens,
             prompt,
-        ));
+        );
+        self.agent_log_path = task.log_path.clone();
+        self.agent_task = Some(task);
     }
 
     fn assistant_panel(&mut self, ctx: &egui::Context) {
@@ -1308,12 +1334,12 @@ impl EditorApp {
                         agent::mode::Mode::Plan => (
                             "Plan (read-only)",
                             "Read-only: the assistant can investigate and propose, but no tool \
-                             it can call writes to a tab or to disk. Tab switches to Build.",
+                             it can call writes to a tab or to disk. Ctrl+Shift+M switches to Build.",
                         ),
                         agent::mode::Mode::Build => (
                             "Build (can edit)",
                             "The assistant can open tabs, write documents and save. Every write \
-                             is undoable with Ctrl+Z. Tab switches to Plan.",
+                             is undoable with Ctrl+Z. Ctrl+Shift+M switches to Plan.",
                         ),
                     };
                     if ui.button(label).on_hover_text(hover).clicked() {
@@ -1362,6 +1388,30 @@ impl EditorApp {
                             }
                         }
                     });
+
+                ui.horizontal(|ui| {
+                    // Selecting a transcript out of an egui panel with the
+                    // mouse is miserable, so neither reading it nor copying it
+                    // depends on doing that.
+                    if ui
+                        .add_enabled(
+                            !self.agent_transcript.is_empty(),
+                            egui::Button::new("Copy transcript"),
+                        )
+                        .clicked()
+                    {
+                        let text = self.transcript_text();
+                        ui.ctx().copy_text(text);
+                        self.status_text = "Transcript copied.".into();
+                    }
+                    if let Some(path) = &self.agent_log_path {
+                        ui.weak(format!("log: {}", path.display()))
+                            .on_hover_text(
+                                "Every session is written here as it runs, so a run that \
+                                 hangs or fails can still be read with ordinary tools.",
+                            );
+                    }
+                });
 
                 ui.separator();
                 let running = self.agent_running();
@@ -1726,7 +1776,7 @@ impl EditorApp {
                     let mut assistant_visible = self.show_assistant;
                     if ui
                         .checkbox(&mut assistant_visible, "Assistant")
-                        .on_hover_text("Tab toggles Plan / Build mode when no field has focus.")
+                        .on_hover_text("Ctrl+Shift+M toggles Plan / Build mode.")
                         .changed()
                     {
                         self.show_assistant = assistant_visible;
@@ -2332,26 +2382,30 @@ impl eframe::App for EditorApp {
     }
 }
 
-/// Whether Tab should toggle the assistant's Plan/Build mode this frame.
+/// Whether the Plan/Build shortcut fired this frame.
 ///
-/// Tab is egui's focus-navigation key and this editor is almost entirely text
-/// fields, so the binding is guarded on `wants_keyboard_input` — the same
-/// guard undo and redo use. Without it, tabbing between fields would stop
-/// working in every tab in the editor, which is a far worse regression than
-/// not having the shortcut.
+/// **Ctrl+Shift+M, not Tab.** Tab was the original binding and was wrong twice
+/// over: it is egui's focus-navigation key, and — the reason it changed — it
+/// collides with assistive technology, where Tab is the primary means of
+/// moving through a UI. A shortcut that a screen-reader or switch-access user
+/// cannot avoid triggering is not a shortcut, it is a trap. The mode is also
+/// reachable without any key at all, from the button in the panel header.
 ///
-/// Consuming the key is deliberately inside the guard: `consume_key` removes
-/// the event, so calling it first and testing the guard afterwards would still
-/// swallow the Tab that a focused text field needed.
+/// The `wants_keyboard_input` guard stays even though Ctrl+Shift+M is not a
+/// character a field would swallow: it is the same guard undo and redo use,
+/// and a shortcut that fires while someone is typing into a document is a
+/// surprise regardless of which keys it needs.
 ///
-/// A free function rather than a method so it can be driven by a test with a
-/// real `egui::Context`; there is no other way to be sure of this short of a
-/// human pressing Tab.
-fn tab_toggles_assistant_mode(ctx: &egui::Context) -> bool {
+/// Consuming is deliberately inside the guard — `consume_key` removes the
+/// event, so checking the guard afterwards would still swallow the keystroke.
+///
+/// A free function rather than a method so a test can drive it with a real
+/// `egui::Context`.
+fn assistant_mode_shortcut(ctx: &egui::Context) -> bool {
     if ctx.wants_keyboard_input() {
         return false;
     }
-    ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab))
+    ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::M))
 }
 
 fn main() -> eframe::Result<()> {
@@ -2392,9 +2446,22 @@ mod tests {
     ///
     /// This is the regression that would hurt most: Tab is how you move
     /// between fields, and the editor is almost nothing but fields.
-    mod tab_guard {
+    mod mode_shortcut {
         use super::*;
 
+        /// The real chord, so the test breaks if the binding moves.
+        fn shortcut_event() -> egui::Event {
+            egui::Event::Key {
+                key: egui::Key::M,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+            }
+        }
+
+        /// A bare Tab, which must no longer do anything: it is how assistive
+        /// technology moves through the UI, and how egui moves focus.
         fn tab_event() -> egui::Event {
             egui::Event::Key {
                 key: egui::Key::Tab,
@@ -2407,17 +2474,18 @@ mod tests {
 
         /// Run one frame; `body` draws the UI. Returns the guard's verdict.
         ///
-        /// `send_tab` is separate because egui consumes Tab for its own focus
-        /// navigation: sending it on the frame that establishes focus would
-        /// move focus straight back off the field, and the test would be
-        /// measuring its own setup rather than the guard.
-        fn frame(ctx: &egui::Context, send_tab: bool, mut body: impl FnMut(&mut egui::Ui)) -> bool {
+        /// The key is a parameter, and separate from the frames that set up
+        /// focus, because egui consumes Tab for its own focus navigation:
+        /// sending a key on the frame that establishes focus would move focus
+        /// straight back off the field, and the test would be measuring its
+        /// own setup rather than the guard.
+        fn frame(
+            ctx: &egui::Context,
+            key: Option<egui::Event>,
+            mut body: impl FnMut(&mut egui::Ui),
+        ) -> bool {
             let input = egui::RawInput {
-                events: if send_tab {
-                    vec![tab_event()]
-                } else {
-                    Vec::new()
-                },
+                events: key.into_iter().collect(),
                 ..Default::default()
             };
             let mut verdict = false;
@@ -2430,29 +2498,44 @@ mod tests {
                 // Checking after drawing measures the wrong thing entirely —
                 // egui will have moved focus off a lone text field by then,
                 // and the guard looks broken when it is not.
-                verdict = tab_toggles_assistant_mode(ctx);
+                verdict = assistant_mode_shortcut(ctx);
                 egui::CentralPanel::default().show(ctx, |ui| body(ui));
             });
             verdict
         }
 
         #[test]
-        fn tab_toggles_the_mode_when_no_field_has_focus() {
+        fn the_chord_toggles_the_mode_when_no_field_has_focus() {
             let ctx = egui::Context::default();
             // Warm-up frame: egui needs one pass to settle focus state.
-            frame(&ctx, false, |ui| {
+            frame(&ctx, None, |ui| {
                 ui.label("nothing focusable");
             });
             assert!(
-                frame(&ctx, true, |ui| {
+                frame(&ctx, Some(shortcut_event()), |ui| {
                     ui.label("nothing focusable");
                 }),
-                "Tab should toggle the assistant mode when nothing wants keys"
+                "Ctrl+Shift+M should toggle the assistant mode"
+            );
+        }
+
+        /// Tab is how assistive technology walks a UI. It must be inert here.
+        #[test]
+        fn a_bare_tab_does_nothing() {
+            let ctx = egui::Context::default();
+            frame(&ctx, None, |ui| {
+                ui.label("nothing focusable");
+            });
+            assert!(
+                !frame(&ctx, Some(tab_event()), |ui| {
+                    ui.label("nothing focusable");
+                }),
+                "Tab must not toggle the mode — it collides with assistive tech"
             );
         }
 
         #[test]
-        fn tab_is_left_alone_while_a_text_field_has_focus() {
+        fn the_chord_is_left_alone_while_a_text_field_has_focus() {
             let ctx = egui::Context::default();
             let mut text = String::from("typing here");
 
@@ -2460,27 +2543,26 @@ mod tests {
             let id = egui::Id::new("guarded_field");
             // Two Tab-free frames: one to draw the field, one for the
             // requested focus to take effect.
-            frame(&ctx, false, |ui| {
+            frame(&ctx, None, |ui| {
                 let r = ui.add(egui::TextEdit::singleline(&mut text).id(id));
                 r.request_focus();
             });
-            let focused = frame(&ctx, false, |ui| {
+            let focused = frame(&ctx, None, |ui| {
                 ui.add(egui::TextEdit::singleline(&mut text).id(id));
             });
-            assert!(!focused, "no Tab was sent, so nothing should have fired");
+            assert!(!focused, "no key was sent, so nothing should have fired");
             assert!(
                 ctx.wants_keyboard_input(),
                 "test setup failed: the field never took focus, so this would \
                  not be testing the guard at all"
             );
 
-            let verdict = frame(&ctx, true, |ui| {
+            let verdict = frame(&ctx, Some(shortcut_event()), |ui| {
                 ui.add(egui::TextEdit::singleline(&mut text).id(id));
             });
             assert!(
                 !verdict,
-                "Tab must NOT be captured while a text field has focus — that is \
-                 how focus moves between fields"
+                "the shortcut must not fire while a text field has focus"
             );
         }
     }

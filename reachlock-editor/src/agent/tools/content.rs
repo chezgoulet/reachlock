@@ -41,10 +41,50 @@ fn arg_str<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|s| !s.is_empty())
 }
 
+/// Reduce a label to letters only, so spacing and punctuation stop mattering.
+fn normalize(label: &str) -> String {
+    label
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
 /// Parse a `kind` argument against the labels `RefKind` already publishes, so
 /// the vocabulary the model sees is the vocabulary the checker uses.
+///
+/// Deliberately tolerant. The editor's own content browser calls these
+/// "Music Theme" and "Dialogue Tree" while `RefKind` calls them "theme" and
+/// "dialogue", so a model reading the UI — or a person describing what they
+/// want — lands on a name the strict form rejects. Matching is: exact, then
+/// letters-only, then a containment match in either direction, so "music
+/// theme", "Planet Culture" and "systems" all resolve.
 fn parse_kind(label: &str) -> Option<RefKind> {
-    ALL_KINDS.iter().copied().find(|k| k.label() == label)
+    if let Some(k) = ALL_KINDS.iter().copied().find(|k| k.label() == label) {
+        return Some(k);
+    }
+    let want = normalize(label);
+    if want.is_empty() {
+        return None;
+    }
+    if let Some(k) = ALL_KINDS
+        .iter()
+        .copied()
+        .find(|k| normalize(k.label()) == want)
+    {
+        return Some(k);
+    }
+    // Containment, but only when exactly one kind matches — "hull" would
+    // otherwise silently pick between `hull` and `hull frame`.
+    let mut hits = ALL_KINDS.iter().copied().filter(|k| {
+        let have = normalize(k.label());
+        have.contains(&want) || want.contains(&have)
+    });
+    let first = hits.next()?;
+    if hits.next().is_some() {
+        return None;
+    }
+    Some(first)
 }
 
 const ALL_KINDS: &[RefKind] = &[
@@ -60,10 +100,90 @@ const ALL_KINDS: &[RefKind] = &[
     RefKind::Station,
     RefKind::Contract,
     RefKind::Ecosystem,
+    RefKind::Culture,
+    RefKind::Theme,
+    RefKind::Trope,
+    RefKind::Encounter,
+    RefKind::Dialogue,
+    RefKind::Dungeon,
+    RefKind::Event,
+    RefKind::Recipe,
+    RefKind::Hull,
+    RefKind::HullFrame,
+    RefKind::RoomTemplates,
 ];
+
+/// Exhaustive over [`RefKind`], so adding a variant fails to compile and
+/// points the author at `ALL_KINDS` directly above.
+///
+/// That list was hand-maintained and held twelve of the twenty-three kinds,
+/// so `kind: planet culture` — and ten others — came back "unknown kind" with
+/// a valid-list that silently omitted them. A model cannot route around a
+/// vocabulary that lies about itself; it just retries until it runs out of
+/// turns, which is exactly what happened.
+///
+/// `cfg(test)` because its only job is to make the compiler check the match:
+/// nothing calls it at runtime, and `make check` runs clippy over all targets,
+/// so a new variant still breaks the gate.
+#[cfg(test)]
+fn is_known_kind(k: RefKind) -> bool {
+    match k {
+        RefKind::Origin
+        | RefKind::Soul
+        | RefKind::Career
+        | RefKind::Faction
+        | RefKind::ShipTemplate
+        | RefKind::Crew
+        | RefKind::System
+        | RefKind::Archetype
+        | RefKind::Location
+        | RefKind::Station
+        | RefKind::Contract
+        | RefKind::Ecosystem
+        | RefKind::Culture
+        | RefKind::Theme
+        | RefKind::Trope
+        | RefKind::Encounter
+        | RefKind::Dialogue
+        | RefKind::Dungeon
+        | RefKind::Event
+        | RefKind::Recipe
+        | RefKind::Hull
+        | RefKind::HullFrame
+        | RefKind::RoomTemplates => ALL_KINDS.contains(&k),
+    }
+}
 
 fn kind_labels() -> Vec<&'static str> {
     ALL_KINDS.iter().map(|k| k.label()).collect()
+}
+
+/// Rejection that helps rather than restates the question.
+///
+/// An ambiguous label ("hull" matching both `hull` and `hull frame`) gets the
+/// candidates; anything else gets the full list. Returning a bare "unknown"
+/// is what produced a retry loop in a real session.
+fn unknown_kind_message(label: &str) -> String {
+    let want = normalize(label);
+    let near: Vec<&str> = ALL_KINDS
+        .iter()
+        .map(|k| k.label())
+        .filter(|l| {
+            let have = normalize(l);
+            !want.is_empty() && (have.contains(&want) || want.contains(&have))
+        })
+        .collect();
+    if near.len() > 1 {
+        format!(
+            "`{label}` is ambiguous — it could mean {}. Say which.",
+            near.join(" or ")
+        )
+    } else {
+        format!(
+            "Unknown kind `{label}`. Valid kinds: {}",
+            kind_labels().join(", ")
+        )
+    }
 }
 
 pub fn tools() -> Vec<Tool> {
@@ -71,10 +191,12 @@ pub fn tools() -> Vec<Tool> {
         Tool {
             name: "query_content",
             description:
-                "List the content ids that exist in the tree, optionally filtered by kind or by \
-                 a substring of the id. Use this before referring to any id — an id that is not \
-                 in this list does not exist, and writing it into a document creates a dangling \
-                 reference that fails `make check`.",
+                "List the content that exists in the tree — each id with the file it lives in \
+                 — optionally filtered by kind or by a substring of the id. Use this before \
+                 referring to any id, and to get the path for read_file rather than guessing \
+                 one: ids do not map predictably to filenames. An id that is not in this list \
+                 does not exist, and writing it into a document creates a dangling reference \
+                 that fails `make check`.",
             input_schema: || {
                 json!({
                     "type": "object",
@@ -95,6 +217,33 @@ pub fn tools() -> Vec<Tool> {
             mutability: Mutability::ReadOnly,
             needs_session: false,
             run: run_query_content,
+        },
+        Tool {
+            name: "describe_content_type",
+            description:
+                "Everything needed to author one kind of content, in a single call: which \
+                 directory it lives in, how many exist, the JSON schema its documents are \
+                 validated against, and the path of a real authored example to read. Call this \
+                 first when working with a type you have not touched yet — it replaces the \
+                 several rounds of listing and path-guessing that would otherwise be needed to \
+                 learn the same thing.",
+            input_schema: || {
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "description": "A kind name as reported by query_content.",
+                            "enum": kind_labels(),
+                        },
+                    },
+                    "required": ["kind"],
+                    "additionalProperties": false,
+                })
+            },
+            mutability: Mutability::ReadOnly,
+            needs_session: false,
+            run: run_describe_content_type,
         },
         Tool {
             name: "find_references",
@@ -132,18 +281,19 @@ pub fn tools() -> Vec<Tool> {
         Tool {
             name: "read_file",
             description:
-                "Read one content file verbatim, as RON. Paths are relative to the content root, \
-                 in the form `<directory>/<id>.ron`. Use `query_content` to find ids first. Read \
-                 an existing file of a type before authoring more of it — RON has traps that a \
-                 schema does not show (fixed-size arrays are tuples, newtypes need their parens, \
-                 enum variants are snake_case, and most payloads need a ContentFile envelope).",
+                "Read one content file verbatim, as RON. Take the path from query_content or \
+                 describe_content_type — do not construct one, because a directory name is not \
+                 the kind name and an id is not always the filename. Read an existing file of a \
+                 type before authoring more of it: RON has traps a schema does not show (fixed- \
+                 size arrays are tuples, newtypes need their parens, enum variants are \
+                 snake_case, and most payloads need a ContentFile envelope).",
             input_schema: || {
                 json!({
                     "type": "object",
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "Path relative to the content root, e.g. <directory>/<id>.ron",
+                            "description": "A path exactly as query_content or describe_content_type reported it.",
                         },
                     },
                     "required": ["path"],
@@ -161,19 +311,20 @@ fn run_query_content(args: &Value, _ctx: &ToolCtx) -> ToolOutcome {
     let kind_filter = match arg_str(args, "kind") {
         Some(label) => match parse_kind(label) {
             Some(k) => Some(k),
-            None => {
-                return ToolOutcome::error(format!(
-                    "Unknown kind `{label}`. Valid kinds: {}",
-                    kind_labels().join(", ")
-                ))
-            }
+            None => return ToolOutcome::error(unknown_kind_message(label)),
         },
         None => None,
     };
     let contains = arg_str(args, "contains").map(|s| s.to_lowercase());
 
     let tree = scan();
-    let mut by_kind: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
+    let root = root();
+    // `(id, path)`, not just id. Ids do not map predictably to filenames or
+    // to directories, so returning ids alone forced a guess-and-retry loop:
+    // one real session spent ten of its twenty-four turns trying
+    // `ecosystem/…`, `ecosystems/…`, `planet_culture/…` against a tool that
+    // already knew the answer.
+    let mut by_kind: BTreeMap<&'static str, Vec<(String, String)>> = BTreeMap::new();
     for d in &tree.definitions {
         if kind_filter.is_some_and(|k| k != d.kind) {
             continue;
@@ -184,26 +335,143 @@ fn run_query_content(args: &Value, _ctx: &ToolCtx) -> ToolOutcome {
         {
             continue;
         }
+        let rel = d
+            .file
+            .strip_prefix(&root)
+            .unwrap_or(&d.file)
+            .display()
+            .to_string();
         by_kind
             .entry(d.kind.label())
             .or_default()
-            .push(d.id.clone());
+            .push((d.id.clone(), rel));
     }
 
     if by_kind.is_empty() {
         // Say where we looked. A confidently empty answer from the wrong
         // directory is worse than an error.
-        return ToolOutcome::ok(format!("No matching content under {}.", root().display()));
+        return ToolOutcome::ok(format!("No matching content under {}.", root.display()));
     }
 
     let mut out = String::new();
-    for (kind, mut ids) in by_kind {
-        ids.sort();
-        out.push_str(&format!("{kind} ({}):\n", ids.len()));
-        for id in ids {
-            out.push_str(&format!("  {id}\n"));
+    for (kind, mut entries) in by_kind {
+        entries.sort();
+        out.push_str(&format!("{kind} ({}):\n", entries.len()));
+        for (id, path) in entries {
+            out.push_str(&format!("  {id}  —  {path}\n"));
         }
     }
+    out.push_str("\nPaths are ready to pass to read_file as-is.");
+    ToolOutcome::ok(out)
+}
+
+/// Map a `RefKind` to the editor `ContentType` that edits it, so the schema
+/// lookup goes through the same table the editor tabs use.
+fn content_type_for(kind: RefKind) -> Option<crate::app::ContentType> {
+    use crate::app::ContentType as C;
+    Some(match kind {
+        RefKind::Origin => C::Origin,
+        RefKind::Soul => C::Soul,
+        RefKind::Career => C::Career,
+        RefKind::Faction => C::Faction,
+        RefKind::Crew => C::CrewPackage,
+        RefKind::System => C::ChartedSystem,
+        RefKind::Archetype => C::EnemyArchetype,
+        RefKind::Location => C::Location,
+        RefKind::Station => C::Station,
+        RefKind::Contract => C::Contract,
+        RefKind::Ecosystem => C::Ecosystem,
+        RefKind::Culture => C::PlanetCulture,
+        RefKind::Theme => C::Theme,
+        RefKind::Trope => C::Trope,
+        RefKind::Encounter => C::ScriptedEncounter,
+        RefKind::Dialogue => C::Dialogue,
+        RefKind::Dungeon => C::Dungeon,
+        RefKind::Event => C::Event,
+        RefKind::Recipe => C::Recipe,
+        RefKind::HullFrame => C::HullFrame,
+        RefKind::RoomTemplates => C::RoomTemplates,
+        // A ship template is catalog data the client reads directly, and a
+        // `Hull` envelope carries a raw mesh that no tab edits as such.
+        // Saying so beats handing back a schema for a different type.
+        RefKind::ShipTemplate | RefKind::Hull => return None,
+    })
+}
+
+fn run_describe_content_type(args: &Value, _ctx: &ToolCtx) -> ToolOutcome {
+    let Some(label) = arg_str(args, "kind") else {
+        return ToolOutcome::error(format!(
+            "`kind` is required. One of: {}",
+            kind_labels().join(", ")
+        ));
+    };
+    let Some(kind) = parse_kind(label) else {
+        return ToolOutcome::error(unknown_kind_message(label));
+    };
+
+    let tree = scan();
+    let root = root();
+    let mut defs: Vec<&reachlock_core::content::refs::Definition> =
+        tree.definitions.iter().filter(|d| d.kind == kind).collect();
+    defs.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let mut out = format!("{label}\n");
+
+    // Directory, taken from where the content actually is rather than from a
+    // second table that could disagree with the tree.
+    let dirs: std::collections::BTreeSet<String> = defs
+        .iter()
+        .filter_map(|d| {
+            d.file
+                .strip_prefix(&root)
+                .ok()?
+                .parent()
+                .map(|p| p.display().to_string())
+        })
+        .filter(|p| !p.is_empty())
+        .collect();
+    if dirs.is_empty() {
+        out.push_str("directory: nothing of this kind is authored yet.\n");
+    } else {
+        out.push_str(&format!(
+            "directory: {}\n",
+            dirs.into_iter().collect::<Vec<_>>().join(", ")
+        ));
+    }
+    out.push_str(&format!("authored: {}\n", defs.len()));
+
+    match content_type_for(kind) {
+        Some(ct) => {
+            let cache = crate::schema::SchemaCache::load_all();
+            match cache.get(&ct) {
+                Some(schema) => {
+                    out.push_str("\nschema:\n");
+                    out.push_str(&schema.compact_prompt());
+                    out.push('\n');
+                }
+                None => out.push_str(
+                    "\nschema: none is authored for this type; follow the example below.\n",
+                ),
+            }
+        }
+        None => out.push_str(
+            "\nschema: this kind is reference data with no editor tab; follow the example.\n",
+        ),
+    }
+
+    if let Some(example) = defs.first() {
+        let rel = example
+            .file
+            .strip_prefix(&root)
+            .unwrap_or(&example.file)
+            .display();
+        out.push_str(&format!(
+            "\nexample: read_file path `{rel}` (id `{}`) to see how this is actually \
+             authored. The schema does not show RON's shape — read one before writing one.\n",
+            example.id
+        ));
+    }
+
     ToolOutcome::ok(out)
 }
 
@@ -376,6 +644,86 @@ mod tests {
 
     fn content_root_for_tests() -> std::path::PathBuf {
         with_real_root(root)
+    }
+
+    /// The vocabulary the tool advertises must be the whole vocabulary the
+    /// checker uses. It once held twelve of twenty-three, so a model asking
+    /// for a real kind was told it did not exist.
+    #[test]
+    fn every_kind_is_in_the_advertised_vocabulary() {
+        for k in ALL_KINDS {
+            assert!(is_known_kind(*k), "{k:?} missing from ALL_KINDS");
+        }
+        // Kinds that a real session asked for and was refused.
+        for label in [
+            "planet culture",
+            "music theme",
+            "dialogue tree",
+            "room templates",
+        ] {
+            assert!(
+                parse_kind(label).is_some(),
+                "`{label}` should be a valid kind; valid list is {:?}",
+                kind_labels()
+            );
+        }
+    }
+
+    /// Ids do not map to filenames. The whole point of returning paths is
+    /// that this pair cannot be guessed.
+    #[test]
+    fn query_content_reports_the_file_for_each_id() {
+        let out = with_real_root(|| {
+            ToolRegistry::new().dispatch(
+                "query_content",
+                &json!({"kind": "ecosystem"}),
+                Mode::Plan,
+                &ToolCtx::headless(),
+            )
+        });
+        assert!(!out.is_error, "{}", out.content);
+        assert!(out.content.contains(".ron"), "no path in:\n{}", out.content);
+        assert!(
+            out.content.contains("read_file"),
+            "the result should say the paths are usable directly:\n{}",
+            out.content
+        );
+    }
+
+    #[test]
+    fn describe_content_type_gives_directory_schema_and_an_example() {
+        let out = with_real_root(|| {
+            ToolRegistry::new().dispatch(
+                "describe_content_type",
+                &json!({"kind": "soul"}),
+                Mode::Plan,
+                &ToolCtx::headless(),
+            )
+        });
+        assert!(!out.is_error, "{}", out.content);
+        assert!(out.content.contains("directory: souls"), "{}", out.content);
+        assert!(out.content.contains("schema:"), "{}", out.content);
+        assert!(
+            out.content.contains("example: read_file path `souls/"),
+            "{}",
+            out.content
+        );
+    }
+
+    /// A kind with no authored content must say so rather than claim a
+    /// directory it inferred from nothing.
+    #[test]
+    fn describe_content_type_is_honest_about_an_empty_kind() {
+        let out = with_real_root(|| {
+            ToolRegistry::new().dispatch(
+                "describe_content_type",
+                &json!({"kind": "dungeon"}),
+                Mode::Plan,
+                &ToolCtx::headless(),
+            )
+        });
+        assert!(!out.is_error, "{}", out.content);
+        assert!(out.content.contains("authored: 0"), "{}", out.content);
     }
 
     #[test]

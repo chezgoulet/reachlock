@@ -53,14 +53,101 @@ pub enum AgentEvent {
 /// Handle to a running task.
 pub struct AgentTask {
     pub events: Receiver<AgentEvent>,
+    /// Where this session is being written, for the panel to show.
+    pub log_path: Option<std::path::PathBuf>,
+}
+
+/// Append-only transcript on disk.
+///
+/// Reading a session back out of the egui panel means selecting it with the
+/// mouse, which is miserable for anything longer than a few lines. Every
+/// session is written to `save/agent-logs/` as it happens, so a failed run can
+/// be read, diffed and pasted with ordinary tools — and survives closing the
+/// editor.
+struct TranscriptLog {
+    file: Option<std::fs::File>,
+}
+
+impl TranscriptLog {
+    fn create(mode: Mode, provider: &str, prompt: &str) -> (Self, Option<std::path::PathBuf>) {
+        let dir = std::path::PathBuf::from("save/agent-logs");
+        if std::fs::create_dir_all(&dir).is_err() {
+            return (TranscriptLog { file: None }, None);
+        }
+        // Seconds sort readably; the counter makes the name unique. Seconds
+        // alone are not: two sessions started in the same second and the same
+        // mode produced the same filename, and `File::create` truncates — so
+        // the second run silently destroyed the first one's log. Found by two
+        // tests colliding, but an author kicking off a retry right after a
+        // failure would hit exactly the same thing, and would lose precisely
+        // the log worth keeping.
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or_default();
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = dir.join(format!(
+            "{stamp}-{n:03}-{}.log",
+            mode.label().to_lowercase()
+        ));
+        match std::fs::File::create(&path) {
+            Ok(mut file) => {
+                use std::io::Write as _;
+                let _ = writeln!(
+                    file,
+                    "mode: {}\nprovider: {provider}\n\n== prompt ==\n{prompt}\n",
+                    mode.label()
+                );
+                (TranscriptLog { file: Some(file) }, Some(path))
+            }
+            // Logging is a convenience, never a reason to refuse the task.
+            Err(_) => (TranscriptLog { file: None }, None),
+        }
+    }
+
+    fn write(&mut self, event: &AgentEvent) {
+        use std::io::Write as _;
+        let Some(file) = self.file.as_mut() else {
+            return;
+        };
+        let line = match event {
+            AgentEvent::Text(t) => format!("\n== assistant ==\n{t}\n"),
+            AgentEvent::ToolStarted { summary, .. } => format!("-> {summary}\n"),
+            AgentEvent::ToolFinished { name, is_error } => {
+                if *is_error {
+                    format!("   {name}: FAILED\n")
+                } else {
+                    String::new()
+                }
+            }
+            AgentEvent::Done(Ok(())) => "\n== done ==\n".to_string(),
+            AgentEvent::Done(Err(e)) => format!("\n== stopped ==\n{e}\n"),
+        };
+        if !line.is_empty() {
+            let _ = file.write_all(line.as_bytes());
+            // Flush per event: the interesting case is a session that hung or
+            // was killed, and a buffered tail would lose exactly that.
+            let _ = file.flush();
+        }
+    }
 }
 
 fn system_prompt(mode: Mode) -> String {
     let base = "You are a content-authoring assistant working inside the ReachLock content \
          editor, on a procedurally generated spacefaring game.\n\n\
+         How to find your way around, so you do not spend turns rediscovering it:\n\
+         - `describe_content_type` gives you a type's directory, its schema, and the path of a \
+           real example, in one call. Start there for any type you have not touched yet.\n\
+         - `query_content` returns each id **with the file it lives in**. Take paths from there \
+           and pass them to `read_file` unchanged. Do not construct a path: a directory name is \
+           not the kind name (planet cultures live in `cultures/`), and an id is not always the \
+           filename (the ecosystem `frontier_valis` is in `ecosystems/frontier_sample.ron`).\n\
+         - A `read_file` that fails means the path is wrong, not that the content is missing. \
+           Go back to `query_content` rather than trying another spelling.\n\n\
          Ground rules that matter more than they look:\n\
-         - Never invent an id. Call query_content and use what is actually there; an id \
-           nothing defines is a dangling reference that fails the project's build.\n\
+         - Never invent an id. Use what `query_content` reports; an id nothing defines is a \
+           dangling reference that fails the project's build.\n\
          - Read an existing file of a type before authoring another one. RON has traps a \
            schema does not show: a fixed-size array serializes as a tuple, a newtype needs \
            its parens, enum variants are snake_case, and most payloads must be wrapped in a \
@@ -69,7 +156,9 @@ fn system_prompt(mode: Mode) -> String {
          - After any write, read the validation findings in the result and fix what they \
            say before moving on. Do not report success on an unvalidated write.\n\
          - The engine must not name specific content. Ships, crew, and stories are things a \
-           player picks or an author writes, never something engine code hardcodes.";
+           player picks or an author writes, never something engine code hardcodes.\n\n\
+         Work in small steps. If a task is large, do the first piece well and say what is \
+         left rather than exploring until you run out of turns.";
     match mode {
         Mode::Plan => format!(
             "{base}\n\n\
@@ -125,10 +214,21 @@ pub fn spawn(
     prompt: String,
 ) -> AgentTask {
     let (tx, rx) = channel();
+    let (mut log, log_path) = TranscriptLog::create(mode, provider.name(), &prompt);
     std::thread::spawn(move || {
-        run(provider, session, mode, max_tokens, prompt, &tx);
+        run(provider, session, mode, max_tokens, prompt, &tx, &mut log);
     });
-    AgentTask { events: rx }
+    AgentTask {
+        events: rx,
+        log_path,
+    }
+}
+
+/// Emit an event to the UI and the log together, so the file is never a
+/// partial record of what the panel showed.
+fn emit(tx: &Sender<AgentEvent>, log: &mut TranscriptLog, event: AgentEvent) {
+    log.write(&event);
+    let _ = tx.send(event);
 }
 
 fn run(
@@ -138,18 +238,23 @@ fn run(
     max_tokens: u32,
     prompt: String,
     tx: &Sender<AgentEvent>,
+    log: &mut TranscriptLog,
 ) {
     let registry = ToolRegistry::new();
     let ctx = ToolCtx::with_session(session);
 
     if !provider.caps().tools {
-        let _ = tx.send(AgentEvent::Done(Err(format!(
-            "The `{}` profile is not marked as supporting tool calling, so it cannot drive \
+        emit(
+            tx,
+            log,
+            AgentEvent::Done(Err(format!(
+                "The `{}` profile is not marked as supporting tool calling, so it cannot drive \
              the editor. Tick \"Supports tool calling\" in AI Settings if the model does \
              support it, or pick a profile that does. The one-shot Generate button works \
              with any model.",
-            provider.name()
-        ))));
+                provider.name()
+            ))),
+        );
         return;
     }
 
@@ -173,25 +278,29 @@ fn run(
         let response = match provider.complete(&request) {
             Ok(r) => r,
             Err(e) => {
-                let _ = tx.send(AgentEvent::Done(Err(e.to_string())));
+                emit(tx, log, AgentEvent::Done(Err(e.to_string())));
                 return;
             }
         };
 
         if !response.text.trim().is_empty() {
-            let _ = tx.send(AgentEvent::Text(response.text.clone()));
+            emit(tx, log, AgentEvent::Text(response.text.clone()));
         }
 
         if response.tool_calls.is_empty() {
-            let _ = tx.send(AgentEvent::Done(match response.stop {
-                StopReason::MaxTokens => Err(
-                    "The model hit its token ceiling mid-answer. Raise Max tokens in AI \
+            emit(
+                tx,
+                log,
+                AgentEvent::Done(match response.stop {
+                    StopReason::MaxTokens => Err(
+                        "The model hit its token ceiling mid-answer. Raise Max tokens in AI \
                      Settings, or ask for a smaller step."
-                        .into(),
-                ),
-                StopReason::Other(why) => Err(format!("The model stopped early ({why}).")),
-                _ => Ok(()),
-            }));
+                            .into(),
+                    ),
+                    StopReason::Other(why) => Err(format!("The model stopped early ({why}).")),
+                    _ => Ok(()),
+                }),
+            );
             return;
         }
 
@@ -211,15 +320,23 @@ fn run(
 
         let mut results = Vec::new();
         for call in &response.tool_calls {
-            let _ = tx.send(AgentEvent::ToolStarted {
-                name: call.name.clone(),
-                summary: summarize(&call.name, &call.arguments),
-            });
+            emit(
+                tx,
+                log,
+                AgentEvent::ToolStarted {
+                    name: call.name.clone(),
+                    summary: summarize(&call.name, &call.arguments),
+                },
+            );
             let outcome = registry.dispatch(&call.name, &call.arguments, mode, &ctx);
-            let _ = tx.send(AgentEvent::ToolFinished {
-                name: call.name.clone(),
-                is_error: outcome.is_error,
-            });
+            emit(
+                tx,
+                log,
+                AgentEvent::ToolFinished {
+                    name: call.name.clone(),
+                    is_error: outcome.is_error,
+                },
+            );
             results.push(ToolResult {
                 call_id: call.id.clone(),
                 content: outcome.content,
@@ -244,9 +361,16 @@ fn run(
         messages.push(Message::ToolResults(results));
 
         if turn + 1 == MAX_TURNS {
-            let _ = tx.send(AgentEvent::Done(Err(format!(
-                "Stopped after {MAX_TURNS} turns without finishing. Ask for a narrower step."
-            ))));
+            emit(
+                tx,
+                log,
+                AgentEvent::Done(Err(format!(
+                    "Stopped after {MAX_TURNS} turns without finishing. If most of those turns \
+                 were spent looking things up, `describe_content_type` returns a type's \
+                 directory, schema and an example in one call — otherwise ask for a \
+                 narrower step."
+                ))),
+            );
             return;
         }
     }
@@ -439,6 +563,31 @@ mod tests {
             Some(AgentEvent::Done(Err(msg))) => assert!(msg.contains("token ceiling"), "{msg}"),
             other => panic!("expected a truncation report, got {other:?}"),
         }
+    }
+
+    /// A session that hangs or is killed is exactly the one worth reading, so
+    /// the log must be on disk and flushed as it goes, not at the end.
+    #[test]
+    fn the_session_is_written_to_a_log_file() {
+        let queue = SessionQueue::new();
+        let p = Box::new(Scripted {
+            caps: Caps {
+                vision: false,
+                tools: true,
+            },
+            responses: Mutex::new(vec![text_only("a written answer")]),
+            seen: Mutex::new(Vec::new()),
+        });
+        let task = spawn(p, queue.handle(), Mode::Plan, 1024, "log this".into());
+        let _ = drain(&task.events);
+
+        let path = task.log_path.expect("a log path was reported");
+        let text = std::fs::read_to_string(&path).expect("log file exists");
+        assert!(text.contains("mode: Plan"), "{text}");
+        assert!(text.contains("log this"), "prompt missing:\n{text}");
+        assert!(text.contains("a written answer"), "reply missing:\n{text}");
+        assert!(text.contains("== done =="), "outcome missing:\n{text}");
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

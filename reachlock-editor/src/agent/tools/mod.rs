@@ -168,7 +168,7 @@ impl ToolRegistry {
             return ToolOutcome::error(format!(
                 "`{name}` changes content and this session is in Plan mode, \
                  which is read-only. Describe the change instead; the author \
-                 switches to Build mode (Tab) to apply it."
+                 switches to Build mode (Ctrl+Shift+M) to apply it."
             ));
         }
         if tool.needs_session && !ctx.has_session() {
