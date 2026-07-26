@@ -42,6 +42,8 @@ const INVALID_PARAMS: i64 = -32602;
 /// Run the stdio server until EOF. Returns the process exit code.
 pub fn serve_stdio() -> i32 {
     let registry = ToolRegistry::new();
+    // Headless: no tabs, so session tools are not advertised.
+    let ctx = ToolCtx::headless();
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
 
@@ -54,7 +56,7 @@ pub fn serve_stdio() -> i32 {
         if line.trim().is_empty() {
             continue;
         }
-        let Some(response) = handle_line(&registry, &line) else {
+        let Some(response) = handle_line(&registry, &line, &ctx) else {
             // A notification, or something unparseable with no id to answer
             // against. Either way there is nothing to send.
             continue;
@@ -66,8 +68,8 @@ pub fn serve_stdio() -> i32 {
     0
 }
 
-/// Handle one line. `None` means "send nothing" — a notification.
-fn handle_line(registry: &ToolRegistry, line: &str) -> Option<String> {
+/// Handle one line of stdio framing. `None` means "send nothing".
+fn handle_line(registry: &ToolRegistry, line: &str, ctx: &ToolCtx) -> Option<String> {
     let request: Value = match serde_json::from_str(line) {
         Ok(v) => v,
         Err(e) => {
@@ -80,31 +82,34 @@ fn handle_line(registry: &ToolRegistry, line: &str) -> Option<String> {
         }
     };
 
+    handle_request(registry, &request, ctx).map(|v| v.to_string())
+}
+
+/// Handle one JSON-RPC request object. `None` means "send nothing" — a
+/// notification. Transport-independent: stdio and HTTP both go through here,
+/// so the two frontends cannot answer the same method differently.
+pub fn handle_request(registry: &ToolRegistry, request: &Value, ctx: &ToolCtx) -> Option<Value> {
     let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
-    let id = request.get("id").cloned();
 
     // A request without an `id` is a notification: handle it, answer nothing.
-    let id = id?;
+    let id = request.get("id").cloned()?;
 
     let result = match method {
-        "initialize" => Ok(initialize_result(&request)),
-        "tools/list" => Ok(tools_list_result(registry)),
-        "tools/call" => tools_call_result(registry, &request),
+        "initialize" => Ok(initialize_result(request)),
+        "tools/list" => Ok(tools_list_result(registry, ctx)),
+        "tools/call" => tools_call_result(registry, request, ctx),
         other => Err((
             METHOD_NOT_FOUND,
             format!("method `{other}` is not supported by this server"),
         )),
     };
 
-    Some(
-        match result {
-            Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
-            Err((code, message)) => {
-                json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
-            }
+    Some(match result {
+        Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+        Err((code, message)) => {
+            json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
         }
-        .to_string(),
-    )
+    })
 }
 
 fn initialize_result(request: &Value) -> Value {
@@ -123,13 +128,13 @@ fn initialize_result(request: &Value) -> Value {
     })
 }
 
-fn tools_list_result(registry: &ToolRegistry) -> Value {
+fn tools_list_result(registry: &ToolRegistry, ctx: &ToolCtx) -> Value {
     // Build mode: an external MCP client brings its own approval flow, and
-    // the Plan/Build toggle is an in-editor affordance. `has_session` is false
-    // — this process has no tabs, so session tools are not advertised rather
-    // than advertised and then failed at call time.
+    // the Plan/Build toggle is an in-editor affordance. Session tools are
+    // advertised only when there is a session to run them — advertising and
+    // then failing at call time wastes a turn and reads as a broken server.
     let tools: Vec<Value> = registry
-        .available(Mode::Build, false)
+        .available(Mode::Build, ctx.has_session())
         .into_iter()
         .map(|t| {
             json!({
@@ -142,7 +147,11 @@ fn tools_list_result(registry: &ToolRegistry) -> Value {
     json!({ "tools": tools })
 }
 
-fn tools_call_result(registry: &ToolRegistry, request: &Value) -> Result<Value, (i64, String)> {
+fn tools_call_result(
+    registry: &ToolRegistry,
+    request: &Value,
+    ctx: &ToolCtx,
+) -> Result<Value, (i64, String)> {
     let params = request
         .get("params")
         .ok_or((INVALID_PARAMS, "tools/call requires params".to_string()))?;
@@ -151,7 +160,7 @@ fn tools_call_result(registry: &ToolRegistry, request: &Value) -> Result<Value, 
         "tools/call requires a tool name".to_string(),
     ))?;
 
-    if registry.get(name).is_some_and(|t| t.needs_session) {
+    if registry.get(name).is_some_and(|t| t.needs_session) && !ctx.has_session() {
         return Err((
             INVALID_PARAMS,
             format!(
@@ -167,7 +176,7 @@ fn tools_call_result(registry: &ToolRegistry, request: &Value) -> Result<Value, 
         .get("arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
-    let outcome = registry.dispatch(name, &args, Mode::Build, &ToolCtx::headless());
+    let outcome = registry.dispatch(name, &args, Mode::Build, ctx);
 
     // A tool failure is a successful JSON-RPC call carrying `isError`, not a
     // JSON-RPC error. The distinction matters: a protocol error is the
@@ -184,7 +193,8 @@ mod tests {
 
     fn call(line: &str) -> Option<Value> {
         let reg = ToolRegistry::new();
-        handle_line(&reg, line).map(|s| serde_json::from_str(&s).expect("response is JSON"))
+        handle_line(&reg, line, &ToolCtx::headless())
+            .map(|s| serde_json::from_str(&s).expect("response is JSON"))
     }
 
     #[test]

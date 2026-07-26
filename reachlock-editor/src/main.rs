@@ -10,6 +10,7 @@ pub mod editors;
 mod help_window;
 mod io;
 mod mcp;
+mod mcp_http;
 mod preferences_window;
 mod preview;
 mod schema;
@@ -118,6 +119,9 @@ struct EditorApp {
     agent_prompt: String,
     /// Whether the assistant side panel is visible.
     show_assistant: bool,
+    /// The MCP-over-HTTP endpoint, when the author has switched it on.
+    /// Dropping it stops the listener.
+    mcp_http: Option<mcp_http::McpHttpServer>,
 }
 
 /// Find Usages state: what the author typed, and what the index answered.
@@ -272,6 +276,7 @@ impl Default for EditorApp {
             agent_transcript: Vec::new(),
             agent_prompt: String::new(),
             show_assistant: false,
+            mcp_http: None,
         }
     }
 }
@@ -1373,6 +1378,47 @@ impl EditorApp {
                             .hint_text("what should it do?"),
                     );
                 });
+                ui.collapsing("External access (MCP)", |ui| {
+                    let mut on = self.mcp_http.is_some();
+                    if ui
+                        .checkbox(&mut on, "Serve this session over HTTP")
+                        .on_hover_text(
+                            "Lets an external MCP client (Claude Code, Claude Desktop) drive \
+                             these same tools against your open tabs. Loopback only, and a \
+                             bearer token is required.",
+                        )
+                        .changed()
+                    {
+                        if on {
+                            match mcp_http::McpHttpServer::start(0, self.session_queue.handle()) {
+                                Ok(server) => {
+                                    self.status_text =
+                                        format!("MCP endpoint listening on {}", server.addr);
+                                    self.mcp_http = Some(server);
+                                }
+                                Err(e) => self.status_text = format!("MCP endpoint: {e}"),
+                            }
+                        } else {
+                            // Drop stops the listener.
+                            self.mcp_http = None;
+                            self.status_text = "MCP endpoint stopped.".into();
+                        }
+                    }
+                    if let Some(server) = &self.mcp_http {
+                        let hint = server.client_hint();
+                        ui.horizontal_wrapped(|ui| {
+                            ui.monospace(&hint);
+                        });
+                        if ui.button("Copy").clicked() {
+                            ui.ctx().copy_text(hint);
+                        }
+                        ui.weak(
+                            "The token changes every time you switch this on. Anything with \
+                             the token can edit and save your content.",
+                        );
+                    }
+                });
+
                 ui.horizontal(|ui| {
                     if running {
                         ui.spinner();
