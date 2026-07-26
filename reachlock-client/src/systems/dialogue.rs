@@ -595,9 +595,10 @@ pub fn update_dialogue_portrait(
     session: Res<DialogueSession>,
     souls: Res<SoulRegistry>,
     mut images: ResMut<Assets<Image>>,
-    mut portrait: Query<&mut ImageNode, With<DialoguePortrait>>,
+    mut portrait: Query<(&mut ImageNode, &mut Visibility), With<DialoguePortrait>>,
+    mut last_soul: Local<Option<String>>,
 ) {
-    let Ok(mut node) = portrait.single_mut() else {
+    let Ok((mut node, mut vis)) = portrait.single_mut() else {
         return;
     };
     let needs_portrait = matches!(
@@ -606,18 +607,30 @@ pub fn update_dialogue_portrait(
     ) && session.active.is_some();
     if !needs_portrait {
         node.image = Handle::default();
+        *vis = Visibility::Hidden;
+        *last_soul = None;
+        return;
+    }
+    let active = session.active.as_ref().unwrap();
+    if last_soul.as_deref() == Some(active.soul_id.as_str()) {
         return;
     }
     let look = match speaker_look(&session, &souls) {
         Some(l) => l,
         None => {
             node.image = Handle::default();
+            *vis = Visibility::Hidden;
+            *last_soul = None;
             return;
         }
     };
     let image = paint_dialogue_portrait(&look);
-    let previous = std::mem::replace(&mut node.image, images.add(image));
-    if previous != Handle::default() {
-        images.remove(&previous);
+    *vis = Visibility::Visible;
+    *last_soul = Some(active.soul_id.clone());
+    if node.image != Handle::default() {
+        let old = std::mem::replace(&mut node.image, images.add(image));
+        images.remove(&old);
+    } else {
+        node.image = images.add(image);
     }
 }

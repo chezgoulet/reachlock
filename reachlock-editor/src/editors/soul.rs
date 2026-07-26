@@ -145,7 +145,6 @@ enum EditingMode {
 struct Entry {
     soul: SoulFile,
     /// Authored mutation arcs, populated when a `SoulMutations` file is loaded.
-    #[allow(dead_code)]
     mutations: Vec<reachlock_core::soul::SoulMutation>,
     /// Which sub-tab to show for this entry.
     editing: EditingMode,
