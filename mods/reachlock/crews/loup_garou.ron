@@ -1,14 +1,22 @@
-CrewPackage(
+ContentFile(
     id: "loup_garou",
-    name: "Loup-Garou Veteran",
-    description: "The canonical crew from the prototype — Tib, Tove, Keene, Bardo, Prudence, Risc, and Boris.",
-    members: [
-        (soul_id: "tib", role: "Captain", duty_room: Some("cockpit"), starting: true),
-        (soul_id: "tove", role: "Pilot", duty_room: Some("reactor"), starting: true),
-        (soul_id: "keene", role: "Doctor", duty_room: Some("med_bay"), starting: true),
-        (soul_id: "bardo", role: "Scientist", duty_room: Some("bar"), starting: true),
-        (soul_id: "prudence", role: "Navigator", duty_room: Some("cockpit"), starting: true),
-        (soul_id: "risc", role: "Gunner", duty_room: Some("bridge"), starting: true),
-        (soul_id: "boris", role: "General", duty_room: Some("tech_bay"), starting: true),
-    ],
+    display_name: "Loup-Garou Crew",
+    asset_type: CrewPackage,
+    seed: 16843009,
+    universe: "all",
+    priority: authoritative,
+    payload: CrewPackage(
+        id: "loup_garou",
+        name: "Loup-Garou Veteran",
+        description: "The canonical crew from the prototype — Tib, Tove, Keene, Bardo, Prudence, Risc, and Boris.",
+        members: [
+            (soul_id: "tib", role: "Captain", duty_room: Some("cockpit"), starting: true, salary: 0),
+            (soul_id: "tove", role: "Pilot", duty_room: Some("reactor"), starting: true, salary: 0),
+            (soul_id: "keene", role: "Doctor", duty_room: Some("med_bay"), starting: true, salary: 0),
+            (soul_id: "bardo", role: "Scientist", duty_room: Some("bar"), starting: true, salary: 0),
+            (soul_id: "prudence", role: "Navigator", duty_room: Some("cockpit"), starting: true, salary: 0),
+            (soul_id: "risc", role: "Gunner", duty_room: Some("bridge"), starting: true, salary: 0),
+            (soul_id: "boris", role: "General", duty_room: Some("tech_bay"), starting: true, salary: 0),
+        ],
+    ),
 )

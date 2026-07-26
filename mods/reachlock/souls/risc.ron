@@ -100,7 +100,7 @@
             ),
         ],
         look: Some((
-            species: "Android",
+            species: Android,
             hair_style: Some(0),
             hair_color: Some((242, 166, 51)),
             skin_color: Some((115, 122, 133)),

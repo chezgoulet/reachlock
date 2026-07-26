@@ -90,7 +90,7 @@
             ),
         ],
         look: Some((
-            species: "Human",
+            species: Human,
             hair_style: Some(3),
             hair_color: Some((94, 84, 122)),
             skin_color: Some((212, 194, 178)),
