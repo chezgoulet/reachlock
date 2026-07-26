@@ -8,6 +8,7 @@
 //! surface here as authoring hints, with the data itself living in the open
 //! `personality.quirks` vocabulary.
 
+use reachlock_core::content::{ContentFile, ContentPayload};
 use reachlock_core::dialogue::{DialogueChoice, DialogueGraph, DialogueNode};
 use reachlock_core::soul::types::{
     BreakReaction, BreakingPoint, EmotionalState, Goal, GoalPriority, Identity, Memory, Mood,
@@ -132,8 +133,22 @@ fn string_list_ui(ui: &mut egui::Ui, items: &mut Vec<String>, add_label: &str) -
     changed
 }
 
+/// Which sub-tab the entry is being edited as. A `SoulMutations` file opens
+/// on the mutations sub-tab; a normal soul file opens on the soul tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum EditingMode {
+    #[default]
+    Soul,
+    Mutations,
+}
+
 struct Entry {
     soul: SoulFile,
+    /// Authored mutation arcs, populated when a `SoulMutations` file is loaded.
+    #[allow(dead_code)]
+    mutations: Vec<reachlock_core::soul::SoulMutation>,
+    /// Which sub-tab to show for this entry.
+    editing: EditingMode,
     /// Envelope fields the UI doesn't edit but the file must keep. Souls live
     /// on disk as `ContentFile` envelopes; this tab used to read and write the
     /// bare `SoulFile`, so it could not open a single authored soul.
@@ -192,11 +207,20 @@ impl SoulEditor {
         let (parsed, load_warnings) = crate::io::scan_enveloped_dir::<SoulFile>(&dir);
         let mut entries: Vec<_> = parsed
             .into_iter()
-            .map(|(path, meta, soul)| Entry { soul, meta, path: Some(path), dirty: false })
+            .map(|(path, meta, soul)| Entry {
+                soul,
+                mutations: vec![],
+                editing: EditingMode::Soul,
+                meta,
+                path: Some(path),
+                dirty: false,
+            })
             .collect();
         if entries.is_empty() {
             entries.push(Entry {
                 soul: blank_soul(),
+                mutations: vec![],
+                editing: EditingMode::Soul,
                 meta: crate::io::EnvelopeMeta::new_for("new_soul"),
                 path: None,
                 // Not dirty: this is a placeholder so the editor has something
@@ -213,6 +237,63 @@ impl SoulEditor {
             has_changes: false,
             load_warnings,
         }
+    }
+}
+
+/// Sub-tab shown when the entry is a `SoulMutations` payload. Lists all
+/// authored mutation arcs with their triggers and changes.
+fn mutations_ui(ui: &mut egui::Ui, mutations: &[reachlock_core::soul::SoulMutation]) {
+    ui.heading("Soul Mutation Arcs");
+    ui.separator();
+    if mutations.is_empty() {
+        ui.label("No mutations defined.");
+        return;
+    }
+    for (i, mutation) in mutations.iter().enumerate() {
+        egui::CollapsingHeader::new(format!(
+            "{} — soul: {}",
+            mutation.id, mutation.soul_id
+        ))
+        .id_salt(("soul_mutation", i))
+        .default_open(true)
+        .show(ui, |ui| {
+            ui.monospace(format!("ID:    {}", mutation.id));
+            ui.monospace(format!("Soul:  {}", mutation.soul_id));
+            ui.label("Trigger condition:");
+            let (_, _) = condition_node_ui(
+                ui,
+                &mut mutation.trigger.clone(),
+                egui::Id::new(("mutation_trigger", i)),
+                0,
+                true,
+            );
+            ui.separator();
+            ui.label("Changes:");
+            for (j, change) in mutation.changes.iter().enumerate() {
+                let desc = match change {
+                    reachlock_core::soul::SoulChange::AddTrait(t) => {
+                        format!("Add trait: {t}")
+                    }
+                    reachlock_core::soul::SoulChange::RemoveTrait(t) => {
+                        format!("Remove trait: {t}")
+                    }
+                    reachlock_core::soul::SoulChange::SetRelationship {
+                        target,
+                        trust,
+                        familiarity,
+                    } => {
+                        format!("Set relationship {target}: trust={trust}, familiarity={familiarity}")
+                    }
+                    reachlock_core::soul::SoulChange::UnlockSecret(s) => {
+                        format!("Unlock secret: {s}")
+                    }
+                    reachlock_core::soul::SoulChange::AddGoal(g) => {
+                        format!("Add goal {}: {}", g.id, g.description)
+                    }
+                };
+                ui.label(format!("  {j}. {desc}"));
+            }
+        });
     }
 }
 
@@ -391,26 +472,59 @@ impl Editor for SoulEditor {
     }
 
     fn load(&mut self, path: &std::path::Path) -> Result<(), String> {
-        let (meta, soul) = crate::io::read_enveloped::<SoulFile>(path)?;
-        if let Some(i) = self
-            .entries
-            .iter()
-            .position(|e| e.path.as_deref() == Some(path))
-        {
-            self.entries[i].soul = soul;
-            self.entries[i].meta = meta;
-            self.selected = i;
-        } else {
+        // First try the normal SoulFile path.
+        if let Ok((meta, soul)) = crate::io::read_enveloped::<SoulFile>(path) {
+            if let Some(i) = self
+                .entries
+                .iter()
+                .position(|e| e.path.as_deref() == Some(path))
+            {
+                self.entries[i].soul = soul;
+                self.entries[i].mutations = vec![];
+                self.entries[i].editing = EditingMode::Soul;
+                self.entries[i].meta = meta;
+                self.selected = i;
+            } else {
+                self.entries.push(Entry {
+                    soul,
+                    mutations: vec![],
+                    editing: EditingMode::Soul,
+                    meta,
+                    path: Some(path.to_path_buf()),
+                    dirty: false,
+                });
+                self.selected = self.entries.len() - 1;
+            }
+            self.has_changes = false;
+            return Ok(());
+        }
+
+        // Fallback: the cross-reference scan maps SoulMutations to this tab.
+        // Parse the raw ContentFile and check for a SoulMutations payload.
+        let file: ContentFile = crate::io::read_ron(path)?;
+        if let ContentPayload::SoulMutations(mutations) = &file.payload {
+            let meta = crate::io::EnvelopeMeta::from_file(&file);
+            let mut soul = blank_soul();
+            soul.id = file.id.clone();
+            soul.name = file.display_name.clone();
             self.entries.push(Entry {
                 soul,
+                mutations: mutations.clone(),
+                editing: EditingMode::Mutations,
                 meta,
                 path: Some(path.to_path_buf()),
                 dirty: false,
             });
             self.selected = self.entries.len() - 1;
+            self.has_changes = false;
+            return Ok(());
         }
-        self.has_changes = false;
-        Ok(())
+
+        Err(format!(
+            "{} is a {:?} file, not a SoulFile or SoulMutations",
+            path.display(),
+            file.asset_type
+        ))
     }
 
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
@@ -418,6 +532,9 @@ impl Editor for SoulEditor {
             .entries
             .get(self.selected)
             .ok_or_else(|| "no soul selected".to_string())?;
+        if entry.editing == EditingMode::Mutations {
+            return Err("soul mutations are read-only in the Soul editor".into());
+        }
         crate::io::write_enveloped(path, &entry.meta, entry.soul.clone())
     }
 
@@ -433,6 +550,9 @@ impl Editor for SoulEditor {
         let Some(entry) = self.entries.get(self.selected) else {
             return errors;
         };
+        if entry.editing == EditingMode::Mutations {
+            return errors;
+        }
         let soul = &entry.soul;
         if soul.id.is_empty() {
             errors.push("id must not be empty".into());
@@ -475,6 +595,8 @@ impl Editor for SoulEditor {
                 if ui.button("New").clicked() {
                     self.entries.push(Entry {
                         soul: blank_soul(),
+                        mutations: vec![],
+                        editing: EditingMode::Soul,
                         meta: crate::io::EnvelopeMeta::new_for("new_soul"),
                         path: None,
                         dirty: true,
@@ -530,6 +652,10 @@ impl Editor for SoulEditor {
                 ui.label("No soul selected.");
                 return;
             };
+            if entry.editing == EditingMode::Mutations {
+                mutations_ui(ui, &entry.mutations);
+                return;
+            }
             let soul = &mut entry.soul;
             let mut changed = false;
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -1068,6 +1194,8 @@ impl Editor for SoulEditor {
             let meta = crate::io::EnvelopeMeta::new_for(&inner.id);
             self.entries.push(Entry {
                 soul: inner,
+                mutations: vec![],
+                editing: EditingMode::Soul,
                 meta,
                 path: None,
                 dirty: true,
@@ -1105,6 +1233,8 @@ impl Editor for SoulEditor {
             .into_iter()
             .map(|(soul, meta, path, dirty)| Entry {
                 soul,
+                mutations: vec![],
+                editing: EditingMode::Soul,
                 meta,
                 path,
                 dirty,
@@ -1133,6 +1263,9 @@ impl Editor for SoulEditor {
         let mut wrote = 0usize;
         for entry in &mut self.entries {
             if !entry.dirty {
+                continue;
+            }
+            if entry.editing == EditingMode::Mutations {
                 continue;
             }
             let Some(path) = &entry.path else {
