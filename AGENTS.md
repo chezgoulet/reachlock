@@ -60,6 +60,23 @@ The v1 Godot prototype is archived on the `archive-v1` branch. Both `main` and `
 - RON is not JSON about aggregates. A fixed-size array `[u8; 3]` serializes as a **tuple** — `Some((176, 148, 92))`, not `Some([176, 148, 92])` — and a newtype struct like `VariationMask(u16)` needs its parens: `allowed_variations: (65535)`. Both fail at parse time with a message that names the struct, not the line's real problem.
 - Authored content must be wrapped in a `ContentFile` envelope or the dispatch layer never sees it. `mods/reachlock/themes/calm_exploration.ron` sat as a bare `Theme(...)` and the one authored theme silently never reached the audio engine. `content check` reports these as UNPARSEABLE — a file in a content directory that parses as no known payload is skipped by every loader, which is worse than a file that errors.
 - Career `conflicting_paths` are symmetric and validated at load.
+- `Res<T>` in a system panics at *runtime* if nothing registered `T` — the
+  compiler cannot see it, and with `debug-names` off the panic names neither
+  the system nor the parameter. Thirteen resources shipped declared, read and
+  never registered. `make check-resources` now catches them; use
+  `Option<Res<T>>` when absence is a real state.
+- A `spawn_*` system registered in `Update` must be idempotent. The onboarding
+  overlay was not, and spawned a fresh full-screen panel every frame — hundreds
+  of opaque layers over the game, and the frame rate with them.
+- Full-screen overlays belong on the translucent `surface.scrim` class, not an
+  opaque one, or they hide the scene they are annotating.
+- fundsp's `Sequencer::push_relative(start, end, ...)` takes an **end time**,
+  not a duration, and asserts the fades fit in `end - start`. Passing a
+  duration makes every event after the first end before it begins, and the
+  assert fires on the audio thread.
+- Bevy removed `Res<ButtonInput<GamepadButton>>` and `Res<Axis<GamepadAxis>>`
+  in 0.15 — gamepads are entities now. The types still exist, so the old code
+  compiles and then fails parameter validation at runtime. Query `&Gamepad`.
 - UI colors come from the stylesheet, never from code. Name a style class —
   `theme::text("row.value", …)` for new UI, `theme::fg` / `theme::surface` when
   migrating an existing widget — and let `assets/ui/phosphor.ron` decide the
