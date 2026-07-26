@@ -137,31 +137,23 @@ pub enum CrewHealth {
     Dead,
 }
 
-/// Tracks a single breaking point's state for a crew member.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BreakingPointState {
-    pub condition: String,
-    pub threshold: u32,
-    pub current: u32,
-    pub triggered: bool,
-    pub consequence: BreakingPointConsequence,
-}
+// Breaking points live in `reachlock_core::soul::runtime`, not here.
+//
+// A parallel `BreakingPointState` / `check_breaking_points` model used to sit
+// at this spot: a string condition with a counter, plus its own consequence
+// enum. Nothing ever populated it — `active_breaking_points` was initialised
+// empty on every real construction path — and nothing ever called the check.
+// Meanwhile the authored system was already running: souls carry
+// `breaking_points` with real `Condition` triggers, `apply_event` evaluates
+// them, and `soul::log_soul_output` reports the `SoulBreak`. Two models for
+// one feature, one of them fed by nothing. Removed rather than wired, because
+// wiring it would have created a second breaking-point system competing with
+// the authored one.
 
-/// What happens when a breaking point is crossed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum BreakingPointConsequence {
-    /// Crew member voices disapproval (trust delta, no loss).
-    Warning,
-    /// Crew member refuses a specific order.
-    RefuseOrder,
-    /// Crew member leaves the ship at next station.
-    LeaveAtStation,
-    /// Crew member abandons ship immediately.
-    AbandonShip,
-    /// Crew member attempts to take control (mutiny).
-    Mutiny,
-}
-
+// Crew recruitment (S80) — the data model shipped, the station UI that would
+// let a player hire anyone did not. Kept together so the feature is one
+// piece when it lands.
+#[allow(dead_code)]
 /// Where a recruitable crew member came from — for persistence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CrewSource {
@@ -169,6 +161,8 @@ pub enum CrewSource {
     Authored { soul_id: String },
 }
 
+// Crew recruitment (S80): model without a hiring UI. See CrewSource above.
+#[allow(dead_code)]
 /// A recruitable crew member encountered at a station.
 #[derive(Debug, Clone)]
 pub struct RecruitableCrew {
@@ -201,6 +195,9 @@ pub struct CrewMember {
     /// Transient — not part of the save.
     #[serde(skip, default)]
     pub offscreen_eta: f32,
+    // The soul is looked up through SoulRegistry at use sites; this copy exists
+    // so a saved roster round-trips without the registry.
+    #[allow(dead_code)]
     /// The resolved soul file reference.
     #[serde(skip, default)]
     pub soul: Option<reachlock_core::soul::SoulFile>,
@@ -213,9 +210,6 @@ pub struct CrewMember {
     /// Current health state.
     #[serde(default)]
     pub health: CrewHealth,
-    /// Active breaking point thresholds.
-    #[serde(default)]
-    pub active_breaking_points: Vec<BreakingPointState>,
 }
 
 /// The ship's crew. Persists in the save; the sprites don't.
@@ -226,6 +220,12 @@ pub struct CrewRoster {
     pub current_interior: Option<reachlock_core::generator::ship::ShipInterior>,
 }
 
+// The roster CRUD and health API is exercised by the unit tests below and
+// by nothing else: the game builds the roster from content, moves it with
+// the shift system, and pays it with `crew_payroll_system`. Hiring, firing
+// and injury need the S80 recruitment UI and a landed-combat hook to call
+// them, so they are kept whole rather than trimmed to today's callers.
+#[allow(dead_code)]
 impl CrewRoster {
     /// Map from authored role strings to default duty rooms.
     pub fn default_duty_room(role: &str) -> RoomKind {
@@ -299,7 +299,6 @@ impl CrewRoster {
                         salary: entry.salary,
                         unpaid_ticks: 0,
                         health: CrewHealth::Healthy,
-                        active_breaking_points: Vec::new(),
                     });
                 }
             }
@@ -317,6 +316,8 @@ impl CrewRoster {
         }
     }
 
+    // Roster API exercised by unit tests; the game mutates the roster through
+    // content load and the shift system instead.
     /// Update the current interior reference for deck resolution.
     pub fn set_interior(&mut self, interior: reachlock_core::generator::ship::ShipInterior) {
         // Recompute decks for all members.
@@ -337,7 +338,6 @@ impl CrewRoster {
     }
 
     // ── S80: dynamic roster management ──
-
     /// Add a crew member to the roster. Returns an error if a member with
     /// the same id already exists.
     pub fn add(&mut self, member: CrewMember) -> Result<(), String> {
@@ -500,33 +500,39 @@ impl CrewRoster {
         let member = self.members.remove(idx);
         Some(member)
     }
+}
 
-    /// Check all active breaking points and return the list of consequences
-    /// for triggered ones. Also resets non-triggered breaking point counters
-    /// if a healing event matches (high trust acts as buffer).
-    pub fn check_breaking_points(
-        &mut self,
-        condition: &str,
-        trust_bonus: u32,
-    ) -> Vec<BreakingPointConsequence> {
-        let mut consequences = Vec::new();
-        for m in self.members.iter_mut() {
-            for bp in m.active_breaking_points.iter_mut() {
-                if bp.triggered {
-                    continue;
-                }
-                if bp.condition == condition {
-                    // High trust can buffer the count (trust acts as forgiveness).
-                    let effective_threshold = bp.threshold.saturating_add(trust_bonus / 256);
-                    bp.current = bp.current.saturating_add(1);
-                    if bp.current >= effective_threshold {
-                        bp.triggered = true;
-                        consequences.push(bp.consequence);
-                    }
-                }
-            }
-        }
-        consequences
+/// How many universe ticks between paydays.
+pub const PAY_PERIOD_TICKS: u64 = 24;
+
+/// Charge crew salaries on the pay clock.
+///
+/// Crew packages author a `salary` per member and `CrewRoster::tick_payroll`
+/// has always known how to spend it — nothing called it, so crew worked for
+/// free and the authored numbers meant nothing. Unpaid crew are named in the
+/// ship log rather than silently tolerated: the player has to be able to see
+/// the problem before it becomes a crew problem.
+pub fn crew_payroll_system(
+    ticker: Res<crate::systems::ticker::UniverseTicker>,
+    mut roster: ResMut<CrewRoster>,
+    mut inventory: ResMut<crate::systems::inventory::PlayerInventory>,
+    mut log: ResMut<crate::systems::contract::ShipLog>,
+    mut last_tick: Local<Option<u64>>,
+) {
+    let tick = ticker.state.tick_no;
+    if last_tick.replace(tick) == Some(tick) {
+        return; // one payroll pass per universe tick, not per frame
+    }
+    if roster.total_salary() == 0 {
+        return;
+    }
+    let unpaid = roster.tick_payroll(&mut inventory.credits, PAY_PERIOD_TICKS);
+    for id in &unpaid {
+        let name = roster
+            .by_id(id)
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| id.clone());
+        log.log(format!("{name} has not been paid."));
     }
 }
 
@@ -588,22 +594,6 @@ pub fn deck_of(interior: &reachlock_core::generator::ship::ShipInterior, kind: R
 /// Whether a deck index runs zero-g on the given ship interior.
 pub fn deck_zero_g(interior: &reachlock_core::generator::ship::ShipInterior, index: usize) -> bool {
     interior.decks.get(index).map(|d| d.zero_g).unwrap_or(false)
-}
-
-/// Helper: lookup deck_of using the interior stored on the roster, or 0.
-pub fn deck_of_roster(roster: &CrewRoster, kind: RoomKind) -> usize {
-    match &roster.current_interior {
-        Some(interior) => deck_of(interior, kind),
-        None => 0,
-    }
-}
-
-/// Helper: lookup deck_zero_g using the interior stored on the roster.
-pub fn deck_zero_g_roster(roster: &CrewRoster, index: usize) -> bool {
-    match &roster.current_interior {
-        Some(interior) => deck_zero_g(interior, index),
-        None => false,
-    }
 }
 
 /// Tag a crew sprite entity with its member id, so the shift system and the
@@ -897,6 +887,8 @@ pub fn starter_interior() -> reachlock_core::generator::ship::ShipInterior {
     }
 }
 
+// Crew recruitment (S80): generator without a hiring UI to call it.
+#[allow(dead_code)]
 /// Generate a pool of recruitable crew members at a station. Deterministic
 /// for a given station seed + tick — same seed + tick produces the same pool.
 pub fn generate_recruitable_crew(
@@ -1369,7 +1361,6 @@ mod tests {
             salary: 0,
             unpaid_ticks: 0,
             health: CrewHealth::Healthy,
-            active_breaking_points: Vec::new(),
         }
     }
 
@@ -1559,7 +1550,6 @@ mod tests {
             salary: 100,
             unpaid_ticks: 0,
             health: CrewHealth::Healthy,
-            active_breaking_points: Vec::new(),
         };
         // Add
         assert!(roster.add(member.clone()).is_ok());
@@ -1788,126 +1778,6 @@ mod tests {
     }
 
     #[test]
-    fn breaking_point_warning() {
-        let mut roster = CrewRoster::default();
-        let member = CrewMember {
-            id: "principled".into(),
-            name: "Principled".into(),
-            role: CrewRole::new("marine", "Marine", ""),
-            duty_room: RoomKind::Quarters,
-            current_room: RoomKind::Quarters,
-            deck: 0,
-            order: None,
-            offscreen_eta: 0.0,
-            soul: None,
-            salary: 0,
-            unpaid_ticks: 0,
-            health: CrewHealth::Healthy,
-            active_breaking_points: vec![
-                BreakingPointState {
-                    condition: "player_kills_civilian".into(),
-                    threshold: 2,
-                    current: 0,
-                    triggered: false,
-                    consequence: BreakingPointConsequence::Warning,
-                },
-                BreakingPointState {
-                    condition: "player_abandons_crew".into(),
-                    threshold: 3,
-                    current: 0,
-                    triggered: false,
-                    consequence: BreakingPointConsequence::LeaveAtStation,
-                },
-            ],
-        };
-        roster.add(member).unwrap();
-
-        // First trigger — below threshold, no consequence yet.
-        let consequences = roster.check_breaking_points("player_kills_civilian", 0);
-        assert_eq!(consequences.len(), 0, "below threshold, no trigger");
-
-        // Second trigger — reaches threshold → warning.
-        let consequences = roster.check_breaking_points("player_kills_civilian", 0);
-        assert_eq!(
-            consequences.len(),
-            1,
-            "should have one triggered consequence"
-        );
-        assert_eq!(consequences[0], BreakingPointConsequence::Warning);
-
-        // Already triggered — no re-trigger.
-        let consequences = roster.check_breaking_points("player_kills_civilian", 0);
-        assert_eq!(consequences.len(), 0, "already triggered, no re-trigger");
-    }
-
-    #[test]
-    fn breaking_point_leave() {
-        let mut roster = CrewRoster::default();
-        let member = CrewMember {
-            id: "leaver".into(),
-            name: "Leaver".into(),
-            role: CrewRole::new("scientist", "Scientist", ""),
-            duty_room: RoomKind::TechBay,
-            current_room: RoomKind::TechBay,
-            deck: 0,
-            order: None,
-            offscreen_eta: 0.0,
-            soul: None,
-            salary: 0,
-            unpaid_ticks: 0,
-            health: CrewHealth::Healthy,
-            active_breaking_points: vec![BreakingPointState {
-                condition: "player_abandons_crew".into(),
-                threshold: 1,
-                current: 0,
-                triggered: false,
-                consequence: BreakingPointConsequence::LeaveAtStation,
-            }],
-        };
-        roster.add(member).unwrap();
-
-        // Single trigger crosses the threshold → LeaveAtStation.
-        let consequences = roster.check_breaking_points("player_abandons_crew", 0);
-        assert_eq!(consequences.len(), 1);
-        assert_eq!(consequences[0], BreakingPointConsequence::LeaveAtStation);
-
-        // Verify the crew member still exists.
-        assert!(roster.get("leaver").is_some());
-    }
-
-    #[test]
-    fn breaking_point_mutiny() {
-        let mut roster = CrewRoster::default();
-        roster
-            .add(CrewMember {
-                id: "mutineer".into(),
-                name: "Mutineer".into(),
-                role: CrewRole::new("gunner", "Gunner", ""),
-                duty_room: RoomKind::Bridge,
-                current_room: RoomKind::Bridge,
-                deck: 0,
-                order: None,
-                offscreen_eta: 0.0,
-                soul: None,
-                salary: 0,
-                unpaid_ticks: 0,
-                health: CrewHealth::Healthy,
-                active_breaking_points: vec![BreakingPointState {
-                    condition: "player_breaks_contract".into(),
-                    threshold: 1,
-                    current: 0,
-                    triggered: false,
-                    consequence: BreakingPointConsequence::Mutiny,
-                }],
-            })
-            .unwrap();
-
-        let consequences = roster.check_breaking_points("player_breaks_contract", 0);
-        assert_eq!(consequences.len(), 1);
-        assert_eq!(consequences[0], BreakingPointConsequence::Mutiny);
-    }
-
-    #[test]
     fn salary_deduction() {
         let mut roster = CrewRoster::default();
         roster
@@ -1924,7 +1794,6 @@ mod tests {
                 salary: 100,
                 unpaid_ticks: 0,
                 health: CrewHealth::Healthy,
-                active_breaking_points: Vec::new(),
             })
             .unwrap();
         roster
@@ -1941,7 +1810,6 @@ mod tests {
                 salary: 150,
                 unpaid_ticks: 0,
                 health: CrewHealth::Healthy,
-                active_breaking_points: Vec::new(),
             })
             .unwrap();
 
@@ -1980,7 +1848,6 @@ mod tests {
                 salary: 500,
                 unpaid_ticks: 0,
                 health: CrewHealth::Healthy,
-                active_breaking_points: Vec::new(),
             })
             .unwrap();
 
@@ -2013,7 +1880,6 @@ mod tests {
                 salary: 0,
                 unpaid_ticks: 0,
                 health: CrewHealth::Healthy,
-                active_breaking_points: Vec::new(),
             })
             .unwrap();
 
@@ -2059,7 +1925,6 @@ mod tests {
                 salary: 0,
                 unpaid_ticks: 0,
                 health: CrewHealth::Healthy,
-                active_breaking_points: Vec::new(),
             })
             .unwrap();
 
@@ -2106,7 +1971,6 @@ mod tests {
                 salary: 0,
                 unpaid_ticks: 0,
                 health: CrewHealth::Healthy,
-                active_breaking_points: Vec::new(),
             })
             .unwrap();
         roster.set_health("test", CrewHealth::Injured);
@@ -2133,7 +1997,6 @@ mod tests {
                     salary: 0,
                     unpaid_ticks: 0,
                     health: CrewHealth::Healthy,
-                    active_breaking_points: Vec::new(),
                 })
                 .unwrap();
         }
@@ -2162,7 +2025,6 @@ mod tests {
                 salary: 100,
                 unpaid_ticks: 10,
                 health: CrewHealth::Healthy,
-                active_breaking_points: Vec::new(),
             })
             .unwrap();
 

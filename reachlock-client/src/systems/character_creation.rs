@@ -126,6 +126,9 @@ impl IdentityDraft {
 
 // ── Origin entry ─────────────────────────────────────────────────────────
 
+// Shown on the confirm summary only; the rank and closed doors are not yet
+// carried into the save.
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct OriginEntry {
     pub id: String,

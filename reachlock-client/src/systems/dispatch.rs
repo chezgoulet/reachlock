@@ -578,9 +578,14 @@ pub struct OriginRegistry {
 }
 
 impl OriginRegistry {
+    // Lookup API for the origin registry. Character creation reads origins from
+    // disk directly; nothing queries the registry yet.
+    #[allow(dead_code)]
     pub fn get(&self, id: &str) -> Option<&Origin> {
         self.origins.get(id)
     }
+    // Registry iteration; character creation reads origins from disk directly.
+    #[allow(dead_code)]
     pub fn all(&self) -> impl Iterator<Item = &Origin> {
         self.origins.values()
     }

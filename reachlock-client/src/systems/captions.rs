@@ -6,6 +6,8 @@ use crate::settings::Settings;
 use crate::theme;
 
 const MAX_CAPTION_LINES: usize = 3;
+// Fade timings for a caption transition the overlay does not animate yet.
+#[allow(dead_code)]
 const FADE_IN_MS: f32 = 200.0;
 const MIN_DISPLAY_MS: f32 = 2000.0;
 const FADE_OUT_MS: f32 = 500.0;
@@ -61,6 +63,40 @@ pub fn push_caption(queue: &mut CaptionQueue, speaker: &str, text: &str, duratio
         queue.lines.pop_front();
     }
     queue.lines.push_back(line);
+}
+
+/// Turn NPC dialogue beats into captions.
+///
+/// `push_caption` had no callers, so the whole captions feature — overlay,
+/// queue, the `subtitles` and `subtitle_size` settings — was unreachable no
+/// matter what the player set.
+///
+/// This observes the dialogue session rather than being called from
+/// `resolve_dialogue_response`, which is a plain function on the network poll
+/// path with no access to the queue. Watching the line is also what makes
+/// authored, deflected and generated beats all caption identically.
+pub fn caption_dialogue_lines(
+    session: Res<crate::systems::dialogue::DialogueSession>,
+    souls: Res<crate::systems::soul::SoulRegistry>,
+    mut queue: ResMut<CaptionQueue>,
+    mut last_line: Local<String>,
+) {
+    let Some(active) = &session.active else {
+        if !last_line.is_empty() {
+            last_line.clear();
+        }
+        return;
+    };
+    if active.npc_line.is_empty() || *last_line == active.npc_line {
+        return;
+    }
+    *last_line = active.npc_line.clone();
+    let speaker = souls
+        .files
+        .get(&active.soul_id)
+        .map(|f| f.name.clone())
+        .unwrap_or_else(|| active.soul_id.clone());
+    push_caption(&mut queue, &speaker, &active.npc_line, MIN_DISPLAY_MS);
 }
 
 /// Drive the captions overlay: read queue, render visible lines, respect

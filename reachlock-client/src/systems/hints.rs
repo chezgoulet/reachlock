@@ -7,6 +7,8 @@ pub struct HintRegistry {
     pub hints: HashMap<String, HintDef>,
 }
 
+// Hint payload; the registry loads hints but no surface renders one.
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct HintDef {
     pub hint_id: String,
@@ -14,6 +16,9 @@ pub struct HintDef {
     pub body: String,
 }
 
+// Contextual hint anchoring. The registry loads hints; nothing positions one
+// against a world target yet.
+#[allow(dead_code)]
 #[derive(Component)]
 pub struct HintTarget {
     pub hint_id: String,

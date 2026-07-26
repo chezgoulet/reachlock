@@ -136,6 +136,9 @@ impl Default for CurrentLocation {
     }
 }
 
+// Panel groups for the S94 panel abstraction. Only InfoPanel is produced
+// until panels are ported.
+#[allow(dead_code)]
 /// Panel groups for mutual exclusion — opening a panel in a group
 /// auto-closes all other panels in that group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

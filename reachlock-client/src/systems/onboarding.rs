@@ -33,6 +33,9 @@ pub struct OnboardingState {
 pub struct OnboardingStep {
     pub title: String,
     pub body: String,
+    // Per-step demo override. start_onboarding_demo uses OnboardingDemo::stage;
+    // this field would let other steps run their own demo.
+    #[allow(dead_code)]
     pub demo_stage: Option<DeliberationStage>,
 }
 

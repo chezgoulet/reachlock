@@ -4,8 +4,6 @@
 //! three-mode state machine (spec §14) — SpaceFlight / Landed / OnBoard —
 //! lives in `GameMode`, a sub-state of `AppState::InGame`.
 
-#![allow(dead_code)]
-
 mod bridge;
 mod egui_bridge;
 mod focus_ring;
@@ -413,6 +411,7 @@ fn main() {
             comms::spawn_comm_hud,
             combat::spawn_combat_hud,
             discovery::spawn_discovery_panel,
+            captions::spawn_captions_overlay,
             deliberation_renderer::spawn_deliberation_panel,
             hints::init_hint_registry,
             network::connect_on_enter_playing,
@@ -588,6 +587,27 @@ fn main() {
     .add_systems(
         Update,
         (combat::damage_control, combat::update_combat_hud).run_if(in_state(AppState::InGame)),
+    )
+    // Systems that were written, tested where testable, and registered
+    // nowhere — so payroll never charged, the accessibility sliders did
+    // nothing, subtitles never appeared, and the onboarding deliberation
+    // demo showed an empty panel.
+    .add_systems(
+        Update,
+        (
+            crew::crew_payroll_system.run_if(in_state(AppState::InGame)),
+            // Accessibility applies everywhere, menus included.
+            accessibility::sync_accessibility_settings,
+            (captions::caption_dialogue_lines, captions::update_captions)
+                .chain()
+                .run_if(in_state(AppState::InGame)),
+            (
+                onboarding::start_onboarding_demo,
+                onboarding::tick_onboarding_demo,
+            )
+                .chain()
+                .run_if(in_state(AppState::InGame)),
+        ),
     )
     // S09d: publish which station view is open, then mask/unmask the
     // interior around it (chained: the mask must see this frame's view).

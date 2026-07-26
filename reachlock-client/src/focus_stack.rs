@@ -31,6 +31,9 @@ impl Default for FocusStack {
     }
 }
 
+// Beyond `push`/`pop`, which character creation uses, this API waits on the
+// S94 panel port: nothing else drives focus through the stack yet.
+#[allow(dead_code)]
 impl FocusStack {
     pub fn push(&mut self, layer: FocusLayer) {
         self.layers.push(layer);
@@ -40,14 +43,17 @@ impl FocusStack {
         self.layers.pop()
     }
 
+    // Navigation helpers beyond push/pop. Character creation is the only caller
+    // of the stack today and needs neither; kept because the panel-focus work
+    // they were written for (S94) is still pending adoption.
     pub fn top(&self) -> &FocusLayer {
         self.layers.last().unwrap_or(&FocusLayer::World)
     }
 
+    // Navigation helpers beyond push/pop, unused until panels drive focus.
     pub fn is_active(&self, layer: FocusLayer) -> bool {
         self.layers.last() == Some(&layer)
     }
-
     pub fn pop_until(&mut self, target: FocusLayer) {
         while let Some(top) = self.layers.last() {
             if *top == target {
@@ -81,14 +87,21 @@ impl FocusStack {
     }
 }
 
+// System-shaped wrappers for push/pop. Callers use the methods directly.
+// Unused until a panel drives focus through a system rather than inline.
+#[allow(dead_code)]
 pub fn init_focus_stack(mut commands: Commands) {
     commands.insert_resource(FocusStack::default());
 }
 
+// System-shaped wrapper; callers use the method.
+#[allow(dead_code)]
 pub fn push_focus(mut stack: ResMut<FocusStack>, layer: FocusLayer) {
     stack.push(layer);
 }
 
+// System-shaped wrapper; callers use the method.
+#[allow(dead_code)]
 pub fn pop_focus(mut stack: ResMut<FocusStack>) {
     stack.pop();
 }

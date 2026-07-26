@@ -113,26 +113,10 @@ pub fn spawn_discovery_panel(mut commands: Commands) {
     ));
 }
 
-/// Spawn a toast notification entity.
-pub fn spawn_notification(commands: &mut Commands, text: &str) {
-    commands.spawn((
-        NotifTimer {
-            expires_at: std::time::Instant::now() + std::time::Duration::from_secs(5),
-        },
-        Text::new(text.to_string()),
-        TextFont {
-            font_size: 16.0,
-            ..default()
-        },
-        theme::fg("text.ok"),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Percent(5.0),
-            left: Val::Percent(50.0),
-            ..default()
-        },
-    ));
-}
+// `spawn_notification` was removed. It spawned the same toast entity as
+// `process_notifications` below, from a `&mut Commands` a caller would have had
+// to thread in — and nothing ever did. Push onto `NotificationQueue` instead;
+// that is the path `network::poll_network` already uses.
 
 /// Queue of pending toast notifications (spawned by a separate system).
 #[derive(Resource, Default)]

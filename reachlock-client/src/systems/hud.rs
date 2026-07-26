@@ -26,6 +26,8 @@ pub struct Threat {
     pub glyph: &'static str,
 }
 
+// Baseline severity. The HUD only styles elevated states today.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ThreatSeverity {
     Normal,
@@ -33,6 +35,8 @@ pub enum ThreatSeverity {
     Top,
 }
 
+// Transition animation state; the mode banner cuts rather than animates.
+#[allow(dead_code)]
 /// Resource for mode transition state.
 #[derive(Resource, Default)]
 pub struct TransitionState {

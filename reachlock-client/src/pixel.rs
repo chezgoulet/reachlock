@@ -426,17 +426,9 @@ pub fn body_kind_from_species(species: Species) -> BodyKind {
     }
 }
 
-/// Map a species string to [`BodyKind`]. Unknown strings fall back to Human.
-pub fn body_kind_from_str(species: &str) -> BodyKind {
-    match species {
-        "Human" | "human" => BodyKind::Human,
-        "Android" | "android" => BodyKind::Android,
-        "Robot" | "robot" => BodyKind::Robot,
-        "Voidborn" | "voidborn" => BodyKind::Voidborn,
-        "Xenotype" | "xenotype" => BodyKind::Xenotype,
-        _ => BodyKind::Human,
-    }
-}
+// `body_kind_from_str` was removed: every caller has a typed `Species`
+// and uses `body_kind_from_species`. Parsing the name back out of a string
+// was a second source of truth for the same mapping.
 
 /// Hair style index → `Hair` variant. Generator index 0 = Bald, 1 = Short,
 /// 2 = Buzz, 3 = Long, 4 = Locs, 5 = Bun, 6 = Crest.
@@ -1664,14 +1656,22 @@ mod tests {
         assert!(filled(&px) > 100);
     }
 
+    /// The typed mapping, which is the only one now: the string parser it
+    /// replaced accepted "Unknown" and every other typo as Human.
     #[test]
-    fn body_kind_from_str_maps_known_species() {
-        assert_eq!(body_kind_from_str("Human"), BodyKind::Human);
-        assert_eq!(body_kind_from_str("Android"), BodyKind::Android);
-        assert_eq!(body_kind_from_str("Robot"), BodyKind::Robot);
-        assert_eq!(body_kind_from_str("Xenotype"), BodyKind::Xenotype);
-        assert_eq!(body_kind_from_str("Voidborn"), BodyKind::Voidborn);
-        assert_eq!(body_kind_from_str("Unknown"), BodyKind::Human);
+    fn body_kind_maps_every_species() {
+        use reachlock_core::soul::types::Species;
+        assert_eq!(body_kind_from_species(Species::Human), BodyKind::Human);
+        assert_eq!(body_kind_from_species(Species::Android), BodyKind::Android);
+        assert_eq!(body_kind_from_species(Species::Robot), BodyKind::Robot);
+        assert_eq!(
+            body_kind_from_species(Species::Xenotype),
+            BodyKind::Xenotype
+        );
+        assert_eq!(
+            body_kind_from_species(Species::Voidborn),
+            BodyKind::Voidborn
+        );
     }
 
     #[test]

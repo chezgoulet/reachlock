@@ -6,42 +6,33 @@ use crate::settings::Settings;
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub struct HighContrastMode(pub bool);
 
-/// Updates the `UiScale` resource when `text_scale` changes, and updates
-/// `HighContrastMode` when `high_contrast_ui` toggles.
-/// Also satisfies consumer-registry entries for all accessibility settings.
+/// Apply the accessibility settings that have a real effect: UI text scale and
+/// the high-contrast flag.
+///
+/// This system existed but was registered nowhere, so `text_scale` and
+/// `high_contrast_ui` did nothing at all — the sliders moved and the game did
+/// not change.
+///
+/// It used to end with a block of `let _cb = settings.accessibility.…;` reads
+/// whose only purpose was to satisfy `settings_consumer_registry`'s
+/// completeness test. That is a gate measuring the wrong thing: a discarded
+/// read is not a consumer. Those settings are listed in
+/// `docs/sprints/00-INDEX.md` as genuinely unconsumed instead of being
+/// disguised here.
 pub fn sync_accessibility_settings(
     settings: Res<Settings>,
     mut ui_scale: ResMut<UiScale>,
     mut high_contrast: ResMut<HighContrastMode>,
 ) {
-    if settings.is_changed() {
-        let base = settings.video.ui_scale;
-        ui_scale.0 = base * settings.accessibility.text_scale;
-        high_contrast.0 = settings.accessibility.high_contrast_ui;
+    if !settings.is_changed() {
+        return;
     }
-    // Read these settings to satisfy consumer registry (side-effect free for now)
-    let _cb = settings.accessibility.colorblind_mode;
-    let _sm = settings.video.show_fps;
-    let _sl = settings.network.show_latency;
-    let _ss = settings.accessibility.subtitles;
-    let _ssz = settings.accessibility.subtitle_size;
-    let _rm = settings.accessibility.reduce_motion;
+    ui_scale.0 = settings.video.ui_scale * settings.accessibility.text_scale;
+    high_contrast.0 = settings.accessibility.high_contrast_ui;
 }
 
-/// Apply high-contrast palette to a text color. If high-contrast is on,
-/// returns high-saturation colors with WCAG AA minimum contrast.
-pub fn high_contrast_color(base: Color, high_contrast: bool) -> Color {
-    if !high_contrast {
-        return base;
-    }
-    let srgb = base.to_srgba();
-    let r = srgb.red;
-    let g = srgb.green;
-    let b = srgb.blue;
-    let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    if lum > 0.5 {
-        Color::srgb(0.1, 0.1, 0.1)
-    } else {
-        Color::srgb(0.96, 0.96, 0.96)
-    }
-}
+// `high_contrast_color` was removed. It recomputed a contrasting colour at the
+// call site, which is exactly what `make check-theme` forbids: UI colour comes
+// from `assets/ui/phosphor.ron` and nowhere else. High contrast belongs in the
+// stylesheet as a variant the theme loader selects on `HighContrastMode`, not
+// as a runtime transform sprinkled over call sites.

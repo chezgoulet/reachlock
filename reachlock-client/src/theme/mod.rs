@@ -77,6 +77,8 @@ impl Theme {
         }
     }
 
+    // Introspection for a stylesheet inspector; F5 hot-reload does not need it.
+    #[allow(dead_code)]
     pub fn class_names(&self) -> impl Iterator<Item = &str> {
         self.classes.keys().map(String::as_str)
     }
@@ -287,16 +289,6 @@ pub fn text(class: &str, content: impl Into<String>) -> impl Bundle {
         Text::new(content),
         TextFont::default(),
         TextColor::default(),
-    )
-}
-
-/// A themed layout node.
-pub fn node(class: &str) -> impl Bundle {
-    (
-        Styled::new(class),
-        Node::default(),
-        BackgroundColor(Color::NONE),
-        BorderColor::all(Color::NONE),
     )
 }
 

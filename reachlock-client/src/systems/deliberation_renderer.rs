@@ -38,6 +38,9 @@ pub struct DeliberationPanelUi;
 #[derive(Component)]
 pub struct DeliberationPanelText;
 
+// Marker for the uncovered-rule counter, which the deliberation panel does
+// not render yet.
+#[allow(dead_code)]
 #[derive(Component)]
 pub struct UncoveredCounterUi;
 

@@ -14,6 +14,8 @@ use crate::systems::content_index::ContentIndex;
 use crate::systems::jump::FtlRoute;
 use crate::theme;
 
+// Carried for the map tooltip and save round-trip; the map draws neither yet.
+#[allow(dead_code)]
 /// Known system info from server seed discovery (S85).
 #[derive(Debug, Clone)]
 pub struct KnownSystemInfo {

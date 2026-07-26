@@ -3,12 +3,13 @@ export PATH := $(HOME)/.cargo/bin:$(PATH)
 
 .PHONY: test check fmt clippy run run-debug editor install-cli dev server server-db determinism clean \
 	db db-down db-reset db-psql db-test dev-secrets check-features check-content \
-	check-theme check-resources
+	check-theme check-resources check-dead-code
 
 test:
 	cargo test --workspace
 
-check: fmt clippy test check-purity check-features check-content check-theme check-resources
+check: fmt clippy test check-purity check-features check-content check-theme check-resources \
+	check-dead-code
 	@echo "all gates green"
 
 # Whole-tree content integrity (iron rule #8: a system nobody can reach is
@@ -37,6 +38,13 @@ check-theme:
 # were in the same state behind it.
 check-resources:
 	python3 scripts/check_resources.py
+
+# A crate root that allows dead code turns off the compiler's own
+# unreachability check for everything under it. That is how ~75 findings —
+# an unused widget kit, a duplicate breaking-point model, ships and careers
+# that reached no player — sat behind a green `make check`.
+check-dead-code:
+	python3 scripts/check_dead_code.py
 
 # The `postgres` and `redis` features are off by default, so nothing in the
 # default build ever compiles them — and they rotted unnoticed: PgSessionStore

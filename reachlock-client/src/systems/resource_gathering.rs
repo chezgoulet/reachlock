@@ -6,6 +6,8 @@ use crate::settings::{InputAction, Settings};
 use crate::systems::inventory::PlayerInventory;
 use crate::theme;
 
+// Resource kinds beyond the mineral nodes the generator currently places.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ResourceType {
     #[default]

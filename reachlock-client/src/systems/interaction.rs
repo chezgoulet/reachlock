@@ -116,6 +116,8 @@ pub enum ActivePanel {
     Scanner,
     Miner,
     Power,
+    // Station news panel — reachable once news content exists.
+    #[allow(dead_code)]
     /// S12 galactic news feed.
     News,
     /// S17 exterior editor (spec §19), opened from a Shipyard terminal.

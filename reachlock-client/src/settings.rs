@@ -27,6 +27,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // AnimationSpeedMultiplier — scales timed animations when reduce_motion is on
 // ---------------------------------------------------------------------------
 
+// Accessibility: reduce-motion scaling. The setting exists and persists; no
+// animation reads the multiplier yet, so honouring it is still to do.
+#[allow(dead_code)]
 /// Resource that all animation systems read. Derived from
 /// `accessibility.reduce_motion` on settings change.
 #[derive(Resource, Clone, Copy, Debug)]
@@ -39,6 +42,8 @@ impl Default for AnimationSpeedMultiplier {
 }
 
 impl AnimationSpeedMultiplier {
+    // Built from the reduce-motion setting, which no animation reads yet.
+    #[allow(dead_code)]
     pub fn from_settings(settings: &Settings) -> Self {
         if settings.accessibility.reduce_motion {
             AnimationSpeedMultiplier(0.25)
@@ -52,6 +57,9 @@ impl AnimationSpeedMultiplier {
 // SemanticGlyph — glyph/icon companion for colour-coded game states
 // ---------------------------------------------------------------------------
 
+// Accessibility: shape-coded status for colourblind players. Defined and
+// unused — the HUD still distinguishes states by colour alone.
+#[allow(dead_code)]
 /// A glyph that accompanies every colour-coded game state indicator so
 /// meaning is never conveyed by hue alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +108,8 @@ pub enum SemanticGlyph {
 }
 
 impl SemanticGlyph {
+    // Shape-coded status glyph for colourblind players; the HUD is colour-only.
+    #[allow(dead_code)]
     /// The Unicode glyph character.
     pub fn glyph(&self) -> &'static str {
         use SemanticGlyph::*;
@@ -781,6 +791,9 @@ impl InputAction {
         }
     }
 
+    // Grouping for a settings UI that renders by category. settings_ui.rs still
+    // lists actions flat.
+    #[allow(dead_code)]
     /// Which group this action belongs to (for the keybind table UI).
     pub fn group(&self) -> &'static str {
         use InputAction::*;
@@ -812,6 +825,9 @@ impl InputAction {
 // Settings consumer registry — used by the completeness gate test
 // ---------------------------------------------------------------------------
 
+// Used only by the completeness gate test below, which is the point: it maps
+// every setting to the system that consumes it. Not called at runtime.
+#[allow(dead_code)]
 /// Returns a map of every settings field path to its consumer description.
 /// Every field in `Settings` (and all sub-structs) must have an entry here.
 /// Adding a new field without a registry entry causes a test failure.

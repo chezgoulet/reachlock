@@ -449,7 +449,6 @@ pub fn workshop_system(
             salary: 0,
             unpaid_ticks: 0,
             health: crate::systems::crew::CrewHealth::Healthy,
-            active_breaking_points: Vec::new(),
         });
         state.draft = Some(new_contract(&member));
         state.tab = WorkshopTab::Rules;
