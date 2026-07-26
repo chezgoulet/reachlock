@@ -154,10 +154,15 @@ impl CrossReferenceIndex {
     }
 }
 
-fn content_type_from_asset(asset: &reachlock_core::content::AssetType) -> ContentType {
+pub(crate) fn content_type_from_asset(asset: &reachlock_core::content::AssetType) -> ContentType {
     use reachlock_core::content::AssetType;
     match asset {
-        AssetType::Hull => ContentType::HullFrame,
+        // A hull is not a frame: `ContentPayload::Hull` carries a
+        // `GeneratedMesh`, `ContentPayload::HullFrame` carries the structural
+        // constants the exterior editor composes against. Routing `Hull` to
+        // the frame tab sent `hulls/loup_garou.ron` to an editor that cannot
+        // represent it.
+        AssetType::Hull => ContentType::HullMesh,
         AssetType::Station => ContentType::Station,
         AssetType::Contract => ContentType::Contract,
         AssetType::Ecosystem => ContentType::Ecosystem,

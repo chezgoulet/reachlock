@@ -280,11 +280,20 @@ mod tests {
             serde_json::from_value(sample).expect("deserialize hull configuration");
     }
 
-    /// Drift gate: every content type with a schema must accept a minimal
-    /// fixture. If a field is renamed in the Rust type but not in the schema,
-    /// or vice versa, this test catches it because the fixture matches the
-    /// schema — so a schema-only rename (without a matching fixture update)
-    /// or a Rust-only rename (without a schema update) both break.
+    /// Drift gate, half one: every content type with a schema must accept a
+    /// minimal fixture. This catches a schema that has grown *stricter* than
+    /// the type — a new `required` field, or a tightened enum.
+    ///
+    /// It does NOT catch the opposite direction, which is the one that has
+    /// actually bitten: a field present on the Rust type and absent from the
+    /// schema. The fixtures here are hand-written to match the schema, so a
+    /// field missing from both still validates. `look` was missing from
+    /// `soul.schema.json` for all of S76 and a fixture-based gate reports
+    /// green the entire time — deleting `look` from the schema does not fail
+    /// this test.
+    ///
+    /// [`authored_content_validates_against_its_schema`] covers that
+    /// direction. Neither test replaces the other; keep both.
     #[test]
     fn every_schema_accepts_a_minimal_fixture() {
         let cache = SchemaCache::load_all();
@@ -439,22 +448,15 @@ mod tests {
                 failures.push(e);
             }
         }
-        // Origin payload is the struct directly (no wrapping key).
-        {
-            let sample = serde_json::json!({
-                "id": "test", "display_name": "Test",
-                "asset_type": "origin", "seed": 42,
-                "universe": "all", "priority": "curated",
-                "payload": {
-                    "id": "test", "name": "Test",
-                    "starting_career": "", "starting_rank": 1,
-                    "start_system": 0, "start_location": ""
-                }
-            });
-            if let Some(e) = check(ContentType::Origin, sample, &cache) {
-                failures.push(e);
-            }
-        }
+        // `payload: origin((...))` in RON is a single-key object in JSON. This
+        // fixture used to omit the `origin` key, matching a schema that was
+        // itself wrong — which is how ten authored origins failed their own
+        // schema while this test stayed green.
+        envelope!(Origin, "origin", "origin", {
+            "id": "test", "name": "Test",
+            "starting_career": "", "starting_rank": 1,
+            "start_system": 0, "start_location": ""
+        });
         envelope!(CrewPackage, "crew_package", "crew_package", {
             "id": "test", "name": "Test", "description": "", "members": []
         });
@@ -490,9 +492,11 @@ mod tests {
             "id": "test", "name": "Test", "base_price": 100,
             "mass": 10, "category": "Consumable"
         });
-        bare!(Storyline, {
-            "version": 1, "storylines": []
-        });
+        // Storylines are envelopes, not a bare `{version, storylines}`
+        // catalog. The schema described the catalog and this fixture agreed
+        // with it, so the pair validated each other while every authored
+        // storyline failed.
+        envelope!(Storyline, "storyline", "storylines", []);
         bare!(Item, {
             "seed": 1,
             "item_type": { "equipment": { "weapon": { "kinetic": "cannon" } } },
@@ -536,6 +540,141 @@ mod tests {
             failures.is_empty(),
             "schema drift detected — fixture does not validate:\n  {}",
             failures.join("\n  ")
+        );
+    }
+
+    /// Drift gate, half two: every authored content file must validate against
+    /// its type's schema *after a round trip through the Rust type*.
+    ///
+    /// This is the half that catches a field the Rust type has and the schema
+    /// does not. The JSON is produced by serializing the deserialized Rust
+    /// value, so it carries exactly the fields the type emits; the schemas set
+    /// `"additionalProperties": false`, so a field the schema has never heard
+    /// of is rejected. Deleting `look` from `soul.schema.json` fails this test
+    /// — which is the S76 regression, reproduced and now caught.
+    ///
+    /// Why authored files rather than a hand-built value per type: a
+    /// `SoulFile::default()` would not catch `look` either, because `look`
+    /// carries `#[serde(skip_serializing_if = "Option::is_none")]` and a
+    /// defaulted `None` is omitted from the JSON entirely. Only a *populated*
+    /// value exercises the field, and the authored content in
+    /// `mods/reachlock/` is exactly that — real, populated, and already
+    /// maintained. Authoring a field is what puts it under the gate.
+    ///
+    /// Consequence worth knowing: a type whose fields no authored file
+    /// populates is not covered here. That is a content gap, not a test bug —
+    /// author a file that uses the field and it comes under the gate.
+    #[test]
+    fn authored_content_validates_against_its_schema() {
+        use reachlock_core::content::{dirs, ContentFile};
+
+        let cache = SchemaCache::load_all();
+        // Not `app::content_root()`: that returns a path relative to the
+        // process cwd, which under `cargo test -p reachlock-editor` is the
+        // crate directory, not the workspace root — the walk finds nothing and
+        // the gate passes vacuously. `schemas_dir()` already carries the
+        // `CARGO_MANIFEST_DIR` fallback, and its parent is the content root,
+        // so deriving it here keeps the two from ever disagreeing.
+        let root = schemas_dir()
+            .parent()
+            .expect("schemas dir always has a parent")
+            .to_path_buf();
+        let mut failures: Vec<String> = Vec::new();
+        let mut checked = 0usize;
+
+        let Ok(top) = std::fs::read_dir(&root) else {
+            panic!("content root {} is unreadable", root.display());
+        };
+
+        for dir_entry in top.flatten() {
+            if !dir_entry.path().is_dir() {
+                continue;
+            }
+            let Some(dir_name) = dir_entry.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            match dirs::classify(&dir_name) {
+                // Schemas and fixtures are not game content; `economy/` and
+                // `factions/` are `include_str!` embeds whose on-disk copies
+                // are covered by the bare fixtures above.
+                dirs::DirKind::Fixtures | dirs::DirKind::External => continue,
+                _ => {}
+            }
+
+            let Ok(files) = std::fs::read_dir(dir_entry.path()) else {
+                continue;
+            };
+            let mut paths: Vec<std::path::PathBuf> = files
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|e| e == "ron"))
+                .collect();
+            paths.sort();
+
+            for path in paths {
+                // Only envelope-wrapped files are covered: the envelope's
+                // `asset_type` is what names the schema. Bare-typed files in
+                // `combat/`, `locations/`, `systems/` and the bare half of
+                // `hulls/` fail this parse and are skipped — they have no
+                // self-describing tag to look a schema up by.
+                let Ok(file) = crate::io::read_ron::<ContentFile>(&path) else {
+                    continue;
+                };
+                // Two asset types have no schema that describes what they
+                // actually serialize to. Skipping them here is deliberate and
+                // narrow — a named gap beats a gate that quietly passes.
+                //
+                // - `Hull`: the payload is a `GeneratedMesh`, but the only
+                //   schema reachable from its `ContentType` is
+                //   `hull_configuration`, which describes a
+                //   `HullConfiguration` — a different type. `hull.schema.json`
+                //   exists and describes the mesh, but nothing maps to it.
+                //   Untangling `ContentType::HullMesh` (one tab, two payload
+                //   shapes) is its own change.
+                // - `SoulMutations`: shares `ContentType::Soul` because
+                //   mutation arcs have no tab of their own, so it would be
+                //   validated against the soul schema and fail on every field.
+                if matches!(
+                    file.asset_type,
+                    reachlock_core::content::AssetType::Hull
+                        | reachlock_core::content::AssetType::SoulMutations
+                ) {
+                    continue;
+                }
+                let ct = crate::cross_ref::content_type_from_asset(&file.asset_type);
+                let Some(compiled) = cache.get(&ct) else {
+                    continue;
+                };
+                let json = match serde_json::to_value(&file) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        failures.push(format!("{}: not serializable: {e}", path.display()));
+                        continue;
+                    }
+                };
+                checked += 1;
+                let errors = compiled.validate(&json);
+                if !errors.is_empty() {
+                    failures.push(format!(
+                        "{} ({ct:?}): {}",
+                        path.display(),
+                        errors.join("; ")
+                    ));
+                }
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "authored content does not match its schema:\n  {}",
+            failures.join("\n  ")
+        );
+        // A silent zero would make this gate vacuously green if the content
+        // root moved or every file stopped parsing as an envelope.
+        assert!(
+            checked >= 20,
+            "only {checked} authored files were checked — the walk is not \
+             finding content, so this gate is not actually gating anything"
         );
     }
 }
