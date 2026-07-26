@@ -287,6 +287,7 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
     commands.spawn((
         DialoguePortrait,
         ImageNode::default(),
+        Visibility::Hidden,
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),

@@ -2009,4 +2009,88 @@ mod tests {
         assert_eq!((px.w, px.h), (64, 64));
         assert!(filled(&px) > 600);
     }
+
+    /// Golden-hash determinism tests for paint_portrait (Iron Rule 3).
+    /// These pin the exact pixel output so CI catches unintentional changes.
+    /// Run with `cargo test -- reachlock_client::pixel::tests::portrait_golden -- --nocapture`
+    /// after any intentional change to recapture.
+    fn fnv1a64_rgba(data: &[Rgba]) -> u64 {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for c in data {
+            for &b in c {
+                h ^= u64::from(b);
+                h = h.wrapping_mul(0x100000001b3);
+            }
+        }
+        h
+    }
+
+    #[test]
+    fn portrait_golden_seed_0() {
+        let px = paint_portrait(&Look::seeded(0));
+        assert_eq!(px.w, 64);
+        assert_eq!(px.h, 64);
+        assert_eq!(fnv1a64_rgba(&px.data), golden::SEED_0);
+    }
+
+    #[test]
+    fn portrait_golden_seed_42() {
+        let px = paint_portrait(&Look::seeded(42));
+        assert_eq!(px.w, 64);
+        assert_eq!(px.h, 64);
+        assert_eq!(fnv1a64_rgba(&px.data), golden::SEED_42);
+    }
+
+    #[test]
+    fn portrait_golden_every_body_kind() {
+        use reachlock_core::soul::types::Species;
+        for (kind, species) in [
+            (BodyKind::Human, Species::Human),
+            (BodyKind::Android, Species::Android),
+            (BodyKind::Robot, Species::Robot),
+            (BodyKind::Voidborn, Species::Voidborn),
+            (BodyKind::Xenotype, Species::Xenotype),
+        ] {
+            let look = Look {
+                skin: species_skin(species),
+                hair: Color::srgb(0.35, 0.22, 0.10),
+                shirt: Color::srgb(0.30, 0.50, 0.70),
+                pants: Color::srgb(0.25, 0.30, 0.35),
+                jacket: Some(Color::srgb(0.70, 0.40, 0.25)),
+                hair_style: Hair::Short,
+                body: kind,
+            };
+            let px = paint_portrait(&look);
+            let hash = fnv1a64_rgba(&px.data);
+            let expected = match kind {
+                BodyKind::Human => golden::HUMAN,
+                BodyKind::Android => golden::ANDROID,
+                BodyKind::Robot => golden::ROBOT,
+                BodyKind::Voidborn => golden::VOIDBORN,
+                BodyKind::Xenotype => golden::XENOTYPE,
+            };
+            assert_eq!(hash, expected, "{kind:?} portrait golden mismatch");
+        }
+    }
+
+    fn species_skin(species: Species) -> Color {
+        match species {
+            Species::Human => Color::srgb(0.86, 0.71, 0.55),
+            Species::Android => Color::srgb(0.71, 0.86, 0.78),
+            Species::Robot => Color::srgb(0.63, 0.63, 0.67),
+            Species::Voidborn => Color::srgb(0.51, 0.59, 0.71),
+            Species::Xenotype => Color::srgb(0.78, 0.75, 0.67),
+        }
+    }
+
+    mod golden {
+        // Captured on x86_64-linux; recapture after any intentional change.
+        pub const SEED_0: u64 = 12647634681779064361;
+        pub const SEED_42: u64 = 9402463137064101131;
+        pub const HUMAN: u64 = 11977434805258348101;
+        pub const ANDROID: u64 = 724044564648942541;
+        pub const ROBOT: u64 = 6064599430932615947;
+        pub const VOIDBORN: u64 = 13618403395323401781;
+        pub const XENOTYPE: u64 = 12008574815899829005;
+    }
 }

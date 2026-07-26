@@ -99,6 +99,8 @@ struct EditorApp {
     repaint_requested: bool,
     /// Warnings from editor constructor scans: unparseable files.
     load_warnings: Vec<String>,
+    /// Warnings from the startup content-tree scan (directories no tab has open).
+    startup_warnings: Vec<String>,
     /// Whether the Content Warnings window is visible.
     show_warnings: bool,
     /// Whether the startup content-tree scan has run.
@@ -238,6 +240,7 @@ impl Default for EditorApp {
             allow_close: false,
             repaint_requested: true,
             load_warnings: Vec::new(),
+            startup_warnings: Vec::new(),
             show_warnings: false,
             startup_scan_done: false,
         }
@@ -322,8 +325,10 @@ impl EditorApp {
     /// If the editor has constructor-scan warnings, surface them.
     fn collect_load_warnings(&mut self, editor: &dyn Editor) {
         let warns = editor.load_warnings();
+        // Always replace so switching from a broken tab to a clean tab
+        // properly clears the previous warnings.
+        self.load_warnings = warns.to_vec();
         if !warns.is_empty() {
-            self.load_warnings = warns.to_vec();
             self.show_warnings = true;
             let n = warns.len();
             self.status_text = format!("{n} file(s) failed to parse — see Warnings");
@@ -933,6 +938,11 @@ impl EditorApp {
             if !open.editor.has_unsaved_changes() {
                 continue;
             }
+            // Don't autosave files with RON comments — the save would
+            // silently strip them and the guard only shows on manual save.
+            if open.has_comments {
+                continue;
+            }
             // Multi-entry editors persist each dirty entry to its own path;
             // fall back to the tab path for single-entry editors.
             let saved_ok = match open.editor.save_all() {
@@ -1323,7 +1333,7 @@ impl eframe::App for EditorApp {
             let tree = ContentTree::scan(&root);
             let report = tree.check();
             if !report.unparseable.is_empty() {
-                self.load_warnings = report
+                self.startup_warnings = report
                     .unparseable
                     .iter()
                     .map(|u| format!("{}: {}", u.file.display(), u.reason))
@@ -1712,8 +1722,15 @@ impl eframe::App for EditorApp {
             }
         }
 
-        // Content Warnings: files that failed to parse during constructor scan.
-        if self.show_warnings && !self.load_warnings.is_empty() {
+        // Content Warnings: files that failed to parse during constructor scan
+        // or the startup content-tree scan.
+        let all_warnings: Vec<&str> = self
+            .startup_warnings
+            .iter()
+            .chain(self.load_warnings.iter())
+            .map(|s| s.as_str())
+            .collect();
+        if self.show_warnings && !all_warnings.is_empty() {
             let mut open = true;
             egui::Window::new("Content Warnings")
                 .open(&mut open)
@@ -1722,11 +1739,11 @@ impl eframe::App for EditorApp {
                 .show(ctx, |ui| {
                     ui.label(format!(
                         "{} file(s) could not be parsed and were skipped:",
-                        self.load_warnings.len()
+                        all_warnings.len()
                     ));
                     ui.add_space(4.0);
                     egui::ScrollArea::vertical().show(ui, |ui| {
-                        for w in &self.load_warnings {
+                        for w in all_warnings {
                             ui.label(w);
                         }
                     });
