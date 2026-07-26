@@ -313,7 +313,11 @@ mod tests {
         assert_eq!(loaded.len(), 1, "should have parsed the good file");
         assert_eq!(loaded[0].0.file_name().unwrap(), "good.ron");
         assert_eq!(loaded[0].1, 42);
-        assert_eq!(warnings.len(), 1, "should have one warning for the bad file");
+        assert_eq!(
+            warnings.len(),
+            1,
+            "should have one warning for the bad file"
+        );
         assert!(
             warnings[0].contains("bad.ron"),
             "warning should name the malformed file: {}",

@@ -1078,6 +1078,234 @@ fn paint_robot(dir: usize, frame: usize, look: Look) -> Px {
     px
 }
 
+// --- portraits (64×64 head-and-shoulders) -------------------------------
+
+/// 64×64 head-and-shoulders portrait. Species-appropriate framing:
+/// human/android get a round head with shoulders; robot a boxy sensor head;
+/// voidborn an elongated face with robe collar; xenotype a broad head with
+/// wide-set features.
+pub fn paint_portrait(look: &Look) -> Px {
+    match look.body {
+        BodyKind::Robot => paint_robot_portrait(look),
+        BodyKind::Voidborn => paint_voidborn_portrait(look),
+        BodyKind::Xenotype => paint_xenotype_portrait(look),
+        _ => paint_humanoid_portrait(look),
+    }
+}
+
+/// 64×64 human/android portrait: round head, eyes, styled hair, shirt/jacket
+/// shoulders.
+fn paint_humanoid_portrait(look: &Look) -> Px {
+    let skin = rgba(look.skin);
+    let hair = rgba(look.hair);
+    let shirt = rgba(look.shirt);
+    let jacket = look.jacket.map(rgba);
+    let android = look.body == BodyKind::Android;
+    let eye = if android { shade(hair, 1.2) } else { OUTLINE };
+    let mut px = Px::new(64, 64);
+
+    // Neck
+    px.rect(28, 34, 8, 6, skin);
+
+    // Shoulders / upper torso.
+    match jacket {
+        Some(j) => {
+            px.rect(6, 38, 52, 22, shirt);
+            px.rect(6, 38, 14, 22, j);
+            px.rect(44, 38, 14, 22, j);
+            px.rect(6, 38, 52, 4, shade(j, 1.15));
+            px.rect(18, 40, 2, 20, shade(j, 0.85));
+            px.rect(44, 40, 2, 20, shade(j, 0.85));
+        }
+        None => {
+            px.rect(6, 38, 52, 22, shirt);
+            px.rect(6, 38, 52, 4, shade(shirt, 1.15));
+        }
+    }
+
+    // Head base.
+    px.rect(18, 8, 28, 26, skin);
+    px.rect(16, 12, 32, 18, skin);
+
+    // Face: eyes, nose, mouth.
+    px.set(24, 19, eye);
+    px.set(25, 19, eye);
+    px.set(38, 19, eye);
+    px.set(39, 19, eye);
+    if android {
+        px.rect(28, 14, 8, 1, shade(skin, 0.8));
+    }
+    px.set(31, 22, shade(skin, 0.85));
+    px.set(32, 22, shade(skin, 0.85));
+    for x in 29..35 {
+        px.set(x, 26, shade(skin, 0.7));
+    }
+
+    paint_portrait_hair(&mut px, look.hair_style, hair);
+    px.outline();
+    px
+}
+
+/// 64×64 robot portrait: boxy sensor head with visor, antenna, plated
+/// shoulder housing.
+fn paint_robot_portrait(look: &Look) -> Px {
+    let hull = rgba(look.shirt);
+    let joint = rgba(look.pants);
+    let visor = rgba(look.hair);
+    let mut px = Px::new(64, 64);
+
+    // Neck joint.
+    px.rect(28, 32, 8, 6, joint);
+
+    // Shoulder plates.
+    px.rect(4, 36, 56, 24, hull);
+    px.rect(4, 36, 56, 4, shade(hull, 1.25));
+    px.rect(4, 36, 6, 24, shade(hull, 0.85));
+    px.rect(54, 36, 6, 24, shade(hull, 0.85));
+    px.rect(28, 40, 8, 6, shade(hull, 1.15));
+    px.rect(4, 44, 56, 2, joint);
+
+    // Sensor head.
+    px.rect(18, 8, 28, 24, hull);
+    px.rect(18, 8, 28, 3, shade(hull, 1.25));
+    px.rect(18, 28, 28, 4, shade(hull, 0.7));
+    // Visor.
+    px.rect(22, 15, 20, 6, visor);
+    px.set(38, 16, shade(visor, 1.3));
+    // Antenna nub.
+    px.set(32, 5, shade(visor, 1.2));
+    // Bolts.
+    px.set(22, 10, joint);
+    px.set(41, 10, joint);
+
+    px.outline();
+    px
+}
+
+/// 64×64 voidborn portrait: elongated head, luminous eyes, high robe collar.
+fn paint_voidborn_portrait(look: &Look) -> Px {
+    let skin = rgba(look.skin);
+    let glow = rgba(look.hair);
+    let robe = rgba(look.shirt);
+    let mut px = Px::new(64, 64);
+
+    // Robe shoulders with high collar.
+    px.rect(8, 36, 48, 24, robe);
+    px.rect(8, 36, 48, 8, shade(robe, 0.85));
+    px.rect(8, 36, 4, 24, shade(robe, 0.7));
+    px.rect(52, 36, 4, 24, shade(robe, 0.7));
+
+    // Aura glow behind the head.
+    px.rect(20, 4, 24, 6, shade(glow, 1.4));
+
+    // Elongated head.
+    px.rect(22, 6, 20, 30, skin);
+    px.rect(20, 10, 24, 22, skin);
+
+    // Luminous eyes.
+    px.set(26, 18, glow);
+    px.set(27, 18, glow);
+    px.set(36, 18, glow);
+    px.set(37, 18, glow);
+    // Nose and mouth.
+    px.set(31, 22, shade(skin, 0.9));
+    px.set(32, 22, shade(skin, 0.9));
+    px.set(30, 26, shade(skin, 0.75));
+    px.set(31, 26, shade(skin, 0.75));
+    px.set(32, 26, shade(skin, 0.75));
+    px.set(33, 26, shade(skin, 0.75));
+
+    px.outline();
+    px
+}
+
+/// 64×64 xenotype portrait: broad head, four eyes, textured hide shoulders.
+fn paint_xenotype_portrait(look: &Look) -> Px {
+    let skin = rgba(look.skin);
+    let eye = rgba(look.hair);
+    let hide = rgba(look.shirt);
+    let mut px = Px::new(64, 64);
+
+    // Broad neck.
+    px.rect(26, 36, 12, 4, skin);
+
+    // Hide-textured shoulders.
+    px.rect(4, 38, 56, 22, hide);
+    px.rect(4, 38, 56, 4, shade(hide, 0.85));
+    px.rect(4, 38, 4, 22, shade(hide, 0.7));
+    px.rect(56, 38, 4, 22, shade(hide, 0.7));
+    px.rect(14, 42, 4, 4, shade(hide, 1.15));
+    px.rect(46, 42, 4, 4, shade(hide, 1.15));
+
+    // Broad head (wider than tall).
+    px.rect(14, 12, 36, 24, skin);
+    px.rect(12, 16, 40, 16, skin);
+
+    // Four wide-set eyes.
+    px.set(20, 20, eye);
+    px.set(22, 20, eye);
+    px.set(42, 20, eye);
+    px.set(44, 20, eye);
+    // Nostril slits.
+    px.set(29, 24, shade(skin, 0.85));
+    px.set(30, 24, shade(skin, 0.85));
+    px.set(33, 24, shade(skin, 0.85));
+    px.set(34, 24, shade(skin, 0.85));
+    // Mouth.
+    for x in 24..40 {
+        px.set(x, 28, shade(skin, 0.7));
+    }
+
+    px.outline();
+    px
+}
+
+/// Paint the hair silhouette on a 64×64 portrait canvas. Head occupies
+/// roughly x=16..47, y=8..34.
+fn paint_portrait_hair(px: &mut Px, style: Hair, c: Rgba) {
+    match style {
+        Hair::Bald => {}
+        Hair::Buzz => {
+            px.rect(20, 6, 24, 6, c);
+            px.rect(18, 10, 28, 4, c);
+        }
+        Hair::Short => {
+            px.rect(18, 6, 28, 8, c);
+            px.rect(16, 12, 32, 4, c);
+            px.rect(16, 16, 2, 6, c);
+            px.rect(46, 16, 2, 6, c);
+        }
+        Hair::Long => {
+            px.rect(18, 6, 28, 10, c);
+            px.rect(16, 14, 32, 4, c);
+            px.rect(14, 16, 4, 14, c);
+            px.rect(46, 16, 4, 14, c);
+        }
+        Hair::Locs => {
+            px.rect(18, 6, 28, 8, c);
+            px.rect(16, 12, 32, 4, c);
+            for x in [20, 26, 32, 38, 44] {
+                px.rect(x, 16, 2, 10, c);
+                px.rect(x + 1, 26, 1, 6, c);
+            }
+            px.rect(16, 16, 2, 8, c);
+            px.rect(46, 16, 2, 8, c);
+        }
+        Hair::Bun => {
+            px.rect(18, 6, 28, 8, c);
+            px.rect(16, 12, 32, 4, c);
+            px.rect(26, 2, 12, 6, c);
+            px.rect(24, 3, 16, 4, c);
+        }
+        Hair::Crest => {
+            px.rect(20, 6, 24, 6, c);
+            px.rect(18, 10, 28, 4, c);
+            px.rect(32, 6, 16, 8, c);
+            px.rect(36, 14, 12, 6, c);
+        }
+    }
+}
+
 /// Soft drop shadow under figures (16×6, alpha ellipse).
 pub fn shadow_sprite() -> Image {
     let mut px = Px::new(16, 6);
@@ -1683,5 +1911,102 @@ mod tests {
         assert_eq!(px.get(1, 1), OUTLINE);
         assert_eq!(px.get(2, 2), OUTLINE);
         assert_eq!(px.get(0, 0)[3], 0);
+    }
+
+    // ── T10b: portrait tests ──
+
+    #[test]
+    fn portrait_is_64x64() {
+        for body in [BodyKind::Human, BodyKind::Android, BodyKind::Robot] {
+            let mut look = Look::seeded(7);
+            look.body = body;
+            let px = paint_portrait(&look);
+            assert_eq!((px.w, px.h), (64, 64), "{body:?}");
+            assert!(filled(&px) > 800, "{body:?}");
+        }
+    }
+
+    #[test]
+    fn portrait_is_seed_deterministic() {
+        let a = paint_portrait(&Look::seeded(42));
+        let b = paint_portrait(&Look::seeded(42));
+        assert_eq!(a.data, b.data);
+        let c = paint_portrait(&Look::seeded(99));
+        assert_ne!(a.data, c.data);
+    }
+
+    #[test]
+    fn portrait_draws_every_body_kind() {
+        for body in [
+            BodyKind::Human,
+            BodyKind::Android,
+            BodyKind::Robot,
+            BodyKind::Voidborn,
+            BodyKind::Xenotype,
+        ] {
+            let mut look = Look::seeded(7);
+            look.body = body;
+            let px = paint_portrait(&look);
+            assert_eq!((px.w, px.h), (64, 64), "{body:?}");
+            // Every body type should produce a meaningful portrait.
+            assert!(
+                filled(&px) > 600,
+                "{body:?} has only {} filled pixels",
+                filled(&px)
+            );
+        }
+    }
+
+    #[test]
+    fn portrait_hair_styles_differ() {
+        let base = Look::seeded(7);
+        let mut styles = Vec::new();
+        for style in [
+            Hair::Bald,
+            Hair::Buzz,
+            Hair::Short,
+            Hair::Long,
+            Hair::Locs,
+            Hair::Bun,
+            Hair::Crest,
+        ] {
+            let mut look = base;
+            look.hair_style = style;
+            let px = paint_portrait(&look);
+            let hash: u64 = px
+                .data
+                .iter()
+                .fold(0, |a, p| a.wrapping_mul(31) ^ u64::from(p[0]));
+            styles.push(hash);
+        }
+        // At most two styles may collide (e.g. Bald and something sparse).
+        for i in 1..styles.len() {
+            assert_ne!(
+                styles[0], styles[i],
+                "Bald and hair style {i} produce identical portraits"
+            );
+        }
+    }
+
+    #[test]
+    fn portrait_pinned_colors_render() {
+        use reachlock_core::generator::sprite::CharacterLookConfig;
+        use reachlock_core::soul::types::Species;
+        let cfg = CharacterLookConfig {
+            species: Species::Human,
+            hair_style: Some(1),
+            hair_color: Some([180, 120, 60]),
+            skin_color: Some([220, 180, 140]),
+            shirt_color: Some([60, 80, 160]),
+            pants_color: Some([40, 60, 100]),
+            jacket_enabled: Some(true),
+            jacket_color: Some([200, 60, 60]),
+            chassis_color: Some([140, 150, 160]),
+            visor_color: Some([80, 200, 255]),
+        };
+        let look = Look::from(cfg);
+        let px = paint_portrait(&look);
+        assert_eq!((px.w, px.h), (64, 64));
+        assert!(filled(&px) > 600);
     }
 }

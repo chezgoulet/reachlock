@@ -294,9 +294,9 @@ mod tests {
             sample: serde_json::Value,
             cache: &SchemaCache,
         ) -> Option<String> {
-            let compiled = cache.get(&ct).unwrap_or_else(|| {
-                panic!("content type {ct:?} has no loaded schema")
-            });
+            let compiled = cache
+                .get(&ct)
+                .unwrap_or_else(|| panic!("content type {ct:?} has no loaded schema"));
             let errors = compiled.validate(&sample);
             if errors.is_empty() {
                 None

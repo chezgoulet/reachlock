@@ -92,7 +92,11 @@ impl ContractEditor {
         let (parsed, load_warnings) = crate::io::scan_content_dir::<Contract>(&dir);
         let mut entries: Vec<_> = parsed
             .into_iter()
-            .map(|(path, contract)| Entry { contract, path: Some(path), dirty: false })
+            .map(|(path, contract)| Entry {
+                contract,
+                path: Some(path),
+                dirty: false,
+            })
             .collect();
         if entries.is_empty() {
             entries.push(Entry {

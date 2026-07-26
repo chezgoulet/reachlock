@@ -82,7 +82,11 @@ impl ChartedSystemEditor {
         let (parsed, load_warnings) = crate::io::scan_content_dir::<ChartedSystem>(&dir);
         let mut entries: Vec<_> = parsed
             .into_iter()
-            .map(|(path, system)| Entry { system, path: Some(path), dirty: false })
+            .map(|(path, system)| Entry {
+                system,
+                path: Some(path),
+                dirty: false,
+            })
             .collect();
         entries.sort_by(|a, b| a.system.display_name.cmp(&b.system.display_name));
         if entries.is_empty() {

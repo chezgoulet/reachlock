@@ -56,7 +56,11 @@ impl LocationEditor {
         let (parsed, load_warnings) = crate::io::scan_content_dir::<HostileLocation>(&dir);
         let mut entries: Vec<_> = parsed
             .into_iter()
-            .map(|(path, location)| Entry { location, path: Some(path), dirty: false })
+            .map(|(path, location)| Entry {
+                location,
+                path: Some(path),
+                dirty: false,
+            })
             .collect();
         if entries.is_empty() {
             entries.push(Entry {
