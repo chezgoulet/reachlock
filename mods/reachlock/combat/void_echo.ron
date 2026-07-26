@@ -1,0 +1,15 @@
+// Void Echo — a voidborn entity drawn by the resonance of combat.
+// Spectral, fast, hit-and-run. Low HP but high evasion.
+HostileArchetype(
+    id: "void_echo",
+    display_name: "Void Echo",
+    hp: 4096,
+    speed: 384,
+    light_attack: (startup_ticks: 4, active_ticks: 2, recovery_ticks: 8, damage: 768, range: 3072),
+    heavy_attack: (startup_ticks: 6, active_ticks: 3, recovery_ticks: 14, damage: 1536, range: 4096),
+    block: (active_ticks: 6, cooldown_ticks: 12, parry_ticks: 2),
+    dodge: (i_frame_ticks: 10, recovery_ticks: 6, distance: 4096),
+    chase_radius: 12288,
+    disengage_radius: 20480,
+    flee_hp_frac: 205,
+)

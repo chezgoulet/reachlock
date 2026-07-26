@@ -104,7 +104,7 @@ mod envelope_round_trip_tests {
     /// with how many authored files each must have.
     const ENVELOPE_TABS: &[(ContentType, usize)] = &[
         (ContentType::Origin, 10),
-        (ContentType::Soul, 13),
+        (ContentType::Soul, 15),
         (ContentType::Career, 10),
         (ContentType::Theme, 1),
         (ContentType::PlanetCulture, 1),

@@ -1,0 +1,61 @@
+// Xeno Trader — xenotype, planetary life bound to a specific biome.
+// First authored Xenotype soul. Squat frame, four eyes, mottled hide.
+(
+    id: "xeno_trader",
+    display_name: "Xeno Trader",
+    asset_type: soul,
+    seed: 8912374651023984,
+    universe: "all",
+    priority: authoritative,
+    payload: soul((
+        id: "xeno_trader",
+        name: "Xeno Trader",
+        species: xenotype,
+        portrait_id: "",
+        identity: (
+            origin: "Hatchery-clutch of the deep-terraformed world Chalcedony, fourth of seven in the spawn.",
+            faction_affiliation: "Independent trader — no faction ties",
+            role: "Exotic Goods Broker",
+            public_bio: "They trade in things humans have no words for. Their sense of fairness is derived from a different chemistry, but it is consistent. They have never broken a deal, though they have folded the meaning of 'delivery' into something unrecognisable.",
+        ),
+        personality: (
+            traits: ["Pragmatic", "Blunt", "Patient", "Observant"],
+            values: ["Reciprocity", "Clarity", "Thresholds"],
+            speaking_style: terse,
+            quirks: [
+                "Tilts the head at four distinct angles to express emphasis levels",
+                "Negotiates in multiples of seven",
+                "Prefers compartments with higher CO2 and higher humidity",
+            ],
+        ),
+        emotional_state: (
+            dominant_mood: stable,
+            intensity: 256,
+            triggers: [],
+        ),
+        memory_tree: [],
+        relationship_graph: [],
+        goals: [
+            (id: "expand_network", priority: constant, description: "Establish trade routes to seven new systems this cycle."),
+        ],
+        breaking_points: [],
+        contracts: [],
+        backstory: "The xenotype called themselves something longer than human breath can sustain. They trade across the frontier because planetary life — their kind — needs things from outside the atmosphere. This one's clutch-sibling taught them the basics of human negotiation: 'Name a number. Let them think they chose it.' They have refined the technique into something almost artistic.",
+        secrets: [],
+        deflections: [
+            "That is not a question with a useful answer.",
+            "I would tell you, but then the reckoning would be uneven.",
+            "My clutch-sibling once said: some knowledge costs more than it returns.",
+        ],
+        look: Some((
+            species: xenotype,
+            hair_style: Some(0),
+            hair_color: Some((90, 70, 40)),
+            skin_color: Some((128, 160, 96)),
+            shirt_color: Some((80, 60, 40)),
+            pants_color: Some((60, 45, 30)),
+            jacket_enabled: Some(true),
+            jacket_color: Some((100, 75, 50)),
+        )),
+    )),
+)
