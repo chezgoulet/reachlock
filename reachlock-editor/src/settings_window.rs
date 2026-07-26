@@ -1,15 +1,14 @@
-//! AI settings modal + persistence (handoff §Phase 2.5).
+//! Provider settings modal + persistence (S101 P1).
 //!
-//! Settings live in `save/editor-settings.ron` and are loaded at startup.
-//! The modal lets the user edit the endpoint, model, API key, and max tokens,
-//! and probe connectivity via `ai::test_connection`.
+//! Settings live in `save/editor-settings.ron`. Pre-S101 the file held a
+//! single `AiConfig`; it now holds a list of named provider profiles plus the
+//! active index, so an author can keep a local model and a cloud model side by
+//! side and switch per task. [`crate::agent::load_config`] migrates the old
+//! shape rather than silently resetting it.
 
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use crate::ai::{self, AiConfig};
-
-const SETTINGS_PATH: &str = "save/editor-settings.ron";
+use crate::agent::{AgentConfig, ProviderKind, ProviderProfile};
 
 #[derive(Default, Clone)]
 enum TestStatus {
@@ -22,7 +21,7 @@ enum TestStatus {
 
 pub struct AiSettingsWindow {
     pub open: bool,
-    config: AiConfig,
+    config: AgentConfig,
     test_status: Arc<Mutex<TestStatus>>,
     /// Transient status message shown after a save.
     saved_msg: Option<String>,
@@ -30,26 +29,25 @@ pub struct AiSettingsWindow {
 
 impl AiSettingsWindow {
     pub fn load() -> Self {
-        let config = load_config().unwrap_or_default();
         AiSettingsWindow {
             open: false,
-            config,
+            config: crate::agent::load_config(),
             test_status: Arc::new(Mutex::new(TestStatus::Idle)),
             saved_msg: None,
         }
     }
 
-    pub fn config(&self) -> &AiConfig {
-        &self.config
+    /// The profile requests should be built from.
+    pub fn active_profile(&self) -> &ProviderProfile {
+        self.config.active()
     }
 
     /// Persist the current config to disk.
     pub fn save(&mut self) {
-        if save_config(&self.config).is_ok() {
-            self.saved_msg = Some("Saved.".into());
-        } else {
-            self.saved_msg = Some("Save failed.".into());
-        }
+        self.saved_msg = Some(match crate::agent::save_config(&self.config) {
+            Ok(()) => "Saved.".into(),
+            Err(e) => format!("Save failed: {e}"),
+        });
     }
 
     pub fn show(&mut self, ctx: &egui::Context) {
@@ -62,26 +60,109 @@ impl AiSettingsWindow {
             .open(&mut is_open)
             .resizable(true)
             .show(ctx, |ui| {
-                ui.label("Endpoint (OpenAI-compatible). Ollama default is local:");
-                ui.text_edit_singleline(&mut self.config.api_base_url);
+                // Profile picker. Switching here changes which endpoint
+                // every request goes to, so it sits above the fields it edits.
+                ui.horizontal(|ui| {
+                    ui.label("Profile:");
+                    let active = self.config.active.min(self.config.profiles.len() - 1);
+                    egui::ComboBox::from_id_salt("provider_profile")
+                        .selected_text(self.config.profiles[active].name.clone())
+                        .show_ui(ui, |ui| {
+                            for (i, p) in self.config.profiles.iter().enumerate() {
+                                ui.selectable_value(
+                                    &mut self.config.active,
+                                    i,
+                                    format!("{} ({})", p.name, p.kind.label()),
+                                );
+                            }
+                        });
+                    if ui.button("+ Add").clicked() {
+                        self.config.profiles.push(ProviderProfile::local_default());
+                        self.config.active = self.config.profiles.len() - 1;
+                    }
+                    // Never remove the last profile: `active()` indexes the
+                    // list and an empty list would leave nothing to send with.
+                    let can_remove = self.config.profiles.len() > 1;
+                    if ui
+                        .add_enabled(can_remove, egui::Button::new("Remove"))
+                        .clicked()
+                    {
+                        let i = self.config.active;
+                        self.config.profiles.remove(i);
+                        self.config.active = 0;
+                    }
+                });
+
+                ui.separator();
+
+                let active = self.config.active.min(self.config.profiles.len() - 1);
+                let profile = &mut self.config.profiles[active];
+
+                ui.horizontal(|ui| {
+                    ui.label("Name:");
+                    ui.text_edit_singleline(&mut profile.name);
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("API:");
+                    egui::ComboBox::from_id_salt("provider_kind")
+                        .selected_text(profile.kind.label())
+                        .show_ui(ui, |ui| {
+                            for kind in [ProviderKind::OpenAiCompatible, ProviderKind::Anthropic] {
+                                if ui
+                                    .selectable_value(&mut profile.kind, kind, kind.label())
+                                    .clicked()
+                                {
+                                    // The two APIs live at different paths, so
+                                    // a kind switch that kept the old base URL
+                                    // would 404 with no hint why.
+                                    profile.base_url = match kind {
+                                        ProviderKind::OpenAiCompatible => {
+                                            crate::ai::DEFAULT_API_BASE_URL.into()
+                                        }
+                                        ProviderKind::Anthropic => {
+                                            crate::agent::provider::anthropic::DEFAULT_BASE_URL
+                                                .into()
+                                        }
+                                    };
+                                }
+                            }
+                        });
+                });
+
+                ui.label("Endpoint:");
+                ui.text_edit_singleline(&mut profile.base_url);
 
                 ui.horizontal(|ui| {
                     ui.label("Model:");
-                    ui.text_edit_singleline(&mut self.config.model);
+                    ui.text_edit_singleline(&mut profile.model);
                 });
 
                 ui.horizontal(|ui| {
                     ui.label("API key:");
-                    ui.text_edit_singleline(&mut self.config.api_key);
+                    ui.text_edit_singleline(&mut profile.api_key);
                 });
 
                 ui.horizontal(|ui| {
                     ui.label("Max tokens:");
                     ui.add(
-                        egui::DragValue::new(&mut self.config.max_tokens)
-                            .range(256..=8192)
+                        egui::DragValue::new(&mut profile.max_tokens)
+                            .range(256..=32768)
                             .speed(64),
                     );
+                });
+
+                // Declared, not probed: there is no reliable capability check
+                // across these endpoints, and several local servers 400 on an
+                // unrecognised field rather than ignoring it — so a wrong
+                // guess breaks every request instead of degrading one feature.
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut profile.tools, "Supports tool calling")
+                        .on_hover_text(
+                            "Required for the agent loop. Most small local models do not.",
+                        );
+                    ui.checkbox(&mut profile.vision, "Supports images")
+                        .on_hover_text("Required to show the model a rendered sprite.");
                 });
 
                 ui.separator();
@@ -111,17 +192,19 @@ impl AiSettingsWindow {
                 ui.horizontal(|ui| {
                     if ui.button("Test Connection").clicked() {
                         *self.test_status.lock().unwrap() = TestStatus::Testing;
-                        let cfg = self.config.clone();
+                        let profile = self.config.active().clone();
                         let status = self.test_status.clone();
+                        // The probe goes through the same `Provider` the real
+                        // requests use, so a green Test means the adapter that
+                        // will actually run is reachable — not just that some
+                        // URL answered.
                         std::thread::spawn(move || {
-                            let rt = tokio::runtime::Builder::new_multi_thread()
-                                .enable_all()
-                                .build()
-                                .unwrap();
-                            let res = rt.block_on(ai::test_connection(&cfg));
-                            let next = match res {
-                                Ok(Some(m)) => TestStatus::Ok(m),
-                                Ok(None) => TestStatus::Ok("(no models listed)".into()),
+                            let next = match profile.build() {
+                                Ok(p) => match p.test_connection() {
+                                    Ok(Some(m)) => TestStatus::Ok(m),
+                                    Ok(None) => TestStatus::Ok("(no model reported)".into()),
+                                    Err(e) => TestStatus::Err(e),
+                                },
                                 Err(e) => TestStatus::Err(e),
                             };
                             *status.lock().unwrap() = next;
@@ -150,22 +233,4 @@ impl AiSettingsWindow {
         }
         self.open = is_open;
     }
-}
-
-fn settings_path() -> PathBuf {
-    PathBuf::from(SETTINGS_PATH)
-}
-
-fn load_config() -> Option<AiConfig> {
-    let text = std::fs::read_to_string(settings_path()).ok()?;
-    ron::from_str(&text).ok()
-}
-
-fn save_config(config: &AiConfig) -> std::io::Result<()> {
-    if let Some(parent) = settings_path().parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let text = ron::ser::to_string_pretty(config, ron::ser::PrettyConfig::default())
-        .map_err(std::io::Error::other)?;
-    std::fs::write(settings_path(), text)
 }

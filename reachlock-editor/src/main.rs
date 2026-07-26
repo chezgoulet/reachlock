@@ -1,3 +1,4 @@
+mod agent;
 mod ai;
 mod app;
 mod browser;
@@ -1540,22 +1541,28 @@ impl eframe::App for EditorApp {
                         let ct = active_ct.expect("guarded by can_generate");
                         self.ai_running = true;
                         *self.ai_status.lock().unwrap() = format!("Generating {ct:?} content…");
-                        let cfg = self.ai_settings.config().clone();
+                        let profile = self.ai_settings.active_profile().clone();
                         let prompt = self.ai_prompt.trim().to_string();
                         let (tx, rx) = channel();
                         self.ai_result_rx = Some(rx);
+                        // The provider owns its own runtime, so this thread no
+                        // longer stands up a multi-thread tokio pool per
+                        // generation just to make one request.
                         std::thread::spawn(move || {
                             let schemas = SchemaCache::load_all();
-                            let rt = tokio::runtime::Builder::new_multi_thread()
-                                .enable_all()
-                                .build()
-                                .unwrap();
-                            let outcome = rt.block_on(async {
-                                match ai::generate_content(&cfg, ct, &schemas, &prompt).await {
+                            let outcome = match profile.build() {
+                                Ok(p) => match ai::generate_content(
+                                    p.as_ref(),
+                                    profile.max_tokens,
+                                    ct,
+                                    &schemas,
+                                    &prompt,
+                                ) {
                                     Ok(result) => ai::AiGenOutcome::Ok { ct, result },
                                     Err(e) => ai::AiGenOutcome::Err(e),
-                                }
-                            });
+                                },
+                                Err(e) => ai::AiGenOutcome::Err(ai::GenerationError::HttpError(e)),
+                            };
                             let _ = tx.send(outcome);
                         });
                     }
