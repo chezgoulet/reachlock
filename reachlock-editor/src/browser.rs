@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use crate::app::ContentType;
 use crate::dialogs::{confirmation_dialog, ConfirmationResult};
+use reachlock_core::content::{ContentFile, ContentPayload};
 
 /// How long a directory scan stays fresh before the tree re-reads disk.
 const SCAN_TTL: Duration = Duration::from_secs(2);
@@ -77,19 +78,38 @@ pub fn detect_content_type(path: &Path) -> Option<ContentType> {
     ContentType::from_directory(dir)
 }
 
-/// Three content types share `hulls/`. Peek at the RON payload tag to sort a
-/// file into the right editor. Defaults to HullMesh for unrecognized files.
+/// Three content types share `hulls/`. Route by payload tag instead of
+/// substring-matching the raw text — a description or id containing
+/// `HullFrame(` would send the file to the wrong editor.
+///
+/// Falls back to HullMesh for unparseable files (the browser expects a type
+/// back, and a wrong tab is better than no tab at all).
 fn classify_hull_file(path: &Path) -> ContentType {
     let Ok(text) = std::fs::read_to_string(path) else {
         return ContentType::HullMesh;
     };
-    if text.contains("RoomTemplates(") {
-        ContentType::RoomTemplates
-    } else if text.contains("HullFrame(") {
-        ContentType::HullFrame
-    } else {
-        ContentType::HullMesh
+    // Prefer the canonical parse: all modern hull files are ContentFile
+    // envelopes carrying a typed payload. This is a robust type-level check.
+    if let Ok(file) = ron::from_str::<ContentFile>(&text) {
+        if matches!(file.payload, ContentPayload::HullFrame(_)) {
+            return ContentType::HullFrame;
+        }
+        if matches!(file.payload, ContentPayload::RoomTemplates(_)) {
+            return ContentType::RoomTemplates;
+        }
+        return ContentType::HullMesh;
     }
+    // Legacy bare-struct files (test fixtures, pre-envelope content).
+    // Match the first identifier before `(` to avoid false positives when
+    // the substring appears in a description or id field deeper in the file.
+    if let Some(tag) = text.trim_start().split(['(', '\n']).next() {
+        match tag.trim() {
+            "RoomTemplates" => return ContentType::RoomTemplates,
+            "HullFrame" => return ContentType::HullFrame,
+            _ => {}
+        }
+    }
+    ContentType::HullMesh
 }
 
 pub struct ContentBrowser {
@@ -402,6 +422,25 @@ mod tests {
             assert_eq!(detect_content_type(&path), Some(expected), "{name}");
             let _ = std::fs::remove_file(&path);
         }
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn hull_description_containing_hullframe_keyword_classifies_as_mesh() {
+        let parent = std::env::temp_dir().join("reachlock_browser_tests_anti");
+        let dir = parent.join("hulls");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("weird.ron");
+        // The hull_id contains `HullFrame(` as a substring, but the struct
+        // is a HullConfiguration — it must classify as HullMesh.
+        let body = "HullConfiguration(\n    hull_id: \"frame_HullFrame(_x\",\n)";
+        std::fs::write(&path, body).unwrap();
+        assert_eq!(
+            detect_content_type(&path),
+            Some(ContentType::HullMesh),
+            "a HullConfiguration whose hull_id contains 'HullFrame(' must not misclassify"
+        );
+        let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir_all(&parent);
     }
 
