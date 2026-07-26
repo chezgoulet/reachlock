@@ -9,7 +9,7 @@ test:
 	cargo test --workspace
 
 check: fmt clippy test check-purity check-features check-content check-theme check-resources \
-	check-dead-code
+	check-dead-code check-schema
 	@echo "all gates green"
 
 # Whole-tree content integrity (iron rule #8: a system nobody can reach is
@@ -19,6 +19,12 @@ check: fmt clippy test check-purity check-features check-content check-theme che
 # been authored. Each of those files was individually valid.
 check-content:
 	cargo run -q -p reachlock-cli -- content check mods/reachlock
+
+# Every content type that declares a schema must accept a minimal fixture
+# against it. Catches drift between the Rust struct and the authored schema
+# — if a field is renamed in one but not the other the fixture fails.
+check-schema:
+	cargo test -p reachlock-editor -- every_schema_accepts_a_minimal_fixture --quiet
 
 # Every screen is styled from assets/ui/*.ron. A widget that builds its own
 # TextColor/BackgroundColor/BorderColor is invisible to the stylesheet: editing
