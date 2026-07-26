@@ -9,6 +9,7 @@ mod diff;
 pub mod editors;
 mod help_window;
 mod io;
+mod mcp;
 mod preferences_window;
 mod preview;
 mod schema;
@@ -1880,6 +1881,14 @@ impl eframe::App for EditorApp {
 }
 
 fn main() -> eframe::Result<()> {
+    // Headless MCP server. Checked before anything touches winit or eframe:
+    // an MCP client spawns this as a subprocess and speaks JSON-RPC over the
+    // pipe, so there is no display to open, and a stray byte written to
+    // stdout would corrupt the protocol stream.
+    if std::env::args().any(|a| a == "--mcp-stdio") {
+        std::process::exit(mcp::serve_stdio());
+    }
+
     // FIXME(winit-0.30.13): same Wayland workaround as the client.
     #[cfg(target_os = "linux")]
     if std::env::var_os("WINIT_UNIX_BACKEND").is_none() {

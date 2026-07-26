@@ -1,7 +1,7 @@
 # ReachLock v2 — developer entry points.
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: test check fmt clippy run run-debug editor install-cli dev server server-db determinism clean \
+.PHONY: test check fmt clippy run run-debug editor mcp install-cli dev server server-db determinism clean \
 	db db-down db-reset db-psql db-test dev-secrets check-features check-content \
 	check-theme check-resources check-dead-code
 
@@ -83,6 +83,19 @@ run-debug:
 # Launch the content editor.
 editor:
 	cargo run -p reachlock-editor
+
+# Headless MCP server over stdio: exposes the editor's content tools
+# (query_content, find_references, check_tree, read_file) to any MCP client.
+# Point Claude Code at the built binary rather than at `make`, so the client
+# owns the process lifetime and nothing but JSON-RPC reaches stdout:
+#
+#   cargo build -p reachlock-editor
+#   claude mcp add reachlock -- $(PWD)/target/debug/reachlock-editor --mcp-stdio
+#
+# The content root follows the process cwd; set REACHLOCK_CONTENT_ROOT when the
+# client spawns the server from somewhere other than the workspace root.
+mcp:
+	cargo run -q -p reachlock-editor -- --mcp-stdio
 
 # Put `reachlock` on PATH as a real command.
 install-cli:
