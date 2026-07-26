@@ -23,6 +23,7 @@ use std::time::{Duration, Instant};
 use app::{build_default_registry, ContentType, Editor, EditorRegistry};
 use browser::{BrowserAction, ContentBrowser};
 use dialogs::{confirmation_dialog, ConfirmationResult};
+use reachlock_core::content::refs::ContentTree;
 use help_window::HelpWindow;
 use preferences_window::PreferencesWindow;
 use preview::PreviewPanel;
@@ -98,6 +99,8 @@ struct EditorApp {
     load_warnings: Vec<String>,
     /// Whether the Content Warnings window is visible.
     show_warnings: bool,
+    /// Whether the startup content-tree scan has run.
+    startup_scan_done: bool,
 }
 
 /// Find Usages state: what the author typed, and what the index answered.
@@ -230,6 +233,7 @@ impl Default for EditorApp {
             repaint_requested: true,
             load_warnings: Vec::new(),
             show_warnings: false,
+            startup_scan_done: false,
         }
     }
 }
@@ -1263,6 +1267,27 @@ impl eframe::App for EditorApp {
             crate::app::set_content_root(Some(std::path::PathBuf::from(
                 &self.preferences.prefs.content_root,
             )));
+        }
+
+        // Startup content-tree scan: catches malformed files in directories
+        // no tab has open. Only runs once.
+        if !self.startup_scan_done {
+            self.startup_scan_done = true;
+            let root = crate::app::content_root();
+            let tree = ContentTree::scan(&root);
+            let report = tree.check();
+            if !report.unparseable.is_empty() {
+                self.load_warnings = report
+                    .unparseable
+                    .iter()
+                    .map(|u| format!("{}: {}", u.file.display(), u.reason))
+                    .collect();
+                self.show_warnings = true;
+                self.status_text = format!(
+                    "{} file(s) failed to parse — see Warnings",
+                    report.unparseable.len()
+                );
+            }
         }
 
         self.autosave_tick();
