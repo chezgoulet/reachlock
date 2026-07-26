@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::economy::{GoodCategory, TARIFF_ONE};
 
+/// Static override store for faction data. Set at runtime by content loader;
+/// falls back to embedded defaults when unset.
 static OVERRIDE_STORYLINES: OnceLock<Vec<Storyline>> = OnceLock::new();
 static OVERRIDE_FACTION_CATALOG: OnceLock<FactionCatalog> = OnceLock::new();
 

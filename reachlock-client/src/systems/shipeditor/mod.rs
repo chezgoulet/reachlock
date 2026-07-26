@@ -8,6 +8,7 @@
 
 pub mod exterior;
 pub mod interior;
+pub mod preview;
 
 use bevy::prelude::*;
 
@@ -42,7 +43,9 @@ impl ShipConfig {
 // Re-exports for backward compatibility — callers that used
 // `crate::systems::shipeditor::Thing` still compile.
 // ---------------------------------------------------------------------------
-pub use exterior::{editor_panel_text, editor_preview, editor_system, ShipEditorState};
+pub use exterior::{
+    draw_hull_preview_system, editor_panel_text, editor_preview, editor_system, ShipEditorState,
+};
 pub use interior::{
     interior_editor_preview, interior_editor_system, interior_panel_text, templates_for,
     InteriorConfig, InteriorEditorState,

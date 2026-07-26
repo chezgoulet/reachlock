@@ -295,6 +295,9 @@ pub fn validate_content(content: &ContentFile) -> Vec<ValidationError> {
                 }
             }
         }
+        ContentPayload::CrewPackage(_) => {}
+        ContentPayload::SoulMutations(_) => {}
+        ContentPayload::Storylines(_) => {}
         ContentPayload::RoomTemplates(templates) => {
             let mut ids = std::collections::BTreeSet::new();
             let mut kinds = std::collections::BTreeSet::new();

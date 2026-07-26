@@ -1,28 +1,18 @@
-//! Contract crafting workshop (S34). Keyboard-driven rule builder: Tab cycles
-//! tabs, W/S selects a row, A/D cycles choices, Enter confirms/edits, Esc
-//! cancels or closes the panel.
-//!
-//! Follows the ship editor pattern (S17): one Resource owns the working draft,
-//! a pure function builds the display string, a system handles input.
-
-use bevy::prelude::*;
-
-use reachlock_core::contract::engine::{evaluate, EvalContext, Outcome};
-use reachlock_core::contract::meta_game::seasoned_bonus;
-use reachlock_core::contract::metadata::CraftingWarning;
-use reachlock_core::contract::types::{
-    Action, Comparison, Condition, Contract, LlmConfig, Rule, Trigger,
-};
-use reachlock_core::contract::validate_contract;
+//! Contract crafting workshop (S34). SelectablePanel-driven: row builders
+//! convert state into SelectableRows; a shared system handles navigation/display.
 
 use crate::settings::{InputAction, Settings};
 use crate::systems::crew::{CrewMember, CrewRoster};
 use crate::systems::interaction::ActivePanel;
 use crate::systems::soul::SoulRegistry;
-
-// ---------------------------------------------------------------------------
-// Tabs
-// ---------------------------------------------------------------------------
+use crate::widget_kit::panel::{navigate_selectable_panel, SelectableRow};
+use bevy::prelude::*;
+use reachlock_core::contract::engine::{evaluate, EvalContext, Outcome};
+use reachlock_core::contract::meta_game::seasoned_bonus;
+use reachlock_core::contract::types::{
+    Action, Comparison, Condition, Contract, LlmConfig, Rule, Trigger,
+};
+use reachlock_core::contract::validate_contract;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WorkshopTab {
@@ -31,14 +21,12 @@ pub enum WorkshopTab {
     Persona,
     Simulation,
 }
-
 const TABS: [WorkshopTab; 4] = [
     WorkshopTab::Rules,
     WorkshopTab::LlmConfig,
     WorkshopTab::Persona,
     WorkshopTab::Simulation,
 ];
-
 fn tab_name(t: WorkshopTab) -> &'static str {
     match t {
         WorkshopTab::Rules => "RULES",
@@ -48,22 +36,13 @@ fn tab_name(t: WorkshopTab) -> &'static str {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rule column indices (for the Rules tab sub-selection)
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum RuleCol {
     Condition,
     Action,
     Priority,
 }
-
 const RULE_COLS: [RuleCol; 3] = [RuleCol::Condition, RuleCol::Action, RuleCol::Priority];
-
-// ---------------------------------------------------------------------------
-// Action vocabulary (the player picks from known action verbs)
-// ---------------------------------------------------------------------------
 
 const ACTION_VERBS: &[&str] = &[
     "wake_crew",
@@ -81,83 +60,71 @@ const ACTION_VERBS: &[&str] = &[
     "broadcast",
 ];
 
-// ---------------------------------------------------------------------------
-// Preset simulation scenarios for the Simulation tab
-// ---------------------------------------------------------------------------
-
 struct Scenario {
     name: &'static str,
     ctx: EvalContext,
 }
-
 fn preset_scenarios() -> Vec<Scenario> {
+    let s = |name: &'static str, vals: &[(&str, i64)]| -> Scenario {
+        let mut ctx = EvalContext::default();
+        for (k, v) in vals {
+            ctx.set(*k, *v);
+        }
+        Scenario { name, ctx }
+    };
     vec![
-        Scenario {
-            name: "Combat",
-            ctx: {
-                let mut c = EvalContext::default();
-                c.set("weapons_damage", 512)
-                    .set("shields", 0)
-                    .set("crew_injured", 1)
-                    .set("fuel", 800)
-                    .set("hull", 1024);
-                c
-            },
-        },
-        Scenario {
-            name: "Crisis",
-            ctx: {
-                let mut c = EvalContext::default();
-                c.set("fuel", 100)
-                    .set("hull", 200)
-                    .set("fire_active", 1)
-                    .set("crew_injured", 2)
-                    .set("weapons_damage", 0);
-                c
-            },
-        },
-        Scenario {
-            name: "Transit",
-            ctx: {
-                let mut c = EvalContext::default();
-                c.set("fuel", 800)
-                    .set("hull", 1024)
-                    .set("distance_to_destination", 500)
-                    .set("crew_injured", 0)
-                    .set("fire_active", 0);
-                c
-            },
-        },
-        Scenario {
-            name: "Social",
-            ctx: {
-                let mut c = EvalContext::default();
-                c.set("station_contact", 1)
-                    .set("faction_standing", 300)
-                    .set("fuel", 1024)
-                    .set("hull", 1024)
-                    .set("crew_injured", 0);
-                c
-            },
-        },
-        Scenario {
-            name: "Idle",
-            ctx: {
-                let mut c = EvalContext::default();
-                c.set("fuel", 1024)
-                    .set("hull", 1024)
-                    .set("distance_to_destination", 0)
-                    .set("crew_injured", 0)
-                    .set("fire_active", 0);
-                c
-            },
-        },
+        s(
+            "Combat",
+            &[
+                ("weapons_damage", 512),
+                ("shields", 0),
+                ("crew_injured", 1),
+                ("fuel", 800),
+                ("hull", 1024),
+            ],
+        ),
+        s(
+            "Crisis",
+            &[
+                ("fuel", 100),
+                ("hull", 200),
+                ("fire_active", 1),
+                ("crew_injured", 2),
+                ("weapons_damage", 0),
+            ],
+        ),
+        s(
+            "Transit",
+            &[
+                ("fuel", 800),
+                ("hull", 1024),
+                ("distance_to_destination", 500),
+                ("crew_injured", 0),
+                ("fire_active", 0),
+            ],
+        ),
+        s(
+            "Social",
+            &[
+                ("station_contact", 1),
+                ("faction_standing", 300),
+                ("fuel", 1024),
+                ("hull", 1024),
+                ("crew_injured", 0),
+            ],
+        ),
+        s(
+            "Idle",
+            &[
+                ("fuel", 1024),
+                ("hull", 1024),
+                ("distance_to_destination", 0),
+                ("crew_injured", 0),
+                ("fire_active", 0),
+            ],
+        ),
     ]
 }
-
-// ---------------------------------------------------------------------------
-// Editor state
-// ---------------------------------------------------------------------------
 
 #[derive(Resource)]
 pub struct ContractWorkshopState {
@@ -167,26 +134,17 @@ pub struct ContractWorkshopState {
     pub col: RuleCol,
     pub dirty: bool,
     pub status: String,
-    /// RON export text visible in the export tab area.
     #[allow(dead_code)]
     pub export_ron: String,
-    /// Import text buffer (player pastes RON here).
     pub import_buffer: String,
-    /// Import mode active.
     pub importing: bool,
-    /// Simulation results cache.
     pub sim_results: Vec<(&'static str, String)>,
-    /// Contract version (incremented on evolution).
     #[allow(dead_code)]
     pub version: u32,
-    /// Evolution log for the current draft.
     #[allow(dead_code)]
     pub evolutions: Vec<String>,
-    /// Metrics counters.
     pub metrics: WorkshopMetrics,
 }
-
-/// S34 metrics: counts of workshop events (no PII).
 #[derive(Default)]
 pub struct WorkshopMetrics {
     pub simulation_runs: u32,
@@ -198,7 +156,6 @@ pub struct WorkshopMetrics {
     #[allow(dead_code)]
     pub evolutions: u32,
 }
-
 impl Default for ContractWorkshopState {
     fn default() -> Self {
         ContractWorkshopState {
@@ -218,14 +175,8 @@ impl Default for ContractWorkshopState {
         }
     }
 }
-
-/// Marker component for the contract workshop panel text node.
 #[derive(Component)]
 pub struct ContractWorkshopPanel;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 fn new_contract(crew: &CrewMember) -> Contract {
     Contract {
@@ -259,35 +210,41 @@ fn new_contract(crew: &CrewMember) -> Contract {
         }),
     }
 }
-
 fn condition_summary(cond: &Condition) -> String {
     match cond {
         Condition::Always => "always".into(),
-        Condition::Compare { field, op, value } => {
-            let op_str = match op {
+        Condition::Compare { field, op, value } => format!(
+            "{field} {} {value}",
+            match op {
                 Comparison::Lt => "<",
                 Comparison::Le => "<=",
                 Comparison::Eq => "==",
                 Comparison::Ne => "!=",
                 Comparison::Ge => ">=",
                 Comparison::Gt => ">",
-            };
-            format!("{field} {op_str} {value}")
-        }
+            }
+        ),
         Condition::Not(c) => format!("not({})", condition_summary(c)),
-        Condition::All(conds) => {
-            let inner: Vec<String> = conds.iter().map(condition_summary).collect();
-            format!("all({})", inner.join(", "))
-        }
-        Condition::Any(conds) => {
-            let inner: Vec<String> = conds.iter().map(condition_summary).collect();
-            format!("any({})", inner.join(", "))
-        }
+        Condition::All(conds) => format!(
+            "all({})",
+            conds
+                .iter()
+                .map(condition_summary)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Condition::Any(conds) => format!(
+            "any({})",
+            conds
+                .iter()
+                .map(condition_summary)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
-
 fn cycle_op(op: Comparison, step: i64) -> Comparison {
-    let ops = [
+    const OPS: [Comparison; 6] = [
         Comparison::Lt,
         Comparison::Le,
         Comparison::Eq,
@@ -295,29 +252,175 @@ fn cycle_op(op: Comparison, step: i64) -> Comparison {
         Comparison::Ge,
         Comparison::Gt,
     ];
-    let i = ops.iter().position(|o| *o == op).unwrap_or(0);
-    ops[(i as i64 + step).rem_euclid(ops.len() as i64) as usize]
+    OPS[(OPS.iter().position(|o| *o == op).unwrap_or(0) as i64 + step).rem_euclid(OPS.len() as i64)
+        as usize]
 }
-
 fn cycle_verb(current: &str, step: i64) -> String {
     let i = ACTION_VERBS.iter().position(|v| *v == current).unwrap_or(0);
     ACTION_VERBS[(i as i64 + step).rem_euclid(ACTION_VERBS.len() as i64) as usize].to_string()
 }
+fn llm_config() -> LlmConfig {
+    LlmConfig {
+        fallback_on_timeout: true,
+        timeout_ms: 15000,
+        max_tokens: 256,
+        system_prompt: String::new(),
+        fallback_action: Some(Action::verb("maintain_course")),
+    }
+}
 
-// ---------------------------------------------------------------------------
-// Input handler system
-// ---------------------------------------------------------------------------
+// -- Pure row builders --
+pub fn build_rules_rows(draft: &Contract) -> Vec<SelectableRow> {
+    let mut rows = Vec::new();
+    for (i, rule) in draft.rules.iter().enumerate() {
+        let verbs: Vec<String> = ACTION_VERBS.iter().map(|v| v.to_string()).collect();
+        let action_idx = ACTION_VERBS
+            .iter()
+            .position(|v| *v == rule.action.kind)
+            .unwrap_or(0);
+        rows.push(SelectableRow::Choice {
+            label: format!("[{i}] cond"),
+            choices: vec![condition_summary(&rule.condition)],
+            selected: 0,
+        });
+        rows.push(SelectableRow::Choice {
+            label: format!("[{i}] act"),
+            choices: verbs,
+            selected: action_idx,
+        });
+        rows.push(SelectableRow::Slider {
+            label: format!("[{i}] pri"),
+            value: rule.priority as f32,
+            min: 0.0,
+            max: 255.0,
+        });
+    }
+    rows.push(SelectableRow::Action {
+        label: "[+] add rule  (Delete)".into(),
+    });
+    rows
+}
+pub fn build_llm_rows(draft: &Contract) -> Vec<SelectableRow> {
+    let llm = draft.llm_authority.as_ref();
+    let verbs: Vec<String> = ACTION_VERBS.iter().map(|v| v.to_string()).collect();
+    let fb_idx = llm
+        .and_then(|l| l.fallback_action.as_ref())
+        .and_then(|a| ACTION_VERBS.iter().position(|v| *v == a.kind))
+        .unwrap_or(0);
+    vec![
+        SelectableRow::Toggle {
+            label: "fallback on timeout".into(),
+            value: llm.map(|l| l.fallback_on_timeout).unwrap_or(true),
+        },
+        SelectableRow::Slider {
+            label: "timeout (ms)".into(),
+            value: llm.map(|l| l.timeout_ms as f32).unwrap_or(15000.0),
+            min: 1000.0,
+            max: 120000.0,
+        },
+        SelectableRow::Slider {
+            label: "max tokens".into(),
+            value: llm.map(|l| l.max_tokens as f32).unwrap_or(256.0),
+            min: 32.0,
+            max: 4096.0,
+        },
+        SelectableRow::Choice {
+            label: "fallback action".into(),
+            choices: verbs,
+            selected: fb_idx,
+        },
+        SelectableRow::Action {
+            label: "edit system prompt  (Enter)".into(),
+        },
+    ]
+}
+pub fn build_persona_rows(
+    roster: &CrewRoster,
+    souls: &SoulRegistry,
+    draft: &Contract,
+) -> Vec<SelectableRow> {
+    let mut rows: Vec<SelectableRow> = roster
+        .members
+        .iter()
+        .map(|m| {
+            let q = souls
+                .files
+                .get(&m.id)
+                .map(|f| {
+                    let qq: Vec<&str> = f.personality.quirks.iter().map(|s| s.as_str()).collect();
+                    if qq.is_empty() {
+                        "no quirks".into()
+                    } else {
+                        qq.join(", ")
+                    }
+                })
+                .unwrap_or_else(|| "no soul file".into());
+            SelectableRow::Action {
+                label: format!("{}  {:12}  quirks: {}", m.name, m.role.name, q),
+            }
+        })
+        .collect();
+    let p = draft
+        .llm_authority
+        .as_ref()
+        .map(|l| l.system_prompt.as_str())
+        .unwrap_or("(no LLM config)");
+    rows.push(SelectableRow::Action {
+        label: format!("current persona: {p}"),
+    });
+    rows
+}
+pub fn build_simulation_rows(
+    sim: &[(&'static str, String)],
+    metrics: &WorkshopMetrics,
+) -> Vec<SelectableRow> {
+    if sim.is_empty() {
+        return vec![SelectableRow::Action {
+            label: "(not yet run — press Enter)".into(),
+        }];
+    }
+    let mut rows: Vec<SelectableRow> = sim
+        .iter()
+        .map(|(n, s)| SelectableRow::Action {
+            label: format!("  {n:12}  {s}"),
+        })
+        .collect();
+    let rc = sim.iter().filter(|(_, s)| s.starts_with("rule")).count();
+    let dc = sim.iter().filter(|(_, s)| s.starts_with("→ LLM")).count();
+    let t = sim.len().max(1);
+    rows.push(SelectableRow::Action {
+        label: format!(
+            "  ── {rc}/{} rules fired, {dc}/{} LLM calls ──",
+            t - 1,
+            t - 1
+        ),
+    });
+    let b = seasoned_bonus(metrics.simulation_runs, metrics.simulation_runs * 2);
+    rows.push(SelectableRow::Action {
+        label: format!(
+            "  seasoned bonus: trust +{}  depth: {}",
+            b.trust_bonus, b.personality_depth
+        ),
+    });
+    rows
+}
 
+// -- Workshop system --
 #[allow(clippy::too_many_arguments)]
 pub fn workshop_system(
     keys: Res<ButtonInput<KeyCode>>,
     settings: Res<Settings>,
     panel: Res<ActivePanel>,
+    focus_stack: Res<crate::focus_stack::FocusStack>,
     mut state: ResMut<ContractWorkshopState>,
     roster: Res<CrewRoster>,
     souls: Res<SoulRegistry>,
     mut runtime: ResMut<crate::systems::contract::ContractRuntime>,
     mut log: ResMut<crate::systems::contract::ShipLog>,
+    mut sel_panel: Query<
+        &mut crate::widget_kit::panel::SelectablePanel,
+        With<ContractWorkshopPanel>,
+    >,
 ) {
     if *panel != ActivePanel::ContractWorkshop {
         if state.draft.is_some() {
@@ -328,8 +431,9 @@ pub fn workshop_system(
         }
         return;
     }
-
-    // Initialise draft from the first crew member's profile.
+    if focus_stack.top_captures_input() {
+        return;
+    }
     if state.draft.is_none() {
         let member = roster.members.first().cloned().unwrap_or(CrewMember {
             id: "custom".into(),
@@ -355,31 +459,20 @@ pub fn workshop_system(
         state.sim_results.clear();
         state.importing = false;
     }
-
-    // ---- Install the draft into the live runtime (D9) ----
-    //
-    // Until this existed, the workshop, the library importer, the content
-    // editor, and the CLI validator all fed a contract that could never run:
-    // ContractRuntime shipped one hardcoded auto_helm() and nothing replaced
-    // it. This is the link that makes "you write the rules your ship runs on"
-    // literally true.
     if keys.just_pressed(settings.key(InputAction::InstallContract)) {
         match state.draft.clone() {
-            Some(draft) => {
-                // Crafting warnings are advisory by design (S34) — surface
-                // them, never block on them. An "uninteresting" contract is
-                // still the player's call.
-                let warnings = reachlock_core::contract::validation::validate_contract(&draft);
-                let id = draft.id.clone();
-                let rules = draft.rules.len();
-                runtime.install(draft);
+            Some(d) => {
+                let w = validate_contract(&d);
+                let id = d.id.clone();
+                let r = d.rules.len();
+                runtime.install(d);
                 state.dirty = false;
-                state.status = if warnings.is_empty() {
-                    format!("installed \"{id}\" ({rules} rule(s)) — now live")
+                state.status = if w.is_empty() {
+                    format!("installed \"{id}\" ({r} rule(s)) — now live")
                 } else {
                     format!(
-                        "installed \"{id}\" ({rules} rule(s)) — {} advisory warning(s)",
-                        warnings.len()
+                        "installed \"{id}\" ({r} rule(s)) — {} advisory warning(s)",
+                        w.len()
                     )
                 };
                 log.log(format!("contract installed: {id}"));
@@ -387,8 +480,6 @@ pub fn workshop_system(
             None => state.status = "nothing to install".into(),
         }
     }
-
-    // ---- Tab switching (no borrow on draft needed) ----
     if keys.just_pressed(settings.key(InputAction::EditorTabNext)) {
         let i = TABS.iter().position(|t| *t == state.tab).unwrap_or(0);
         state.tab = TABS[(i + 1) % TABS.len()];
@@ -396,36 +487,15 @@ pub fn workshop_system(
         state.col = RuleCol::Condition;
         state.importing = false;
         state.status.clear();
-    }
-
-    // ---- Row navigation (W/S) — compute row count without holding draft ----
-    let prev_sel = state.sel;
-    let row_count = match state.tab {
-        WorkshopTab::Rules => state
-            .draft
-            .as_ref()
-            .map(|d| d.rules.len().max(1))
-            .unwrap_or(1),
-        WorkshopTab::LlmConfig => 5,
-        WorkshopTab::Persona => roster.members.len().max(1),
-        WorkshopTab::Simulation => {
-            if state.sim_results.is_empty() {
-                1
-            } else {
-                state.sim_results.len() + 2
-            }
+        if let Ok(mut sp) = sel_panel.single_mut() {
+            sp.selected_row = 0;
+            sp.active_tab = TABS.iter().position(|t| *t == state.tab).unwrap_or(0);
         }
-    };
-
-    if keys.just_pressed(settings.key(InputAction::EditorCursorUp)) {
-        state.sel = (prev_sel + row_count - 1) % row_count;
-        state.status.clear();
-    } else if keys.just_pressed(settings.key(InputAction::EditorCursorDown)) {
-        state.sel = (prev_sel + 1) % row_count;
-        state.status.clear();
     }
-
-    // ---- Column cycling in Rules tab (A/D) ----
+    if let Ok(mut sp) = sel_panel.single_mut() {
+        navigate_selectable_panel(&keys, &settings, &mut sp);
+        state.sel = sp.selected_row;
+    }
     let step = if keys.just_pressed(settings.key(InputAction::EditorCursorRight)) {
         1
     } else if keys.just_pressed(settings.key(InputAction::EditorCursorLeft)) {
@@ -433,23 +503,12 @@ pub fn workshop_system(
     } else {
         0
     };
-
-    // ---- Dispatch to tab handlers (each borrows draft from state as needed) ----
     match state.tab {
-        WorkshopTab::Rules => {
-            handle_rules_tab(&keys, &settings, &mut state, step);
-        }
-        WorkshopTab::LlmConfig => {
-            handle_llm_tab(&keys, &mut state, step);
-        }
-        WorkshopTab::Persona => {
-            handle_persona_tab(&mut state, &roster, &souls, step);
-        }
-        WorkshopTab::Simulation => {
-            handle_sim_tab(&keys, &mut state);
-        }
+        WorkshopTab::Rules => handle_rules_tab(&keys, &settings, &mut state, step),
+        WorkshopTab::LlmConfig => handle_llm_tab(&keys, &mut state, step),
+        WorkshopTab::Persona => handle_persona_tab(&mut state, &roster, &souls, step),
+        WorkshopTab::Simulation => handle_sim_tab(&keys, &mut state),
     }
-
     if step != 0 {
         state.dirty = true;
     }
@@ -461,21 +520,37 @@ fn handle_rules_tab(
     state: &mut ContractWorkshopState,
     step: i64,
 ) {
-    let sel = state.sel;
+    let flat = state.sel;
     if step != 0 {
         let draft = state.draft.as_mut().unwrap();
-        if sel < draft.rules.len() {
-            let cols_len = RULE_COLS.len();
-            let col_i = RULE_COLS.iter().position(|c| *c == state.col).unwrap_or(0);
-            state.col = RULE_COLS[(col_i + 1) % cols_len];
+        let total = draft.rules.len() * 3;
+        if flat < total {
+            let ri = flat / 3;
+            let col = RULE_COLS[flat % 3];
+            let rule = &mut draft.rules[ri];
+            match col {
+                RuleCol::Condition => {
+                    if let Condition::Compare { op, .. } = &mut rule.condition {
+                        *op = cycle_op(*op, step.signum());
+                        state.status = "condition: cycled operator".into();
+                    }
+                }
+                RuleCol::Action => {
+                    rule.action.kind = cycle_verb(&rule.action.kind, step.signum());
+                    state.status = format!("action: {}", rule.action.kind);
+                }
+                RuleCol::Priority => {
+                    rule.priority = rule.priority.wrapping_add_signed(step.signum() as i8);
+                    state.status = format!("priority: {}", rule.priority);
+                }
+            }
         }
         return;
     }
-
     if keys.just_pressed(settings.key(InputAction::EditorConfirm)) {
         if state.importing {
-            let trimmed = state.import_buffer.trim();
-            if let Ok(imported) = ron::from_str::<Contract>(trimmed) {
+            let t = state.import_buffer.trim();
+            if let Ok(imported) = ron::from_str::<Contract>(t) {
                 state.draft = Some(imported);
                 state.metrics.imports += 1;
                 state.status = "contract imported".into();
@@ -485,32 +560,8 @@ fn handle_rules_tab(
             state.importing = false;
             return;
         }
-
         let draft = state.draft.as_mut().unwrap();
-        if sel < draft.rules.len() {
-            let rule = &mut draft.rules[sel];
-            match state.col {
-                RuleCol::Condition => {
-                    if let Condition::Compare { op, .. } = &mut rule.condition {
-                        *op = cycle_op(*op, 1);
-                        state.status = "condition: cycled operator".into();
-                    }
-                }
-                RuleCol::Action => {
-                    rule.action.kind = cycle_verb(&rule.action.kind, 1);
-                    state.status = format!("action: {}", rule.action.kind);
-                }
-                RuleCol::Priority => {
-                    rule.priority = rule.priority.wrapping_add(1);
-                    state.status = format!("priority: {}", rule.priority);
-                }
-            }
-        }
-    }
-
-    if keys.just_pressed(settings.key(InputAction::EditorDelete)) {
-        let draft = state.draft.as_mut().unwrap();
-        if sel <= draft.rules.len() {
+        if flat == draft.rules.len() * 3 {
             draft.rules.push(Rule {
                 condition: Condition::Compare {
                     field: "hull".into(),
@@ -523,46 +574,50 @@ fn handle_rules_tab(
             state.status = format!("rule {} added", draft.rules.len() - 1);
         }
     }
-
+    if keys.just_pressed(settings.key(InputAction::EditorDelete)) {
+        let draft = state.draft.as_mut().unwrap();
+        draft.rules.push(Rule {
+            condition: Condition::Compare {
+                field: "hull".into(),
+                op: Comparison::Lt,
+                value: 512,
+            },
+            action: Action::verb("maintain_course"),
+            priority: 0,
+        });
+        state.status = format!("rule {} added", draft.rules.len() - 1);
+    }
     if keys.just_pressed(settings.key(InputAction::EditorCancel)) {
-        let draft = state.draft.as_ref().unwrap();
-        let warnings = validate_contract(draft);
-        if warnings.is_empty() {
-            state.status = "no craft warnings".into();
+        let w = validate_contract(state.draft.as_ref().unwrap());
+        state.status = if w.is_empty() {
+            "no craft warnings".into()
         } else {
-            let ws: Vec<String> = warnings.iter().map(|w| format!("{w:?}")).collect();
-            state.status = format!("warnings: {}", ws.join(", "));
-        }
+            format!(
+                "warnings: {}",
+                w.iter()
+                    .map(|w| format!("{w:?}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
     }
 }
 
 fn handle_llm_tab(keys: &ButtonInput<KeyCode>, state: &mut ContractWorkshopState, step: i64) {
-    let sel = state.sel;
     if step != 0 {
         let draft = state.draft.as_mut().unwrap();
-        let llm = draft.llm_authority.get_or_insert(LlmConfig {
-            fallback_on_timeout: true,
-            timeout_ms: 15000,
-            max_tokens: 256,
-            system_prompt: String::new(),
-            fallback_action: Some(Action::verb("maintain_course")),
-        });
-        match sel {
+        let llm = draft.llm_authority.get_or_insert_with(llm_config);
+        match state.sel {
             0 => llm.fallback_on_timeout = !llm.fallback_on_timeout,
-            1 => {
-                llm.timeout_ms = (llm.timeout_ms as i64 + step * 1000).clamp(1000, 120000) as u32;
-            }
-            2 => {
-                llm.max_tokens = (llm.max_tokens as i64 + step * 32).clamp(32, 4096) as u32;
-            }
+            1 => llm.timeout_ms = (llm.timeout_ms as i64 + step * 1000).clamp(1000, 120000) as u32,
+            2 => llm.max_tokens = (llm.max_tokens as i64 + step * 32).clamp(32, 4096) as u32,
             3 => {
-                let current = llm
+                let c = llm
                     .fallback_action
                     .as_ref()
                     .map(|a| a.kind.as_str())
                     .unwrap_or("maintain_course");
-                let next = cycle_verb(current, step);
-                llm.fallback_action = Some(Action::verb(next));
+                llm.fallback_action = Some(Action::verb(cycle_verb(c, step.signum())));
             }
             4 => {}
             _ => {}
@@ -570,7 +625,6 @@ fn handle_llm_tab(keys: &ButtonInput<KeyCode>, state: &mut ContractWorkshopState
         state.dirty = true;
         state.status.clear();
     }
-
     if keys.just_pressed(KeyCode::Enter) {
         state.status = "prompt preview shown below".into();
     }
@@ -582,15 +636,14 @@ fn handle_persona_tab(
     souls: &SoulRegistry,
     step: i64,
 ) {
-    let sel = state.sel;
     if step != 0 {
         let draft = state.draft.as_mut().unwrap();
-        if let Some(member) = roster.members.get(sel) {
+        if let Some(member) = roster.members.get(state.sel) {
             let traits = souls
                 .files
                 .get(&member.id)
-                .map(|file| {
-                    file.personality
+                .map(|f| {
+                    f.personality
                         .traits
                         .iter()
                         .map(|t| t.as_str())
@@ -603,7 +656,7 @@ fn handle_persona_tab(
                 member.name, member.role.name, traits
             );
             if let Some(llm) = &mut draft.llm_authority {
-                llm.system_prompt = persona.clone();
+                llm.system_prompt = persona;
                 state.status = "persona auto-filled".into();
             } else {
                 state.status = "no LLM config — enable one first".into();
@@ -618,290 +671,93 @@ fn handle_sim_tab(keys: &ButtonInput<KeyCode>, state: &mut ContractWorkshopState
         let mut results: Vec<(&str, String)> = Vec::new();
         for sc in preset_scenarios() {
             let outcome = evaluate(draft, &sc.ctx);
-            let summary = match &outcome {
-                Outcome::Rule { action, .. } => format!("rule → {}", action.kind),
-                Outcome::Deliberate { .. } => "→ LLM deliberation".into(),
-                Outcome::NoDecision => "→ no decision".into(),
-            };
-            results.push((sc.name, summary));
+            results.push((
+                sc.name,
+                match &outcome {
+                    Outcome::Rule { action, .. } => format!("rule → {}", action.kind),
+                    Outcome::Deliberate { .. } => "→ LLM deliberation".into(),
+                    Outcome::NoDecision => "→ no decision".into(),
+                },
+            ));
         }
-        let warnings = validate_contract(draft);
-        let warn_summary = if warnings.is_empty() {
-            "no warnings".to_string()
+        let w = validate_contract(draft);
+        let ws = if w.is_empty() {
+            "no warnings".into()
         } else {
-            let ws: Vec<String> = warnings.iter().map(|w| format!("{w:?}")).collect();
-            ws.join(", ")
+            w.iter()
+                .map(|w| format!("{w:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
         };
-        results.push(("Validation", warn_summary));
+        results.push(("Validation", ws));
         state.sim_results = results;
         state.metrics.simulation_runs += 1;
         state.status = "simulation complete".into();
     }
 }
 
-// ---------------------------------------------------------------------------
-// Panel text rendering
-// ---------------------------------------------------------------------------
-
-pub fn workshop_panel_text(
-    state: &ContractWorkshopState,
-    roster: &CrewRoster,
-    souls: &SoulRegistry,
-    settings: &Settings,
-) -> String {
-    let Some(draft) = &state.draft else {
-        return String::new();
-    };
-
-    let mut lines = vec![
-        format!(
-            "── CONTRACT WORKSHOP ──  Tab · W/S row · A/D change · Enter act · \
-             Esc validate · {} INSTALL",
-            settings.key_display(InputAction::InstallContract)
+// -- Panel rendering --
+pub fn render_workshop_panel(
+    panel: Res<ActivePanel>,
+    state: Res<ContractWorkshopState>,
+    roster: Res<CrewRoster>,
+    souls: Res<SoulRegistry>,
+    settings: Res<Settings>,
+    mut q: Query<
+        (
+            &mut crate::widget_kit::panel::SelectablePanel,
+            &mut Text,
+            &mut Visibility,
         ),
-        {
-            let tabs: Vec<String> = TABS
-                .iter()
-                .map(|t| {
-                    let name = tab_name(*t);
-                    if *t == state.tab {
-                        format!("[{name}]")
-                    } else {
-                        name.to_string()
-                    }
-                })
-                .collect();
-            tabs.join(" ")
-        },
-    ];
-
-    let cursor = |i: usize| if i == state.sel { "> " } else { "  " };
-
-    match state.tab {
-        WorkshopTab::Rules => {
-            lines.push(format!("contract: {}", draft.label));
-            lines.push(format!("trigger: {}", trigger_summary(&draft.trigger)));
-
-            if state.importing {
-                lines.push("── IMPORT ──".into());
-                lines.push("Paste RON contract below, then Enter to confirm:".into());
-                lines.push(format!("> {}", state.import_buffer));
-                lines.push("(Esc cancel)".into());
-                return lines.join("\n");
-            }
-
-            for (i, rule) in draft.rules.iter().enumerate() {
-                let _col_i = RULE_COLS.iter().position(|c| *c == state.col).unwrap_or(0);
-                let col_mark = |col: RuleCol| {
-                    if i == state.sel && state.col == col {
-                        "▸"
-                    } else {
-                        " "
-                    }
-                };
-                lines.push(format!(
-                    "{}[{}] {}{:30} {}{:20} {}{}",
-                    cursor(i),
-                    i,
-                    col_mark(RuleCol::Condition),
-                    condition_summary(&rule.condition),
-                    col_mark(RuleCol::Action),
-                    rule.action.kind,
-                    col_mark(RuleCol::Priority),
-                    rule.priority,
-                ));
-            }
-            // "Add rule" row (implicit — press Delete on last row to add, but
-            // we display a hint).
-            {
-                let i = draft.rules.len();
-                lines.push(format!(
-                    "{}[+] — new rule —  (Delete key)",
-                    cursor(if i == state.sel { i } else { draft.rules.len() })
-                ));
-            }
-
-            let warnings = validate_contract(draft);
-            if !warnings.is_empty() {
-                lines.push("── CRAFT WARNINGS (Esc to re-check) ──".into());
-                for w in &warnings {
-                    let label: String = match w {
-                        CraftingWarning::AlwaysResolvesWithoutLLM => {
-                            "always resolves — no LLM edge".to_string()
-                        }
-                        CraftingWarning::AlwaysRequiresLLM => {
-                            "always needs LLM — no Always rule".to_string()
-                        }
-                        CraftingWarning::AllSamePriority => "all rules same priority".to_string(),
-                        CraftingWarning::NoFallbackBehavior => "no fallback action".to_string(),
-                        CraftingWarning::OverSpecificTrigger => "over-specific trigger".to_string(),
-                        CraftingWarning::CircularRule => "circular rule dependency".to_string(),
-                    };
-                    lines.push(format!("  ⚠ {label}"));
-                }
-            }
+        With<ContractWorkshopPanel>,
+    >,
+) {
+    let open = *panel == ActivePanel::ContractWorkshop && state.draft.is_some();
+    if let Ok((mut sel, mut text, mut vis)) = q.single_mut() {
+        if !open {
+            **text = String::new();
+            *vis = Visibility::Hidden;
+            return;
         }
-        WorkshopTab::LlmConfig => {
-            let default_llm = LlmConfig {
-                fallback_on_timeout: true,
-                timeout_ms: 15000,
-                max_tokens: 256,
-                system_prompt: String::new(),
-                fallback_action: None,
-            };
-            let llm = draft.llm_authority.as_ref().unwrap_or(&default_llm);
-            lines.push(format!(
-                "{}fallback on timeout: {}",
-                cursor(0),
-                llm.fallback_on_timeout
-            ));
-            lines.push(format!("{}timeout (ms): {}", cursor(1), llm.timeout_ms));
-            lines.push(format!("{}max tokens: {}", cursor(2), llm.max_tokens));
-            let fallback_label = llm
-                .fallback_action
-                .as_ref()
-                .map(|a| a.kind.as_str())
-                .unwrap_or("— none —");
-            lines.push(format!("{}fallback action: {fallback_label}", cursor(3)));
-            lines.push(format!(
-                "{}system prompt: (too long to edit here)",
-                cursor(4)
-            ));
-            lines.push(String::new());
-            lines.push("── PROMPT PREVIEW ──".into());
-            let preview = if llm.system_prompt.is_empty() {
-                "(empty — set from Persona tab)".into()
-            } else {
-                llm.system_prompt.clone()
-            };
-            lines.push(preview);
+        *vis = Visibility::Visible;
+        let draft = state.draft.as_ref().unwrap();
+        if state.importing {
+            sel.rows.clear();
+            **text = format!("── CONTRACT WORKSHOP ──\n── IMPORT ──\nPaste RON contract below, then Enter to confirm:\n> {}\n(Esc cancel)", state.import_buffer);
+            return;
         }
-        WorkshopTab::Persona => {
-            lines.push("Select a crew member and press A/D to auto-fill persona:".into());
-            for (i, member) in roster.members.iter().enumerate() {
-                let soul_traits = souls
-                    .files
-                    .get(&member.id)
-                    .map(|file| {
-                        let moods: Vec<&str> =
-                            file.personality.quirks.iter().map(|s| s.as_str()).collect();
-                        if moods.is_empty() {
-                            "no quirks".into()
-                        } else {
-                            moods.join(", ")
-                        }
-                    })
-                    .unwrap_or_else(|| "no soul file".into());
-                lines.push(format!(
-                    "{}[{}] {:10}  {:12}  quirks: {}",
-                    cursor(i),
-                    i,
-                    member.name,
-                    &member.role.name,
-                    soul_traits,
-                ));
-            }
-            lines.push(String::new());
-            let current_prompt = draft
-                .llm_authority
-                .as_ref()
-                .map(|l| l.system_prompt.as_str())
-                .unwrap_or("(no LLM config)");
-            lines.push(format!("current persona: {current_prompt}"));
-        }
-        WorkshopTab::Simulation => {
-            lines.push("── SCENARIO  Simulation  ──".into());
-            lines.push("  Enter = run all 5 scenarios  (R = rerun)".into());
-
-            if state.sim_results.is_empty() {
-                lines.push("  (not yet run)".into());
-            } else {
-                for (name, summary) in state.sim_results.iter() {
-                    if name == &"Validation" {
-                        lines.push(format!("── {} ──", name));
-                        lines.push(format!("  {summary}"));
-                    } else {
-                        lines.push(format!("  {name:12}  {summary}"));
-                    }
-                }
-                // Coverage summary.
-                let rule_count = state
-                    .sim_results
-                    .iter()
-                    .filter(|(_, s)| s.starts_with("rule"))
-                    .count();
-                let deliberate_count = state
-                    .sim_results
-                    .iter()
-                    .filter(|(_, s)| s.starts_with("→ LLM"))
-                    .count();
-                let total = state.sim_results.len().max(1);
-                lines.push(format!(
-                    "  ── {}/{} rules fired, {}/{} LLM calls ──",
-                    rule_count,
-                    total - 1,
-                    deliberate_count,
-                    total - 1,
-                ));
-                // Seasoned bonus display (WO-6).
-                let bonus = seasoned_bonus(
-                    state.metrics.simulation_runs,
-                    state.metrics.simulation_runs * 2,
-                );
-                lines.push(format!(
-                    "  seasoned bonus: trust +{}  depth: {}",
-                    bonus.trust_bonus, bonus.personality_depth
-                ));
-            }
-        }
-    }
-
-    // Status line at the bottom.
-    if !state.status.is_empty() {
-        lines.push(format!("  · {}", state.status));
-    }
-
-    // Export/import actions.
-    lines.push(String::new());
-    lines.push("  [Ctrl+C] export RON  [Ctrl+V] import RON  (escapes only)".into());
-
-    lines.join("\n")
-}
-
-fn trigger_summary(trigger: &Trigger) -> String {
-    match trigger {
-        Trigger::Timer {
-            interval_secs,
-            repeat,
-        } => {
-            format!(
-                "every {interval_secs}s{}",
-                if *repeat { "" } else { " (once)" }
-            )
-        }
-        Trigger::Event { event_type } => format!("on event: {event_type}"),
-        Trigger::StateChange { field, op, value } => {
-            let op_str = match op {
-                Comparison::Lt => "<",
-                Comparison::Le => "<=",
-                Comparison::Eq => "==",
-                Comparison::Ne => "!=",
-                Comparison::Ge => ">=",
-                Comparison::Gt => ">",
-            };
-            format!("{field} {op_str} {value}")
-        }
-        Trigger::Manual => "manual".into(),
+        sel.title = "CONTRACT WORKSHOP".into();
+        sel.subtitle = format!(
+            "Tab · W/S row · A/D change · Enter act · {} INSTALL",
+            settings.key_display(InputAction::InstallContract)
+        );
+        sel.tabs = TABS.iter().map(|t| tab_name(*t).to_string()).collect();
+        sel.active_tab = TABS.iter().position(|t| *t == state.tab).unwrap_or(0);
+        sel.selected_row = state.sel;
+        sel.status = state.status.clone();
+        sel.rows = match state.tab {
+            WorkshopTab::Rules => build_rules_rows(draft),
+            WorkshopTab::LlmConfig => build_llm_rows(draft),
+            WorkshopTab::Persona => build_persona_rows(&roster, &souls, draft),
+            WorkshopTab::Simulation => build_simulation_rows(&state.sim_results, &state.metrics),
+        };
+        **text = crate::widget_kit::panel::format_selectable_panel_text(&sel);
     }
 }
-
-// ---------------------------------------------------------------------------
-// Spawn the panel text node
-// ---------------------------------------------------------------------------
 
 pub fn spawn_workshop_panel(mut commands: Commands) {
+    use crate::widget_kit::panel::SelectablePanel;
     commands.spawn((
         ContractWorkshopPanel,
+        SelectablePanel {
+            title: String::new(),
+            subtitle: String::new(),
+            tabs: vec![],
+            active_tab: 0,
+            rows: vec![],
+            selected_row: 0,
+            status: String::new(),
+        },
         Text::new(""),
         TextFont {
             font_size: 12.0,
@@ -916,28 +772,4 @@ pub fn spawn_workshop_panel(mut commands: Commands) {
             ..default()
         },
     ));
-}
-
-// ---------------------------------------------------------------------------
-// Update system — render the panel text each frame
-// ---------------------------------------------------------------------------
-
-pub fn render_workshop_panel(
-    panel: Res<ActivePanel>,
-    state: Res<ContractWorkshopState>,
-    roster: Res<CrewRoster>,
-    souls: Res<SoulRegistry>,
-    settings: Res<Settings>,
-    mut texts: Query<&mut Text, With<ContractWorkshopPanel>>,
-) {
-    if let Ok(mut text) = texts.single_mut() {
-        match &*panel {
-            ActivePanel::ContractWorkshop => {
-                **text = workshop_panel_text(&state, &roster, &souls, &settings);
-            }
-            _ => {
-                **text = String::new();
-            }
-        }
-    }
 }

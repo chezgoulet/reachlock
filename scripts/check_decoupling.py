@@ -44,7 +44,8 @@ CRATES = [
 # word like `boris` in an identifier is fine; `"Boris"` as a value is not.
 SHIP = re.compile(r"loup.?garou", re.IGNORECASE)
 CREW = re.compile(
-    r'"(Tib|Tove|Boris|Prudence|Risc|Keene|Bardo)"', re.IGNORECASE
+    r'"[^"]*?(?<![a-zA-Z])(Tib|Tove|Boris|Prudence|Risc|Keene|Bardo)(?![a-zA-Z])[^"]*?"',
+    re.IGNORECASE,
 )
 
 # Known, deliberate exceptions. Each must say why, and each is a debt, not a
@@ -56,13 +57,59 @@ EXEMPT = {
     # checksums for no behavioural gain, so they stay — but the gate names
     # them here rather than quietly ignoring the file.
     ("reachlock-core/src/determinism.rs", "manifest"),
+    # Hardcoded origin for Loup-Garou veteran. Tied to one-authored content,
+    # not engine architecture. Needs to become data-driven (S81).
+    ("reachlock-client/src/systems/character_creation.rs", "get_available_origins"),
+    ("reachlock-client/src/systems/character_creation.rs", "confirm"),
+    # Hardcoded "loup_garou" ship interior loader. The ship path is pinned
+    # to one authored hull; untying it is a pre-requisite for multi-ship.
+    ("reachlock-client/src/systems/crew.rs", "load_loup_garou_interior"),
+    ("reachlock-client/src/systems/interior.rs", "enter_interior"),
+    ("reachlock-client/src/systems/interior.rs", "spawn_props"),
+    ("reachlock-client/src/systems/interior.rs", "cryo_wake_spawn"),
+    ("reachlock-client/src/systems/interior.rs", "cockpit_seat_spawn"),
+    ("reachlock-client/src/systems/interior.rs", "builtin_crew_config"),
+    ("reachlock-client/src/systems/crisis.rs", "deck_layouts"),
+    ("reachlock-client/src/systems/setup.rs", "PLAYER_HULL_ID"),
+    ("reachlock-client/src/systems/setup.rs", "spawn_player_ship"),
+    ("reachlock-client/src/systems/setup.rs", "spawn_loup_garou_model"),
+    ("reachlock-client/src/systems/onboard.rs", "onboard_ship_consoles"),
+    ("reachlock-client/src/systems/onboarding.rs", "demo_deliberation_stage"),
+    ("reachlock-client/src/systems/soul.rs", "init_souls"),
+    # Combat system hardcodes Tove as the engineer. Role-based roster
+    # resolution was not wired through combat during the first pass.
+    ("reachlock-client/src/systems/combat.rs", "damage_control_contract"),
+    ("reachlock-client/src/systems/combat.rs", "damage_control"),
+    ("reachlock-client/src/systems/combat.rs", "repair_worst_room"),
+    # Cryojump and jump systems pin the navigator/pilot to specific crew.
+    # These need role-based resolution.
+    ("reachlock-client/src/systems/cryojump.rs", "arm_jump"),
+    ("reachlock-client/src/systems/cryojump.rs", "jump_clock"),
+    ("reachlock-client/src/systems/cryojump.rs", "revive"),
+    ("reachlock-client/src/systems/jump.rs", "default"),
+    ("reachlock-client/src/systems/jump.rs", "try_gate_jump"),
+    ("reachlock-client/src/systems/jump.rs", "self_jump"),
+    # Contract evaluation uses `crew_member: "Boris"` for the deliberation
+    # state — the deliberation crew field is set to the contract's author
+    # (the pilot), not derived from the roster. Role-based once the
+    # contract system carries crew ids.
+    ("reachlock-client/src/systems/contract.rs", "evaluate_contracts"),
+    # Deliberation renderer uses a hardcoded Tove reference for relationship
+    # delta in the stage-progression overlay logic.
+    ("reachlock-client/src/systems/deliberation_renderer.rs", "handle_interjection_input"),
+    # Generator name-pool for procedurally-generated dilemmas.
+    ("reachlock-core/src/generator/dilemma.rs", "NAMES"),
+    # Landed combat companion archetype display name pinned to Tib.
+    ("reachlock-client/src/systems/landed_combat.rs", "companion_archetype"),
+    # Soul editor pins a default identity id. Content tooling debt.
+    ("reachlock-editor/src/editors/soul.rs", "generate_from_seed"),
 }
 
 COMMENT = re.compile(r"^\s*(//|/\*|\*)")
 
 
 def exempt_fn_ranges(path: Path, text: str):
-    """Line ranges of exempted functions in this file."""
+    """Line ranges of exempted functions/consts in this file."""
     rel = str(path)
     names = [fn for (p, fn) in EXEMPT if rel.endswith(p)]
     ranges = []
@@ -77,6 +124,17 @@ def exempt_fn_ranges(path: Path, text: str):
                 while j < len(lines):
                     depth += lines[j].count("{") - lines[j].count("}")
                     started = started or "{" in lines[j]
+                    if started and depth <= 0:
+                        break
+                    j += 1
+                ranges.append((i + 1, j + 1))
+            elif re.search(rf"\bconst {re.escape(fn)}\b", line):
+                depth, j = 0, i
+                started = False
+                while j < len(lines):
+                    depth += lines[j].count("{") - lines[j].count("}")
+                    depth += lines[j].count("[") - lines[j].count("]")
+                    started = started or "[" in lines[j] or "{" in lines[j]
                     if started and depth <= 0:
                         break
                     j += 1

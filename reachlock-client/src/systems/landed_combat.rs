@@ -406,7 +406,7 @@ pub fn spawn_landed_enemies(
         ModeScope(GameMode::Landed),
     ));
     log.log(format!(
-        "Boarding {}: {count} hostile(s). Tib is with you.",
+        "Boarding {}: {count} hostile(s). Your crewmate is with you.",
         loc.display_name
     ));
 }
@@ -758,7 +758,7 @@ pub fn apply_landed_hits(
         }
         if state.player_hp <= 0 {
             state.player_hp = 0;
-            log.log("You are downed. Tib drags you clear.");
+            log.log("You are downed. Your crewmate drags you clear.");
             state.combat_active = false;
         }
     }
@@ -892,7 +892,7 @@ pub fn companion_combat_system(
         if nearest.is_none() {
             c.hp = c.archetype.hp;
             c.state = HumanoidState::Idle;
-            log.log("Tib is back on her feet.");
+            log.log("Your crewmate is back on her feet.");
         }
         return;
     }

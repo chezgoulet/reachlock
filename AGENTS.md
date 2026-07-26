@@ -21,6 +21,7 @@ The v1 Godot prototype is archived on the `archive-v1` branch. Both `main` and `
 | `reachlock-client/` | Bevy game client — bridge layer, ECS systems, plugins |
 | `reachlock-server/` | WebSocket server — Tokio + Axum, seed service, LLM proxy |
 | `reachlock-cli/` | CLI tools — `gen`, `determinism`, `content` |
+| `reachlock-editor/` | Content editor — RON round-trip, schema validation, multi-entry saving |
 
 ## Development Workflow
 
@@ -64,7 +65,7 @@ The v1 Godot prototype is archived on the `archive-v1` branch. Both `main` and `
 ```bash
 cargo build                    # debug
 cargo test                     # all tests
-cargo clippy -- -D warnings    # CI gate
+cargo clippy --workspace --all-targets -- -D warnings    # CI gate
 cargo run -p reachlock-client  # fly the red polygon
 make check                     # fmt + clippy + test + purity + content
 reachlock content check mods/reachlock   # whole-tree reference integrity

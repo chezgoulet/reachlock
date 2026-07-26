@@ -275,7 +275,7 @@ async fn admin_tick_trigger(
     }
     (
         StatusCode::OK,
-        Json(serde_json::json!({"tick": "triggered"})),
+        Json(serde_json::json!({"tick": "triggered", "implemented": false})),
     )
 }
 
@@ -286,7 +286,7 @@ async fn admin_content_purge(
     if let Err(status) = verify_admin(&headers) {
         return (status, Json(serde_json::json!({"error": "unauthorized"})));
     }
-    (StatusCode::OK, Json(serde_json::json!({"purged": true})))
+    (StatusCode::OK, Json(serde_json::json!({"purged": true, "implemented": false})))
 }
 
 async fn admin_audit_log(

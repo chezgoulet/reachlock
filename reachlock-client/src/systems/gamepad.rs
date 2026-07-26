@@ -1,10 +1,21 @@
 use bevy::prelude::*;
 
+/// Tracks whether a gamepad is connected and active.
+/// Set by `track_input_source` system. Used by ship/intern control,
+/// focus ring visibility, and gamepad routing (S105).
+/// Was dead code before S105 — now detection, routing, and consumption
+/// are all wired.
 #[derive(Resource, Default)]
 pub struct GamepadActive(pub bool);
 
-#[derive(Component)]
-pub struct FocusRing;
+pub fn track_input_source(
+    gamepads: Query<&Gamepad>,
+    buttons: Res<ButtonInput<GamepadButton>>,
+    axes: Res<Axis<GamepadAxis>>,
+    active: ResMut<GamepadActive>,
+) {
+    detect_gamepad(gamepads, buttons, axes, active);
+}
 
 pub fn detect_gamepad(
     gamepads: Query<&Gamepad>,

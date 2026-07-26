@@ -157,7 +157,7 @@ mod tests {
             name: "Rook".into(),
             pronouns: "they/them".into(),
             species: "Human".into(),
-            look: CharacterLookConfig::seed_derived("Human"),
+            look: CharacterLookConfig::seed_derived(Species::Human),
             origin_id: "orphaned_colony".into(),
             background_id: "spacer".into(),
             soul: sample_soul(),

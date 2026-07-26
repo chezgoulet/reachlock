@@ -6,6 +6,7 @@
 //! chassis/visor) has its own control. Pinning saves the full look RON.
 
 use reachlock_core::generator::sprite::{generate_character_sprite, CharacterLookConfig};
+use reachlock_core::soul::types::Species;
 
 use super::super::app::{ContentType, Editor};
 use super::widgets::character_appearance_editor;
@@ -38,7 +39,7 @@ impl CharacterSpriteViewer {
     fn new() -> Self {
         CharacterSpriteViewer {
             seed: 42,
-            config: CharacterLookConfig::seed_derived("Human"),
+            config: CharacterLookConfig::seed_derived(Species::Human),
             texture: None,
             palette_key: String::new(),
             dirty: true,
@@ -169,7 +170,7 @@ impl Editor for CharacterSpriteViewer {
     fn generate_from_seed(&mut self, seed: u64) {
         self.seed = seed & 0x001F_FFFF_FFFF_FFFF;
         // A fresh seed means a fully procedural look.
-        self.config = CharacterLookConfig::seed_derived(&self.config.species);
+        self.config = CharacterLookConfig::seed_derived(self.config.species);
         self.dirty = true;
     }
 

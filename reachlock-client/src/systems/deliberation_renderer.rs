@@ -76,8 +76,8 @@ fn build_stage(
         verdict: None,
         cost: None,
         recent_uncovered: runtime.recent_uncovered(),
-        remaining_secs: active.remaining.remaining().as_secs_f32(),
-        total_secs: active.remaining.duration().as_secs_f32(),
+        remaining_cs: (active.remaining.remaining().as_millis() as u32) / 10,
+        total_cs: (active.remaining.duration().as_millis() as u32) / 10,
     })
 }
 
@@ -165,7 +165,7 @@ pub fn advance_deliberation_stage(
 
     if let Some(ref active) = deliberation.active {
         if let Some(ref mut stage) = panel.stage {
-            stage.remaining_secs = active.remaining.remaining().as_secs_f32();
+            stage.remaining_cs = (active.remaining.remaining().as_millis() as u32) / 10;
         }
     }
 }
@@ -240,16 +240,21 @@ fn panel_lines(panel: &DeliberationPanel) -> String {
             lines.push(String::new());
             lines.push("  ⏳ thinking".into());
             let bar_width = 20;
-            let progress = if stage.total_secs > 0.0 {
-                ((stage.total_secs - stage.remaining_secs) / stage.total_secs * bar_width as f32)
-                    as usize
-            } else {
-                0
-            };
+            let progress = stage
+                .total_cs
+                .checked_sub(stage.remaining_cs)
+                .and_then(|diff| diff.checked_mul(bar_width as u32))
+                .and_then(|prod| prod.checked_div(stage.total_cs.max(1)))
+                .unwrap_or(0) as usize;
             let bar = "█".repeat(progress.min(bar_width));
             let empty = "░".repeat(bar_width.saturating_sub(progress));
             lines.push(format!("  [{bar}{empty}]"));
-            lines.push(format!("  {:.1}s remaining", stage.remaining_secs.max(0.0)));
+            let remaining_s = stage.remaining_cs / 100;
+            let remaining_cs_frac = stage.remaining_cs % 100;
+            lines.push(format!(
+                "  {}.{:02}s remaining",
+                remaining_s, remaining_cs_frac
+            ));
         }
         StagePhase::Verdict => {
             lines.push(format!("── {} reached a verdict ──", stage.crew_member));
@@ -402,7 +407,7 @@ pub fn update_verdict_from_resolution(
         stage.verdict = Some(VerdictSnapshot {
             outcome_label: "offline_fallback".into(),
             action_taken: "maintain_course".into(),
-            reasoning: "No rule matched; Boris fell back to standard course.".into(),
+            reasoning: "No rule matched; fell back to standard course.".into(),
             escalation: None,
         });
         stage.cost = Some(CostSnapshot {

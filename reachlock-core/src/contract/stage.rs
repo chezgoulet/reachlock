@@ -46,8 +46,8 @@ pub struct DeliberationStage {
     pub verdict: Option<VerdictSnapshot>,
     pub cost: Option<CostSnapshot>,
     pub recent_uncovered: u8,
-    pub remaining_secs: f32,
-    pub total_secs: f32,
+    pub remaining_cs: u32,
+    pub total_cs: u32,
 }
 
 #[cfg(test)]
@@ -68,8 +68,8 @@ mod tests {
             verdict: None,
             cost: None,
             recent_uncovered: 2,
-            remaining_secs: 4.0,
-            total_secs: 4.0,
+            remaining_cs: 400,
+            total_cs: 400,
         };
         let json = serde_json::to_string(&stage).unwrap();
         let back: DeliberationStage = serde_json::from_str(&json).unwrap();
@@ -127,8 +127,8 @@ mod tests {
                 cargo_loss: None,
             }),
             recent_uncovered: 1,
-            remaining_secs: 0.0,
-            total_secs: 4.0,
+            remaining_cs: 0,
+            total_cs: 400,
         };
         let json = serde_json::to_string(&stage).unwrap();
         let back: DeliberationStage = serde_json::from_str(&json).unwrap();

@@ -4,6 +4,7 @@
 
 use reachlock_core::contract::types::{Action, Comparison, Condition};
 use reachlock_core::generator::sprite::{CharacterLookConfig, HAIR_STYLE_COUNT};
+use reachlock_core::soul::types::Species;
 
 pub const COMPARISONS: [Comparison; 6] = [
     Comparison::Lt,
@@ -188,7 +189,13 @@ pub fn action_ui(ui: &mut egui::Ui, action: &mut Action, id: egui::Id) -> bool {
 
 // ── S76: Character appearance editor ──
 
-const SPECIES_NAMES: [&str; 5] = ["Human", "Android", "Robot", "Voidborn", "Xenotype"];
+const SPECIES_LIST: [Species; 5] = [
+    Species::Human,
+    Species::Android,
+    Species::Robot,
+    Species::Voidborn,
+    Species::Xenotype,
+];
 
 pub(crate) const HAIR_STYLES: [&str; HAIR_STYLE_COUNT as usize] =
     ["Bald", "Short", "Buzz", "Long", "Locs", "Bun", "Crest"];
@@ -204,23 +211,23 @@ pub fn character_appearance_editor(
     seed: &mut u64,
 ) -> bool {
     let mut changed = false;
-    let is_robot = config.species == "Robot";
+    let is_robot = config.species == Species::Robot;
 
     ui.heading("Character Look");
     ui.separator();
 
     // Species dropdown
-    let species_idx = SPECIES_NAMES
+    let species_idx = SPECIES_LIST
         .iter()
         .position(|s| *s == config.species)
         .unwrap_or(0);
     let mut sel = species_idx;
     egui::ComboBox::from_label("Species")
-        .selected_text(SPECIES_NAMES[sel])
+        .selected_text(SPECIES_LIST[sel].to_string())
         .show_ui(ui, |ui| {
-            for (i, name) in SPECIES_NAMES.iter().enumerate() {
-                if ui.selectable_value(&mut sel, i, *name).changed() {
-                    config.species = name.to_string();
+            for (i, sp) in SPECIES_LIST.iter().enumerate() {
+                if ui.selectable_value(&mut sel, i, sp.to_string()).changed() {
+                    config.species = *sp;
                     changed = true;
                 }
             }

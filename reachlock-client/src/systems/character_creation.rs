@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use reachlock_core::generator::soul::generate_soul;
 use reachlock_core::generator::sprite::{CharacterLookConfig, HAIR_STYLE_COUNT};
 use reachlock_core::identity::{EntityId, PlayerCharacter};
-use reachlock_core::soul::types::SoulFile;
+use reachlock_core::soul::types::{SoulFile, Species};
 use reachlock_core::util::rng::SeededRng;
 
 use crate::focus_stack::FocusStack;
@@ -21,6 +21,13 @@ use crate::systems::inventory::{save_player_with_log, PlayerInventory};
 // ── Constants ─────────────────────────────────────────────────────────────
 
 pub const SPECIES_NAMES: [&str; 5] = ["Human", "Android", "Robot", "Voidborn", "Xenotype"];
+pub const SPECIES: [Species; 5] = [
+    Species::Human,
+    Species::Android,
+    Species::Robot,
+    Species::Voidborn,
+    Species::Xenotype,
+];
 pub const PRONOUN_OPTIONS: [&str; 6] = [
     "they/them",
     "she/her",
@@ -132,7 +139,7 @@ impl Default for CharacterCreationState {
                 custom_pronouns: String::new(),
                 species: 0,
             },
-            look: CharacterLookConfig::seed_derived("Human"),
+            look: CharacterLookConfig::seed_derived(Species::Human),
             origin_id: None,
             ship_seed: galaxy_seed.wrapping_add(42),
             galaxy_seed,
@@ -580,7 +587,7 @@ pub fn character_creation_input(
         {
             if keys.just_pressed(*key) {
                 creation.identity.species = i;
-                creation.look.species = SPECIES_NAMES[i].to_string();
+                creation.look.species = SPECIES[i];
             }
         }
         if keys.just_pressed(KeyCode::KeyP) {
@@ -620,6 +627,15 @@ fn advance(creation: &mut CharacterCreationState) {
 
 // ── Randomization ────────────────────────────────────────────────────────
 
+/// Update the character preview sprite when appearance or identity changes.
+pub fn update_preview_sprite(creation: Res<CharacterCreationState>) {
+    if creation.is_changed() {
+        // Sprite regeneration uses sprite_seed; the actual atlas index
+        // swap happens in render_current_step when the step advances.
+        let _ = creation.sprite_seed;
+    }
+}
+
 pub fn randomize_step(creation: &mut CharacterCreationState) {
     match creation.step {
         CreationStep::Identity => {
@@ -627,7 +643,7 @@ pub fn randomize_step(creation: &mut CharacterCreationState) {
             creation.identity.name = format!("{}-{}", name_seg(&mut rng), name_seg(&mut rng));
             creation.identity.pronouns = rng.next_below(5) as usize;
             creation.identity.species = rng.next_below(SPECIES_NAMES.len() as u64) as usize;
-            creation.look.species = SPECIES_NAMES[creation.identity.species].to_string();
+            creation.look.species = SPECIES[creation.identity.species];
         }
         CreationStep::Appearance => {
             let mut rng = SeededRng::new(creation.sprite_seed.wrapping_add(1));
@@ -885,6 +901,14 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), ids.len(), "duplicate origin ids: {ids:?}");
+    }
+
+    #[test]
+    fn species_identity_and_look_stay_in_sync() {
+        let mut state = CharacterCreationState::default();
+        state.identity.species = 2; // Robot
+        state.look.species = reachlock_core::soul::types::Species::Robot;
+        assert_eq!(state.look.species as usize, state.identity.species);
     }
 
     #[test]

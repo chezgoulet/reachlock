@@ -74,7 +74,7 @@
                 reaction: confront,
             ),
         ],
-        contracts: ["combat-tactical", "emergency-procedures", "cryo-pilot"],
+        contracts: ["combat-tactical", "emergency-procedures"],
         backstory: "Grissom served twelve years in the Compact Marines, rising to the rank of Sergeant First Class. During an operation on a dissident-held station, his commanding officer ordered the execution of prisoners. Grissom refused, knocked the officer unconscious, and fled. He has been running ever since, working as a mercenary on the outer rim. The Compact lists him as a deserter and assault on a superior officer — a death sentence if extradited. He chose the Loup-Garou because Alexandre Dubois doesn't ask questions about the past.",
         secrets: [
             (

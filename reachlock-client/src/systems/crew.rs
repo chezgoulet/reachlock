@@ -263,63 +263,45 @@ impl CrewRoster {
     /// Build the crew roster from authored content packages.
     /// Call after souls are loaded in the content index.
     pub fn load_from_content(
-        _content: &ContentIndex,
+        content: &ContentIndex,
         souls: &std::collections::BTreeMap<String, reachlock_core::soul::SoulFile>,
     ) -> Self {
         let mut members = Vec::new();
-        let mut packages: Vec<reachlock_core::crew::CrewPackage> = Vec::new();
 
-        // Load crew packages from the filesystem (crews/ directory).
-        let crews_dir = std::path::Path::new("mods/reachlock/crews");
-        if crews_dir.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(crews_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().is_none_or(|e| e != "ron") {
+        // Load crew packages from the content index.
+        for file in &content.files {
+            if let reachlock_core::content::ContentPayload::CrewPackage(pkg) = &file.payload {
+                for entry in &pkg.members {
+                    if !entry.starting {
                         continue;
                     }
-                    match std::fs::read_to_string(&path) {
-                        Ok(text) => match ron::from_str::<reachlock_core::crew::CrewPackage>(&text)
-                        {
-                            Ok(pkg) => packages.push(pkg),
-                            Err(e) => warn!("crew: failed to parse {}: {e}", path.display()),
-                        },
-                        Err(e) => warn!("crew: failed to read {}: {e}", path.display()),
-                    }
-                }
-            }
-        }
-        for pkg in &packages {
-            for entry in &pkg.members {
-                if !entry.starting {
-                    continue;
-                }
-                let soul = souls.get(&entry.soul_id);
-                let name = soul
-                    .map(|s| s.name.clone())
-                    .unwrap_or_else(|| entry.soul_id.clone());
-                let role = CrewRole::new(&entry.role, &name, "");
-                let duty_room = entry
-                    .duty_room
-                    .as_ref()
-                    .and_then(|r| Self::parse_room_kind(r))
-                    .unwrap_or_else(|| CrewRoster::default_duty_room(&entry.role));
+                    let soul = souls.get(&entry.soul_id);
+                    let name = soul
+                        .map(|s| s.name.clone())
+                        .unwrap_or_else(|| entry.soul_id.clone());
+                    let role = CrewRole::new(&entry.role, &name, "");
+                    let duty_room = entry
+                        .duty_room
+                        .as_ref()
+                        .and_then(|r| Self::parse_room_kind(r))
+                        .unwrap_or_else(|| CrewRoster::default_duty_room(&entry.role));
 
-                members.push(CrewMember {
-                    id: entry.soul_id.clone(),
-                    name,
-                    role,
-                    duty_room,
-                    current_room: duty_room,
-                    deck: 0,
-                    order: None,
-                    offscreen_eta: 0.0,
-                    soul: soul.cloned(),
-                    salary: 0,
-                    unpaid_ticks: 0,
-                    health: CrewHealth::Healthy,
-                    active_breaking_points: Vec::new(),
-                });
+                    members.push(CrewMember {
+                        id: entry.soul_id.clone(),
+                        name,
+                        role,
+                        duty_room,
+                        current_room: duty_room,
+                        deck: 0,
+                        order: None,
+                        offscreen_eta: 0.0,
+                        soul: soul.cloned(),
+                        salary: entry.salary,
+                        unpaid_ticks: 0,
+                        health: CrewHealth::Healthy,
+                        active_breaking_points: Vec::new(),
+                    });
+                }
             }
         }
 

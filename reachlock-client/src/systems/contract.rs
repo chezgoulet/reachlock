@@ -168,7 +168,7 @@ pub fn push_authored_contracts(contracts: Vec<Contract>) {
 fn auto_helm() -> Contract {
     Contract {
         id: "auto-helm".into(),
-        label: "Boris holds the helm".into(),
+        label: "auto-helm".into(),
         trigger: Trigger::Timer {
             interval_secs: 1,
             repeat: true,
@@ -197,7 +197,7 @@ fn auto_helm() -> Contract {
             fallback_on_timeout: true,
             timeout_ms: 4000,
             max_tokens: 128,
-            system_prompt: "You are Boris. Crew safety > ship integrity > mission.".into(),
+            system_prompt: "You are the ship's pilot. Crew safety > ship integrity > mission.".into(),
             fallback_action: Some(Action::verb("all_stop")),
         }),
     }

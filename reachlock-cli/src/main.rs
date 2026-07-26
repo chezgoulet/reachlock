@@ -80,10 +80,12 @@ fn main() -> std::process::ExitCode {
                         println!(",");
                     }
                     first = false;
-                    print!(
-                        "  {{\"name\":\"{}\",\"passed\":{},\"detail\":\"{}\"}}",
-                        r.name, r.passed, r.detail
-                    );
+                    let json = serde_json::json!({
+                        "name": r.name,
+                        "passed": r.passed,
+                        "detail": r.detail,
+                    });
+                    print!("  {}", serde_json::to_string(&json).unwrap());
                 }
                 println!("\n]");
             } else {

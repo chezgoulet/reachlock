@@ -28,7 +28,7 @@ use systems::{
     career, character_creation, combat, comms, content_index, contract, contract_crafting,
     contract_library, crew, crisis, cryojump, culture_view, deliberation_renderer, dialogue,
     dilemma, discovery, dispatch, docking, ecosystem_events, encounter_executor, factions,
-    galaxy_map, help, hints, hud, interaction, interior, inventory, jump, landed_combat,
+    galaxy_map, gamepad, help, hints, hud, interaction, interior, inventory, jump, landed_combat,
     log_capture, log_ui, market, menu, mission_board, mode, music, network, onboard, onboarding,
     pause, presence, resource_gathering, reticle, sensors, settings_ui, setup, sfx, ship,
     shipeditor, signature_collector, soul, story_submission, storyline_driver, ticker,
@@ -133,6 +133,7 @@ fn main() {
         .init_resource::<interaction::InteractionPrompt>()
         .init_resource::<interaction::ActivePanel>()
         .init_resource::<inventory::SaveTimer>()
+        .init_resource::<inventory::InventoryPanelVisible>()
         .init_resource::<market::MarketState>()
         .init_resource::<music::MusicParams>()
         .init_resource::<music::MusicEngine>()
@@ -247,9 +248,6 @@ fn main() {
         .init_resource::<trope_dispatcher::TropeRegistry>()
         .init_resource::<trope_dispatcher::TropeCooldown>()
         .init_resource::<trope_dispatcher::ActiveTropePopup>()
-        // S08: crew roster initialised from content (S77), replaced by
-        // save restore after souls are loaded.
-        .init_resource::<crew::CrewRoster>()
         // S78: continue-game flag. The menu sets this before transitioning to
         // InGame; the continue_game system reads and clears it.
         .insert_resource(menu::SaveExists(false))
@@ -314,12 +312,16 @@ fn main() {
         )
         .add_systems(
             Update,
-            (
+            ((
                 character_creation::character_creation_input,
                 character_creation::render_current_step,
                 character_creation::update_step_text,
-            )
+            ),)
                 .run_if(in_state(AppState::CharacterCreation)),
+        )
+        .add_systems(
+            Update,
+            character_creation::update_preview_sprite.run_if(in_state(AppState::CharacterCreation)),
         )
         // S31: keep the help-text cache in sync with keybind changes.
         .add_systems(Update, hud::refresh_help_cache)
@@ -357,6 +359,7 @@ fn main() {
                 culture_view::spawn_culture_panel,
                 career::spawn_career_panel,
                 log_ui::spawn_captains_log_panel,
+                inventory::spawn_inventory_panel,
             ),
         )
         .add_systems(
@@ -586,7 +589,11 @@ fn main() {
         // preview. Interior-only — the panel opens while docked/landed.
         .add_systems(
             Update,
-            (shipeditor::editor_system, shipeditor::editor_preview)
+            (
+                shipeditor::editor_system,
+                shipeditor::editor_preview,
+                shipeditor::draw_hull_preview_system,
+            )
                 .chain()
                 .run_if(in_any_interior),
         )
@@ -682,6 +689,7 @@ fn main() {
                 mission_board::mission_board_toggle.run_if(in_state(AppState::InGame)),
                 signature_collector::toggle_signature_panel.run_if(in_state(AppState::InGame)),
                 signature_collector::collect_signature.run_if(in_state(AppState::InGame)),
+                inventory::inventory_panel_toggle.run_if(in_state(AppState::InGame)),
             ),
         )
         .add_systems(
@@ -695,6 +703,8 @@ fn main() {
                 deliberation_renderer::handle_interjection_input.run_if(in_state(AppState::InGame)),
                 help::toggle_help_mode.run_if(in_state(AppState::InGame)),
                 help::spawn_help_labels.run_if(in_state(AppState::InGame)),
+                help::sync_help_overlay.run_if(in_state(AppState::InGame)),
+                help::render_help_overlay.run_if(in_state(AppState::InGame)),
                 onboarding::check_first_run.run_if(in_state(AppState::InGame)),
                 onboarding::advance_onboarding.run_if(in_state(AppState::InGame)),
                 onboarding::render_onboarding.run_if(in_state(AppState::InGame)),
@@ -703,6 +713,8 @@ fn main() {
         .add_systems(
             Update,
             (
+                // S105: gamepad input source detection.
+                gamepad::track_input_source.run_if(in_state(AppState::InGame)),
                 // S70: widget kit systems run in all game states.
                 widget_kit::button::update_button_style.run_if(in_state(AppState::InGame)),
                 focus_ring::collect_focusables.run_if(in_state(AppState::InGame)),
@@ -819,7 +831,10 @@ fn main() {
         )
         .add_systems(
             Update,
-            hud::update_hud_panels.run_if(in_state(AppState::InGame)),
+            (
+                hud::update_hud_panels.run_if(in_state(AppState::InGame)),
+                hud::update_voice_hud.run_if(in_state(AppState::InGame)),
+            ),
         )
         .add_systems(
             Update,
@@ -848,6 +863,7 @@ fn main() {
                 discovery::render_discovery_panel,
                 career::render_career_panel,
                 log_ui::render_captains_log,
+                inventory::render_inventory_panel,
             )
                 .run_if(in_state(AppState::InGame)),
         )

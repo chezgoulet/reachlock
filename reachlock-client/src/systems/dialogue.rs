@@ -16,6 +16,7 @@ use reachlock_core::dialogue::{
     assemble, deflection_line, shape_line, voice_prompt, ChoiceEffect, DialogueTurn,
     MAX_UTTERANCE_CHARS,
 };
+use reachlock_core::soul::types::{Mood, Species};
 use reachlock_core::soul::SoulEvent;
 
 use crate::net::{NetMode, NetOutbox};
@@ -25,6 +26,7 @@ use crate::systems::crew::CrewFigure;
 use crate::systems::interaction::{ActivePanel, Npc};
 use crate::systems::soul::SoulRegistry;
 use crate::systems::ticker::UniverseTicker;
+use crate::focus_stack::FocusStack;
 
 /// The live conversation, if any. One at a time — one surface.
 #[derive(Resource, Default)]
@@ -159,6 +161,7 @@ pub fn dialogue_input(
     mode: Res<NetMode>,
     ticker: Res<UniverseTicker>,
     mut log: ResMut<ShipLog>,
+    focus_stack: Res<FocusStack>,
 ) {
     // One deref so the field borrows split on the plain struct.
     let session = &mut *session;
@@ -167,6 +170,12 @@ pub fn dialogue_input(
         chars.clear();
         return;
     };
+
+    // While typing, dialogue owns input; otherwise bail if a modal has focus.
+    if active.typing.is_none() && focus_stack.top_captures_input() {
+        chars.clear();
+        return;
+    }
 
     // ── typing mode ──
     if let Some(buffer) = &mut active.typing {
@@ -478,21 +487,64 @@ pub fn resolve_dialogue_failure(
 
 /// Render the soul-backed dialogue panel text. Legacy (non-soul) NPCs keep
 /// the S07 rendering in `hud.rs`; this covers the session path.
+fn species_portrait_glyph(species: &Species) -> &'static str {
+    match species {
+        Species::Human => "◎",
+        Species::Android => "⬡",
+        Species::Robot => "▣",
+        Species::Voidborn => "◇",
+        Species::Xenotype => "◈",
+    }
+}
+
+fn mood_glyph(mood: &Mood) -> (&'static str, &'static str) {
+    match mood {
+        Mood::Stable => ("◆", "Stable"),
+        Mood::Happy => ("★", "Happy"),
+        Mood::Tense => ("⚡", "Tense"),
+        Mood::Grieving => ("▼", "Grieving"),
+        Mood::Suspicious => ("◈", "Suspicious"),
+        Mood::Grateful => ("★", "Grateful"),
+        Mood::Anxious => ("⬡", "Anxious"),
+        Mood::Protective => ("▲", "Protective"),
+        Mood::Defensive => ("◈", "Defensive"),
+        Mood::Focused => ("■", "Focused"),
+        Mood::Withdrawn => ("▼", "Withdrawn"),
+    }
+}
+
 pub fn panel_text(session: &DialogueSession, souls: &SoulRegistry) -> Option<String> {
     let active = session.active.as_ref()?;
     let file = souls.files.get(&active.soul_id)?;
+    // If state is None (not yet initialized), return early — the panel
+    // renders empty until init_souls finishes. This is correct: state
+    // is initialized at startup before any interaction can open.
     let state = souls.states.get(&active.soul_id)?;
+    let (glyph_char, mood_name) = mood_glyph(&state.mood);
     let mut lines = vec![
         format!(
-            "{} — {} · mood: {}",
+            "[{}] {} — {}",
+            species_portrait_glyph(&file.species),
             file.name,
             file.identity.role,
-            state.mood.as_str()
         ),
-        String::new(),
-        format!("“{}”", active.npc_line),
+        format!("    {glyph_char} {mood_name}"),
         String::new(),
     ];
+    if !active.history.is_empty() {
+        lines.push("    ── Conversation ──".into());
+        for turn in active.history.iter().rev().take(5) {
+            if turn.speaker == "player" {
+                lines.push(format!("    Player: {}", turn.line));
+            } else {
+                lines.push(format!("    {}: \"{}\"", file.name, turn.line));
+            }
+        }
+        lines.push("    ──────────────────".into());
+        lines.push(String::new());
+    }
+    lines.push(format!("“{}”", active.npc_line));
+    lines.push(String::new());
     if active.thinking {
         lines.push(format!(
             "{} is considering… ({})",

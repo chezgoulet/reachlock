@@ -118,34 +118,17 @@ pub fn init_souls(content: Res<ContentIndex>, mut registry: ResMut<SoulRegistry>
         info!("souls: loaded {} authored soul(s)", registry.files.len());
     }
 
-    // Soul mutation arcs (raw `Vec<SoulMutation>` RON) from the storylines
-    // directory. Every such file is loaded and the arcs concatenated — this
-    // used to read one hardcoded `loup_garou_souls.ron`, so a mod or a new
-    // storyline could author mutation arcs that were silently never applied.
-    for root in ["mods/reachlock/storylines", "../mods/reachlock/storylines"] {
-        let Ok(entries) = std::fs::read_dir(root) else {
-            continue;
-        };
-        let mut paths: Vec<std::path::PathBuf> = entries
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|e| e == "ron"))
-            .collect();
-        // Deterministic order: mutation arcs are applied in sequence.
-        paths.sort();
-        for path in paths {
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            // storylines/ also holds `Storyline` files; only the ones that
-            // parse as mutation arcs are ours.
-            if let Ok(mutations) = ron::from_str::<Vec<reachlock_core::soul::SoulMutation>>(&text) {
-                registry.mutations.extend(mutations);
-            }
+    // Load soul mutations from the content index.
+    for file in &content.files {
+        if let reachlock_core::content::ContentPayload::SoulMutations(mutations) = &file.payload {
+            registry.mutations.extend(mutations.clone());
         }
         if !registry.mutations.is_empty() {
             break;
         }
+    }
+    if !registry.mutations.is_empty() {
+        info!("souls: loaded {} mutation arc(s)", registry.mutations.len());
     }
     if !registry.mutations.is_empty() {
         info!("souls: loaded {} mutation arc(s)", registry.mutations.len());

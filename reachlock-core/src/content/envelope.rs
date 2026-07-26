@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::career::CareerPath;
+use crate::faction::Storyline;
 use crate::contract::types::Contract;
 use crate::editor::exterior::HullFrame;
 use crate::editor::interior::RoomTemplate;
@@ -65,6 +66,12 @@ pub enum AssetType {
     RoomTemplates,
     /// S79: an origin starting package (spec §?).
     Origin,
+    /// S120: an authored crew package.
+    CrewPackage,
+    /// S120: authored soul mutation arcs.
+    SoulMutations,
+    /// S115: a faction storyline arc.
+    Storyline,
 }
 
 impl AssetType {
@@ -72,7 +79,7 @@ impl AssetType {
     /// match makes adding a variant a compile error until it is listed here —
     /// which is what keeps the client's `ContentPayloadVariant` mirror and its
     /// dispatch-coverage gate honest.
-    pub const ALL: [AssetType; 17] = [
+    pub const ALL: [AssetType; 20] = [
         AssetType::Hull,
         AssetType::Station,
         AssetType::Contract,
@@ -90,6 +97,9 @@ impl AssetType {
         AssetType::HullFrame,
         AssetType::RoomTemplates,
         AssetType::Origin,
+        AssetType::CrewPackage,
+        AssetType::SoulMutations,
+        AssetType::Storyline,
     ];
 
     /// Dense index for this variant. The match is exhaustive on purpose.
@@ -112,6 +122,9 @@ impl AssetType {
             AssetType::HullFrame => 14,
             AssetType::RoomTemplates => 15,
             AssetType::Origin => 16,
+            AssetType::CrewPackage => 17,
+            AssetType::SoulMutations => 18,
+            AssetType::Storyline => 19,
         }
     }
 }
@@ -180,6 +193,12 @@ pub enum ContentPayload {
     RoomTemplates(Vec<RoomTemplate>),
     /// S79: an origin starting package.
     Origin(super::origin::Origin),
+    /// S120: an authored crew package.
+    CrewPackage(crate::crew::CrewPackage),
+    /// S120: authored soul mutation arcs.
+    SoulMutations(Vec<crate::soul::SoulMutation>),
+    /// S115: an authored faction storyline arc.
+    Storylines(Vec<Storyline>),
 }
 
 /// The content envelope (spec §10, "Freeze first" list: id, display_name,

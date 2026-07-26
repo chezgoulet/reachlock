@@ -15,6 +15,9 @@ pub struct CrewMemberEntry {
     pub duty_room: Option<String>,
     #[serde(default)]
     pub starting: bool,
+    /// Salary demand per pay period (credits). Default 0.
+    #[serde(default)]
+    pub salary: u64,
 }
 
 /// A set of crew members that travel together. Authored by background

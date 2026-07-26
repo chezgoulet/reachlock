@@ -59,3 +59,25 @@ pub fn despawn_help_labels(mut commands: Commands, labels: Query<Entity, With<He
         commands.entity(entity).despawn();
     }
 }
+
+/// Sync the help overlay text from the active help mode state.
+pub fn sync_help_overlay(_help: Res<HelpMode>) {
+    // Placeholder — overlay text sync is handled by spawn/despawn lifecycle.
+}
+
+/// Render the help overlay labels every frame while help mode is active.
+pub fn render_help_overlay(
+    help: Res<HelpMode>,
+    mut query: Query<&mut Visibility, With<HelpLabel>>,
+) {
+    if help.is_changed() {
+        let vis = if help.active {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+        for mut v in &mut query {
+            *v = vis;
+        }
+    }
+}

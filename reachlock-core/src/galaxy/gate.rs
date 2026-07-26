@@ -128,6 +128,13 @@ mod tests {
     }
 
     #[test]
+    fn gate_by_index_round_trip() {
+        let net = GateNetwork { gates: vec![] };
+        // gate_by_index is #[allow(dead_code)] — retained for future use.
+        assert!(net.gate_by_index(&sid("a"), 0).is_none());
+    }
+
+    #[test]
     fn round_trips_through_json() {
         let net = GateNetwork {
             gates: vec![gate("a", "b"), gate("b", "a")],

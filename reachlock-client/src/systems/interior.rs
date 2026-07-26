@@ -23,6 +23,7 @@ use bevy::prelude::*;
 use reachlock_core::content::{ContentPayload, NpcSpawn};
 use reachlock_core::generator::station::generate_station;
 use reachlock_core::generator::{Door, GeneratedLayout, Room, RoomKind};
+use reachlock_core::soul::types::Species;
 use reachlock_core::util::color::generate_palette;
 use reachlock_core::util::rng::SeededRng;
 
@@ -878,6 +879,7 @@ fn spawn_props(
 /// WASD walking with wall collision. Each axis resolves independently so the
 /// avatar slides along walls; crossing between rooms only works through door
 /// apertures (`walkable`).
+#[allow(clippy::too_many_arguments)]
 pub fn walk_avatar(
     keys: Res<ButtonInput<KeyCode>>,
     settings: Res<Settings>,
@@ -885,8 +887,12 @@ pub fn walk_avatar(
     interior: Res<CurrentInterior>,
     dialogue: Res<crate::systems::dialogue::DialogueSession>,
     plan: Res<crate::systems::cryojump::JumpPlan>,
+    focus_stack: Res<crate::focus_stack::FocusStack>,
     mut avatar: Query<&mut Transform, With<PlayerAvatar>>,
 ) {
+    if focus_stack.top_captures_input() {
+        return;
+    }
     // S16: while typing a free-input line, WASD spells words, not steps.
     // S09e: a sealed cryo pod holds its sleeper until revival.
     if dialogue.typing() || plan.player_in_pod {
@@ -1469,12 +1475,72 @@ pub fn cockpit_seat_spawn() -> Option<(usize, Vec2)> {
     None
 }
 
-/// Look up a crew member's appearance: an authored `look:` block if the soul
-/// has one, otherwise a look derived from the id.
-///
-/// There used to be a middle step here holding four crew members' appearances
-/// in code, because their souls had not been authored. They have been, so the
-/// engine no longer knows what anyone looks like.
+/// Built-in look configs for canonical crew members who don't yet have
+/// authored soul files. Preserves the visual identity from the old
+/// `crew_look()` until S77 ships their full soul files.
+fn builtin_crew_config(id: &str) -> Option<CharacterLookConfig> {
+    use reachlock_core::generator::sprite::CharacterLookConfig;
+    let cfg = || CharacterLookConfig {
+        species: Species::Human,
+        hair_style: None,
+        hair_color: None,
+        skin_color: None,
+        shirt_color: None,
+        pants_color: None,
+        jacket_enabled: None,
+        jacket_color: None,
+        chassis_color: None,
+        visor_color: None,
+    };
+    Some(match id {
+        "keene" => CharacterLookConfig {
+            species: Species::Human,
+            hair_style: Some(5), // Bun
+            hair_color: Some([26, 20, 20]),
+            skin_color: Some([107, 71, 51]),
+            shirt_color: Some([51, 140, 133]),
+            pants_color: Some([41, 77, 77]),
+            jacket_enabled: Some(true),
+            jacket_color: Some([224, 224, 230]),
+            ..cfg()
+        },
+        "bardo" => CharacterLookConfig {
+            species: Species::Human,
+            hair_style: Some(4), // Locs
+            hair_color: Some([31, 26, 23]),
+            skin_color: Some([140, 97, 66]),
+            shirt_color: Some([204, 153, 51]),
+            pants_color: Some([89, 64, 77]),
+            jacket_enabled: Some(true),
+            jacket_color: Some([122, 46, 51]),
+            ..cfg()
+        },
+        "prudence" => CharacterLookConfig {
+            species: Species::Android,
+            hair_style: Some(6), // Crest
+            hair_color: Some([217, 77, 153]),
+            skin_color: Some([204, 209, 224]),
+            shirt_color: Some([46, 61, 107]),
+            pants_color: Some([31, 41, 77]),
+            jacket_enabled: Some(false),
+            ..cfg()
+        },
+        "risc" => CharacterLookConfig {
+            species: Species::Android,
+            hair_style: Some(0), // Bald
+            hair_color: Some([242, 166, 51]),
+            skin_color: Some([115, 122, 133]),
+            shirt_color: Some([77, 84, 61]),
+            pants_color: Some([51, 56, 46]),
+            jacket_enabled: Some(false),
+            ..cfg()
+        },
+        _ => return None,
+    })
+}
+
+/// Look up a crew member's appearance from the soul registry. Falls back to
+/// built-in config for canonical crew, then to a seeded civilian look.
 fn soul_look_or_fallback(souls: &SoulRegistry, id: &str) -> Look {
     if let Some(look) = souls
         .files
@@ -1492,6 +1558,10 @@ fn soul_body_kind(souls: &SoulRegistry, id: &str) -> pixel::BodyKind {
         Some(s) => pixel::body_kind_from_species(s.species),
         None => pixel::BodyKind::Human,
     }
+    if let Some(cfg) = builtin_crew_config(id) {
+        return pixel::body_kind_from_species(cfg.species);
+    }
+    pixel::BodyKind::Human
 }
 
 #[cfg(test)]

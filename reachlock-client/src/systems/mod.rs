@@ -41,6 +41,7 @@ pub mod music;
 pub mod network;
 pub mod onboard;
 pub mod onboarding;
+pub mod panel_manager;
 pub mod pause;
 pub mod presence;
 pub mod resource_gathering;

@@ -97,7 +97,7 @@
                 reaction: refuse_orders,
             ),
         ],
-        contracts: ["cryo-pilot"],
+        contracts: [],
         backstory: "Basic Operational Robot — Interstellar Shielded. Humanoid in shape because the work requires compatible geometry with human tools and human spaces. He has been aboard long enough to have accumulated what the crew calls preferences. He has never been asked whether he experiences the long periods of external work — alone, in vacuum, between asteroid faces — as anything other than operational time.",
         secrets: [
             (

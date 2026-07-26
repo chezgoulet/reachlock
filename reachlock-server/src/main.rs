@@ -56,6 +56,7 @@ async fn main() {
         loop {
             interval.tick().await;
             drop(purge_state.auth_config.read().unwrap());
+            // TODO: PgPlayerStore batch purge when Postgres is the primary store
             // Memory store: no batch purge — acceptable for dev.
             // Production will use PgPlayerStore with real batch purge.
         }

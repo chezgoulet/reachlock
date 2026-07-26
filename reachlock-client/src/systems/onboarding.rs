@@ -7,6 +7,21 @@ use reachlock_core::contract::stage::{DeliberationStage, RuleSnapshot, StagePhas
 
 const ONBOARDING_FLAG: &str = "save/onboarding_completed.flag";
 
+#[derive(Resource)]
+pub struct OnboardingDemo {
+    pub stage: DeliberationStage,
+    pub timer: Timer,
+}
+
+impl Default for OnboardingDemo {
+    fn default() -> Self {
+        Self {
+            stage: demo_deliberation_stage(),
+            timer: Timer::from_seconds(5.0, TimerMode::Once),
+        }
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct OnboardingState {
     pub active: bool,
@@ -125,8 +140,8 @@ fn demo_deliberation_stage() -> DeliberationStage {
         verdict: None,
         cost: None,
         recent_uncovered: 2,
-        remaining_secs: 0.0,
-        total_secs: 4.0,
+        remaining_cs: 0,
+        total_cs: 400,
     }
 }
 
@@ -173,15 +188,38 @@ pub fn render_onboarding(
     if let Ok(mut text) = query.single_mut() {
         let step = &state.steps[state.step];
         let mut content = format!("{}\n\n{}", step.title, step.body);
-        if step.demo_stage.is_some() {
-            content.push_str("\n\n(Demonstration deliberation would render here)");
-        }
         content.push_str(&format!(
             "\n\nStep {} of {} — [Enter/Tab] continue",
             state.step + 1,
             state.steps.len()
         ));
         **text = content;
+    }
+}
+
+pub fn start_onboarding_demo(
+    state: Res<OnboardingState>,
+    demo: Res<OnboardingDemo>,
+    mut panel: ResMut<crate::systems::deliberation_renderer::DeliberationPanel>,
+) {
+    if !state.active || state.step != 2 {
+        return;
+    }
+    panel.stage = Some(demo.stage.clone());
+}
+
+pub fn tick_onboarding_demo(
+    time: Res<Time>,
+    mut demo: ResMut<OnboardingDemo>,
+    mut panel: ResMut<crate::systems::deliberation_renderer::DeliberationPanel>,
+    state: Res<OnboardingState>,
+) {
+    if !state.active || state.step != 2 {
+        return;
+    }
+    demo.timer.tick(time.delta());
+    if demo.timer.is_finished() {
+        panel.stage = None;
     }
 }
 

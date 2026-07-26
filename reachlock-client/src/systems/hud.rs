@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 
 use crate::net::{ConnectionState, NetMode};
-use crate::settings::{HelpTextCache, InputAction, Settings};
+use crate::settings::{HelpTextCache, Settings};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
 use crate::systems::interaction::{ActivePanel, InteractionPrompt, Npc};
@@ -537,8 +537,12 @@ pub fn update_hud_status(
         };
     }
     if let Ok(mut text) = texts.p6().single_mut() {
-        let help_text = settings.key_display(InputAction::OpenHelp);
-        let help = format!("Press {help_text} for help");
+        let cache = HelpTextCache::rebuild(&settings);
+        let help = match **mode {
+            GameMode::SpaceFlight => cache.flight.clone(),
+            GameMode::Landed | GameMode::OnBoard => cache.interior.clone(),
+            _ => String::new(),
+        };
         if **text != help {
             **text = help;
         }
@@ -669,6 +673,24 @@ pub fn render_trope_panel(
     if let Ok(mut text) = query.single_mut() {
         **text = if *panel == ActivePanel::TropePopup {
             crate::systems::trope_dispatcher::trope_panel_text(popup).unwrap_or_default()
+        } else {
+            String::new()
+        };
+    }
+}
+
+/// Update the voice-status badge (VoiceBadge) with current transmission state.
+/// Shows "[TX]" when transmitting, "[name]" when a remote player speaks, or
+/// empty when silent. Early-outs when no badge entity exists.
+pub fn update_voice_hud(
+    state: Res<crate::systems::voice::VoiceHudState>,
+    mut query: Query<&mut Text, With<crate::systems::voice::VoiceBadge>>,
+) {
+    if let Ok(mut text) = query.single_mut() {
+        **text = if state.transmitting {
+            "[TX]".to_string()
+        } else if !state.current_speakers.is_empty() {
+            format!("[{}]", state.current_speakers[0])
         } else {
             String::new()
         };

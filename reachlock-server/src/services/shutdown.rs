@@ -1,3 +1,5 @@
+//! Graceful shutdown handler. Not yet wired — main.rs has inline shutdown.
+
 use std::time::Instant;
 
 use tracing::info;
