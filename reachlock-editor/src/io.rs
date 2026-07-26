@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use reachlock_core::content::{content_seed, ContentFile, Enveloped, Priority};
 
@@ -107,6 +107,66 @@ pub fn write_ron<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), Stri
     let text = ron::ser::to_string_pretty(value, ron::ser::PrettyConfig::default())
         .map_err(|e| format!("failed to serialize: {e}"))?;
     std::fs::write(path, &text).map_err(|e| format!("failed to write {}: {e}", path.display()))
+}
+
+/// Scan a content directory, parsing each `.ron` file as `T`.
+///
+/// Returns the successfully parsed files alongside a warning per file that
+/// failed to parse. Multi-entry editors previously dropped unparseable files
+/// with `if let Ok(..)`, so a malformed file vanished from the editor with no
+/// error anywhere — the tab simply opened short an entry, or empty.
+///
+/// Callers that also reject files on a *payload variant* check must do that
+/// filtering on the returned values, NOT here: a `hulls/` file that parses as
+/// a `HullFrame` is correctly skipped by the HullMesh tab and must not warn.
+pub fn scan_content_dir<T: serde::de::DeserializeOwned>(
+    dir: &Path,
+) -> (Vec<(PathBuf, T)>, Vec<String>) {
+    let mut loaded = Vec::new();
+    let mut warnings = Vec::new();
+    let Ok(read) = std::fs::read_dir(dir) else {
+        // A missing directory is normal: a mod need not define every type.
+        return (loaded, warnings);
+    };
+    let mut paths: Vec<PathBuf> = read
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "ron"))
+        .collect();
+    paths.sort();
+    for path in paths {
+        match read_ron::<T>(&path) {
+            Ok(value) => loaded.push((path, value)),
+            Err(e) => warnings.push(e),
+        }
+    }
+    (loaded, warnings)
+}
+
+/// Scan an envelope-wrapped content directory, preserving metadata.
+/// Same shape as [`scan_content_dir`] but uses [`read_enveloped`] so the
+/// author's `seed`, `universe` and `priority` survive the round trip.
+pub fn scan_enveloped_dir<T: Enveloped>(
+    dir: &Path,
+) -> (Vec<(PathBuf, crate::io::EnvelopeMeta, T)>, Vec<String>) {
+    let mut loaded = Vec::new();
+    let mut warnings = Vec::new();
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return (loaded, warnings);
+    };
+    let mut paths: Vec<PathBuf> = read
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "ron"))
+        .collect();
+    paths.sort();
+    for path in paths {
+        match read_enveloped::<T>(&path) {
+            Ok((meta, value)) => loaded.push((path, meta, value)),
+            Err(e) => warnings.push(e),
+        }
+    }
+    (loaded, warnings)
 }
 
 // Schema validation has no caller: `Editor::validate` checks structure
@@ -233,5 +293,60 @@ mod tests {
             EnvelopeMeta::new_for("brand_new_theme").seed,
             "seed derivation must be deterministic"
         );
+    }
+
+    /// `scan_content_dir` parses parseable files and reports unparseable ones.
+    /// A non-`.ron` file is silently ignored.
+    #[test]
+    fn scan_content_dir_reports_unparseable_and_keeps_the_rest() {
+        let dir = std::env::temp_dir().join("reachlock_scan_test");
+        let _ = std::fs::create_dir_all(&dir);
+
+        // Valid RON file.
+        std::fs::write(dir.join("good.ron"), "42").unwrap();
+        // Malformed RON file.
+        std::fs::write(dir.join("bad.ron"), "not valid ron {{{").unwrap();
+        // Non-RON file (should be silently ignored).
+        std::fs::write(dir.join("README.md"), "just text").unwrap();
+
+        let (loaded, warnings) = scan_content_dir::<i32>(&dir);
+        assert_eq!(loaded.len(), 1, "should have parsed the good file");
+        assert_eq!(loaded[0].0.file_name().unwrap(), "good.ron");
+        assert_eq!(loaded[0].1, 42);
+        assert_eq!(warnings.len(), 1, "should have one warning for the bad file");
+        assert!(
+            warnings[0].contains("bad.ron"),
+            "warning should name the malformed file: {}",
+            warnings[0]
+        );
+
+        let _ = std::fs::remove_file(dir.join("good.ron"));
+        let _ = std::fs::remove_file(dir.join("bad.ron"));
+        let _ = std::fs::remove_file(dir.join("README.md"));
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// `scan_enveloped_dir` also reports unparseable files while keeping valid ones.
+    #[test]
+    fn scan_enveloped_dir_reports_unparseable_and_keeps_the_rest() {
+        use reachlock_core::generator::music::Theme;
+
+        let dir = std::env::temp_dir().join("reachlock_scan_env_test");
+        let _ = std::fs::create_dir_all(&dir);
+
+        // Copy a real envelope file as the valid one.
+        let src = content_root().join("themes/calm_exploration.ron");
+        let valid_text = std::fs::read_to_string(&src).unwrap();
+        std::fs::write(dir.join("valid.ron"), &valid_text).unwrap();
+        // Malformed file.
+        std::fs::write(dir.join("bad.ron"), "not valid {{{").unwrap();
+
+        let (loaded, warnings) = scan_enveloped_dir::<Theme>(&dir);
+        assert_eq!(loaded.len(), 1, "should have parsed the valid envelope");
+        assert_eq!(warnings.len(), 1, "should warn about the bad file");
+
+        let _ = std::fs::remove_file(dir.join("valid.ron"));
+        let _ = std::fs::remove_file(dir.join("bad.ron"));
+        let _ = std::fs::remove_dir(&dir);
     }
 }

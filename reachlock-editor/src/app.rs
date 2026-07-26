@@ -391,6 +391,15 @@ pub trait Editor {
     /// (and the tab asterisk) clears.
     fn mark_saved(&mut self) {}
 
+    /// Files this editor tried to load at construction and could not parse.
+    ///
+    /// Empty for editors that do not scan a directory. Drained into the
+    /// status bar and the warning panel when the tab opens, so an
+    /// unparseable file is visible instead of silently absent.
+    fn load_warnings(&self) -> &[String] {
+        &[]
+    }
+
     /// Whether the seed panel's "Reroll All" should reseed this editor.
     /// Editors whose content is purely authored (gate networks) or replaced
     /// by a reference set (room templates) opt out.
