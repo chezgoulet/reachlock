@@ -66,7 +66,7 @@ pub fn schema_id(ct: &ContentType) -> Option<&'static str> {
         ContentType::Event => "event",
         ContentType::Recipe => "recipe",
         ContentType::Origin => "origin",
-ContentType::CrewPackage => "crew_package",
+        ContentType::CrewPackage => "crew_package",
         // Previewers persist nothing; no schema applies.
         ContentType::ItemBrowser | ContentType::SpriteViewer => return None,
     })
@@ -278,5 +278,264 @@ mod tests {
         );
         let _cfg: HullConfiguration =
             serde_json::from_value(sample).expect("deserialize hull configuration");
+    }
+
+    /// Drift gate: every content type with a schema must accept a minimal
+    /// fixture. If a field is renamed in the Rust type but not in the schema,
+    /// or vice versa, this test catches it because the fixture matches the
+    /// schema — so a schema-only rename (without a matching fixture update)
+    /// or a Rust-only rename (without a schema update) both break.
+    #[test]
+    fn every_schema_accepts_a_minimal_fixture() {
+        let cache = SchemaCache::load_all();
+
+        fn check(
+            ct: ContentType,
+            sample: serde_json::Value,
+            cache: &SchemaCache,
+        ) -> Option<String> {
+            let compiled = cache.get(&ct).unwrap_or_else(|| {
+                panic!("content type {ct:?} has no loaded schema")
+            });
+            let errors = compiled.validate(&sample);
+            if errors.is_empty() {
+                None
+            } else {
+                Some(format!("{ct:?}: {}; ", errors.join("; ")))
+            }
+        }
+
+        let mut failures = Vec::new();
+
+        macro_rules! envelope {
+            ($ct:ident, $at:literal, $pk:literal, $inner:tt) => {{
+                let sample = serde_json::json!({
+                    "id": "test",
+                    "display_name": "Test",
+                    "asset_type": $at,
+                    "seed": 42,
+                    "universe": "all",
+                    "priority": "curated",
+                    "payload": { $pk: serde_json::json!($inner) }
+                });
+                if let Some(e) = check(ContentType::$ct, sample, &cache) {
+                    failures.push(e);
+                }
+            }};
+        }
+
+        envelope!(HullFrame, "hull_frame", "hull_frame", {
+            "class": "corvette", "slots": [], "engine_mount": { "x": 0, "y": 0 },
+            "zones": [], "decal_slots": []
+        });
+        envelope!(Station, "station", "station", {
+            "exterior": { "vertices": [], "indices": [] },
+            "layout": { "rooms": [], "doors": [] }
+        });
+        envelope!(Soul, "soul", "soul", {
+            "id": "test", "name": "Test", "species": "human",
+            "portrait_id": "",
+            "identity": {
+                "origin": "", "faction_affiliation": "", "role": "",
+                "public_bio": ""
+            },
+            "personality": {
+                "traits": [], "values": [],
+                "speaking_style": "terse", "quirks": []
+            },
+            "emotional_state": {
+                "dominant_mood": "stable", "intensity": 512, "triggers": []
+            }
+        });
+        envelope!(Contract, "contract", "contract", {
+            "id": "test", "label": "Test", "trigger": { "Manual": {} },
+            "rules": []
+        });
+        envelope!(Career, "career", "career", {
+            "id": "test", "path_type": "freelance", "name": "Test",
+            "description": "", "ranks": [], "perks": [],
+            "conflicting_paths": []
+        });
+        envelope!(Ecosystem, "ecosystem", "ecosystem", {
+            "id": "test", "name": "Test", "description": ""
+        });
+        envelope!(PlanetCulture, "planet_culture", "planet_culture", {
+            "id": "test", "name": "Test", "description": ""
+        });
+        envelope!(Theme, "theme", "theme", {
+            "id": "test", "display_name": "Test", "seed": 42,
+            "primary": [100, 0, 0], "secondary": [0, 100, 0],
+            "accent": [0, 0, 100], "background": [20, 20, 20]
+        });
+        // Trope payload is the inner type directly (no wrapping key).
+        {
+            let sample = serde_json::json!({
+                "id": "test", "display_name": "Test",
+                "asset_type": "trope", "seed": 42,
+                "universe": "all", "priority": "curated",
+                "payload": {
+                    "trope_type": "character", "title_template": "{name} arrives",
+                    "narrative_template": "{name} enters the scene.",
+                    "slots": []
+                }
+            });
+            if let Some(e) = check(ContentType::Trope, sample, &cache) {
+                failures.push(e);
+            }
+        }
+        // ScriptedEncounter payload is the inner type directly.
+        {
+            let sample = serde_json::json!({
+                "id": "test", "display_name": "Test",
+                "asset_type": "scripted_encounter", "seed": 42,
+                "universe": "all", "priority": "curated",
+                "payload": {
+                    "title": "Test", "encounter_type": "Combat", "scenes": []
+                }
+            });
+            if let Some(e) = check(ContentType::ScriptedEncounter, sample, &cache) {
+                failures.push(e);
+            }
+        }
+        // Dungeon payload is the inner type directly.
+        {
+            let sample = serde_json::json!({
+                "id": "test", "display_name": "Test",
+                "asset_type": "dungeon", "seed": 42,
+                "universe": "all", "priority": "curated",
+                "payload": {
+                    "rooms": [], "connections": []
+                }
+            });
+            if let Some(e) = check(ContentType::Dungeon, sample, &cache) {
+                failures.push(e);
+            }
+        }
+        // Event payload is the inner type directly.
+        {
+            let sample = serde_json::json!({
+                "id": "test", "display_name": "Test",
+                "asset_type": "event", "seed": 42,
+                "universe": "all", "priority": "curated",
+                "payload": {
+                    "stages": []
+                }
+            });
+            if let Some(e) = check(ContentType::Event, sample, &cache) {
+                failures.push(e);
+            }
+        }
+        // Recipe payload is the inner type directly.
+        {
+            let sample = serde_json::json!({
+                "id": "test", "display_name": "Test",
+                "asset_type": "recipe", "seed": 42,
+                "universe": "all", "priority": "curated",
+                "payload": {
+                    "inputs": [], "output": { "item_id": "test", "quantity": 1 }
+                }
+            });
+            if let Some(e) = check(ContentType::Recipe, sample, &cache) {
+                failures.push(e);
+            }
+        }
+        // Origin payload is the struct directly (no wrapping key).
+        {
+            let sample = serde_json::json!({
+                "id": "test", "display_name": "Test",
+                "asset_type": "origin", "seed": 42,
+                "universe": "all", "priority": "curated",
+                "payload": {
+                    "id": "test", "name": "Test",
+                    "starting_career": "", "starting_rank": 1,
+                    "start_system": 0, "start_location": ""
+                }
+            });
+            if let Some(e) = check(ContentType::Origin, sample, &cache) {
+                failures.push(e);
+            }
+        }
+        envelope!(CrewPackage, "crew_package", "crew_package", {
+            "id": "test", "name": "Test", "description": "", "members": []
+        });
+        // RoomTemplates payload wraps an array directly.
+        {
+            let sample = serde_json::json!({
+                "id": "test", "display_name": "Test",
+                "asset_type": "room_templates", "seed": 42,
+                "universe": "all", "priority": "curated",
+                "payload": { "room_templates": [] }
+            });
+            if let Some(e) = check(ContentType::RoomTemplates, sample, &cache) {
+                failures.push(e);
+            }
+        }
+
+        // ── Bare types ──
+        macro_rules! bare {
+            ($ct:ident, $fixture:tt) => {
+                if let Some(e) = check(ContentType::$ct, serde_json::json!($fixture), &cache) {
+                    failures.push(e);
+                }
+            };
+        }
+
+        bare!(Location, {
+            "id": "test", "display_name": "Test", "rooms": []
+        });
+        bare!(Faction, {
+            "version": 1, "factions": []
+        });
+        bare!(EconomyGoods, {
+            "id": "test", "name": "Test", "base_price": 100,
+            "mass": 10, "category": "Consumable"
+        });
+        bare!(Storyline, {
+            "version": 1, "storylines": []
+        });
+        bare!(Item, {
+            "seed": 1,
+            "item_type": { "equipment": { "weapon": { "kinetic": "cannon" } } },
+            "tier": 1, "faction": "", "biome": ""
+        });
+        bare!(EnemyArchetype, {
+            "id": "test", "display_name": "Test", "hp": 100, "speed": 10,
+            "light_attack": { "startup_ticks": 4, "active_ticks": 3,
+                "recovery_ticks": 8, "damage": 100, "range": 512 },
+            "heavy_attack": { "startup_ticks": 8, "active_ticks": 3,
+                "recovery_ticks": 16, "damage": 200, "range": 512 },
+            "block": { "active_ticks": 8, "cooldown_ticks": 16, "parry_ticks": 3 },
+            "dodge": { "i_frame_ticks": 6, "recovery_ticks": 8, "distance": 512 },
+            "chase_radius": 1024, "disengage_radius": 2048, "flee_hp_frac": 256
+        });
+        bare!(ChartedSystem, {
+            "id": "test", "display_name": "Test",
+            "position": { "x": 0, "y": 0, "z": 0 },
+            "biome": "core", "seed": 42, "description": ""
+        });
+        bare!(HullMesh, {
+            "hull_id": "test", "seed": 42,
+            "hardpoints": [],
+            "engine": { "seed": 1,
+                "item_type": { "component": "power_plant" },
+                "tier": 1, "faction": "", "biome": "" },
+            "plating": [],
+            "paint": { "primary": "primary", "secondary": "accent", "accent": "structure" },
+            "decals": []
+        });
+        bare!(GateNetwork, {
+            "gates": []
+        });
+        bare!(Dialogue, {
+            "nodes": [{
+                "id": "start", "node_type": "NarratorLine", "text": "Hello"
+            }], "start_node": "start"
+        });
+
+        assert!(
+            failures.is_empty(),
+            "schema drift detected — fixture does not validate:\n  {}",
+            failures.join("\n  ")
+        );
     }
 }
