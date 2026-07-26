@@ -10,6 +10,7 @@ use crate::net::{ConnectionState, NetMode};
 use crate::settings::{HelpTextCache, Settings};
 use crate::states::{CurrentLocation, GameMode};
 use crate::systems::contract::{DeliberationState, ShipLog};
+use crate::systems::dialogue::DialoguePortrait;
 use crate::systems::interaction::{ActivePanel, InteractionPrompt, Npc};
 use crate::systems::inventory::PlayerInventory;
 use crate::systems::market::{market_panel_text, MarketState};
@@ -278,6 +279,20 @@ pub fn spawn_hud(mut commands: Commands, settings: Res<Settings>) {
             position_type: PositionType::Absolute,
             top: Val::Px(120.0),
             left: Val::Px(8.0),
+            ..default()
+        },
+    ));
+    // T10b: dialogue portrait sprite (64×64, ui-scaled). Positioned to the
+    // left of the dialogue text.
+    commands.spawn((
+        DialoguePortrait,
+        ImageNode::default(),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(120.0),
+            left: Val::Px(80.0),
+            width: Val::Px(64.0),
+            height: Val::Px(64.0),
             ..default()
         },
     ));

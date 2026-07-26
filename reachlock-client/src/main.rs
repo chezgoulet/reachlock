@@ -915,6 +915,7 @@ fn main() {
         Update,
         (
             hud::update_hud_panels.run_if(in_state(AppState::InGame)),
+            crate::systems::dialogue::update_dialogue_portrait.run_if(in_state(AppState::InGame)),
             hud::update_voice_hud.run_if(in_state(AppState::InGame)),
         ),
     )

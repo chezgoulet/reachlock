@@ -65,7 +65,11 @@ impl HullMeshEditor {
         let mut entries: Vec<_> = parsed
             .into_iter()
             .filter(|(_, file)| matches!(file.payload, ContentPayload::Hull(_)))
-            .map(|(path, file)| Entry { file, path: Some(path), dirty: false })
+            .map(|(path, file)| Entry {
+                file,
+                path: Some(path),
+                dirty: false,
+            })
             .collect();
         if entries.is_empty() {
             entries.push(Entry {

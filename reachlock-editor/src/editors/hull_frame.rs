@@ -84,11 +84,16 @@ impl HullFrameEditor {
             .into_iter()
             .filter(|(path, file)| {
                 matches!(file.payload, ContentPayload::HullFrame(_))
-                    && path.file_name()
+                    && path
+                        .file_name()
                         .and_then(|n| n.to_str())
                         .is_some_and(|n| n.ends_with("_frame.ron"))
             })
-            .map(|(path, file)| Entry { file, path: Some(path), dirty: false })
+            .map(|(path, file)| Entry {
+                file,
+                path: Some(path),
+                dirty: false,
+            })
             .collect();
         if entries.is_empty() {
             entries.push(Entry {

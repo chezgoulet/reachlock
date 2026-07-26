@@ -156,7 +156,11 @@ impl ItemEditor {
         let (parsed, load_warnings) = crate::io::scan_content_dir::<ItemSeed>(&dir);
         let mut entries: Vec<_> = parsed
             .into_iter()
-            .map(|(path, item_seed)| Entry { item_seed, path: Some(path), dirty: false })
+            .map(|(path, item_seed)| Entry {
+                item_seed,
+                path: Some(path),
+                dirty: false,
+            })
             .collect();
         if entries.is_empty() {
             entries.push(Entry {

@@ -16,7 +16,7 @@ use reachlock_core::dialogue::{
     assemble, deflection_line, shape_line, voice_prompt, ChoiceEffect, DialogueTurn,
     MAX_UTTERANCE_CHARS,
 };
-use reachlock_core::soul::types::{Mood, Species};
+use reachlock_core::soul::types::Mood;
 use reachlock_core::soul::SoulEvent;
 
 use crate::focus_stack::FocusStack;
@@ -485,16 +485,14 @@ pub fn resolve_dialogue_failure(
     true
 }
 
-/// Render the soul-backed dialogue panel text. Legacy (non-soul) NPCs keep
-/// the S07 rendering in `hud.rs`; this covers the session path.
-fn species_portrait_glyph(species: &Species) -> &'static str {
-    match species {
-        Species::Human => "◎",
-        Species::Android => "⬡",
-        Species::Robot => "▣",
-        Species::Voidborn => "◇",
-        Species::Xenotype => "◈",
-    }
+/// UI marker for the dialogue portrait sprite (T10b).
+#[derive(Component)]
+pub struct DialoguePortrait;
+
+/// Paint and return a portrait [`Image`] for the given speaker's look,
+/// suitable for display in the dialogue panel.
+pub fn paint_dialogue_portrait(look: &crate::pixel::Look) -> Image {
+    crate::pixel::paint_portrait(look).into_image()
 }
 
 fn mood_glyph(mood: &Mood) -> (&'static str, &'static str) {
@@ -520,15 +518,10 @@ pub fn panel_text(session: &DialogueSession, souls: &SoulRegistry) -> Option<Str
     // renders empty until init_souls finishes. This is correct: state
     // is initialized at startup before any interaction can open.
     let state = souls.states.get(&active.soul_id)?;
-    let (glyph_char, mood_name) = mood_glyph(&state.mood);
+    let (mood_glyph_char, mood_name) = mood_glyph(&state.mood);
     let mut lines = vec![
-        format!(
-            "[{}] {} — {}",
-            species_portrait_glyph(&file.species),
-            file.name,
-            file.identity.role,
-        ),
-        format!("    {glyph_char} {mood_name}"),
+        format!("{} — {}", file.name, file.identity.role),
+        format!("    {mood_glyph_char} {mood_name}"),
         String::new(),
     ];
     if !active.history.is_empty() {
@@ -580,4 +573,51 @@ pub fn panel_text(session: &DialogueSession, souls: &SoulRegistry) -> Option<Str
         lines.push("9. say something else…".into());
     }
     Some(lines.join("\n"))
+}
+
+/// Get the [`Look`] for the current dialogue speaker, if available.
+pub fn speaker_look(session: &DialogueSession, souls: &SoulRegistry) -> Option<crate::pixel::Look> {
+    let active = session.active.as_ref()?;
+    let file = souls.files.get(&active.soul_id)?;
+    file.look.clone().map(crate::pixel::Look::from).or_else(|| {
+        Some(crate::pixel::Look::seeded(
+            active
+                .soul_id
+                .bytes()
+                .fold(42u64, |a, b| a.wrapping_mul(31) + b as u64),
+        ))
+    })
+}
+
+/// Update the dialogue portrait sprite whenever the session or panel changes.
+pub fn update_dialogue_portrait(
+    panel: Res<crate::systems::interaction::ActivePanel>,
+    session: Res<DialogueSession>,
+    souls: Res<SoulRegistry>,
+    mut images: ResMut<Assets<Image>>,
+    mut portrait: Query<&mut ImageNode, With<DialoguePortrait>>,
+) {
+    let Ok(mut node) = portrait.single_mut() else {
+        return;
+    };
+    let needs_portrait = matches!(
+        &*panel,
+        crate::systems::interaction::ActivePanel::Dialogue(_)
+    ) && session.active.is_some();
+    if !needs_portrait {
+        node.image = Handle::default();
+        return;
+    }
+    let look = match speaker_look(&session, &souls) {
+        Some(l) => l,
+        None => {
+            node.image = Handle::default();
+            return;
+        }
+    };
+    let image = paint_dialogue_portrait(&look);
+    let previous = std::mem::replace(&mut node.image, images.add(image));
+    if previous != Handle::default() {
+        images.remove(&previous);
+    }
 }

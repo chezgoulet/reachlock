@@ -63,7 +63,11 @@ impl EnemyEditor {
         let (parsed, warnings) = crate::io::scan_content_dir::<HostileArchetype>(&dir);
         let mut entries: Vec<_> = parsed
             .into_iter()
-            .map(|(path, archetype)| Entry { archetype, path: Some(path), dirty: false })
+            .map(|(path, archetype)| Entry {
+                archetype,
+                path: Some(path),
+                dirty: false,
+            })
             .collect();
         if entries.is_empty() {
             entries.push(Entry {
