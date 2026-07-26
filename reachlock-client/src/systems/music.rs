@@ -6,7 +6,8 @@
 use bevy::prelude::*;
 
 use reachlock_core::generator::music::{
-    generate_music_intent, music_intensity, music_mood_for_context, Mood,
+    generate_music_intent, generate_themed_music, music_intensity, music_mood_for_context, Mood,
+    MusicIntent, Theme,
 };
 use reachlock_core::util::Fixed;
 
@@ -42,6 +43,59 @@ impl Default for MusicParams {
             distortion: 0.0,
             tempo_scale: 1.0,
         }
+    }
+}
+
+/// Authored music themes, drained from the content dispatch stash.
+///
+/// Empty is the normal offline case, not an error: with no theme the engine
+/// falls back to a purely generated intent, which is what shipped before any
+/// theme was authored.
+#[derive(Resource, Default)]
+pub struct ThemeRegistry(pub Vec<Theme>);
+
+impl ThemeRegistry {
+    /// Pick the theme to riff on for `seed`, or `None` to generate from
+    /// scratch. Indexing by seed keeps the choice deterministic: the registry
+    /// is sorted by id, so it does not depend on directory read order.
+    pub fn choose(&self, seed: u64) -> Option<&Theme> {
+        if self.0.is_empty() {
+            return None;
+        }
+        self.0.get((seed % self.0.len() as u64) as usize)
+    }
+}
+
+/// Populate [`ThemeRegistry`] from the stash `dispatch_content` filled.
+/// Chained after `dispatch_content` in the startup schedule, like the trope
+/// and encounter registries.
+pub fn init_theme_registry(mut registry: ResMut<ThemeRegistry>) {
+    let mut themes = crate::systems::dispatch::stash::take_themes();
+    // Sort so `choose` is stable across runs and platforms — `read_dir` order
+    // is not.
+    themes.sort_by(|a, b| a.id.cmp(&b.id));
+    if !themes.is_empty() {
+        info!(
+            "Music: {} authored theme(s) available: {}",
+            themes.len(),
+            themes
+                .iter()
+                .map(|t| t.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    registry.0 = themes;
+}
+
+/// Build the intent for a mood: riff on an authored theme when one exists,
+/// otherwise generate from the seed alone.
+fn intent_for(engine: &MusicEngine, themes: &ThemeRegistry) -> MusicIntent {
+    match themes.choose(engine.music_seed) {
+        // The theme is the head; the generator varies it and restates it every
+        // 4 bars of the 8-bar phrase.
+        Some(theme) => generate_themed_music(engine.music_seed, engine.active_mood, theme, 8, 4),
+        None => generate_music_intent(engine.music_seed, engine.active_mood, 8),
     }
 }
 
@@ -353,6 +407,7 @@ pub fn tick_music(
     mut engine: ResMut<MusicEngine>,
     params: Res<MusicParams>,
     mut streaming: ResMut<StreamingEngine>,
+    themes: Res<ThemeRegistry>,
 ) {
     streaming.update(
         params.tempo_scale as f64,
@@ -363,10 +418,13 @@ pub fn tick_music(
     if !engine.initialized {
         engine.initialized = true;
         engine.music_seed = 4242;
-        let intent = generate_music_intent(engine.music_seed, engine.active_mood, 8);
+        let intent = intent_for(&engine, &themes);
         info!(
-            "Music engine: mood={:?}, {} notes, {} bpm",
+            "Music engine: mood={:?}, theme={}, {} notes, {} bpm",
             engine.active_mood,
+            themes
+                .choose(engine.music_seed)
+                .map_or("<generated>", |t| t.id.as_str()),
             intent.notes.len(),
             intent.bpm
         );
@@ -375,7 +433,104 @@ pub fn tick_music(
 
     if engine.mood_changed {
         engine.mood_changed = false;
-        let intent = generate_music_intent(engine.music_seed, engine.active_mood, 8);
+        let intent = intent_for(&engine, &themes);
         schedule_intent(&mut streaming.sequencer, &intent, &engine);
+    }
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::*;
+    use fundsp::sequencer::{ReplayMode, Sequencer};
+    use reachlock_core::content::{ContentFile, ContentPayload};
+
+    /// Load the authored themes straight off disk, the same shape
+    /// `dispatch::consume_themes` hands to the registry.
+    fn authored_themes() -> Vec<Theme> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root")
+            .join("mods/reachlock/themes");
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir(&dir).expect("themes dir").flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "ron") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("read theme");
+            let file: ContentFile = ron::from_str(&text)
+                .unwrap_or_else(|e| panic!("{} is not an envelope: {e}", path.display()));
+            if let ContentPayload::Theme(t) = file.payload {
+                out.push(*t);
+            }
+        }
+        out.sort_by(|a, b| a.id.cmp(&b.id));
+        out
+    }
+
+    /// Offline with no authored content is the baseline, not a failure.
+    #[test]
+    fn empty_registry_falls_back_to_generated_music() {
+        let engine = MusicEngine::default();
+        let themes = ThemeRegistry::default();
+        assert!(themes.choose(engine.music_seed).is_none());
+        let intent = intent_for(&engine, &themes);
+        assert!(
+            !intent.notes.is_empty(),
+            "the generated fallback must still produce music"
+        );
+    }
+
+    /// The point of the whole exercise: an authored theme must actually change
+    /// what the engine plays. Before this wiring `take_themes` had no callers,
+    /// so `calm_exploration.ron` was content nothing could reach.
+    #[test]
+    fn an_authored_theme_changes_what_the_engine_plays() {
+        let themes = ThemeRegistry(authored_themes());
+        assert!(
+            !themes.0.is_empty(),
+            "expected at least one authored theme under mods/reachlock/themes"
+        );
+        let engine = MusicEngine {
+            music_seed: 4242,
+            ..Default::default()
+        };
+
+        let themed = intent_for(&engine, &themes);
+        let generated = generate_music_intent(engine.music_seed, engine.active_mood, 8);
+        assert_ne!(
+            themed.notes, generated.notes,
+            "the themed intent is identical to the generated one — the authored \
+             theme is not reaching the audio engine"
+        );
+    }
+
+    /// `read_dir` order is not stable, so the registry sorts. Selection must
+    /// depend only on the seed.
+    #[test]
+    fn theme_choice_is_deterministic() {
+        let themes = ThemeRegistry(authored_themes());
+        let first = themes.choose(4242).map(|t| t.id.clone());
+        for _ in 0..8 {
+            assert_eq!(themes.choose(4242).map(|t| t.id.clone()), first);
+        }
+    }
+
+    /// Every mood must schedule cleanly against a real authored theme — the
+    /// fundsp sequencer asserts on the audio thread, where a panic is easy to
+    /// miss.
+    #[test]
+    fn themed_intents_schedule_for_every_mood() {
+        let themes = ThemeRegistry(authored_themes());
+        for mood in [Mood::Calm, Mood::Tense, Mood::Combat, Mood::Derelict] {
+            let engine = MusicEngine {
+                active_mood: mood,
+                music_seed: 4242,
+                ..Default::default()
+            };
+            let intent = intent_for(&engine, &themes);
+            let mut seq = Sequencer::new(0, 2, ReplayMode::None);
+            schedule_intent(&mut seq, &intent, &engine);
+        }
     }
 }

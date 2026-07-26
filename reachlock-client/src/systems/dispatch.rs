@@ -469,7 +469,6 @@ pub mod stash {
     pub fn set_themes(v: Vec<Theme>) {
         STASH.lock().unwrap().themes = v;
     }
-    #[expect(dead_code)]
     pub fn take_themes() -> Vec<Theme> {
         std::mem::take(&mut STASH.lock().unwrap().themes)
     }

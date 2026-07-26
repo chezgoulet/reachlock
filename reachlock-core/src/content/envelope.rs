@@ -201,6 +201,83 @@ pub enum ContentPayload {
     Storylines(Vec<Storyline>),
 }
 
+/// The bridge between a bare payload struct and the [`ContentPayload`] variant
+/// that carries it.
+///
+/// Tools that edit one content type at a time — the content editor above all —
+/// want to work with a plain `Theme` or `SoulFile`, not with an enum they have
+/// to match on. Without this trait each of them re-derived the mapping by hand,
+/// which is how eight editor tabs ended up reading and writing the bare type
+/// while the files on disk were envelopes.
+///
+/// The `Box`ing is asymmetric across [`ContentPayload`] — some variants box
+/// their payload to keep the enum small, some don't — and this trait is the one
+/// place that asymmetry is handled.
+pub trait Enveloped: Sized {
+    /// The `asset_type` an envelope carrying this payload declares.
+    const ASSET_TYPE: AssetType;
+    /// Wrap into the payload enum.
+    fn into_payload(self) -> ContentPayload;
+    /// Unwrap from the payload enum. `None` when the variant doesn't match.
+    fn from_payload(payload: ContentPayload) -> Option<Self>;
+}
+
+/// Implement [`Enveloped`] for a payload type. `boxed` marks variants whose
+/// payload is `Box`ed in [`ContentPayload`].
+macro_rules! impl_enveloped {
+    ($ty:ty, $variant:ident, $asset:ident, boxed) => {
+        impl Enveloped for $ty {
+            const ASSET_TYPE: AssetType = AssetType::$asset;
+            fn into_payload(self) -> ContentPayload {
+                ContentPayload::$variant(Box::new(self))
+            }
+            fn from_payload(payload: ContentPayload) -> Option<Self> {
+                match payload {
+                    ContentPayload::$variant(inner) => Some(*inner),
+                    _ => None,
+                }
+            }
+        }
+    };
+    ($ty:ty, $variant:ident, $asset:ident, plain) => {
+        impl Enveloped for $ty {
+            const ASSET_TYPE: AssetType = AssetType::$asset;
+            fn into_payload(self) -> ContentPayload {
+                ContentPayload::$variant(self)
+            }
+            fn from_payload(payload: ContentPayload) -> Option<Self> {
+                match payload {
+                    ContentPayload::$variant(inner) => Some(inner),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+impl_enveloped!(Theme, Theme, Theme, boxed);
+impl_enveloped!(SoulFile, Soul, Soul, boxed);
+impl_enveloped!(CareerPath, Career, Career, boxed);
+impl_enveloped!(PlanetCulture, PlanetCulture, PlanetCulture, boxed);
+impl_enveloped!(Ecosystem, Ecosystem, Ecosystem, boxed);
+impl_enveloped!(TropeTemplate, Trope, Trope, boxed);
+impl_enveloped!(
+    ScriptedEncounter,
+    ScriptedEncounter,
+    ScriptedEncounter,
+    boxed
+);
+impl_enveloped!(Dialogue, Dialogue, Dialogue, boxed);
+impl_enveloped!(Dungeon, Dungeon, Dungeon, boxed);
+impl_enveloped!(Event, Event, Event, boxed);
+impl_enveloped!(Recipe, Recipe, Recipe, boxed);
+impl_enveloped!(Contract, Contract, Contract, plain);
+impl_enveloped!(super::origin::Origin, Origin, Origin, plain);
+impl_enveloped!(crate::crew::CrewPackage, CrewPackage, CrewPackage, plain);
+impl_enveloped!(HullFrame, HullFrame, HullFrame, plain);
+impl_enveloped!(Vec<Storyline>, Storylines, Storyline, plain);
+impl_enveloped!(Vec<RoomTemplate>, RoomTemplates, RoomTemplates, plain);
+
 /// The content envelope (spec §10, "Freeze first" list: id, display_name,
 /// asset_type, seed, universe, priority, payload).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -232,6 +309,35 @@ impl ContentFile {
     pub fn matches_universe(&self, tier: UniverseTier) -> bool {
         self.universe == "all" || self.universe == tier.as_str()
     }
+
+    /// Take the inner payload as `T`, or `None` if this envelope carries a
+    /// different kind. Consumes the envelope; use it when the metadata has
+    /// already been read off.
+    pub fn into_inner<T: Enveloped>(self) -> Option<T> {
+        T::from_payload(self.payload)
+    }
+
+    /// Build an envelope around `inner`, filling `asset_type` from the payload
+    /// type so the two can't disagree.
+    pub fn wrap<T: Enveloped>(
+        id: impl Into<String>,
+        display_name: impl Into<String>,
+        seed: u64,
+        universe: impl Into<String>,
+        priority: Priority,
+        inner: T,
+    ) -> Self {
+        ContentFile {
+            id: id.into(),
+            display_name: display_name.into(),
+            asset_type: T::ASSET_TYPE,
+            seed,
+            universe: universe.into(),
+            priority,
+            expires_at: None,
+            payload: inner.into_payload(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -257,6 +363,86 @@ mod tests {
                 indices: vec![],
             }),
         }
+    }
+
+    /// Wrap → RON → parse → unwrap must return exactly what went in, and the
+    /// envelope's `asset_type` must come from the payload type rather than
+    /// from whatever the caller typed.
+    fn round_trips_through_envelope<T>(inner: T)
+    where
+        T: Enveloped + Clone + PartialEq + std::fmt::Debug,
+    {
+        let file = ContentFile::wrap(
+            "test_id",
+            "Test",
+            42,
+            "all",
+            Priority::Authoritative,
+            inner.clone(),
+        );
+        assert_eq!(file.asset_type, T::ASSET_TYPE);
+        let text = ron::to_string(&file).expect("serialize");
+        let back: ContentFile = ron::from_str(&text).expect("deserialize");
+        assert_eq!(back.asset_type, T::ASSET_TYPE);
+        let out: T = back.into_inner().expect("payload variant matches");
+        assert_eq!(out, inner);
+    }
+
+    #[test]
+    fn theme_round_trips_through_envelope() {
+        use crate::generator::music::{NoteEvent, Scale, Theme, VariationMask};
+        round_trips_through_envelope(Theme {
+            id: "calm".into(),
+            notes: vec![NoteEvent {
+                degree: 3,
+                octave: 0,
+                velocity: 80,
+                start_tick: 0,
+                duration_ticks: 12,
+            }],
+            scale: Scale::MinorPentatonic,
+            bpm_range: (60, 80),
+            allowed_variations: VariationMask(511),
+        });
+    }
+
+    #[test]
+    fn room_templates_round_trip_through_envelope() {
+        round_trips_through_envelope(RoomTemplate::reference_set());
+    }
+
+    #[test]
+    fn hull_frame_round_trips_through_envelope() {
+        use crate::generator::hull::HullClass;
+        round_trips_through_envelope(HullFrame::reference(HullClass::Corvette));
+    }
+
+    #[test]
+    fn storylines_round_trip_through_envelope() {
+        round_trips_through_envelope(Vec::<Storyline>::new());
+    }
+
+    /// Unwrapping to the wrong type is `None`, not a panic and not a silent
+    /// default — an editor tab pointed at the wrong file must fail visibly.
+    #[test]
+    fn unwrapping_the_wrong_payload_type_is_none() {
+        use crate::generator::music::{Scale, Theme, VariationMask};
+        let file = ContentFile::wrap(
+            "calm",
+            "Calm",
+            1,
+            "all",
+            Priority::Authoritative,
+            Theme {
+                id: "calm".into(),
+                notes: vec![],
+                scale: Scale::MinorPentatonic,
+                bpm_range: (60, 80),
+                allowed_variations: VariationMask(0),
+            },
+        );
+        assert!(file.clone().into_inner::<SoulFile>().is_none());
+        assert!(file.into_inner::<Theme>().is_some());
     }
 
     #[test]

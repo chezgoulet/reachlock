@@ -11,12 +11,17 @@
 //!   pinned to (spec §10, Seed Integration).
 //! - [`validate`] holds the structural integrity checks the CLI's
 //!   `content validate` command runs before schema validation.
+//! - [`dirs::classify`] says how each directory under a content root is
+//!   loaded. Every consumer that walks a content root reads it, so the
+//!   loader, the tree checker and the editor cannot disagree about which
+//!   directories are envelope-wrapped.
 //!
 //! These are frozen contracts (spec §13, iron rule #7): the field names on
 //! `ContentFile` and the generator structs it wraps ARE the authoring
 //! format. Changing them orphans every `.ron` file under `content/`.
 
 pub mod dialogue;
+pub mod dirs;
 pub mod dungeon;
 pub mod envelope;
 pub mod event;
@@ -30,8 +35,9 @@ pub mod seed;
 pub mod validate;
 
 pub use dialogue::{Dialogue, DialogueChoice, DialogueNode, NodeType};
+pub use dirs::{classify, DirKind};
 pub use dungeon::{Dungeon, DungeonPuzzle, DungeonRoom};
-pub use envelope::{AssetType, ContentFile, ContentPayload, NpcSpawn};
+pub use envelope::{AssetType, ContentFile, ContentPayload, Enveloped, NpcSpawn};
 pub use event::{Consequence, Event, EventStage, TriggerCondition};
 pub use origin::{
     CareerPathId, CrewAssignment, FactionStandingDelta, ItemStack, LogEntryDraft, Origin, Rank,

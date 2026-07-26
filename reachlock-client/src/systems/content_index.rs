@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
+use reachlock_core::content::dirs::{classify, DirKind};
 use reachlock_core::content::ContentFile;
 use reachlock_core::galaxy::{ChartedSystem, GateNetwork};
-use reachlock_core::generator::music::Theme;
 use reachlock_core::mod_manifest::{resolve_load_order, ModManifest};
 
 /// The local override index (spec §10, "Loader reads `mods/` from disk
@@ -16,12 +16,6 @@ use reachlock_core::mod_manifest::{resolve_load_order, ModManifest};
 #[derive(Resource, Default)]
 pub struct ContentIndex {
     pub files: Vec<ContentFile>,
-    /// All loaded mod manifests, keyed by mod id.
-    #[allow(dead_code)]
-    pub mod_manifests: HashMap<String, ModManifest>,
-    /// Resolved load order: mod ids in the order they should be consulted.
-    #[allow(dead_code)]
-    pub load_order: Vec<String>,
     /// S20 enemy/companion archetypes, keyed by `HostileArchetype::id`.
     pub hostile_archetypes: HashMap<String, reachlock_core::combat::HostileArchetype>,
     /// S20 authored hostile interiors, keyed by `HostileLocation::id`.
@@ -30,9 +24,6 @@ pub struct ContentIndex {
     pub charted_systems: HashMap<String, ChartedSystem>,
     /// S21: the authored gate network (single file: `core_region.ron`).
     pub gate_network: Option<GateNetwork>,
-    /// S48: authored music themes, keyed by `Theme::id`.
-    #[allow(dead_code)]
-    pub themes: HashMap<String, Theme>,
 }
 
 impl ContentIndex {
@@ -42,9 +33,6 @@ impl ContentIndex {
             .find(|f| f.asset_type == reachlock_core::content::AssetType::Station && f.seed == seed)
     }
 }
-
-/// Directory that holds test fixtures, not real authored assets.
-const FIXTURES_DIR: &str = "_fixtures";
 
 pub fn load_content_index(mut commands: Commands) {
     let root = std::path::Path::new("mods");
@@ -103,7 +91,6 @@ pub fn load_content_index(mut commands: Commands) {
         HashMap::new();
     let mut charted_systems: HashMap<String, ChartedSystem> = HashMap::new();
     let mut gate_network: Option<GateNetwork> = None;
-    let mut themes: HashMap<String, Theme> = HashMap::new();
 
     for mod_id in &load_order {
         let mod_dir = root.join(mod_id);
@@ -129,34 +116,31 @@ pub fn load_content_index(mut commands: Commands) {
         if let Some((_, gn)) = gn_map.into_iter().next() {
             gate_network = Some(gn);
         }
-        // S48: authored music themes.
-        load_typed_into(&mod_dir.join("themes"), &mut themes, |t: &Theme| {
-            t.id.clone()
-        });
+        // `themes/` is deliberately absent here. Themes are envelopes; they
+        // come in through the walk below and reach the audio engine via
+        // `dispatch::consume_themes`. The bare-`Theme` loader that used to sit
+        // here could never parse them, and the map it filled had no reader.
     }
 
-    // Phase 4: walk for ContentFile envelopes (skip typed dirs and manifest).
+    // Phase 4: walk for ContentFile envelopes. Directory classification lives
+    // in core so this pass and the typed pass above cannot disagree.
     let mut files = Vec::new();
-    walk(root, &mut files);
+    walk(root, &mut files, false);
 
     info!(
-        "content index: {} mod(s), {} file(s), {} archetype(s), {} location(s), {} system(s), {} theme(s)",
+        "content index: {} mod(s), {} file(s), {} archetype(s), {} location(s), {} system(s)",
         manifests.len(),
         files.len(),
         hostile_archetypes.len(),
         hostile_locations.len(),
         charted_systems.len(),
-        themes.len(),
     );
     commands.insert_resource(ContentIndex {
         files,
-        mod_manifests: manifests,
-        load_order,
         hostile_archetypes,
         hostile_locations,
         charted_systems,
         gate_network,
-        themes,
     });
 }
 
@@ -200,7 +184,17 @@ where
     }
 }
 
-fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
+/// Walk a content root collecting `ContentFile` envelopes.
+///
+/// Which directories are envelope directories is
+/// [`reachlock_core::content::dirs`]'s call, not this function's: the loader,
+/// the content-tree checker and the editor all read the same table, so a
+/// directory cannot be envelope-wrapped for one of them and bare for another.
+///
+/// `mixed` tracks whether we are inside a [`DirKind::Mixed`] directory, where a
+/// failed envelope parse is the expected path for the bare files that share the
+/// directory and must not warn.
+fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>, mixed: bool) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         warn!("content index: failed to read directory {dir:?}");
         return;
@@ -208,22 +202,15 @@ fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            // Skip typed-content dirs and fixtures.
-            let skip = [
-                FIXTURES_DIR,
-                "combat",
-                "locations",
-                "systems",
-                "gate_network",
-                "themes",
-            ];
-            if path
-                .file_name()
-                .is_some_and(|n| skip.contains(&n.to_str().unwrap_or("")))
-            {
-                continue;
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            match classify(name) {
+                // Loaded by the typed pass above, embedded at compile time, or
+                // not game content at all. Descending would only produce parse
+                // failures for files this walk was never meant to read.
+                DirKind::Typed | DirKind::External | DirKind::Fixtures => continue,
+                DirKind::Mixed => walk(&path, out, true),
+                DirKind::Envelope => walk(&path, out, mixed),
             }
-            walk(&path, out);
         } else if path.extension().is_some_and(|e| e == "ron") {
             // Skip mod manifest files — they're parsed separately.
             if path.file_name().is_some_and(|n| n == "mod.manifest.ron") {
@@ -232,12 +219,124 @@ fn walk(dir: &std::path::Path, out: &mut Vec<ContentFile>) {
             match std::fs::read_to_string(&path) {
                 Ok(text) => match ron::from_str::<ContentFile>(&text) {
                     Ok(file) => out.push(file),
+                    Err(err) if mixed => {
+                        debug!(
+                            "content index: {} is not an envelope, leaving it to its own loader: {err}",
+                            path.display()
+                        )
+                    }
                     Err(err) => {
                         warn!("content index: failed to parse {}: {err}", path.display())
                     }
                 },
                 Err(err) => warn!("content index: failed to read {}: {err}", path.display()),
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reachlock_core::content::AssetType;
+
+    /// The reference mod, from the client crate's working directory.
+    fn content_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root")
+            .join("mods")
+    }
+
+    /// Every `.ron` the walk actually opens must parse as an envelope.
+    ///
+    /// This is the startup-warning gate. Twelve files used to fail here on
+    /// every launch — `economy/` and `factions/` are compile-time embeds the
+    /// walk had no business reading, and ten bare `ShipTemplate`s in `hulls/`
+    /// belong to the ship catalog. A failure here is a line of `WARN` in every
+    /// player's log, and the noise is what let the missing theme hide.
+    #[test]
+    fn every_file_the_walk_opens_is_an_envelope() {
+        let mut offenders = Vec::new();
+        visit(&content_root(), false, &mut offenders);
+
+        fn visit(dir: &std::path::Path, mixed: bool, offenders: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    match classify(name) {
+                        DirKind::Typed | DirKind::External | DirKind::Fixtures => continue,
+                        DirKind::Mixed => visit(&path, true, offenders),
+                        DirKind::Envelope => visit(&path, mixed, offenders),
+                    }
+                } else if path.extension().is_some_and(|e| e == "ron")
+                    && path.file_name().is_some_and(|n| n != "mod.manifest.ron")
+                    // Inside a Mixed directory a bare file is expected and the
+                    // loader logs at debug, not warn.
+                    && !mixed
+                {
+                    let text = std::fs::read_to_string(&path).expect("read");
+                    if let Err(err) = ron::from_str::<ContentFile>(&text) {
+                        offenders.push(format!("{}: {err}", path.display()));
+                    }
+                }
+            }
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "these files sit in envelope directories but are not envelopes, so the loader \
+             warns about each one at startup and skips the content:\n  {}",
+            offenders.join("\n  ")
+        );
+    }
+
+    /// `themes/` was in the walk's skip list, so the one authored theme never
+    /// entered the index and never reached the audio engine. Pin it.
+    #[test]
+    fn authored_themes_reach_the_index() {
+        let mut files = Vec::new();
+        walk(&content_root(), &mut files, false);
+        let themes: Vec<_> = files
+            .iter()
+            .filter(|f| f.asset_type == AssetType::Theme)
+            .collect();
+        assert!(
+            !themes.is_empty(),
+            "no theme reached the content index; the audio engine has nothing to riff on"
+        );
+        assert!(
+            themes.iter().any(|t| t.id == "calm_exploration"),
+            "expected the authored calm_exploration theme, got: {:?}",
+            themes.iter().map(|t| &t.id).collect::<Vec<_>>()
+        );
+    }
+
+    /// Souls, origins and crews all ride the envelope path. A regression here
+    /// means crew members lose their personalities and fall back to raw ids.
+    #[test]
+    fn envelope_content_reaches_the_index() {
+        let mut files = Vec::new();
+        walk(&content_root(), &mut files, false);
+        for (asset, least) in [
+            (AssetType::Soul, 13),
+            (AssetType::Origin, 10),
+            (AssetType::Career, 10),
+            (AssetType::CrewPackage, 1),
+            // `storylines/` holds one storyline arc and one soul-mutation set;
+            // the envelope's own asset_type is what sorts them, not the folder.
+            (AssetType::Storyline, 1),
+            (AssetType::SoulMutations, 1),
+        ] {
+            let count = files.iter().filter(|f| f.asset_type == asset).count();
+            assert!(
+                count >= least,
+                "expected at least {least} {asset:?} file(s) in the index, found {count}"
+            );
         }
     }
 }
