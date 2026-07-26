@@ -47,6 +47,8 @@ enum PendingAction {
     Quit,
     /// Delete the selected entry (named) in the active editor.
     DeleteEntry(String),
+    /// Save tab `idx` despite RON comment loss (user confirmed).
+    CommentLossSave(usize),
 }
 
 struct EditorApp {
@@ -123,6 +125,9 @@ struct OpenEditor {
     last_seen: Option<String>,
     /// When the last undo step was pushed (drives coalescing).
     last_push: Option<Instant>,
+    /// Whether the raw file text contained RON comments (`//` or `/*`).
+    /// If true, the first save shows a confirmation dialog about comment loss.
+    has_comments: bool,
 }
 
 impl OpenEditor {
@@ -135,6 +140,7 @@ impl OpenEditor {
             redo_stack: Vec::new(),
             last_seen: None,
             last_push: None,
+            has_comments: false,
         }
     }
 
@@ -278,6 +284,12 @@ impl EditorApp {
             self.active_tab = Some(idx);
             return;
         }
+        // Check the raw file text for RON comments before loading, so we can
+        // warn before a save strips them. A naive `//` / `/*` search is fine
+        // (false positives in string literals are acceptable for this guard).
+        let has_comments = std::fs::read_to_string(path)
+            .ok()
+            .is_some_and(|text| text.contains("//") || text.contains("/*"));
         let Some(mut editor) = self.registry.create(ct) else {
             self.status_text = format!("No editor for {:?}", ct);
             return;
@@ -286,11 +298,16 @@ impl EditorApp {
         match editor.load(path) {
             Ok(()) => {
                 let idx = self.open_editors.len();
-                self.open_editors.push(OpenEditor::new(
+                self.open_editors.push(OpenEditor {
                     editor,
-                    name.to_string(),
-                    Some(path.to_path_buf()),
-                ));
+                    name: name.to_string(),
+                    path: Some(path.to_path_buf()),
+                    undo_stack: Vec::new(),
+                    redo_stack: Vec::new(),
+                    last_seen: None,
+                    last_push: None,
+                    has_comments,
+                });
                 self.active_tab = Some(idx);
                 self.status_text = format!("Opened {}", path.display());
                 self.preferences.prefs.push_recent(path);
@@ -328,6 +345,15 @@ impl EditorApp {
     /// Save tab `idx` to its path, falling back to Save As when it has
     /// none. Returns true when the file hit disk.
     fn save_editor(&mut self, idx: usize) -> bool {
+        // Comment-loss guard: if the file had RON comments when loaded, show a
+        // confirmation dialog before the first save strips them. The pending
+        // action clears `has_comments` after confirmation so we don't loop.
+        if let Some(open) = self.open_editors.get(idx) {
+            if open.has_comments {
+                self.pending = Some(PendingAction::CommentLossSave(idx));
+                return false;
+            }
+        }
         let Some(open) = self.open_editors.get_mut(idx) else {
             return false;
         };
@@ -1063,6 +1089,26 @@ impl EditorApp {
                     }
                     Some(_) => {}
                     None => self.pending = Some(PendingAction::DeleteEntry(name)),
+                }
+            }
+            PendingAction::CommentLossSave(idx) => {
+                match confirmation_dialog(
+                    ctx,
+                    "Comment Loss Warning",
+                    "This file has authored comments. RON cannot preserve them \
+                     through a save — they will be removed. Save anyway?",
+                    "Save Anyway",
+                    "Cancel",
+                    None,
+                ) {
+                    Some(ConfirmationResult::Ok) => {
+                        if let Some(open) = self.open_editors.get_mut(idx) {
+                            open.has_comments = false; // Clear for this save.
+                        }
+                        self.save_editor(idx);
+                    }
+                    Some(_) => {}
+                    None => self.pending = Some(PendingAction::CommentLossSave(idx)),
                 }
             }
         }
