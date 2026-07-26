@@ -279,6 +279,18 @@ re-confirm what someone already remembered to type.
   content type, follow it all the way to the system that consumes it and
   write the test at that end. `#[expect(dead_code)]` on a `take_*` is the
   smell.
+- `reachlock-client/src/main.rs` carries a crate-level `#![allow(dead_code)]`.
+  It hides ~54 real findings, and it is the reason `scripts/check_resources.py`
+  had to be written by hand — that gate re-implements a subset of what this one
+  line switched off. Everything found under "content that reaches nobody" below
+  was found by removing it locally and reading the warnings. Do that before
+  claiming a feature is wired; do not add another crate-level allow.
+- Content that reaches nobody has a signature: a `set_*` with callers and a
+  `take_*`/getter with none. `take_themes`, `take_careers` and
+  `set_active_ship_template` each sat behind `#[expect(dead_code)]`, and each
+  meant authored content stopped one layer short of a player. Follow a content
+  type all the way to the system that consumes it, and put the test at that
+  end — "it reaches `ContentIndex`" proves nothing.
 - A file with no `mod` line is invisible to the compiler, so it rots without
   telling anyone. `crew_package.rs` and `cross_ref.rs` both drifted out of
   sync with core types while sitting on disk looking finished. Declare the
