@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use reachlock_core::content::envelope::{ContentFile, ContentPayload};
 
+use crate::agent::provider::{Message, Provider, ProviderError, Request, StopReason};
 use crate::app::ContentType;
 use crate::schema::SchemaCache;
 
@@ -341,9 +342,19 @@ fn balanced(text: &str, open: char, close: char) -> Option<String> {
     }
 }
 
-/// One chat-completion request + response extraction + schema validation.
-pub async fn generate_content(
-    config: &AiConfig,
+/// One completion request + response extraction + schema validation.
+///
+/// Goes through [`Provider`] rather than building an OpenAI-compatible body
+/// directly, so this path and the agent loop reach every endpoint the same
+/// way. Behaviour against a local Ollama is unchanged: the OpenAI-compatible
+/// adapter sends the same two messages this used to.
+///
+/// Deliberately still a **one-shot** call with no tools. Iron rule 6 says
+/// offline is first-class, and a small local model with no tool-calling
+/// support must keep being able to author a document.
+pub fn generate_content(
+    provider: &dyn Provider,
+    max_tokens: u32,
     ct: ContentType,
     schemas: &SchemaCache,
     user_prompt: &str,
@@ -354,55 +365,31 @@ pub async fn generate_content(
         ])
     })?;
 
-    let system = build_system_prompt(&ct, schema);
+    let request = Request {
+        system: build_system_prompt(&ct, schema),
+        messages: vec![Message::user(user_prompt)],
+        tools: Vec::new(),
+        max_tokens,
+        temperature: 0.7,
+    };
 
-    let payload = serde_json::json!({
-        "model": config.model,
-        "messages": [
-            { "role": "system", "content": system },
-            { "role": "user", "content": user_prompt }
-        ],
-        "max_tokens": config.max_tokens,
-        "temperature": 0.7
-    });
+    let response = provider.complete(&request).map_err(|e| match e {
+        ProviderError::Http(m) => GenerationError::HttpError(m),
+        ProviderError::Protocol(m) => GenerationError::NoJsonFound(m),
+        ProviderError::Unsupported(m) => GenerationError::HttpError(m),
+    })?;
 
-    let url = format!(
-        "{}/chat/completions",
-        config.api_base_url.trim_end_matches('/')
-    );
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .bearer_auth(&config.api_key)
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| GenerationError::HttpError(e.to_string()))?;
-
-    if !resp.status().is_success() {
-        return Err(GenerationError::HttpError(format!(
-            "API error {} — is the key valid?",
-            resp.status()
+    if matches!(response.stop, StopReason::MaxTokens) {
+        // The document is truncated, so the JSON almost certainly will not
+        // parse. Saying why beats "response contained no JSON".
+        return Err(GenerationError::NoJsonFound(format!(
+            "the model hit its {max_tokens}-token ceiling before finishing; \
+             raise Max tokens in AI Settings\n\n{}",
+            response.text
         )));
     }
 
-    let body: Value = resp
-        .json()
-        .await
-        .map_err(|e| GenerationError::HttpError(e.to_string()))?;
-
-    // OpenAI-compatible: choices[0].message.content
-    let content = body
-        .get("choices")
-        .and_then(|c| c.get(0))
-        .and_then(|c| c.get("message"))
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_str())
-        .ok_or_else(|| {
-            GenerationError::NoJsonFound(serde_json::to_string(&body).unwrap_or_default())
-        })?;
-
-    let value = extract_json(content).map_err(GenerationError::NoJsonFound)?;
+    let value = extract_json(&response.text).map_err(GenerationError::NoJsonFound)?;
 
     let warnings = schema.validate(&value);
     // Soft: surface validation errors but still return the value so the
@@ -411,29 +398,4 @@ pub async fn generate_content(
         json_value: value,
         warnings,
     })
-}
-
-/// Probe the endpoint's model list (Ollama-compatible `/models`).
-/// Returns Ok(Some(model_name)) on a healthy response, Ok(None) if reachable
-/// but no models reported, or Err with a connection error.
-pub async fn test_connection(config: &AiConfig) -> Result<Option<String>, String> {
-    let url = format!("{}/models", config.api_base_url.trim_end_matches('/'));
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .bearer_auth(&config.api_key)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("endpoint returned {}", resp.status()));
-    }
-    let body: Value = resp.json().await.map_err(|e| e.to_string())?;
-    let first = body
-        .get("data")
-        .and_then(|d| d.get(0))
-        .and_then(|m| m.get("id"))
-        .and_then(|id| id.as_str())
-        .map(|s| s.to_string());
-    Ok(first)
 }

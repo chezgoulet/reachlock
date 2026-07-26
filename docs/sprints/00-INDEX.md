@@ -287,6 +287,36 @@ re-confirm what someone already remembered to type.
   one special case of what that line switched off. A narrow
   `#[allow(dead_code)]` on an item, or on a module that documents why, is the
   supported escape hatch: each one names what it waits on and stays greppable.
+- A gate that validates its own fixtures proves nothing. `check-schema`
+  shipped comparing hand-written JSON fixtures to the schemas — the fixtures
+  matched by construction, so a field missing from *both* passed, which is
+  exactly the drift the gate was written to catch (deleting `look` from
+  `soul.schema.json` reported green). It now also round-trips every authored
+  file through its Rust type and validates the result; the schemas set
+  `additionalProperties: false`, so a field the type emits and the schema has
+  never heard of is rejected. That second half immediately found four real
+  defects the fixtures had been hiding. Serializing a `Default` would not have
+  worked either: `skip_serializing_if` omits exactly the optional fields most
+  likely to drift, so only *populated* values — i.e. real content — exercise
+  them.
+- `cargo test -p <crate>` runs with the crate directory as cwd, not the
+  workspace root. Anything resolving a relative path (`mods/reachlock`,
+  `save/editor-settings.ron`) finds nothing, and the failure mode is a
+  **vacuously passing test** rather than an error — a walk over zero files
+  asserts nothing. Use `schema::schemas_dir()`, which carries the
+  `CARGO_MANIFEST_DIR` fallback, or split the pure part out and test that.
+  Either way assert that the test actually checked something.
+- `std::env::set_var` in a test helper races. The environment is
+  process-global and the harness threads tests, so a helper that sets a var,
+  runs, then clears it will have another test clear it mid-call — presenting
+  as a missing file, not as a race. Set once via `std::sync::Once`.
+- `Tab` is egui's focus-navigation key and the editor is almost entirely text
+  fields. Any `Tab` binding must be guarded on `!ctx.wants_keyboard_input()`,
+  the same guard undo/redo use, or tabbing between fields breaks everywhere.
+- Writing an HTTP response and closing without consuming the request body
+  makes the peer see a connection reset instead of the response. It presents
+  as an intermittently failing test, not a protocol error. Drain a bounded
+  amount of the body before closing, even on a rejection path.
 - Not all dead code should be wired. Three of those findings were *superseded*
   duplicates — a breaking-point model fed by nothing while souls already drove
   the real one, a notification spawner identical to the live queue's, a colour
