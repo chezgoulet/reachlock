@@ -21,10 +21,18 @@ check-content:
 	cargo run -q -p reachlock-cli -- content check mods/reachlock
 
 # Every content type that declares a schema must accept a minimal fixture
-# against it. Catches drift between the Rust struct and the authored schema
-# — if a field is renamed in one but not the other the fixture fails.
+# against it. Catches a schema that has grown stricter than the type.
+#
+# The fixture half alone is NOT sufficient and must never be run alone: the
+# fixtures are hand-written to match the schema, so a field missing from BOTH
+# validates happily. Deleting `look` from soul.schema.json — the actual S76
+# regression — passes the fixture test. The second test round-trips every
+# authored file in mods/reachlock through its Rust type and validates the
+# result, which is the half that catches it (the schemas set
+# "additionalProperties": false, so a field the schema has never heard of is
+# rejected). Run both.
 check-schema:
-	cargo test -p reachlock-editor -- every_schema_accepts_a_minimal_fixture --quiet
+	cargo test -p reachlock-editor -- schema::tests:: --quiet
 
 # Every screen is styled from assets/ui/*.ron. A widget that builds its own
 # TextColor/BackgroundColor/BorderColor is invisible to the stylesheet: editing
