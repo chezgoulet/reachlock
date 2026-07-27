@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "kappa_three",
+    display_name: "Kappa-3",
+    position: (x: 520, y: 180, z: 240),
+    biome: frontier,
+    seed: 370546198,
+    description: "Refinery world. The atmosphere is a byproduct nobody budgeted for — acrid, yellow, and steadily degrading the orbital infrastructure. Production quotas have not been adjusted to account for the corrosion.",
+    faction: Some("corp"),
+)

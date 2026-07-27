@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "lumen",
+    display_name: "Lumen",
+    position: (x: 240, y: 140, z: -110),
+    biome: core,
+    seed: 218959117,
+    description: "The gate-engineering yards of the Compact. Every inner-system gate was cut at Lumen, and the station's orbital forges still ring with the work of shaping the next one. The engineers here speak a dialect of trade math.",
+    faction: Some("compact"),
+)

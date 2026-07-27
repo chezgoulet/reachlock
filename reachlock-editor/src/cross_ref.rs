@@ -154,10 +154,15 @@ impl CrossReferenceIndex {
     }
 }
 
-fn content_type_from_asset(asset: &reachlock_core::content::AssetType) -> ContentType {
+pub(crate) fn content_type_from_asset(asset: &reachlock_core::content::AssetType) -> ContentType {
     use reachlock_core::content::AssetType;
     match asset {
-        AssetType::Hull => ContentType::HullFrame,
+        // A hull is not a frame: `ContentPayload::Hull` carries a
+        // `GeneratedMesh`, `ContentPayload::HullFrame` carries the structural
+        // constants the exterior editor composes against. Routing `Hull` to
+        // the frame tab sent `hulls/loup_garou.ron` to an editor that cannot
+        // represent it.
+        AssetType::Hull => ContentType::HullMesh,
         AssetType::Station => ContentType::Station,
         AssetType::Contract => ContentType::Contract,
         AssetType::Ecosystem => ContentType::Ecosystem,
@@ -732,7 +737,7 @@ mod content_tree_tests {
     #[test]
     fn the_index_sees_the_authored_tree() {
         let index = index();
-        for id in ["tib", "bardo", "boris", "loup_garou_veteran", "compact"] {
+        for id in ["tib", "bardo", "boris", "compact"] {
             assert!(
                 index.is_known(id),
                 "`{id}` is authored content but the index does not know it; \

@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "threnody",
+    display_name: "Threnody",
+    position: (x: 1500, y: -340, z: -60),
+    biome: deep_space,
+    seed: 1010580540,
+    description: "Edge of gate coverage. Beyond Threnody, ships make their own jumps through the unreachable void. The station here is the last place in charted space you can call for help and expect an answer.",
+    faction: None,
+)

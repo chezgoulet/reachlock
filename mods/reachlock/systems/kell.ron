@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "kell",
+    display_name: "Kell",
+    position: (x: 1320, y: -480, z: -160),
+    biome: frontier,
+    seed: 960051513,
+    description: "ISC's furthest claim, and the claim is more assertion than presence. A single ISC liaison office on an otherwise independent station represents the coalition's interests — or pretends to.",
+    faction: Some("isc"),
+)

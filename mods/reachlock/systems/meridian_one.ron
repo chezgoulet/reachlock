@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "meridian_one",
+    display_name: "Meridian One",
+    position: (x: 120, y: 60, z: 40),
+    biome: core,
+    seed: 151587081,
+    description: "The first ring of Compact expansion. Parliament's supply spine passes through Meridian One's orbital plexus — every cargo manifest bound for Aethon is logged here. Nothing is grown here; everything is transported.",
+    faction: Some("compact"),
+)

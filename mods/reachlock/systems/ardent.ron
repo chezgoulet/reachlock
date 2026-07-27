@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "ardent",
+    display_name: "Ardent",
+    position: (x: -210, y: 40, z: 180),
+    biome: core,
+    seed: 235802126,
+    description: "Compact Naval Academy. The spires of Ardent's training halls are visible from orbit. Cadets here never see the frontier — they learn war from simulators and textbooks, which is not the same thing.",
+    faction: Some("compact"),
+)

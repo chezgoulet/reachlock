@@ -1,5 +1,7 @@
+mod agent;
 mod ai;
 mod app;
+mod audio;
 mod browser;
 mod command_palette;
 mod cross_ref;
@@ -8,6 +10,8 @@ mod diff;
 pub mod editors;
 mod help_window;
 mod io;
+mod mcp;
+mod mcp_http;
 mod preferences_window;
 mod preview;
 mod schema;
@@ -105,6 +109,24 @@ struct EditorApp {
     show_warnings: bool,
     /// Whether the startup content-tree scan has run.
     startup_scan_done: bool,
+    /// Requests from the agent thread, executed on this thread once a frame.
+    session_queue: agent::bridge::SessionQueue,
+    /// Plan (read-only) vs Build (writes unlocked).
+    agent_mode: agent::mode::Mode,
+    /// The running task's event channel, if one is running.
+    agent_task: Option<agent::session::AgentTask>,
+    /// Everything the current task has emitted, oldest first.
+    agent_transcript: Vec<agent::session::AgentEvent>,
+    agent_prompt: String,
+    /// Whether the assistant side panel is visible.
+    show_assistant: bool,
+    /// The MCP-over-HTTP endpoint, when the author has switched it on.
+    /// Dropping it stops the listener.
+    mcp_http: Option<mcp_http::McpHttpServer>,
+    /// The running conversation: message history and its log. Shared with the
+    /// agent thread, and deliberately **not** reset per Send — see
+    /// [`agent::session::Conversation`].
+    agent_conversation: std::sync::Arc<std::sync::Mutex<agent::session::Conversation>>,
 }
 
 /// Find Usages state: what the author typed, and what the index answered.
@@ -169,6 +191,16 @@ impl OpenEditor {
             }
             Some(_) => {}
         }
+    }
+
+    /// Guarantee the next `track_changes` records an undo step.
+    ///
+    /// Undo pushes are coalesced on an 800ms window so a burst of typing is
+    /// one step. An agent write is a single deliberate action, not typing —
+    /// without this it can land inside the author's coalescing window and
+    /// become unundoable.
+    fn force_undo_point(&mut self) {
+        self.last_push = None;
     }
 
     fn undo(&mut self) -> String {
@@ -243,6 +275,14 @@ impl Default for EditorApp {
             startup_warnings: Vec::new(),
             show_warnings: false,
             startup_scan_done: false,
+            session_queue: agent::bridge::SessionQueue::new(),
+            agent_mode: agent::mode::Mode::default(),
+            agent_task: None,
+            agent_transcript: Vec::new(),
+            agent_prompt: String::new(),
+            show_assistant: false,
+            mcp_http: None,
+            agent_conversation: Default::default(),
         }
     }
 }
@@ -873,6 +913,23 @@ impl EditorApp {
         // Undo/redo stay out of the way while a text field has focus so
         // TextEdit keeps its own in-field undo.
         let typing = ctx.wants_keyboard_input();
+
+        if assistant_mode_shortcut(ctx) {
+            self.agent_mode = self.agent_mode.toggled();
+            // Say it out loud: the mode changes what the assistant is allowed
+            // to do, and a silent flip is how an author ends up surprised
+            // either by a refusal or by a write.
+            self.status_text = format!(
+                "Assistant mode: {} — {}",
+                self.agent_mode.label(),
+                match self.agent_mode {
+                    agent::mode::Mode::Plan => "read-only",
+                    agent::mode::Mode::Build => "writes unlocked",
+                }
+            );
+            self.show_assistant = true;
+        }
+
         if !typing {
             let redo = ctx.input_mut(|i| {
                 i.consume_key(Modifiers::CTRL | Modifiers::SHIFT, Key::Z)
@@ -996,6 +1053,483 @@ impl EditorApp {
     }
 
     /// Render and resolve the pending confirmation dialog, if any.
+    /// Execute queued agent tool requests against the live tabs.
+    ///
+    /// Runs on the UI thread, once per frame, unconditionally. Every request
+    /// taken must be answered — dropping one leaves the agent waiting out its
+    /// full timeout for no reason.
+    fn drain_session_requests(&mut self) {
+        for req in self.session_queue.drain() {
+            let outcome = self.run_session_op(&req.op);
+            req.reply(outcome);
+        }
+    }
+
+    fn run_session_op(&mut self, op: &agent::bridge::SessionOp) -> agent::tools::ToolOutcome {
+        use agent::bridge::SessionOp;
+        use agent::tools::ToolOutcome;
+
+        match op {
+            SessionOp::ListTabs => {
+                if self.open_editors.is_empty() {
+                    return ToolOutcome::ok(
+                        "No tabs are open. Use open_tab with a path from query_content.",
+                    );
+                }
+                let mut out = String::new();
+                for (i, o) in self.open_editors.iter().enumerate() {
+                    out.push_str(&format!(
+                        "{}{} [{}]{}{}\n",
+                        if Some(i) == self.active_tab {
+                            "* "
+                        } else {
+                            "  "
+                        },
+                        o.name,
+                        o.editor.content_type().name(),
+                        if o.editor.has_unsaved_changes() {
+                            " (unsaved)"
+                        } else {
+                            ""
+                        },
+                        o.path
+                            .as_ref()
+                            .map(|p| format!(" — {}", p.display()))
+                            .unwrap_or_default(),
+                    ));
+                }
+                out.push_str("\n* marks the active tab; document tools act on it.");
+                ToolOutcome::ok(out)
+            }
+
+            SessionOp::OpenTab { path } => {
+                let full = crate::app::content_root().join(path);
+                if !full.is_file() {
+                    return ToolOutcome::error(format!(
+                        "No such file under the content root: {path}"
+                    ));
+                }
+                let Some(ct) = browser::detect_content_type(&full) else {
+                    return ToolOutcome::error(format!(
+                        "Nothing in the editor handles {path}. Its directory is not one \
+                         of the known content directories."
+                    ));
+                };
+                let name = full
+                    .file_stem()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("document")
+                    .to_string();
+                self.open_editor_for_file(&name, ct, &full);
+                match self.active_open() {
+                    Some(_) => ToolOutcome::ok(format!(
+                        "Opened {path} in the {} editor. It is now the active tab.",
+                        ct.name()
+                    )),
+                    // `open_editor_for_file` reports its own failure to the
+                    // status bar; surface it to the model too rather than
+                    // claiming success.
+                    None => {
+                        ToolOutcome::error(format!("Could not open {path}: {}", self.status_text))
+                    }
+                }
+            }
+
+            SessionOp::ReadDocument => match self.active_open() {
+                None => ToolOutcome::error("No tab is active. Use open_tab first."),
+                Some(open) => match open.editor.snapshot() {
+                    Some(ron) => ToolOutcome::ok(ron),
+                    None => ToolOutcome::error(format!(
+                        "The {} tab is a live previewer and has no document to read.",
+                        open.editor.content_type().name()
+                    )),
+                },
+            },
+
+            SessionOp::WriteDocument { ron } => {
+                if self.active_tab.is_none() {
+                    return ToolOutcome::error("No tab is active. Use open_tab first.");
+                }
+                // Force the undo point before the write, so `track_changes`
+                // records this step even if the author was typing moments ago.
+                if let Some(open) = self.active_open_mut() {
+                    open.force_undo_point();
+                    if let Err(e) = open.editor.restore_snapshot(ron) {
+                        // RON is unforgiving and the message names the struct
+                        // rather than the line's real problem, so hand the
+                        // model the raw parse error to repair against.
+                        return ToolOutcome::error(format!(
+                            "The document was not written — it did not parse:\n{e}\n\n\
+                             Send the complete document in the shape read_document returns. \
+                             In RON a fixed-size array is a tuple, a newtype needs its parens, \
+                             and enum variants are snake_case."
+                        ));
+                    }
+                    open.editor.touch();
+                }
+                self.invalidate_cross_refs();
+                let findings = self.validation_findings();
+                ToolOutcome::ok(format!(
+                    "Written to the active tab (not yet saved to disk; Ctrl+Z undoes it).\n\n{findings}"
+                ))
+            }
+
+            SessionOp::Validate => {
+                if self.active_tab.is_none() {
+                    return ToolOutcome::error("No tab is active. Use open_tab first.");
+                }
+                ToolOutcome::ok(self.validation_findings())
+            }
+
+            SessionOp::SaveAll => {
+                let dirty: Vec<usize> = self
+                    .open_editors
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, o)| o.editor.has_unsaved_changes())
+                    .map(|(i, _)| i)
+                    .collect();
+                if dirty.is_empty() {
+                    return ToolOutcome::ok("Nothing to save — no tab has unsaved changes.");
+                }
+                let mut saved = Vec::new();
+                let mut failed = Vec::new();
+                for idx in dirty {
+                    let name = self.open_editors[idx].name.clone();
+                    if self.save_editor(idx) {
+                        saved.push(name);
+                    } else {
+                        failed.push(format!("{name}: {}", self.status_text));
+                    }
+                }
+                let mut out = String::new();
+                if !saved.is_empty() {
+                    out.push_str(&format!("Saved: {}\n", saved.join(", ")));
+                }
+                if !failed.is_empty() {
+                    out.push_str(&format!("Failed: {}\n", failed.join("; ")));
+                    return ToolOutcome::error(out);
+                }
+                out.push_str("Run check_tree to confirm the whole tree still resolves.");
+                ToolOutcome::ok(out)
+            }
+        }
+    }
+
+    /// Validation findings for the active tab, rendered for the model.
+    fn validation_findings(&mut self) -> String {
+        // Clone rather than borrow: `cross_ref_index` takes `&mut self`, and
+        // the findings below need `&self` for the active tab at the same time.
+        let index = self.cross_ref_index().clone();
+        let Some(open) = self.active_open() else {
+            return "No tab is active.".to_string();
+        };
+        let mut issues = open.editor.validate();
+        for (_field, msg) in open.editor.validate_cross_refs(&index) {
+            issues.push(msg);
+        }
+        if issues.is_empty() {
+            "Validation: clean.".to_string()
+        } else {
+            format!(
+                "Validation found {} issue(s):\n  {}",
+                issues.len(),
+                issues.join("\n  ")
+            )
+        }
+    }
+
+    /// Poll the running task and fold its events into the transcript.
+    fn poll_agent(&mut self) {
+        let Some(task) = &self.agent_task else {
+            return;
+        };
+        // Collect first, then mutate: the receiver borrows `self.agent_task`
+        // and the transcript and status both live on `self`.
+        // `try_iter` rather than a blocking recv — this runs inside the frame.
+        let events: Vec<_> = task.events.try_iter().collect();
+        if events.is_empty() {
+            return;
+        }
+        let mut finished = false;
+        for event in events {
+            if let agent::session::AgentEvent::Done(result) = &event {
+                finished = true;
+                self.status_text = match result {
+                    Ok(()) => "Assistant finished.".into(),
+                    Err(e) => format!("Assistant stopped: {e}"),
+                };
+            }
+            self.agent_transcript.push(event);
+        }
+        self.request_repaint();
+        if finished {
+            self.agent_task = None;
+        }
+    }
+
+    /// The transcript as plain text, for the clipboard.
+    fn transcript_text(&self) -> String {
+        use agent::session::AgentEvent as E;
+        let mut out = String::new();
+        for e in &self.agent_transcript {
+            match e {
+                E::UserPrompt(t) => out.push_str(&format!("\n> {t}\n")),
+                E::Text(t) => out.push_str(&format!("\n{t}\n")),
+                E::ToolStarted { summary, .. } => out.push_str(&format!("-> {summary}\n")),
+                E::ToolFinished { name, is_error } => {
+                    if *is_error {
+                        out.push_str(&format!("   {name}: FAILED\n"));
+                    }
+                }
+                E::Done(Ok(())) => out.push_str("\n[done]\n"),
+                E::Done(Err(e)) => out.push_str(&format!("\n[stopped] {e}\n")),
+            }
+        }
+        out
+    }
+
+    fn agent_running(&self) -> bool {
+        self.agent_task.is_some()
+    }
+
+    /// Start a task from the prompt box.
+    fn start_agent(&mut self) {
+        let prompt = self.agent_prompt.trim().to_string();
+        if prompt.is_empty() || self.agent_running() {
+            return;
+        }
+        let profile = self.ai_settings.active_profile().clone();
+        let provider = match profile.build() {
+            Ok(p) => p,
+            Err(e) => {
+                self.status_text = format!("Assistant: {e}");
+                return;
+            }
+        };
+        // The transcript is NOT cleared: a Send continues the conversation, so
+        // the panel should read as one exchange rather than resetting each
+        // time. "New conversation" is the explicit way to start over.
+        self.agent_transcript
+            .push(agent::session::AgentEvent::UserPrompt(prompt.clone()));
+        self.agent_prompt.clear();
+        self.status_text = format!("Assistant working ({} mode)…", self.agent_mode.label());
+        self.agent_task = Some(agent::session::spawn(
+            provider,
+            self.session_queue.handle(),
+            self.agent_mode,
+            profile.max_tokens,
+            prompt,
+            self.agent_conversation.clone(),
+        ));
+    }
+
+    fn assistant_panel(&mut self, ctx: &egui::Context) {
+        if !self.show_assistant {
+            return;
+        }
+        egui::SidePanel::right("assistant")
+            .default_width(380.0)
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Assistant");
+                    // The mode button carries the whole Plan/Build story, so
+                    // it says what the mode means rather than just naming it.
+                    let (label, hover) = match self.agent_mode {
+                        agent::mode::Mode::Plan => (
+                            "Plan (read-only)",
+                            "Read-only: the assistant can investigate and propose, but no tool \
+                             it can call writes to a tab or to disk. Ctrl+Shift+M switches to Build.",
+                        ),
+                        agent::mode::Mode::Build => (
+                            "Build (can edit)",
+                            "The assistant can open tabs, write documents and save. Every write \
+                             is undoable with Ctrl+Z. Ctrl+Shift+M switches to Plan.",
+                        ),
+                    };
+                    if ui.button(label).on_hover_text(hover).clicked() {
+                        self.agent_mode = self.agent_mode.toggled();
+                    }
+                    ui.weak(self.ai_settings.active_profile().name.clone());
+                });
+                ui.separator();
+
+                let transcript_height = ui.available_height() - 96.0;
+                egui::ScrollArea::vertical()
+                    .max_height(transcript_height.max(80.0))
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        if self.agent_transcript.is_empty() {
+                            ui.weak(
+                                "Ask for something. In Plan mode it will investigate and \
+                                 propose; in Build mode it can make the change.",
+                            );
+                        }
+                        for event in &self.agent_transcript {
+                            match event {
+                                agent::session::AgentEvent::UserPrompt(t) => {
+                                    ui.add_space(6.0);
+                                    ui.strong(format!("> {t}"));
+                                    ui.add_space(2.0);
+                                }
+                                agent::session::AgentEvent::Text(t) => {
+                                    ui.label(t);
+                                    ui.add_space(4.0);
+                                }
+                                agent::session::AgentEvent::ToolStarted { summary, .. } => {
+                                    ui.weak(format!("→ {summary}"));
+                                }
+                                agent::session::AgentEvent::ToolFinished { name, is_error } => {
+                                    if *is_error {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(0xF4, 0x43, 0x36),
+                                            format!("   {name} failed"),
+                                        );
+                                    }
+                                }
+                                agent::session::AgentEvent::Done(Ok(())) => {
+                                    ui.add_space(4.0);
+                                    ui.weak("done");
+                                }
+                                agent::session::AgentEvent::Done(Err(e)) => {
+                                    ui.add_space(4.0);
+                                    ui.colored_label(egui::Color32::from_rgb(0xF4, 0x43, 0x36), e);
+                                }
+                            }
+                        }
+                    });
+
+                ui.horizontal(|ui| {
+                    // Selecting a transcript out of an egui panel with the
+                    // mouse is miserable, so neither reading it nor copying it
+                    // depends on doing that.
+                    if ui
+                        .add_enabled(
+                            !self.agent_transcript.is_empty(),
+                            egui::Button::new("Copy transcript"),
+                        )
+                        .clicked()
+                    {
+                        let text = self.transcript_text();
+                        ui.ctx().copy_text(text);
+                        self.status_text = "Transcript copied.".into();
+                    }
+                    let (turns, size, log_path) = {
+                        let c = self
+                            .agent_conversation
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        (c.turns(), c.size_hint(), c.log_path.clone())
+                    };
+                    if ui
+                        .add_enabled(turns > 0, egui::Button::new("New conversation"))
+                        .on_hover_text(
+                            "Forget the exchange so far and start fresh. Sends otherwise \
+                             continue the same conversation, so the assistant remembers \
+                             what it already looked up.",
+                        )
+                        .clicked()
+                    {
+                        self.agent_conversation
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .reset();
+                        self.agent_transcript.clear();
+                        self.status_text = "Started a new conversation.".into();
+                    }
+                    if let Some(path) = &log_path {
+                        ui.weak(format!("log: {}", path.display()))
+                            .on_hover_text(
+                                "Every session is written here as it runs, so a run that \
+                                 hangs or fails can still be read with ordinary tools.",
+                            );
+                    }
+                    if turns > 0 {
+                        // Characters, not tokens — enough to warn before a
+                        // context limit bites without pretending to be exact.
+                        let label = format!("{turns} msgs / ~{}k chars", size / 1000);
+                        if size > 120_000 {
+                            ui.colored_label(egui::Color32::from_rgb(0xFF, 0xB3, 0x00), label)
+                                .on_hover_text(
+                                    "This conversation is getting long and every Send \
+                                     resends all of it. Start a new one when you change \
+                                     task.",
+                                );
+                        } else {
+                            ui.weak(label);
+                        }
+                    }
+                });
+
+                ui.separator();
+                let running = self.agent_running();
+                ui.add_enabled_ui(!running, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.agent_prompt)
+                            .desired_rows(2)
+                            .desired_width(f32::INFINITY)
+                            .hint_text("what should it do?"),
+                    );
+                });
+                ui.collapsing("External access (MCP)", |ui| {
+                    let mut on = self.mcp_http.is_some();
+                    if ui
+                        .checkbox(&mut on, "Serve this session over HTTP")
+                        .on_hover_text(
+                            "Lets an external MCP client (Claude Code, Claude Desktop) drive \
+                             these same tools against your open tabs. Loopback only, and a \
+                             bearer token is required.",
+                        )
+                        .changed()
+                    {
+                        if on {
+                            match mcp_http::McpHttpServer::start(0, self.session_queue.handle()) {
+                                Ok(server) => {
+                                    self.status_text =
+                                        format!("MCP endpoint listening on {}", server.addr);
+                                    self.mcp_http = Some(server);
+                                }
+                                Err(e) => self.status_text = format!("MCP endpoint: {e}"),
+                            }
+                        } else {
+                            // Drop stops the listener.
+                            self.mcp_http = None;
+                            self.status_text = "MCP endpoint stopped.".into();
+                        }
+                    }
+                    if let Some(server) = &self.mcp_http {
+                        let hint = server.client_hint();
+                        ui.horizontal_wrapped(|ui| {
+                            ui.monospace(&hint);
+                        });
+                        if ui.button("Copy").clicked() {
+                            ui.ctx().copy_text(hint);
+                        }
+                        ui.weak(
+                            "The token changes every time you switch this on. Anything with \
+                             the token can edit and save your content.",
+                        );
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    if running {
+                        ui.spinner();
+                        ui.label("working…");
+                    } else if ui
+                        .add_enabled(
+                            !self.agent_prompt.trim().is_empty(),
+                            egui::Button::new("Send"),
+                        )
+                        .clicked()
+                    {
+                        self.start_agent();
+                    }
+                });
+            });
+    }
+
     fn handle_pending(&mut self, ctx: &egui::Context) {
         let Some(pending) = self.pending.take() else {
             return;
@@ -1288,6 +1822,14 @@ impl EditorApp {
                     {
                         self.show_browser = browser_visible;
                     }
+                    let mut assistant_visible = self.show_assistant;
+                    if ui
+                        .checkbox(&mut assistant_visible, "Assistant")
+                        .on_hover_text("Ctrl+Shift+M toggles Plan / Build mode.")
+                        .changed()
+                    {
+                        self.show_assistant = assistant_visible;
+                    }
                     if ui.button("Command Palette    Ctrl+Shift+P").clicked() {
                         self.palette.open = true;
                         ui.close_menu();
@@ -1540,22 +2082,28 @@ impl eframe::App for EditorApp {
                         let ct = active_ct.expect("guarded by can_generate");
                         self.ai_running = true;
                         *self.ai_status.lock().unwrap() = format!("Generating {ct:?} content…");
-                        let cfg = self.ai_settings.config().clone();
+                        let profile = self.ai_settings.active_profile().clone();
                         let prompt = self.ai_prompt.trim().to_string();
                         let (tx, rx) = channel();
                         self.ai_result_rx = Some(rx);
+                        // The provider owns its own runtime, so this thread no
+                        // longer stands up a multi-thread tokio pool per
+                        // generation just to make one request.
                         std::thread::spawn(move || {
                             let schemas = SchemaCache::load_all();
-                            let rt = tokio::runtime::Builder::new_multi_thread()
-                                .enable_all()
-                                .build()
-                                .unwrap();
-                            let outcome = rt.block_on(async {
-                                match ai::generate_content(&cfg, ct, &schemas, &prompt).await {
+                            let outcome = match profile.build() {
+                                Ok(p) => match ai::generate_content(
+                                    p.as_ref(),
+                                    profile.max_tokens,
+                                    ct,
+                                    &schemas,
+                                    &prompt,
+                                ) {
                                     Ok(result) => ai::AiGenOutcome::Ok { ct, result },
                                     Err(e) => ai::AiGenOutcome::Err(e),
-                                }
-                            });
+                                },
+                                Err(e) => ai::AiGenOutcome::Err(ai::GenerationError::HttpError(e)),
+                            };
                             let _ = tx.send(outcome);
                         });
                     }
@@ -1583,6 +2131,8 @@ impl eframe::App for EditorApp {
                     }
                 });
             });
+
+        self.assistant_panel(ctx);
 
         let mut open_recent = None;
         egui::SidePanel::right("preview_panel")
@@ -1854,6 +2404,15 @@ impl eframe::App for EditorApp {
                 self.templates.reload();
             }
         }
+        // Agent tool requests. Drained unconditionally — including while a
+        // modal is up. If this were skipped whenever the editor was busy, an
+        // agent blocked on a reply would hang until the author happened to
+        // dismiss the dialog, and the editor would look frozen from both
+        // sides. Runs before `track_changes` so an agent write gets its undo
+        // step in the same frame it lands.
+        self.drain_session_requests();
+        self.poll_agent();
+
         self.handle_pending(ctx);
 
         // Undo bookkeeping: one diff point per frame, after every mutation
@@ -1872,7 +2431,41 @@ impl eframe::App for EditorApp {
     }
 }
 
+/// Whether the Plan/Build shortcut fired this frame.
+///
+/// **Ctrl+Shift+M, not Tab.** Tab was the original binding and was wrong twice
+/// over: it is egui's focus-navigation key, and — the reason it changed — it
+/// collides with assistive technology, where Tab is the primary means of
+/// moving through a UI. A shortcut that a screen-reader or switch-access user
+/// cannot avoid triggering is not a shortcut, it is a trap. The mode is also
+/// reachable without any key at all, from the button in the panel header.
+///
+/// The `wants_keyboard_input` guard stays even though Ctrl+Shift+M is not a
+/// character a field would swallow: it is the same guard undo and redo use,
+/// and a shortcut that fires while someone is typing into a document is a
+/// surprise regardless of which keys it needs.
+///
+/// Consuming is deliberately inside the guard — `consume_key` removes the
+/// event, so checking the guard afterwards would still swallow the keystroke.
+///
+/// A free function rather than a method so a test can drive it with a real
+/// `egui::Context`.
+fn assistant_mode_shortcut(ctx: &egui::Context) -> bool {
+    if ctx.wants_keyboard_input() {
+        return false;
+    }
+    ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::M))
+}
+
 fn main() -> eframe::Result<()> {
+    // Headless MCP server. Checked before anything touches winit or eframe:
+    // an MCP client spawns this as a subprocess and speaks JSON-RPC over the
+    // pipe, so there is no display to open, and a stray byte written to
+    // stdout would corrupt the protocol stream.
+    if std::env::args().any(|a| a == "--mcp-stdio") {
+        std::process::exit(mcp::serve_stdio());
+    }
+
     // FIXME(winit-0.30.13): same Wayland workaround as the client.
     #[cfg(target_os = "linux")]
     if std::env::var_os("WINIT_UNIX_BACKEND").is_none() {
@@ -1896,6 +2489,132 @@ fn main() -> eframe::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Drive a real `egui::Context` for one frame with a Tab keypress, with
+    /// and without a focused text field, and check what the guard decides.
+    ///
+    /// This is the regression that would hurt most: Tab is how you move
+    /// between fields, and the editor is almost nothing but fields.
+    mod mode_shortcut {
+        use super::*;
+
+        /// The real chord, so the test breaks if the binding moves.
+        fn shortcut_event() -> egui::Event {
+            egui::Event::Key {
+                key: egui::Key::M,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+            }
+        }
+
+        /// A bare Tab, which must no longer do anything: it is how assistive
+        /// technology moves through the UI, and how egui moves focus.
+        fn tab_event() -> egui::Event {
+            egui::Event::Key {
+                key: egui::Key::Tab,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }
+        }
+
+        /// Run one frame; `body` draws the UI. Returns the guard's verdict.
+        ///
+        /// The key is a parameter, and separate from the frames that set up
+        /// focus, because egui consumes Tab for its own focus navigation:
+        /// sending a key on the frame that establishes focus would move focus
+        /// straight back off the field, and the test would be measuring its
+        /// own setup rather than the guard.
+        fn frame(
+            ctx: &egui::Context,
+            key: Option<egui::Event>,
+            mut body: impl FnMut(&mut egui::Ui),
+        ) -> bool {
+            let input = egui::RawInput {
+                events: key.into_iter().collect(),
+                ..Default::default()
+            };
+            let mut verdict = false;
+            let _ = ctx.run(input, |ctx| {
+                // Guard first, then draw — the real frame calls
+                // `handle_shortcuts` before any panel. That ordering is what
+                // makes the guard work: `wants_keyboard_input` reports the
+                // focus carried in from the previous frame, before egui has
+                // had a chance to consume Tab for its own focus navigation.
+                // Checking after drawing measures the wrong thing entirely —
+                // egui will have moved focus off a lone text field by then,
+                // and the guard looks broken when it is not.
+                verdict = assistant_mode_shortcut(ctx);
+                egui::CentralPanel::default().show(ctx, |ui| body(ui));
+            });
+            verdict
+        }
+
+        #[test]
+        fn the_chord_toggles_the_mode_when_no_field_has_focus() {
+            let ctx = egui::Context::default();
+            // Warm-up frame: egui needs one pass to settle focus state.
+            frame(&ctx, None, |ui| {
+                ui.label("nothing focusable");
+            });
+            assert!(
+                frame(&ctx, Some(shortcut_event()), |ui| {
+                    ui.label("nothing focusable");
+                }),
+                "Ctrl+Shift+M should toggle the assistant mode"
+            );
+        }
+
+        /// Tab is how assistive technology walks a UI. It must be inert here.
+        #[test]
+        fn a_bare_tab_does_nothing() {
+            let ctx = egui::Context::default();
+            frame(&ctx, None, |ui| {
+                ui.label("nothing focusable");
+            });
+            assert!(
+                !frame(&ctx, Some(tab_event()), |ui| {
+                    ui.label("nothing focusable");
+                }),
+                "Tab must not toggle the mode — it collides with assistive tech"
+            );
+        }
+
+        #[test]
+        fn the_chord_is_left_alone_while_a_text_field_has_focus() {
+            let ctx = egui::Context::default();
+            let mut text = String::from("typing here");
+
+            // Focus a TextEdit and keep it focused across frames.
+            let id = egui::Id::new("guarded_field");
+            // Two Tab-free frames: one to draw the field, one for the
+            // requested focus to take effect.
+            frame(&ctx, None, |ui| {
+                let r = ui.add(egui::TextEdit::singleline(&mut text).id(id));
+                r.request_focus();
+            });
+            let focused = frame(&ctx, None, |ui| {
+                ui.add(egui::TextEdit::singleline(&mut text).id(id));
+            });
+            assert!(!focused, "no key was sent, so nothing should have fired");
+            assert!(
+                ctx.wants_keyboard_input(),
+                "test setup failed: the field never took focus, so this would \
+                 not be testing the guard at all"
+            );
+
+            let verdict = frame(&ctx, Some(shortcut_event()), |ui| {
+                ui.add(egui::TextEdit::singleline(&mut text).id(id));
+            });
+            assert!(
+                !verdict,
+                "the shortcut must not fire while a text field has focus"
+            );
+        }
+    }
 
     #[test]
     fn suggest_stem_normalizes_names() {

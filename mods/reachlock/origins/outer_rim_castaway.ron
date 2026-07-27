@@ -25,9 +25,11 @@ ContentFile(
             Procedural(seed: 33000002, species: "Human", role: "survivor"),
         ],
         known_systems: [
-            33000001,
+            791621423,
+            825307441,
+            134744072,
         ],
-        start_system: 33000001,
+        start_system: 808464432,
         start_location: "Rim Station Beta",
         opening_log_entries: [
             (title: "Lost and Found", body: "The distress beacon brought a salvage tug. They pulled you out of the wreck and dropped you at Rim Station Beta. You owe the tug captain everything — and nothing. Time to rebuild from scratch.", tick_offset: 0),

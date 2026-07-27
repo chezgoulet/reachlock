@@ -1,6 +1,6 @@
 [
     (
-        faction: ("reach_remnant"),
+        faction: ("remnant"),
         chapters: [
             (
                 id: "rumors",
@@ -16,7 +16,7 @@
             ),
             (
                 id: "gate_found",
-                trigger: Some(player_reputation(faction: ("reach_remnant"), trust: 30)),
+                trigger: Some(player_reputation(faction: ("remnant"), trust: 30)),
                 narration: "A secret jump gate into the Veil is discovered.",
                 events: [],
             ),

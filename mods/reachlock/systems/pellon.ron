@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "pellon",
+    display_name: "Pellon",
+    position: (x: 280, y: -40, z: 60),
+    biome: core,
+    seed: 286331153,
+    description: "Agricultural monoculture feeding four core systems. One crop, one owner, one harvest cycle that dictates the regional economy. The soil is rich; the politics are not.",
+    faction: Some("compact"),
+)

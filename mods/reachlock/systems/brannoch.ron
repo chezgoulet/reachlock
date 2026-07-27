@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "brannoch",
+    display_name: "Brannoch",
+    position: (x: 600, y: -320, z: 60),
+    biome: frontier,
+    seed: 421075225,
+    description: "Exotic materials brokerage. Predecessor artifact samples pass through Brannoch's auction houses, where the bidding is anonymous and the provenance is creative. No one asks where the items came from.",
+    faction: Some("corp"),
+)

@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "vantage",
+    display_name: "Vantage",
+    position: (x: 150, y: 180, z: -170),
+    biome: core,
+    seed: 320017171,
+    description: "Deep-range sensor array pointed permanently at the Reach. Vantage Station listens for jump signatures, gate fluctuations, and anything that moves in the void beyond charted space. It has never reported a false alarm.",
+    faction: Some("compact"),
+)

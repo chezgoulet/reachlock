@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "upsilon_one",
+    display_name: "Upsilon-1",
+    position: (x: 480, y: -420, z: 220),
+    biome: frontier,
+    seed: 505290270,
+    description: "Terraform charter, forty years in, twelve percent complete. The atmosphere is breathable for six hours at a time before the scrubbers overload. The investors are patient; the colonists are not.",
+    faction: Some("corp"),
+)

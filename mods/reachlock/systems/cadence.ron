@@ -5,4 +5,5 @@ ChartedSystem(
     biome: frontier,
     seed: 50529027,
     description: "The trading heart of the inner frontier. Independent merchants, Corp Charter factors, and Compact trade envoys rub shoulders in Cadence's bustling orbital freeports.",
+    faction: None,
 )

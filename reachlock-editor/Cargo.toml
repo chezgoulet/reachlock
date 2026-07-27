@@ -21,3 +21,12 @@ rfd = "0.15"
 tracing = "0.1"
 # Line diffing for the save-preview window (File > Preview Changes).
 similar = "2"
+# Vision: encode procedurally generated RGBA (core `GeneratedTexture`) to PNG
+# in-process and base64 it for the provider image part. No screen capture:
+# x11grab and the GNOME portal are both blocked on this Wayland box.
+png = "0.17"
+base64 = "0.22"
+# Theme preview playback. Already in the workspace via reachlock-client, so
+# this costs no new compilation; a machine with no audio device degrades to an
+# error message rather than failing the build or the editor.
+cpal = "0.15"

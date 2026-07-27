@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "trell",
+    display_name: "Trell",
+    position: (x: 560, y: 60, z: 320),
+    biome: core,
+    seed: 454761243,
+    description: "Shipwright charter. Half the Class-J hulls in explored space were built at Trell's orbital yards. The workforce is unionized, which means the work is good and the deadlines are aspirational.",
+    faction: Some("corp"),
+)

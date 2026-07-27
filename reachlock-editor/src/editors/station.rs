@@ -619,12 +619,8 @@ impl Editor for StationEditor {
             let Some(path) = &entry.path else {
                 let dir = content_root().join(ContentType::Station.directory());
                 let _ = std::fs::create_dir_all(&dir);
-                let stem = if entry.file.display_name.is_empty() {
-                    format!("station_{}", wrote)
-                } else {
-                    entry.file.display_name.clone()
-                };
-                let p = dir.join(format!("{stem}.ron"));
+                let p =
+                    crate::io::new_entry_path(&dir, &entry.file.id, &format!("station_{wrote}"));
                 crate::io::write_ron(&p, &entry.file)?;
                 entry.path = Some(p);
                 wrote += 1;

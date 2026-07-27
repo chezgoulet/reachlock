@@ -570,12 +570,11 @@ impl Editor for ContractEditor {
             let Some(path) = &entry.path else {
                 let dir = content_root().join(ContentType::Contract.directory());
                 let _ = std::fs::create_dir_all(&dir);
-                let stem = if entry.contract.label.is_empty() {
-                    format!("contract_{}", wrote)
-                } else {
-                    entry.contract.label.clone()
-                };
-                let p = dir.join(format!("{stem}.ron"));
+                let p = crate::io::new_entry_path(
+                    &dir,
+                    &entry.contract.id,
+                    &format!("contract_{wrote}"),
+                );
                 crate::io::write_ron(&p, &entry.contract)?;
                 entry.path = Some(p);
                 wrote += 1;

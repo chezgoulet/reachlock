@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "casque",
+    display_name: "Casque",
+    position: (x: 300, y: 220, z: 300),
+    biome: core,
+    seed: 522133279,
+    description: "Insurance and salvage underwriting. Casque owns more wrecks than ships — every hull not worth recovering is documented, assessed, and parceled out to the highest bidder. The auction catalogues are required reading for every salvage crew in charted space.",
+    faction: Some("corp"),
+)

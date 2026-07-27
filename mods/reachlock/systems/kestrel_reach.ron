@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "kestrel_reach",
+    display_name: "Kestrel Reach",
+    position: (x: 940, y: -140, z: -80),
+    biome: frontier,
+    seed: 606348324,
+    description: "A genuine direct-democracy system. Every transit, trade agreement, and infrastructure project is voted on by the station's residents. The process is slow; the outcomes reflect what people actually want rather than what is efficient.",
+    faction: Some("isc"),
+)

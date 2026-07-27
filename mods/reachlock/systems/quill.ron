@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "quill",
+    display_name: "Quill",
+    position: (x: -250, y: -120, z: 20),
+    biome: core,
+    seed: 336860180,
+    description: "Bureaucratic clearing house. Every cargo manifest, crew roster, and customs declaration in the Compact passes through Quill's data halls. The paperwork moves slower than light, but nothing moves without it.",
+    faction: Some("compact"),
+)

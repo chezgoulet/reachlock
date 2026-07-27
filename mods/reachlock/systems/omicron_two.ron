@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "omicron_two",
+    display_name: "Omicron-2",
+    position: (x: 340, y: -380, z: -160),
+    biome: frontier,
+    seed: 437918234,
+    description: "Pharmaceutical charter world. Frontier clinical trials run on Omicron Two's population, and the documentation is incomplete. Cures are found; side effects are handled locally and off the books.",
+    faction: Some("corp"),
+)

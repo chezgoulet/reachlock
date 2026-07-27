@@ -25,11 +25,11 @@ ContentFile(
         ],
         starting_crew: [],
         known_systems: [
-            28000001,
-            28000002,
-            28000003,
+            808464432,
+            892679477,
+            943208504,
         ],
-        start_system: 28000001,
+        start_system: 825307441,
         start_location: "Survey Camp Omega",
         opening_log_entries: [
             (title: "Survey Complete", body: "The last survey beacon is placed. Data packets are compressed and ready for delivery. Command wants you back at Survey Camp Omega for debriefing. They mentioned something about a 'special assignment' — never a good sign.", tick_offset: 0),

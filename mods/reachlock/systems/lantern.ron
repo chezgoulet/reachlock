@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "lantern",
+    display_name: "Lantern",
+    position: (x: 1150, y: 480, z: -80),
+    biome: nebula,
+    seed: 892679477,
+    description: "Nebular waystation. Lantern sells position fixes to ships that lost their nav reference in the gas clouds. The prices are fair; the people who run it know exactly how valuable you are and act like they do not care.",
+    faction: None,
+)

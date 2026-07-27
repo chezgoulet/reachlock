@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "tessellate",
+    display_name: "Tessellate",
+    position: (x: 60, y: -220, z: -140),
+    biome: core,
+    seed: 252645135,
+    description: "The archive world. The Predecessor institutional record is held in tessellate's deep vaults, behind doors that have not opened in living memory. Scholars petition for access; no one has been granted it in years.",
+    faction: Some("compact"),
+)

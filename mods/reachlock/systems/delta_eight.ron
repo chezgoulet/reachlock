@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "delta_eight",
+    display_name: "Delta-8",
+    position: (x: 720, y: 120, z: 180),
+    biome: frontier,
+    seed: 538976288,
+    description: "Blockade logistics. Delta Eight runs the corporate supply chain for the Earth cordon — fuel, munitions, personnel rotations. Without Delta Eight, the blockade would collapse in a month.",
+    faction: Some("corp"),
+)

@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "meridian_twelve",
+    display_name: "Meridian Twelve",
+    position: (x: 600, y: 300, z: -500),
+    biome: nebula,
+    seed: 101058054,
+    description: "A Compact deep-space signal relay at the nebula's edge, watching the approach to the Reach. Meridian Twelve listens for jump echoes from the void beyond. Its crew rotate on long cycles and develop strange habits.",
+    faction: Some("compact"),
+)

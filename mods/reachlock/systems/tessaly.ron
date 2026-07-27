@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "tessaly",
+    display_name: "Tessaly",
+    position: (x: 1100, y: 100, z: 200),
+    biome: frontier,
+    seed: 134744072,
+    description: "The last charted system on the Cadence vector. Tessaly's gate is maintained by locals who charge a nominal transit fee. Beyond it, the gate network thins and the deep black begins.",
+    faction: None,
+)

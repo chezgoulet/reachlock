@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "sigma_nine",
+    display_name: "Sigma-9",
+    position: (x: 460, y: -100, z: -280),
+    biome: core,
+    seed: 404232216,
+    description: "Charter security fleet anchorage. Licensed, armed, and deniable. Sigma Nine's docks service the private military vessels that enforce corporate interests where Compact law does not reach.",
+    faction: Some("corp"),
+)

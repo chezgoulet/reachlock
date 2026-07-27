@@ -1,15 +1,15 @@
 # ReachLock v2 — developer entry points.
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: test check fmt clippy run run-debug editor install-cli dev server server-db determinism clean \
+.PHONY: test check fmt clippy run run-debug editor mcp install-cli dev server server-db determinism clean \
 	db db-down db-reset db-psql db-test dev-secrets check-features check-content \
-	check-theme check-resources check-dead-code
+	check-theme check-resources check-dead-code check-plan
 
 test:
 	cargo test --workspace
 
 check: fmt clippy test check-purity check-features check-content check-theme check-resources \
-	check-dead-code check-schema
+	check-dead-code check-schema check-plan
 	@echo "all gates green"
 
 # Whole-tree content integrity (iron rule #8: a system nobody can reach is
@@ -21,10 +21,28 @@ check-content:
 	cargo run -q -p reachlock-cli -- content check mods/reachlock
 
 # Every content type that declares a schema must accept a minimal fixture
-# against it. Catches drift between the Rust struct and the authored schema
-# — if a field is renamed in one but not the other the fixture fails.
+# against it. Catches a schema that has grown stricter than the type.
+#
+# The fixture half alone is NOT sufficient and must never be run alone: the
+# fixtures are hand-written to match the schema, so a field missing from BOTH
+# validates happily. Deleting `look` from soul.schema.json — the actual S76
+# regression — passes the fixture test. The second test round-trips every
+# authored file in mods/reachlock through its Rust type and validates the
+# result, which is the half that catches it (the schemas set
+# "additionalProperties": false, so a field the schema has never heard of is
+# rejected). Run both.
 check-schema:
-	cargo test -p reachlock-editor -- every_schema_accepts_a_minimal_fixture --quiet
+	cargo test -p reachlock-editor -- schema::tests:: --quiet
+
+# `content check` proves the tree is internally consistent; nothing proved it
+# matched the PLAN. A system could be authored at the wrong coordinates, with
+# the wrong seed, under a name the plan never mentions, and every other gate
+# would stay green — which makes a sixty-row plan aspirational, discovered to
+# have drifted weeks later by reading. This checks both directions, and treats
+# a plan row that stops parsing as an error rather than one fewer thing to
+# check.
+check-plan:
+	python3 scripts/check_plan.py
 
 # Every screen is styled from assets/ui/*.ron. A widget that builds its own
 # TextColor/BackgroundColor/BorderColor is invisible to the stylesheet: editing
@@ -83,6 +101,19 @@ run-debug:
 # Launch the content editor.
 editor:
 	cargo run -p reachlock-editor
+
+# Headless MCP server over stdio: exposes the editor's content tools
+# (query_content, find_references, check_tree, read_file) to any MCP client.
+# Point Claude Code at the built binary rather than at `make`, so the client
+# owns the process lifetime and nothing but JSON-RPC reaches stdout:
+#
+#   cargo build -p reachlock-editor
+#   claude mcp add reachlock -- $(PWD)/target/debug/reachlock-editor --mcp-stdio
+#
+# The content root follows the process cwd; set REACHLOCK_CONTENT_ROOT when the
+# client spawns the server from somewhere other than the workspace root.
+mcp:
+	cargo run -q -p reachlock-editor -- --mcp-stdio
 
 # Put `reachlock` on PATH as a real command.
 install-cli:

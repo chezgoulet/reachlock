@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "wayfarers_rest",
+    display_name: "Wayfarer's Rest",
+    position: (x: 880, y: 300, z: -260),
+    biome: frontier,
+    seed: 572662306,
+    description: "Wayfarer's Rest Station asks nothing of those who dock. A neutral port on the ISC frontier, it serves travelers who need shelter, repairs, or simply a place that does not care who they are.",
+    faction: Some("isc"),
+)

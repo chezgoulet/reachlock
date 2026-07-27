@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "aurel",
+    display_name: "Aurel",
+    position: (x: -50, y: 220, z: 80),
+    biome: core,
+    seed: 303174162,
+    description: "The Compact judiciary seat. Trade law is written and appealed at Aurel's circuit courts, where corporate and Compact legal codes collide. Every charter clause ever contested has a precedent here.",
+    faction: Some("compact"),
+)

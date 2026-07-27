@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "pale_harbour",
+    display_name: "Pale Harbour",
+    position: (x: 1460, y: -40, z: -460),
+    biome: derelict,
+    seed: 976894522,
+    description: "Was a colony. The gate still works. Nobody has used it in years. Pale Harbour's domes are intact and powered, but the population registry shows zero active residents. The lights are on; no one is home.",
+    faction: None,
+)

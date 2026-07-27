@@ -18,4 +18,6 @@ pub struct ChartedSystem {
     pub biome: Biome,
     pub seed: u64,
     pub description: String,
+    /// Controlling faction id, if any. Matches `mods/reachlock/factions/canon.ron`.
+    pub faction: Option<String>,
 }

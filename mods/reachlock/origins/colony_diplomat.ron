@@ -28,10 +28,11 @@ ContentFile(
             Authored(soul_id: "ambassador_ken", role: "bodyguard"),
         ],
         known_systems: [
-            30000001,
-            30000002,
+            16843009,
+            151587081,
+            286331153,
         ],
-        start_system: 30000001,
+        start_system: 185273099,
         start_location: "Concord Station",
         opening_log_entries: [
             (title: "New Posting", body: "Your diplomatic credentials are in order and your shuttle is fueled. The sector council has requested your presence at Concord Station — something about 'border tensions' and 'urgent mediation'. Another day in the life of a diplomat.", tick_offset: 0),

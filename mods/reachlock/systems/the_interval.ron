@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "the_interval",
+    display_name: "The Interval",
+    position: (x: 760, y: -600, z: 80),
+    biome: frontier,
+    seed: 842150450,
+    description: "Spacer-run, no administration at all. Named after Sorrow's most famous bar, the Interval is a free port where the only law is the one you can enforce. The bartender keeps order because someone has to.",
+    faction: None,
+)

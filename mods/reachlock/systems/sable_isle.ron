@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "sable_isle",
+    display_name: "Sable Isle",
+    position: (x: 860, y: -20, z: -620),
+    biome: core,
+    seed: 741092396,
+    description: "Diplomatic neutral ground. Compact and ISC delegations meet at Sable Isle when they need to agree on something. The agreements are rarely ambitious and always carefully worded. The station's arboretum is famous for its Quiet Garden.",
+    faction: Some("isc"),
+)

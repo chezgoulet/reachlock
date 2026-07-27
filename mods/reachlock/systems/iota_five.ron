@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "iota_five",
+    display_name: "Iota-5",
+    position: (x: 640, y: 240, z: -220),
+    biome: frontier,
+    seed: 471604252,
+    description: "Data brokerage. Iota Five buys and sells the same intelligence to three different factions, each time with a different classification stamp. The only truth here is that nothing is exclusive.",
+    faction: Some("corp"),
+)
