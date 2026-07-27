@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "lowmoor",
+    display_name: "Lowmoor",
+    position: (x: 700, y: -500, z: -260),
+    biome: frontier,
+    seed: 724249387,
+    description: "Mining co-operative that owns its own ore for the first time in a century. The charter that controlled Lowmoor's extraction rights expired, and the miners bought the equipment at auction. The work is harder now; the pay is better.",
+    faction: Some("isc"),
+)

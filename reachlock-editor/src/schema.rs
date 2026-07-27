@@ -515,7 +515,7 @@ mod tests {
         bare!(ChartedSystem, {
             "id": "test", "display_name": "Test",
             "position": { "x": 0, "y": 0, "z": 0 },
-            "biome": "core", "seed": 42, "description": ""
+            "biome": "core", "seed": 42, "description": "", "faction": null
         });
         bare!(HullMesh, {
             "hull_id": "test", "seed": 42,

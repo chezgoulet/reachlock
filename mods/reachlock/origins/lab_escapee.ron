@@ -27,10 +27,11 @@ ContentFile(
             Authored(soul_id: "dr_elara", role: "science_officer"),
         ],
         known_systems: [
-            29000001,
-            29000002,
+            555819297,
+            589505315,
+            623191333,
         ],
-        start_system: 29000001,
+        start_system: 572662306,
         start_location: "Wayfarer's Rest Station",
         opening_log_entries: [
             (title: "Escape", body: "The station's automated distress signal is still broadcasting. You don't know if anyone survived. The data cores contain years of research — and something else. Something the Compact doesn't want anyone to find.", tick_offset: 0),

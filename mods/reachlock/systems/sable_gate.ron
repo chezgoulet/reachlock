@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "sable_gate",
+    display_name: "Sable Gate",
+    position: (x: -160, y: -60, z: -190),
+    biome: core,
+    seed: 269488144,
+    description: "Customs chokepoint for the entire Compact core. Every ship inbound from the frontier is inspected, taxed, and logged at Sable Gate. The inspectors here have seen every trick and are not impressed by any of them.",
+    faction: Some("compact"),
+)

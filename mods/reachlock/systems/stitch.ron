@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "stitch",
+    display_name: "Stitch",
+    position: (x: 1420, y: 140, z: 320),
+    biome: frontier,
+    seed: 993737531,
+    description: "Charter fuel depot — the last legal resupply before gateless space. Stitch's storage tanks hold enough hydrogen to cross the Reach. The prices reflect the monopoly, and the terms of sale are not negotiable.",
+    faction: Some("corp"),
+)

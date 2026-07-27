@@ -1644,7 +1644,7 @@ mod tests {
             pronouns: PRONOUN_OPTIONS[0].to_string(),
             species: SPECIES_NAMES[state.identity.species].to_string(),
             look: state.look.clone(),
-            origin_id: "loup_garou_veteran".into(),
+            origin_id: "freelancer".into(),
             background_id: String::new(),
             soul,
         };

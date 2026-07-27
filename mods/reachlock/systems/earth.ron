@@ -4,5 +4,6 @@ ChartedSystem(
     position: (x: 1200, y: 0, z: -600),
     biome: derelict,
     seed: 84215045,
-    description: "The cradle of humanity, lost. The Earth Remnant controls the gate and permits no transit. Signals from the inner system tell of a functioning but hostile society — remnants of the old秩序的, guarding what remains.",
+    description: "The cradle of humanity, lost. Earth's Remnant controls the gate and permits no transit under Compact licence — corporate charter fleets enforce the cordon. Signals from the inner system tell of a functioning but hostile society, guarding what remains.",
+    faction: None,
 )

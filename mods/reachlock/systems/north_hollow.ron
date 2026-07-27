@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "north_hollow",
+    display_name: "North Hollow",
+    position: (x: 1060, y: -220, z: -420),
+    biome: frontier,
+    seed: 673720360,
+    description: "Agricultural co-operative that feeds the ISC band. North Hollow produces grain, protein vats, and resentment — the co-op believes it is paid too little for the food the rest of the coalition depends on. Negotiations are annual and tense.",
+    faction: Some("isc"),
+)

@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "zeta_seven",
+    display_name: "Zeta-7",
+    position: (x: 420, y: -260, z: 180),
+    biome: core,
+    seed: 353703189,
+    description: "Charter capital of the corporate frontier. Zeta-7 is the hub of Corp Charter operations, a tower of glass and steel where every deal is a contract and every contract has fine print. The station's arbitration courts never sleep.",
+    faction: Some("corp"),
+)

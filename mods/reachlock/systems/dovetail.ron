@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "dovetail",
+    display_name: "Dovetail",
+    position: (x: 820, y: 180, z: -520),
+    biome: core,
+    seed: 623191333,
+    description: "An oligarchy wearing a parliament. Four families own Dovetail's orbital infrastructure and industrial base. Elections are held regularly; the results are predictable. The ISC council tolerates it because Dovetail's docks pay the coalition's bills.",
+    faction: Some("isc"),
+)

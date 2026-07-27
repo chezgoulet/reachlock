@@ -20,8 +20,12 @@ ContentFile(
             (item_id: "basic_toolkit", count: 1),
         ],
         starting_crew: [],
-        known_systems: [],
-        start_system: 32000001,
+        known_systems: [
+            555819297,
+            623191333,
+            741092396,
+        ],
+        start_system: 589505315,
         start_location: "Central Station",
         opening_log_entries: [
             (title: "A Fresh Start", body: "The ship is fueled, the accounts are open, and the galaxy is waiting. Time to see what's out there.", tick_offset: 0),

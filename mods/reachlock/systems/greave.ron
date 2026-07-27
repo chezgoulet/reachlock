@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "greave",
+    display_name: "Greave",
+    position: (x: 1140, y: -60, z: -200),
+    biome: frontier,
+    seed: 757935405,
+    description: "Border garrison. Greave Station is the ISC's only standing fleet anchorage, and it is not large. The coalition relies on trade and diplomacy, not guns — but the guns it has are here, pointed outward.",
+    faction: Some("isc"),
+)

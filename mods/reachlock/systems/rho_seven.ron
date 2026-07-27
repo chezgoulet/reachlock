@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "rho_seven",
+    display_name: "Rho-7",
+    position: (x: -90, y: -150, z: 120),
+    biome: core,
+    seed: 202116108,
+    description: "Compact Station Rho-7 is a fleet depot and staging ground for the inner frontier. Supply convoys muster here before pushing outward. The station has the no-nonsense efficiency of a military installation that expects to be busy.",
+    faction: Some("compact"),
+)

@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "concord",
+    display_name: "Concord",
+    position: (x: 180, y: -80, z: 90),
+    biome: core,
+    seed: 185273099,
+    description: "Treaty chambers and diplomatic residences orbiting a quiet world. Concord Station is where Compact internal disputes are resolved, often over meals that last longer than the negotiations they precede.",
+    faction: Some("compact"),
+)

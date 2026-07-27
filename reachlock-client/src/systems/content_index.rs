@@ -324,7 +324,7 @@ mod tests {
         walk(&content_root(), &mut files, false);
         for (asset, least) in [
             (AssetType::Soul, 13),
-            (AssetType::Origin, 10),
+            (AssetType::Origin, 9),
             (AssetType::Career, 10),
             (AssetType::CrewPackage, 1),
             // `storylines/` holds one storyline arc and one soul-mutation set;

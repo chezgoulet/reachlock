@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "halforth",
+    display_name: "Halforth",
+    position: (x: 380, y: 300, z: -90),
+    biome: frontier,
+    seed: 387389207,
+    description: "Company town, three generations deep. Nobody on Halforth has a contract that has expired — the charter renews automatically every decade. The company store still takes scrip, and the debt ledger has entries from before the first gate was built.",
+    faction: Some("corp"),
+)

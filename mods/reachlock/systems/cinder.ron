@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "cinder",
+    display_name: "Cinder",
+    position: (x: 1220, y: -420, z: -40),
+    biome: derelict,
+    seed: 858993459,
+    description: "Burned-out refinery that never came back. Squatters live in the radiation-shielded sections, salvage crews pick through the rest, and no law worth the name exists here. The station's automated defense grid still functions on backup power — sometimes.",
+    faction: None,
+)

@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "wayward",
+    display_name: "Wayward",
+    position: (x: 1400, y: -260, z: 180),
+    biome: frontier,
+    seed: 926365495,
+    description: "A generation ship that never left. Built for a journey that was cancelled before it began, Wayward was retrofitted into a stationary port. Its inhabitants still speak of the homeworld they never saw as if they remember it.",
+    faction: None,
+)

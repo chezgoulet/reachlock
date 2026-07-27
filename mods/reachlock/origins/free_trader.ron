@@ -24,10 +24,11 @@ ContentFile(
             Authored(soul_id: "zara_trade", role: "co-pilot"),
         ],
         known_systems: [
-            27000001,
-            27000002,
+            572662306,
+            589505315,
+            606348324,
         ],
-        start_system: 27000001,
+        start_system: 555819297,
         start_location: "Free Port Zeta",
         opening_log_entries: [
             (title: "New Route", body: "The cargo bays are full and the nav computer has a promising route plotted. Time to make some credits.", tick_offset: 0),

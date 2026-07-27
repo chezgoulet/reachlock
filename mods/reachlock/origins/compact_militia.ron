@@ -26,8 +26,12 @@ ContentFile(
         starting_crew: [
             Authored(soul_id: "marcus_ensign", role: "pilot"),
         ],
-        known_systems: [],
-        start_system: 26000001,
+        known_systems: [
+            16843009,
+            168430090,
+            269488144,
+        ],
+        start_system: 202116108,
         start_location: "Compact Station Rho-7",
         opening_log_entries: [
             (title: "First Posting", body: "Ensign, reporting for duty. Compact Station Rho-7 is a bustling hub on the frontier. Your frigate is docked and provisioned. The sector is quiet — for now.", tick_offset: 0),

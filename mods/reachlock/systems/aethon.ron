@@ -5,4 +5,5 @@ ChartedSystem(
     biome: core,
     seed: 16843009,
     description: "The seat of the Compact government. A gleaming core-world of orbital rings and diplomatic spires, Aethon is the heart of charted space. Every gate in the region leads here eventually.",
+    faction: Some("compact"),
 )

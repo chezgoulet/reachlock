@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "survey_omega",
+    display_name: "Survey Omega",
+    position: (x: 1040, y: 420, z: -160),
+    biome: frontier,
+    seed: 825307441,
+    description: "Survey Camp Omega charts what it can. A frontier survey station on the edge of the gate network, Omega sends long-range probes into uncharted space and hopes they come back. The cartographers here work in a tradition older than the Compact.",
+    faction: None,
+)

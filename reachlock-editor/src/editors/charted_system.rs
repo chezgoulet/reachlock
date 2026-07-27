@@ -73,6 +73,7 @@ fn blank_system() -> ChartedSystem {
         biome: Biome::Frontier,
         seed: 0,
         description: String::new(),
+        faction: None,
     }
 }
 
@@ -377,6 +378,7 @@ impl Editor for ChartedSystemEditor {
             biome,
             seed,
             description: biome_description(biome).into(),
+            faction: None,
         };
         if let Some(entry) = self.entries.get_mut(self.selected) {
             entry.system = system;

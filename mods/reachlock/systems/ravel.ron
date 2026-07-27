@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "ravel",
+    display_name: "Ravel",
+    position: (x: 1300, y: -120, z: 240),
+    biome: frontier,
+    seed: 875836468,
+    description: "A short-haul tramp station where ships too old for the main routes come for repairs. Ravel's mechanics can fix anything with salvage and determination. The station itself is held together the same way — patch on patch, held in place by habit.",
+    faction: None,
+)

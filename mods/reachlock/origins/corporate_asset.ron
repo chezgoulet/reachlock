@@ -29,10 +29,11 @@ ContentFile(
             Authored(soul_id: "liao_corporate", role: "corporate_liaison"),
         ],
         known_systems: [
-            34000001,
-            34000002,
+            404232216,
+            421075225,
+            454761243,
         ],
-        start_system: 34000001,
+        start_system: 353703189,
         start_location: "Corporate Hub Zeta-7",
         opening_log_entries: [
             (title: "Field Assignment", body: "The corp has a special assignment for you. A rival faction is moving into disputed territory, and you're the one they trust to handle it. Your corvette is ready, the accounts are loaded, and the target is marked. Don't fail — the corp doesn't forgive failure.", tick_offset: 0),

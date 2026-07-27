@@ -30,12 +30,7 @@ SYSTEMS = ROOT / "mods" / "reachlock" / "systems"
 # Same convention as the narrow `#[allow(dead_code)]` this repo already
 # blesses: an exception that names what it is waiting on and stays greppable,
 # rather than a check quietly weakened for everything.
-EXCEPTIONS = {
-    # Authored by the editor's assistant during a live session; off-convention
-    # seed, filename that does not match its id, and in no band. Open decision
-    # recorded in SYSTEMS-PLAN.md section 1.4 — keep, reseat, or drop.
-    "zola_swamp_system",
-}
+EXCEPTIONS: set[str] = set()
 
 
 def parse_plan():
@@ -93,12 +88,14 @@ def parse_systems():
             r"position:\s*\(\s*x:\s*(-?\d+)\s*,\s*y:\s*(-?\d+)\s*,\s*z:\s*(-?\d+)\s*\)",
             text,
         )
+        faction = re.search(r"faction:\s*(Some\(\"([^\"]+)\"\)|None)", text)
         out[sid.group(1)] = {
             "path": path.relative_to(ROOT),
             "display_name": display.group(1) if display else None,
             "seed": int(seed.group(1)) if seed else None,
             "biome": biome.group(1) if biome else None,
             "position": tuple(int(g) for g in pos.groups()) if pos else None,
+            "faction": faction.group(2) if faction and faction.group(2) else "none",
         }
     return out
 
@@ -160,7 +157,7 @@ def main() -> int:
                 f"exceptions in this script with a reason."
             )
             continue
-        for field in ("display_name", "seed", "biome", "position"):
+        for field in ("display_name", "seed", "biome", "position", "faction"):
             if have[field] is None:
                 problems.append(
                     f"UNREADABLE: `{sid}` ({have['path']}) has no parseable {field}."

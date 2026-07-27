@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "drift",
+    display_name: "Drift",
+    position: (x: 1340, y: 60, z: -320),
+    biome: deep_space,
+    seed: 909522486,
+    description: "Not anchored to anything. Drift is a station that chose to keep moving rather than settle anywhere. Its orbit decays, the crew recalculate, and the engines fire when they need to. The residents do not think of themselves as lost.",
+    faction: None,
+)

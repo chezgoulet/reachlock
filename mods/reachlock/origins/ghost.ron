@@ -26,9 +26,11 @@ ContentFile(
         ],
         starting_crew: [],
         known_systems: [
-            31000001,
+            808464432,
+            858993459,
+            875836468,
         ],
-        start_system: 31000001,
+        start_system: 791621423,
         start_location: "Shadow Port Nines",
         opening_log_entries: [
             (title: "New Identity", body: "The transponder is swapped. The heat from the last job should cool down in a few weeks. Shadow Port Nines is as good a place as any to lie low — and maybe find the next score.", tick_offset: 0),

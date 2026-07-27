@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "central",
+    display_name: "Central",
+    position: (x: 680, y: -60, z: -460),
+    biome: core,
+    seed: 589505315,
+    description: "Central Station is the ISC's nearest thing to a capital. The coalition's governing council meets here, and the station's Grand Concourse hosts delegations from every faction. The politics are as dense as the traffic.",
+    faction: Some("isc"),
+)

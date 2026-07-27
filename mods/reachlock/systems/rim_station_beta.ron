@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "rim_station_beta",
+    display_name: "Rim Station Beta",
+    position: (x: 1260, y: 180, z: 60),
+    biome: frontier,
+    seed: 808464432,
+    description: "The last fuel stop before the deep black. Rim Station Beta is a converted ore processor that has been patched together so many times that none of the original hull remains. The fuel is expensive; the advice is free.",
+    faction: None,
+)

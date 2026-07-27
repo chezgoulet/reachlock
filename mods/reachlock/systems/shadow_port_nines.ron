@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "shadow_port_nines",
+    display_name: "Shadow Port Nines",
+    position: (x: 1180, y: -300, z: 120),
+    biome: derelict,
+    seed: 791621423,
+    description: "Registry-scrubbing trade hub on the independent rim. Shadow Port Nines asks for your ship's transponder code and then forgets it. No records, no questions, no faction oversight.",
+    faction: None,
+)

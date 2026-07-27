@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "marrow",
+    display_name: "Marrow",
+    position: (x: 700, y: -180, z: -340),
+    biome: derelict,
+    seed: 488447261,
+    description: "A charter abandoned mid-lease. Marrow's infrastructure remains — refineries, housing domes, a gate — but the corporate entity that built it dissolved. Still legally private property, claimed by no one, used by everyone.",
+    faction: Some("corp"),
+)

@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "harrowgate",
+    display_name: "Harrowgate",
+    position: (x: 900, y: -200, z: 300),
+    biome: frontier,
+    seed: 117901063,
+    description: "Two gates, three claimants, one shooting a decade ago. Harrowgate is a disputed connector where Compact, ISC, and independent interests overlap. The shooting is over; the dispute is not.",
+    faction: None,
+)

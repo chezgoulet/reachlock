@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "free_port_zeta",
+    display_name: "Free Port Zeta",
+    position: (x: 760, y: -260, z: -120),
+    biome: frontier,
+    seed: 555819297,
+    description: "Tariff-free trading hub on the ISC frontier. Free Port Zeta's orbital markets are chaotic, crowded, and fiercely independent. No faction taxes, no customs inspections, no questions about cargo origin.",
+    faction: Some("isc"),
+)

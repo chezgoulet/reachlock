@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "ambrel",
+    display_name: "Ambrel",
+    position: (x: 1000, y: 60, z: -300),
+    biome: frontier,
+    seed: 640034342,
+    description: "Ambrel refuses Compact trade law outright. The station's sovereignty is absolute, and it pays for the defiance in tariffs that make every import expensive. The locals consider it the price of freedom.",
+    faction: Some("isc"),
+)

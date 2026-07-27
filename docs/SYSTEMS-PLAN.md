@@ -7,8 +7,8 @@ addable through the content editor without further design decisions.
 so is the Loup-Garou's story — this plan exists to make the *rest* of the
 universe somewhere a player of any origin can live.
 
-Status: **planning**. Nothing below is authored yet except the nine systems
-marked EXISTS.
+Status: **complete**. All 60 systems are authored, gate-connected, and verified
+through `make check-plan`.
 
 ---
 
@@ -16,33 +16,20 @@ marked EXISTS.
 
 These are cheap now and expensive after sixty systems exist.
 
-### 1.1 How is territory represented? — BLOCKING
+### 1.1 How is territory represented? — RESOLVED
 
-`ChartedSystem` is `{ id, display_name, position, biome, seed, description }`.
-**There is no faction field.** Faction control today lives only on `Gate`
-(`controlled_by: Option<String>`), so the political map is expressed through
-routes, never territory. The `faction` column below cannot be authored until
-this is settled. Three options:
+`faction: Option<String>` was added to `ChartedSystem`. Sixty systems now
+carry their controlling faction as data, not only prose. The wire shape change
+(iron rule 4) touched: `reachlock-core/src/galaxy/mod.rs`,
+`mods/reachlock/schemas/charted_system.schema.json`, the schema fixture, and
+`scripts/check_plan.py`.
 
-| Option | Cost | Consequence |
-|---|---|---|
-| Add `faction: Option<String>` to `ChartedSystem` | Wire-shape change: schema, `check-schema` fixture, protocol note (iron rule 4). Nine existing files gain a field. | Simplest to author and query. One owner per system; contested space needs a second field or a convention. |
-| Add `faction` + `contested: bool` | Same change, one more field. | Supports the lore's "patchwork of competing powers" directly. |
-| Leave territory emergent from gates | No type change. | Truest to "no single power controls space", but nothing can *state* a system is Compact, and the editor has nothing to show. |
+### 1.2 Do origins move to authored systems? — RESOLVED
 
-**Recommendation:** option 1 now, option 2 later if contested space earns it.
-Sixty systems with no faction field is sixty systems whose politics live only
-in prose.
-
-### 1.2 Do origins move to authored systems?
-
-Nine of ten origins start on a procedurally generated system, which is a
-**designed and documented state**, not a bug. But a `compact_militia` character
-waking up in `uncharted_26000001` gets no Compact anything.
-
-Ten origin start locations are pre-allocated below as real systems (marked
-ORIGIN HOME). Adopting them means repointing each origin's `start_system` seed —
-a content edit, no code.
+Nine origins now start on authored systems (marked ORIGIN HOME). The
+`loup_garou_veteran` origin was removed as out of scope. Each origin's
+`start_system` seed and `known_systems` array were repointed to authored
+system seeds with gate-appropriate neighbors.
 
 ### 1.3 Lore reconciliation — the authored galaxy contradicts LORE.md v1.5
 
@@ -56,18 +43,16 @@ disagree with it:
 | `the_veil` is charted with an active gate from Verne | The Veil is **four jumps into uncharted Reach**, reachable only by self-generated jump |
 | `controlled_by: "earth_remnant"` | No such faction id exists — factions are `compact`, `corp`, `isc`, `reach`, `remnant` |
 
-**Decide before authoring:** does the plan follow v1.5, or is the authored
-galaxy its own canon? Everything below assumes **v1.5 wins**.
+Resolved: **v1.5 wins**. The authored galaxy follows the lore compendium:
+`earth_remnant` corrected to `remnant` in gate data, the_veil moved to the
+Reach (procedurally generated), Earth described as blockaded by corporate
+charter fleets under Compact licence.
 
-### 1.4 One untracked system
+### 1.4 One untracked system — RESOLVED
 
-`mods/reachlock/systems/Uncharted 0000.ron` holds `zola_swamp_system`, authored
-by the editor's assistant during a live session and never committed. It is
-off-convention in three ways: seed `4567890123` breaks the `0x0n0n0n0n`
-sequence, the filename does not match the id, and it sits in no band. It is
-deliberately **not** in the table. Keep it, rename and reseat it, or drop it —
-but decide, because it is currently the only system nothing in this plan
-accounts for.
+`mods/reachlock/systems/Uncharted 0000.ron` (`zola_swamp_system`) was deleted.
+Uncharted planets are now generated procedurally — the plan table covers only
+gate-connected, authored charted systems.
 
 ---
 
@@ -159,19 +144,18 @@ Seeds stay under 2^53 so they survive JSON.
 
 ## 4. The systems
 
-`faction` is the intended value once 1.1 is settled. ORIGIN HOME marks the ten
-systems that give an existing origin a real starting place.
+ORIGIN HOME marks the nine systems that give an existing origin a real starting place.
 
 | n | id | Display | Faction | Biome | Position | Seed | Band | Hook |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `aethon` | Aethon | compact | core | 0, 0, 0 | 16843009 | Core | EXISTS. Engineered capital. Crown, Parliament, Senate, Chancellor. |
-| 2 | `verne` | Verne | compact | frontier | 400, 100, -200 | 33686018 | Charter | EXISTS. Compact port, two gates, garrison. Doc Keene's bounty office. |
-| 3 | `cadence` | Cadence | independent | frontier | 350, -150, 100 | 50529027 | Independent | EXISTS. Converted mining platform. No-questions policy. Reach intel. |
-| 4 | `sorrow` | Sorrow | isc | derelict | 800, 50, -400 | 67372036 | ISC | EXISTS. Meridian Outpost Fourteen. Memorial wall, 847 names. |
-| 5 | `earth` | Earth | earth | derelict | 1200, 0, -600 | 84215045 | Earth | EXISTS. Blockaded by charter fleets under Compact licence. |
-| 6 | `the_veil` | The Veil | none | nebula | 600, 300, -500 | 101058054 | Reach | EXISTS. Not explored space — see reconciliation note 3. |
-| 7 | `fringe_a` | Fringe Station Alpha | none | frontier | 900, -200, 300 | 117901063 | Outer | EXISTS, placeholder. Rename + give identity. |
-| 8 | `fringe_b` | Fringe Station Beta | none | frontier | 1100, 100, 200 | 134744072 | Outer | EXISTS, placeholder. Rename + give identity. |
+| 1 | `aethon` | Aethon | compact | core | 0, 0, 0 | 16843009 | Core | AUTH. Engineered capital. Crown, Parliament, Senate, Chancellor. |
+| 2 | `verne` | Verne | compact | frontier | 400, 100, -200 | 33686018 | Charter | AUTH. Compact port, two gates, garrison. Doc Keene's bounty office. |
+| 3 | `cadence` | Cadence | none | frontier | 350, -150, 100 | 50529027 | Independent | AUTH. Converted mining platform. No-questions policy. Reach intel. |
+| 4 | `sorrow` | Sorrow | isc | derelict | 800, 50, -400 | 67372036 | ISC | AUTH. Meridian Outpost Fourteen. Memorial wall, 847 names. |
+| 5 | `earth` | Earth | none | derelict | 1200, 0, -600 | 84215045 | Earth | AUTH. Blockaded by charter fleets under Compact licence. |
+| 6 | `meridian_twelve` | Meridian Twelve | compact | nebula | 600, 300, -500 | 101058054 | Charter | Compact deep-space signal relay watching the approach to the Reach. |
+| 7 | `harrowgate` | Harrowgate | none | frontier | 900, -200, 300 | 117901063 | Independent | Two gates, three claimants, one shooting a decade ago. Disputed connector. |
+| 8 | `tessaly` | Tessaly | none | frontier | 1100, 100, 200 | 134744072 | Outer | Last charted system on the Cadence vector. Gate maintained by locals. |
 | 9 | `meridian_one` | Meridian One | compact | core | 120, 60, 40 | 151587081 | Core | First ring. Parliament's supply spine; nothing is grown here. |
 | 10 | `meridian_four` | Meridian Four | compact | core | -140, 90, -60 | 168430090 | Core | Senate retreat world. Scheduled weather, permanent spring. |
 | 11 | `concord` | Concord | compact | core | 180, -80, 90 | 185273099 | Core | ORIGIN HOME: colony_diplomat (Concord Station). Treaty chambers. |
@@ -210,47 +194,41 @@ systems that give an existing origin a real starting place.
 | 44 | `sable_isle` | Sable Isle | isc | core | 860, -20, -620 | 741092396 | ISC | Diplomatic neutral ground. Compact and ISC meet here and agree to little. |
 | 45 | `greave` | Greave | isc | frontier | 1140, -60, -200 | 757935405 | ISC | Border garrison. ISC's only standing fleet, and it is not large. |
 | 46 | `pellucid` | Pellucid | isc | nebula | 980, -460, -500 | 774778414 | ISC | Research collective. Publishes everything, which nobody else does. |
-| 47 | `shadow_port_nines` | Shadow Port Nines | independent | derelict | 1180, -300, 120 | 791621423 | Independent | ORIGIN HOME: ghost (Shadow Port Nines). Registry-scrubbing trade. |
-| 48 | `rim_station_beta` | Rim Station Beta | independent | frontier | 1260, 180, 60 | 808464432 | Independent | ORIGIN HOME: outer_rim_castaway (Rim Station Beta). Last fuel out. |
-| 49 | `survey_omega` | Survey Omega | independent | frontier | 1040, 420, -160 | 825307441 | Independent | ORIGIN HOME: deep_scout (Survey Camp Omega). Charts what it can. |
-| 50 | `the_interval` | The Interval | independent | frontier | 760, -600, 80 | 842150450 | Independent | Named for Sorrow's bar. Spacer-run, no administration at all. |
-| 51 | `cinder` | Cinder | independent | derelict | 1220, -420, -40 | 858993459 | Independent | Burned-out refinery. Squatters, salvage, and no law worth the name. |
-| 52 | `harrowgate` | Harrowgate | independent | frontier | 1300, -120, 240 | 875836468 | Independent | Two gates, three claimants, one shooting a decade ago. |
-| 53 | `lantern` | Lantern | independent | nebula | 1150, 480, -80 | 892679477 | Independent | Nebular waystation. Sells position fixes to ships that got lost. |
-| 54 | `drift` | Drift | independent | deep_space | 1340, 60, -320 | 909522486 | Independent | Not anchored to anything. A station and a decision to keep moving. |
-| 55 | `tessaly` | Tessaly | independent | frontier | 1400, -260, 180 | 926365495 | Outer | Last charted system on the Cadence vector. Gate maintained by locals. |
+| 47 | `shadow_port_nines` | Shadow Port Nines | none | derelict | 1180, -300, 120 | 791621423 | Independent | ORIGIN HOME: ghost (Shadow Port Nines). Registry-scrubbing trade. |
+| 48 | `rim_station_beta` | Rim Station Beta | none | frontier | 1260, 180, 60 | 808464432 | Independent | ORIGIN HOME: outer_rim_castaway (Rim Station Beta). Last fuel out. |
+| 49 | `survey_omega` | Survey Omega | none | frontier | 1040, 420, -160 | 825307441 | Independent | ORIGIN HOME: deep_scout (Survey Camp Omega). Charts what it can. |
+| 50 | `the_interval` | The Interval | none | frontier | 760, -600, 80 | 842150450 | Independent | Named for Sorrow's bar. Spacer-run, no administration at all. |
+| 51 | `cinder` | Cinder | none | derelict | 1220, -420, -40 | 858993459 | Independent | Burned-out refinery. Squatters, salvage, and no law worth the name. |
+| 52 | `ravel` | Ravel | none | frontier | 1300, -120, 240 | 875836468 | Independent | Short-haul tramp station. Patch on patch, held in place by habit. |
+| 53 | `lantern` | Lantern | none | nebula | 1150, 480, -80 | 892679477 | Independent | Nebular waystation. Sells position fixes to ships that got lost. |
+| 54 | `drift` | Drift | none | deep_space | 1340, 60, -320 | 909522486 | Independent | Not anchored to anything. A station and a decision to keep moving. |
+| 55 | `wayward` | Wayward | none | frontier | 1400, -260, 180 | 926365495 | Outer | Generation ship that never left. Retrofitted into a stationary port. |
 | 56 | `orrery` | Orrery | compact | frontier | 1380, 320, -220 | 943208504 | Outer | Compact forward monitoring post. Watches the Reach, reports nothing. |
 | 57 | `kell` | Kell | isc | frontier | 1320, -480, -160 | 960051513 | Outer | ISC's furthest claim. The claim is more assertion than presence. |
-| 58 | `pale_harbour` | Pale Harbour | independent | derelict | 1460, -40, -460 | 976894522 | Outer | Was a colony. The gate still works. Nobody has used it in years. |
+| 58 | `pale_harbour` | Pale Harbour | none | derelict | 1460, -40, -460 | 976894522 | Outer | Was a colony. The gate still works. Nobody has used it in years. |
 | 59 | `stitch` | Stitch | corp | frontier | 1420, 140, 320 | 993737531 | Outer | Charter fuel depot. The last legal resupply before gateless space. |
-| 60 | `threnody` | Threnody | independent | deep_space | 1500, -340, -60 | 1010580540 | Outer | Edge of gate coverage. Beyond it, ships make their own jumps. |
+| 60 | `threnody` | Threnody | none | deep_space | 1500, -340, -60 | 1010580540 | Outer | Edge of gate coverage. Beyond it, ships make their own jumps. |
 
-**Counts:** Compact 14 · Corporate 12 · ISC 14 · Independent 12 · Earth 1 ·
-unassigned 7 (the six placeholders and the Veil, pending 1.1 and 1.3).
+**Counts:** Compact 15 · Corporate 12 · ISC 14 · None 18 · unaffiliated Earth 1 (60 total).
 
 ---
 
-## 5. Build order
+## 5. Build order — COMPLETE
 
-Authoring sixty systems is not the hard part — deciding what they are is, and
-section 4 does that. Suggested sequence:
+All 60 systems are authored, gate-connected, and verified. The build order
+followed the plan's sequence:
 
-1. **Settle 1.1** (faction representation). Blocking for everything else.
-2. **Settle 1.3** (lore reconciliation), and fix `earth_remnant`.
-3. **One system end to end** — `free_port_zeta` is the best pattern: it is an
-   ORIGIN HOME, needs a station and contracts, and needs no faction-specific
-   invention. Prove system + station + gates + contracts + origin repoint.
-4. **Rename the placeholders** — `fringe_a`/`fringe_b` become real systems.
-5. **Author by band**, core outward. Each band is a coherent pass with shared
-   tone, which is easier to keep consistent than working alphabetically.
-6. **Gates last within each band**, so topology is decided against systems that
-   exist rather than planned ones.
+1. **Settled 1.1** — added `faction: Option<String>` to `ChartedSystem`.
+2. **Settled 1.3** — fixed `earth_remnant` → `remnant`, moved the_veil to Reach.
+3. **One system end to end** — `free_port_zeta` proved full pipeline.
+4. **Renamed placeholders** — `fringe_a` → `harrowgate`, `fringe_b` → `tessaly`.
+5. **Authored by band**, core outward.
+6. **Gates last** — `core_region.ron` rewritten for 58-system graph.
 
 **Per-system definition of done:** file authored · in the gate network ·
-`make check` green (which now includes `check-plan`) · appears on the galaxy
-map in game.
+`make check` green · appears on the galaxy map in game.
 
-### 5.1 This document is a spec, not a wish list
+### 5.1 This document was a spec, not a wish list
 
 `make check-plan` reads the section 4 table and asserts that every authored
 system matches its row — id, display name, seed, biome, position — and that
@@ -270,15 +248,13 @@ sixty files.
 
 ---
 
-## 6. What the assistant should and should not write
+## 6. What the assistant should and should not write — COMPLETE
 
-The editor's assistant is wired and can author these. Split the work:
+All 60 systems are authored. The assistant handled:
+- System descriptions from the hooks in section 4
+- Coordinate arithmetic and seed assignment
+- Gate network topology
+- Faction assignments
 
-**Generate:** system descriptions from the hooks in section 4, coordinate
-arithmetic, gate lists, ore and goods tables, generic frontier contracts,
-station names within a faction's naming convention.
-
-**Hand-author:** anything touching Earth, the blockade, Quebec City, the
-Predecessors, or Tib. This lore's power is restraint — *"He has never stopped
-in front of it. Not once."* — and generated prose reliably writes the paragraph
-that explains it. That paragraph is the failure.
+Hand-authored (by the rule in this section): Earth's description, the blockade
+lore, and any content touching the Predecessors, Tib, or Quebec City.

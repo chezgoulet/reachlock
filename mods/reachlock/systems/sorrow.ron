@@ -4,5 +4,6 @@ ChartedSystem(
     position: (x: 800, y: 50, z: -400),
     biome: derelict,
     seed: 67372036,
-    description: "Once a thriving colony, Sorrow fell to plague and neglect during the Exodus. Its stations are ghost towns. The gate to Earth is blockaded by the Earth Remnant, who consider this system a quarantine zone.",
+    description: "Once a thriving colony, Sorrow fell to plague and neglect during the Exodus. Its stations are ghost towns. Officially ISC-affiliated as Meridian Outpost Fourteen, Sorrow's memorial wall bears 847 names — the cost of the plague years.",
+    faction: Some("isc"),
 )

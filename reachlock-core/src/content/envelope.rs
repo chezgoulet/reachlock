@@ -870,9 +870,9 @@ mod tests {
         use crate::seed::Seed;
 
         let origin = Origin {
-            id: "loup_garou_veteran".into(),
-            name: "Loup-Garou Veteran".into(),
-            description: "Captain of the Loup-Garou, a crew of misfits.".into(),
+            id: "test_origin".into(),
+            name: "Test Origin".into(),
+            description: "A test origin for round-trip verification.".into(),
             icon: "compact_military".into(),
             starting_career: "freelance".into(),
             starting_rank: 1,
@@ -901,8 +901,8 @@ mod tests {
             }],
         };
         let file = ContentFile {
-            id: "loup_garou_veteran".into(),
-            display_name: "Loup-Garou Veteran".into(),
+            id: "test_origin".into(),
+            display_name: "Test Origin".into(),
             asset_type: AssetType::Origin,
             seed: 16843009,
             universe: "all".into(),

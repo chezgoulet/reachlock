@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "orrery",
+    display_name: "Orrery",
+    position: (x: 1380, y: 320, z: -220),
+    biome: frontier,
+    seed: 943208504,
+    description: "Compact forward monitoring post. Orrery watches the Reach and reports nothing — the data goes straight to Aethon, and the crew here are not cleared to know what they are listening for.",
+    faction: Some("compact"),
+)

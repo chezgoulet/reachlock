@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "tannery",
+    display_name: "Tannery",
+    position: (x: 780, y: -440, z: -380),
+    biome: derelict,
+    seed: 690563369,
+    description: "Post-industrial. The charter left after the resource play played out; the population did not. Tannery now runs on salvage, repair, and the kind of economy that grows in a regulator's blind spot.",
+    faction: Some("isc"),
+)

@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "selkie",
+    display_name: "Selkie",
+    position: (x: 900, y: -380, z: -200),
+    biome: nebula,
+    seed: 656877351,
+    description: "Ocean world with floating stations. Selkie's shipwrights specialize in hull repairs for vessels that have taken atmospheric or deep-space damage — work requiring submersion berths that can only be done in a liquid environment.",
+    faction: Some("isc"),
+)

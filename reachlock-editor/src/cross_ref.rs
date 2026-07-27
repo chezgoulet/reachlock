@@ -737,7 +737,7 @@ mod content_tree_tests {
     #[test]
     fn the_index_sees_the_authored_tree() {
         let index = index();
-        for id in ["tib", "bardo", "boris", "loup_garou_veteran", "compact"] {
+        for id in ["tib", "bardo", "boris", "compact"] {
             assert!(
                 index.is_known(id),
                 "`{id}` is authored content but the index does not know it; \

@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "pellucid",
+    display_name: "Pellucid",
+    position: (x: 980, y: -460, z: -500),
+    biome: nebula,
+    seed: 774778414,
+    description: "Research collective that publishes everything. In a galaxy where data is hoarded and sold, Pellucid's open archives are a radical act. The charter corporations hate it; independent scholars depend on it.",
+    faction: Some("isc"),
+)

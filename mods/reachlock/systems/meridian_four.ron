@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "meridian_four",
+    display_name: "Meridian Four",
+    position: (x: -140, y: 90, z: -60),
+    biome: core,
+    seed: 168430090,
+    description: "Senate retreat world. The Compact's legislators retire here during recess, where the weather is scheduled to permanent spring. The real negotiations happen on the golf courses, not the chamber floor.",
+    faction: Some("compact"),
+)

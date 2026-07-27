@@ -1,0 +1,9 @@
+ChartedSystem(
+    id: "corvid",
+    display_name: "Corvid",
+    position: (x: 1120, y: 240, z: -140),
+    biome: frontier,
+    seed: 707406378,
+    description: "Communications relay hub. Every data packet between the ISC inner band and the frontier passes through Corvid's routing stations. The operators read everything, log everything, and admit nothing.",
+    faction: Some("isc"),
+)
