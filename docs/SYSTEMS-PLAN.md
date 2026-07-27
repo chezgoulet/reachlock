@@ -170,8 +170,8 @@ systems that give an existing origin a real starting place.
 | 4 | `sorrow` | Sorrow | isc | derelict | 800, 50, -400 | 67372036 | ISC | EXISTS. Meridian Outpost Fourteen. Memorial wall, 847 names. |
 | 5 | `earth` | Earth | earth | derelict | 1200, 0, -600 | 84215045 | Earth | EXISTS. Blockaded by charter fleets under Compact licence. |
 | 6 | `the_veil` | The Veil | none | nebula | 600, 300, -500 | 101058054 | Reach | EXISTS. Not explored space — see reconciliation note 3. |
-| 7 | `fringe_a` | Fringe A | none | frontier | 900, -200, 300 | 117901063 | Outer | EXISTS, placeholder. Rename + give identity. |
-| 8 | `fringe_b` | Fringe B | none | frontier | 1100, 100, 200 | 134744072 | Outer | EXISTS, placeholder. Rename + give identity. |
+| 7 | `fringe_a` | Fringe Station Alpha | none | frontier | 900, -200, 300 | 117901063 | Outer | EXISTS, placeholder. Rename + give identity. |
+| 8 | `fringe_b` | Fringe Station Beta | none | frontier | 1100, 100, 200 | 134744072 | Outer | EXISTS, placeholder. Rename + give identity. |
 | 9 | `meridian_one` | Meridian One | compact | core | 120, 60, 40 | 151587081 | Core | First ring. Parliament's supply spine; nothing is grown here. |
 | 10 | `meridian_four` | Meridian Four | compact | core | -140, 90, -60 | 168430090 | Core | Senate retreat world. Scheduled weather, permanent spring. |
 | 11 | `concord` | Concord | compact | core | 180, -80, 90 | 185273099 | Core | ORIGIN HOME: colony_diplomat (Concord Station). Treaty chambers. |
@@ -247,7 +247,26 @@ section 4 does that. Suggested sequence:
    exist rather than planned ones.
 
 **Per-system definition of done:** file authored · in the gate network ·
-`reachlock content check` clean · appears on the galaxy map in game.
+`make check` green (which now includes `check-plan`) · appears on the galaxy
+map in game.
+
+### 5.1 This document is a spec, not a wish list
+
+`make check-plan` reads the section 4 table and asserts that every authored
+system matches its row — id, display name, seed, biome, position — and that
+every authored system has a row at all. Rows that are not authored yet are
+skipped, so the table is a queue: authoring a system is what brings it under
+the gate, with no status column to keep in sync by hand.
+
+It also checks the plan against itself (duplicate seeds, seeds off the
+`0x0n0n0n0n` convention) and fails on a row that *looks* like a table row but
+no longer parses — because a row that silently drops out of coverage while
+everything else stays green is the failure mode worth guarding hardest.
+
+Which means: **if the plan and the content disagree, the build goes red.**
+Change one and you must change the other. That is the whole point — it is what
+makes it safe to hand rows to an agent and trust the result without reading
+sixty files.
 
 ---
 

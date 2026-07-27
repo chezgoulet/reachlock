@@ -3,13 +3,13 @@ export PATH := $(HOME)/.cargo/bin:$(PATH)
 
 .PHONY: test check fmt clippy run run-debug editor mcp install-cli dev server server-db determinism clean \
 	db db-down db-reset db-psql db-test dev-secrets check-features check-content \
-	check-theme check-resources check-dead-code
+	check-theme check-resources check-dead-code check-plan
 
 test:
 	cargo test --workspace
 
 check: fmt clippy test check-purity check-features check-content check-theme check-resources \
-	check-dead-code check-schema
+	check-dead-code check-schema check-plan
 	@echo "all gates green"
 
 # Whole-tree content integrity (iron rule #8: a system nobody can reach is
@@ -33,6 +33,16 @@ check-content:
 # rejected). Run both.
 check-schema:
 	cargo test -p reachlock-editor -- schema::tests:: --quiet
+
+# `content check` proves the tree is internally consistent; nothing proved it
+# matched the PLAN. A system could be authored at the wrong coordinates, with
+# the wrong seed, under a name the plan never mentions, and every other gate
+# would stay green — which makes a sixty-row plan aspirational, discovered to
+# have drifted weeks later by reading. This checks both directions, and treats
+# a plan row that stops parsing as an error rather than one fewer thing to
+# check.
+check-plan:
+	python3 scripts/check_plan.py
 
 # Every screen is styled from assets/ui/*.ron. A widget that builds its own
 # TextColor/BackgroundColor/BorderColor is invisible to the stylesheet: editing
